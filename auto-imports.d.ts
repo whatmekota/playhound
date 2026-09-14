@@ -7,6 +7,8 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
+  const analysisKey: typeof import('./src/composables/useScriptAnalysis').analysisKey
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const computed: typeof import('vue').computed
@@ -249,6 +251,7 @@ declare global {
   const useSafety: typeof import('./src/composables/useSafety').useSafety
   const useScreenOrientation: typeof import('@vueuse/core').useScreenOrientation
   const useScreenSafeArea: typeof import('@vueuse/core').useScreenSafeArea
+  const useScriptAnalysis: typeof import('./src/composables/useScriptAnalysis').useScriptAnalysis
   const useScriptPulse: typeof import('./src/composables/useScriptPulse').useScriptPulse
   const useScriptTag: typeof import('@vueuse/core').useScriptTag
   const useScroll: typeof import('@vueuse/core').useScroll
@@ -330,6 +333,9 @@ declare global {
   export type { BeatMode } from './src/composables/useBinauralBeats'
   import('./src/composables/useBinauralBeats')
   // @ts-ignore
+  export type { ScriptAnalysis } from './src/composables/useScriptAnalysis'
+  import('./src/composables/useScriptAnalysis')
+  // @ts-ignore
   export type { SessionArc, EdgeConfig } from './src/composables/useSessionEngine'
   import('./src/composables/useSessionEngine')
 }
@@ -340,6 +346,8 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
+    readonly analysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analysisKey']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
@@ -580,6 +588,7 @@ declare module 'vue' {
     readonly useSafety: UnwrapRef<typeof import('./src/composables/useSafety')['useSafety']>
     readonly useScreenOrientation: UnwrapRef<typeof import('@vueuse/core')['useScreenOrientation']>
     readonly useScreenSafeArea: UnwrapRef<typeof import('@vueuse/core')['useScreenSafeArea']>
+    readonly useScriptAnalysis: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['useScriptAnalysis']>
     readonly useScriptPulse: UnwrapRef<typeof import('./src/composables/useScriptPulse')['useScriptPulse']>
     readonly useScriptTag: UnwrapRef<typeof import('@vueuse/core')['useScriptTag']>
     readonly useScroll: UnwrapRef<typeof import('@vueuse/core')['useScroll']>

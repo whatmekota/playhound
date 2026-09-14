@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { useLocalStorage } from '@vueuse/core'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
+import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -15,6 +18,8 @@ const bookmarkStore = useBookmarkStore()
 const statsStore = useStatsStore()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+const { analysis } = useScriptAnalysis()
+const showHeatmap = useLocalStorage('ph-timeline-heatmap', true)
 const timelineEl = ref<HTMLDivElement | null>(null)
 const isDragging = ref(false)
 const dragTarget = ref<'scrub' | 'loopStart' | 'loopEnd' | null>(null)
@@ -24,32 +29,69 @@ const hoverTime = ref(0)
 
 // ─── Waveform drawing ─────────────────────────────────────────────────────────
 
+/**
+ * Speed heatmap plus the session-shape envelope.
+ *
+ * The previous version divided position deltas by 100, but positions are
+ * normalised to 0-1 by the parser, so every bucket fell under the visibility
+ * threshold and nothing was ever drawn. It also measured position change rather
+ * than speed; speed (change over time) is what the colour is meant to mean.
+ */
 function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
-  const primary = scriptStore.primaryScript
-  if (!primary || primary.parsed.actions.length < 2)
+  const a = analysis.value
+  if (!a || !a.envelope.length)
     return
-  const actions = primary.parsed.actions
-  const BUCKETS = Math.max(1, Math.floor(W / 3))
-  const bucketMs = (duration * 1000) / BUCKETS
-  const intensity = new Float32Array(BUCKETS)
-  for (let i = 0; i < actions.length - 1; i++) {
-    const b = Math.floor(actions[i].at / bucketMs)
-    if (b >= 0 && b < BUCKETS) {
-      intensity[b] = Math.max(intensity[b], Math.abs(actions[i + 1].pos - actions[i].pos) / 100)
-    }
-  }
-  const bw = W / BUCKETS
-  for (let b = 0; b < BUCKETS; b++) {
-    const v = intensity[b]
-    if (v < 0.01)
+
+  const durMs = duration * 1000
+  // Normalise against this script's own peak so quiet scripts still read,
+  // with a floor so a nearly-static script does not get amplified into noise.
+  const ref = Math.max(0.5, a.peakSpeed)
+
+  const step = W / Math.max(1, Math.floor(W / 2))
+  for (let x = 0; x < W; x += step) {
+    const tMs = (x / W) * durMs
+    const s = sampleEnvelope(a.envelope, tMs)
+    if (!s)
       continue
-    // cool blue → hot magenta
+    const v = Math.min(1, s.speed / ref)
+    if (v < 0.02)
+      continue
+    // cool blue -> hot magenta
     const hue = 260 - v * 220
     const sat = 60 + v * 40
-    const lit = 35 + v * 30
-    ctx.fillStyle = `hsla(${hue},${sat}%,${lit}%,0.55)`
-    ctx.fillRect(b * bw, 0, bw + 1, H)
+    const lit = 30 + v * 28
+    ctx.fillStyle = `hsla(${hue},${sat}%,${lit}%,0.5)`
+    ctx.fillRect(x, 0, step + 1, H)
   }
+}
+
+/** The stroke-rate curve, so a script's shape is readable at a glance. */
+function drawEnvelope(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
+  const a = analysis.value
+  if (!a || !a.envelope.length)
+    return
+
+  const durMs = duration * 1000
+  const maxSpm = Math.max(30, ...a.envelope.map(s => s.spm))
+
+  ctx.beginPath()
+  ctx.strokeStyle = 'rgba(45, 212, 191, 0.7)'
+  ctx.lineWidth = 1
+  let started = false
+  for (let x = 0; x <= W; x += 2) {
+    const s = sampleEnvelope(a.envelope, (x / W) * durMs)
+    if (!s)
+      continue
+    const y = H - (Math.min(1, s.spm / maxSpm) * H * 0.9 + H * 0.05)
+    if (!started) {
+      ctx.moveTo(x, y)
+      started = true
+    }
+    else {
+      ctx.lineTo(x, y)
+    }
+  }
+  ctx.stroke()
 }
 
 function drawTimeline() {
@@ -73,9 +115,10 @@ function drawTimeline() {
 
   const primary = scriptStore.primaryScript
 
-  // ── Heatmap (shown when hovering) ──
-  if (isHovering.value) {
+  // ── Speed heatmap and session shape ──
+  if (showHeatmap.value) {
     drawHeatmap(ctx, W, H, duration)
+    drawEnvelope(ctx, W, H, duration)
   }
 
   // ── Draw funscript waveform ──
@@ -198,6 +241,8 @@ watch(
     () => statsStore.stats,
     isHovering,
     hoverX,
+    analysis,
+    showHeatmap,
   ],
   drawTimeline,
   { flush: 'post' },

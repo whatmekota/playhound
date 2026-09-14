@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PanelId } from '~/lib/panels'
 import type { ScriptMatch, VideoEntry } from '~/stores/libraryStore'
+import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import FunscriptTimeline from '~/components/FunscriptTimeline.vue'
 import LoopControls from '~/components/LoopControls.vue'
@@ -44,6 +45,7 @@ const statsStore = useStatsStore()
 const bookmarkStore = useBookmarkStore()
 const motionStore = useMotionStore()
 const safety = useSafetyStore()
+const showHeatmap = useLocalStorage('ph-timeline-heatmap', true)
 const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 
 // Instantiate these once at the shell level so they keep running no matter
@@ -629,6 +631,14 @@ function onGlobalKeyDown(e: KeyboardEvent) {
                 @click="playerStore.toggleSbs()"
               >
                 180&deg;
+              </button>
+              <button
+                class="btn-icon"
+                :class="showHeatmap ? 'text-accent-400' : ''"
+                title="Script heatmap and shape on the timeline"
+                @click="showHeatmap = !showHeatmap"
+              >
+                <div class="i-carbon-chart-histogram text-sm" />
               </button>
               <button class="btn-icon" title="Fullscreen (F)" @click="toggleFullscreen">
                 <div class="i-carbon-fit-to-screen text-sm" />

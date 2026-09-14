@@ -1,8 +1,6 @@
 import type { EnvelopeSample, Peak } from '~/lib/funscriptAnalysis'
 import { computed, ref, watch } from 'vue'
 import {
-  buildEnvelope,
-  detectPeaks,
   phaseError,
   sampleEnvelope,
   speedToIntensity,
@@ -12,6 +10,7 @@ import { MAX_BEAT_HZ, useAudioStore } from '~/stores/audio'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useBinauralBeats } from './useBinauralBeats'
+import { analyseActions, analysisKey } from './useScriptAnalysis'
 
 /** How often to re-steer the pulse, in ms. Fast enough to track, slow enough to be cheap. */
 const TICK_MS = 100
@@ -73,12 +72,14 @@ export function useScriptPulse() {
       analysedFor = ''
       return
     }
-    const key = `${s.filename}:${s.channel}:${s.parsed.actions.length}`
+    const key = analysisKey(s.filename, s.channel, s.parsed.actions.length)
     if (key === analysedFor)
       return
 
-    peaks = detectPeaks(s.parsed.actions)
-    envelope = buildEnvelope(s.parsed.actions)
+    // Shared cache: the timeline and the auto-director want the same result.
+    const a = analyseActions(s.parsed.actions, key)
+    peaks = a.peaks
+    envelope = a.envelope
     analysedFor = key
   }
 
