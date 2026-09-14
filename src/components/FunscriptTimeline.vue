@@ -30,27 +30,31 @@ const hoverTime = ref(0)
 // ─── Waveform drawing ─────────────────────────────────────────────────────────
 
 /**
- * Speed heatmap plus the session-shape envelope.
+ * Fraction of the strip given over to the heatmap band at the bottom.
  *
- * The previous version divided position deltas by 100, but positions are
- * normalised to 0-1 by the parser, so every bucket fell under the visibility
- * threshold and nothing was ever drawn. It also measured position change rather
- * than speed; speed (change over time) is what the colour is meant to mean.
+ * The heatmap used to be painted across the whole height, which left the
+ * script waveform fighting a saturated background for the same pixels. Giving
+ * each its own lane means both stay readable.
  */
+const HEAT_BAND = 0.24
+
+/** Speed heatmap, drawn as a band along the bottom edge. */
 function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
   const a = analysis.value
   if (!a || !a.envelope.length)
     return
 
   const durMs = duration * 1000
+  const bandTop = H * (1 - HEAT_BAND)
+  const bandH = H - bandTop
+
   // Normalise against this script's own peak so quiet scripts still read,
-  // with a floor so a nearly-static script does not get amplified into noise.
+  // with a floor so a nearly-static script is not amplified into noise.
   const ref = Math.max(0.5, a.peakSpeed)
 
   const step = W / Math.max(1, Math.floor(W / 2))
   for (let x = 0; x < W; x += step) {
-    const tMs = (x / W) * durMs
-    const s = sampleEnvelope(a.envelope, tMs)
+    const s = sampleEnvelope(a.envelope, (x / W) * durMs)
     if (!s)
       continue
     const v = Math.min(1, s.speed / ref)
@@ -59,30 +63,36 @@ function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, durati
     // cool blue -> hot magenta
     const hue = 260 - v * 220
     const sat = 60 + v * 40
-    const lit = 30 + v * 28
-    ctx.fillStyle = `hsla(${hue},${sat}%,${lit}%,0.4)`
-    ctx.fillRect(x, 0, step + 1, H)
+    const lit = 34 + v * 26
+    ctx.fillStyle = `hsla(${hue},${sat}%,${lit}%,0.85)`
+    ctx.fillRect(x, bandTop, step + 1, bandH)
   }
+
+  // Hairline so the band reads as its own lane rather than bleeding upward.
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'
+  ctx.fillRect(0, bandTop, W, 1)
 }
 
-/** The stroke-rate curve, so a script's shape is readable at a glance. */
+/** Stroke-rate curve, drawn inside the heatmap band. */
 function drawEnvelope(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
   const a = analysis.value
   if (!a || !a.envelope.length)
     return
 
   const durMs = duration * 1000
+  const bandTop = H * (1 - HEAT_BAND)
+  const bandH = H - bandTop
   const maxSpm = Math.max(30, ...a.envelope.map(s => s.spm))
 
   ctx.beginPath()
-  ctx.strokeStyle = 'rgba(45, 212, 191, 0.7)'
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)'
   ctx.lineWidth = 1
   let started = false
   for (let x = 0; x <= W; x += 2) {
     const s = sampleEnvelope(a.envelope, (x / W) * durMs)
     if (!s)
       continue
-    const y = H - (Math.min(1, s.spm / maxSpm) * H * 0.9 + H * 0.05)
+    const y = H - (Math.min(1, s.spm / maxSpm) * (bandH - 2) + 1)
     if (!started) {
       ctx.moveTo(x, y)
       started = true
@@ -124,21 +134,31 @@ function drawTimeline() {
   // ── Draw funscript waveform ──
   if (primary && primary.parsed.actions.length > 0) {
     const actions = primary.parsed.actions
+    // Keep clear of the heatmap band so the two do not overlap.
+    const waveH = showHeatmap.value ? H * (1 - HEAT_BAND) - 2 : H
+
+    ctx.save()
+    // A dark outline under the stroke keeps it legible over the busiest
+    // stretches of script, where the line is dense enough to read as a fill.
+    ctx.shadowColor = 'rgba(0,0,0,0.9)'
+    ctx.shadowBlur = 2
     ctx.beginPath()
-    ctx.strokeStyle = isHovering.value ? 'rgba(217, 70, 239, 0.85)' : 'rgba(217, 70, 239, 0.5)'
+    ctx.strokeStyle = isHovering.value ? 'rgba(240, 171, 252, 0.95)' : 'rgba(232, 121, 249, 0.8)'
     ctx.lineWidth = 1.5
+    ctx.lineJoin = 'round'
 
     for (let i = 0; i < actions.length - 1; i++) {
       const x0 = (actions[i].at / (duration * 1000)) * W
-      const y0 = H - actions[i].pos * H
+      const y0 = waveH - actions[i].pos * waveH
       const x1 = (actions[i + 1].at / (duration * 1000)) * W
-      const y1 = H - actions[i + 1].pos * H
+      const y1 = waveH - actions[i + 1].pos * waveH
 
       if (i === 0)
         ctx.moveTo(x0, y0)
       ctx.lineTo(x1, y1)
     }
     ctx.stroke()
+    ctx.restore()
   }
   else {
     ctx.fillStyle = 'rgba(255,255,255,0.08)'
