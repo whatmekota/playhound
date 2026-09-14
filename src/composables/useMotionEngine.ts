@@ -13,6 +13,7 @@ import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useBinauralBeats } from './useBinauralBeats'
 import { useTCode } from './useTCode'
 
 // ─── Singleton loop state ─────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ export function useMotionEngine() {
   const player = usePlayerStore()
   const script = useScriptStore()
   const { sendPosition, homeAllAxes } = useTCode()
+  const { getPulseClock } = useBinauralBeats()
 
   /**
    * The funscript wins whenever a script is actually playing — the generator
@@ -56,6 +58,12 @@ export function useMotionEngine() {
       const divisor = pickBeatDivisor(beat, motion.beatBandLo, motion.beatBandHi)
       motion.beatDivisor = divisor
       return (beat * 60) / divisor
+    }
+
+    if (motion.source === 'pulse') {
+      // Rate comes from the audio clock; phase is taken from it directly below.
+      const clock = getPulseClock()
+      return clock ? clock.rateHz * 60 : 0
     }
 
     // session
@@ -86,7 +94,14 @@ export function useMotionEngine() {
     spm = rampToward(spm, wantSpm, motion.spmRampPerSec, dt)
     depth = rampToward(depth, wantDepth, motion.depthRampPerSec, dt)
 
-    phase = advancePhase(phase, spm, dt)
+    // When locked to the pulse, read the audio clock's phase rather than
+    // integrating our own — that keeps the stroke genuinely in step with what
+    // is being heard instead of merely at the same tempo.
+    const locked = motion.source === 'pulse' ? getPulseClock() : null
+    if (locked)
+      phase = locked.phase * Math.PI * 2
+    else
+      phase = advancePhase(phase, spm, dt)
 
     const unit = strokePosition(phase, motion.shape)
     const pos = applyDepth(unit, motion.center, depth)

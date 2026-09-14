@@ -252,6 +252,7 @@ declare global {
   const useScroll: typeof import('@vueuse/core').useScroll
   const useScrollLock: typeof import('@vueuse/core').useScrollLock
   const useSerialPort: typeof import('./src/composables/useSerialPort').useSerialPort
+  const useSessionAudio: typeof import('./src/composables/useSessionAudio').useSessionAudio
   const useSessionEngine: typeof import('./src/composables/useSessionEngine').useSessionEngine
   const useSessionStorage: typeof import('@vueuse/core').useSessionStorage
   const useSettings: typeof import('./src/composables/useSettings').useSettings
@@ -323,6 +324,12 @@ declare global {
   // @ts-ignore
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, ShallowRef, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
+  // @ts-ignore
+  export type { BeatMode } from './src/composables/useBinauralBeats'
+  import('./src/composables/useBinauralBeats')
+  // @ts-ignore
+  export type { SessionArc, EdgeConfig } from './src/composables/useSessionEngine'
+  import('./src/composables/useSessionEngine')
 }
 
 // for vue template auto import
@@ -574,6 +581,7 @@ declare module 'vue' {
     readonly useScroll: UnwrapRef<typeof import('@vueuse/core')['useScroll']>
     readonly useScrollLock: UnwrapRef<typeof import('@vueuse/core')['useScrollLock']>
     readonly useSerialPort: UnwrapRef<typeof import('./src/composables/useSerialPort')['useSerialPort']>
+    readonly useSessionAudio: UnwrapRef<typeof import('./src/composables/useSessionAudio')['useSessionAudio']>
     readonly useSessionEngine: UnwrapRef<typeof import('./src/composables/useSessionEngine')['useSessionEngine']>
     readonly useSessionStorage: UnwrapRef<typeof import('@vueuse/core')['useSessionStorage']>
     readonly useSettings: UnwrapRef<typeof import('./src/composables/useSettings')['useSettings']>

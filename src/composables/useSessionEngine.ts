@@ -21,7 +21,41 @@ const PHASE_CONFIG: Record<SessionPhase, {
 
 const PHASE_ORDER: SessionPhase[] = ['entry', 'build', 'peak', 'descent']
 
+/**
+ * Arc shape.
+ *
+ * `smooth` is the original meditation curve: one rise, one fall.
+ *
+ * `edged` repeats build -> peak with a partial retreat between passes, each
+ * pass reaching a little higher than the last. Nothing about entrainment
+ * produces that shape; it is a pacing structure, and pacing is the part of
+ * this stack that actually does something.
+ */
+export type SessionArc = 'smooth' | 'edged'
+
+export interface EdgeConfig {
+  /** How many build -> peak passes before the session winds down. */
+  cycles: number
+  /** How far intensity falls back between passes, 0-1 of the gap to entry. */
+  retreat: number
+  /** How much higher each successive pass reaches, added to intensity. */
+  climb: number
+  /** Seconds held at the top of each pass. */
+  holdSeconds: [number, number]
+}
+
+const DEFAULT_EDGE: EdgeConfig = {
+  cycles: 3,
+  retreat: 0.45,
+  climb: 0.06,
+  holdSeconds: [25, 55],
+}
+
 // Singleton session state
+let arc: SessionArc = 'smooth'
+let edgeCfg: EdgeConfig = { ...DEFAULT_EDGE }
+let edgePass = 0
+let edgeBoost = 0
 const listeners = new Map<string, Set<EventHandler>>()
 let phaseTimer: number | null = null
 let driftTimer: number | null = null
@@ -49,7 +83,8 @@ export function useSessionEngine() {
 
   function applyPhaseConfig(ph: SessionPhase) {
     const cfg = PHASE_CONFIG[ph]
-    store.intensity.value = cfg.intensity
+    // Each edged pass reaches a little higher than the last.
+    store.intensity.value = Math.min(1, cfg.intensity + edgeBoost)
 
     // Pick a target delta in the phase's beat range
     const targetDelta = cfg.beatRange[0] + Math.random() * (cfg.beatRange[1] - cfg.beatRange[0])
@@ -74,7 +109,7 @@ export function useSessionEngine() {
     lfo.config.panDepth = 3 + cfg.intensity * 8
 
     emit('phaseChange', { phase: ph, config: cfg })
-    emit('intensityChange', { intensity: cfg.intensity })
+    emit('intensityChange', { intensity: store.intensity.value })
     emit('beatChange', { delta: targetDelta })
   }
 
@@ -90,12 +125,98 @@ export function useSessionEngine() {
     requestAnimationFrame(frame)
   }
 
+  /**
+   * Ease intensity back down without leaving the peak phase, then climb again.
+   * This hold-and-retreat is what the smooth arc has no equivalent for.
+   */
+  function runEdgeRetreat(onDone: () => void) {
+    const peak = PHASE_CONFIG.peak.intensity + edgeBoost
+    const floor = PHASE_CONFIG.entry.intensity
+    const target = Math.max(floor, peak - (peak - floor) * edgeCfg.retreat)
+    const from = store.intensity.value
+    const durationMs = variantDelay(9000, 0.25)
+    const startTime = Date.now()
+
+    emit('edgeRetreat', { pass: edgePass, from, to: target })
+
+    function frame() {
+      if (!sessionRunning)
+        return
+      const p = Math.min(1, (Date.now() - startTime) / durationMs)
+      const eased = 1 - (1 - p) ** 3
+      store.intensity.value = from + (target - from) * eased
+      if (p < 1)
+        requestAnimationFrame(frame)
+      else
+        onDone()
+    }
+    requestAnimationFrame(frame)
+  }
+
+  function scheduleEdgedPeak() {
+    if (!sessionRunning)
+      return
+    const [lo, hi] = edgeCfg.holdSeconds
+    const hold = (lo + Math.random() * (hi - lo)) * 1000
+
+    emit('edgeHold', { pass: edgePass, seconds: hold / 1000 })
+
+    phaseTimer = window.setTimeout(() => {
+      if (!sessionRunning)
+        return
+      edgePass += 1
+
+      if (edgePass >= edgeCfg.cycles) {
+        store.phase.value = 'descent'
+        edgeBoost = 0
+        applyPhaseConfig('descent')
+        const d = PHASE_CONFIG.descent
+        const dur = variantDelay((d.durationRange[0] + d.durationRange[1]) / 2, 0.2)
+        phaseTimer = window.setTimeout(() => {
+          if (!sessionRunning)
+            return
+          store.phase.value = 'idle'
+          store.sessionActive.value = false
+          sessionRunning = false
+          stopDrift()
+          emit('sessionEnd', {})
+        }, dur * 1000)
+        return
+      }
+
+      edgeBoost = Math.min(0.12, edgeBoost + edgeCfg.climb)
+      runEdgeRetreat(() => {
+        if (!sessionRunning)
+          return
+        store.phase.value = 'build'
+        applyPhaseConfig('build')
+        const cfg = PHASE_CONFIG.build
+        const dur = variantDelay((cfg.durationRange[0] + cfg.durationRange[1]) / 2, 0.25)
+        phaseTimer = window.setTimeout(() => {
+          if (!sessionRunning)
+            return
+          store.phase.value = 'peak'
+          applyPhaseConfig('peak')
+          scheduleEdgedPeak()
+        }, dur * 1000)
+      })
+    }, hold)
+  }
+
   function scheduleNextPhase(phaseIdx: number) {
     if (!sessionRunning)
       return
+
+    // In the edged arc the peak is a loop, not a waypoint.
+    if (arc === 'edged' && PHASE_ORDER[phaseIdx] === 'peak') {
+      scheduleEdgedPeak()
+      return
+    }
+
     const nextIdx = phaseIdx + 1
 
     if (nextIdx >= PHASE_ORDER.length) {
+      edgeBoost = 0
       store.phase.value = 'idle'
       store.sessionActive.value = false
       sessionRunning = false
@@ -118,6 +239,8 @@ export function useSessionEngine() {
 
   function startSession() {
     stopSession()
+    edgePass = 0
+    edgeBoost = 0
     sessionRunning = true
     store.sessionActive.value = true
     store.phase.value = 'entry'
@@ -185,5 +308,25 @@ export function useSessionEngine() {
     scheduleNextPhase(idx)
   }
 
-  return { on, emit, variantDelay, startSession, stopSession, startDrift, stopDrift, jumpToPhase }
+  function setArc(next: SessionArc, cfg?: Partial<EdgeConfig>) {
+    arc = next
+    edgeCfg = { ...DEFAULT_EDGE, ...cfg }
+  }
+
+  function getArc(): { arc: SessionArc, cfg: EdgeConfig, pass: number } {
+    return { arc, cfg: edgeCfg, pass: edgePass }
+  }
+
+  return {
+    on,
+    emit,
+    variantDelay,
+    startSession,
+    stopSession,
+    startDrift,
+    stopDrift,
+    jumpToPhase,
+    setArc,
+    getArc,
+  }
 }

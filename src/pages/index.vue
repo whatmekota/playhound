@@ -16,6 +16,7 @@ import ThemePicker from '~/components/ThemePicker.vue'
 import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { useSessionAudio } from '~/composables/useSessionAudio'
 import { openVideoFile, storage } from '~/lib/browserApi'
 import { findPanel, isMainSurface, isOverlaySurface } from '~/lib/panels'
 import { formatTime } from '~/lib/time'
@@ -40,9 +41,10 @@ const bookmarkStore = useBookmarkStore()
 const motionStore = useMotionStore()
 const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 
-// Instantiate the generative engine once at the shell level so it keeps running
-// no matter which panel happens to be open.
+// Instantiate these once at the shell level so they keep running no matter
+// which panel happens to be open.
 useMotionEngine()
+useSessionAudio()
 
 const videoPlayerRef = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const showKeybinds = ref(false)

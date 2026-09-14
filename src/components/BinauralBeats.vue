@@ -18,7 +18,33 @@ const {
   noiseType,
   harmonicsEnabled,
   beatDriftEnabled,
+  beatMode,
+  pulseEnabled,
+  pulseCpm,
+  pulseDepth,
+  pulseFollowsSession,
+  breathEnabled,
+  breathPeriod,
+  breathInhaleRatio,
+  sessionArc,
+  edgeCycles,
 } = useAudioStore()
+
+const BEAT_MODES = [
+  { id: 'binaural', label: 'Binaural', hint: 'One tone per ear. The beat exists only in your head — the gentlest, and the weakest at driving a response.' },
+  { id: 'monaural', label: 'Monaural', hint: 'Both tones in both ears, so the beat is physically in the air. Stronger, and works without headphones.' },
+  { id: 'isochronic', label: 'Isochronic', hint: 'A single tone gated on and off. Strongest cortical response of the three, and impossible to ignore.' },
+] as const
+
+const ARCS = [
+  { id: 'smooth', label: 'Smooth', hint: 'One rise and one fall.' },
+  { id: 'edged', label: 'Edged', hint: 'Repeated build, hold, then partial retreat — each pass reaching a little higher.' },
+] as const
+
+const beatModeHint = computed(() => BEAT_MODES.find(m => m.id === beatMode.value)?.hint ?? '')
+const arcHint = computed(() => ARCS.find(a => a.id === sessionArc.value)?.hint ?? '')
+const carrierOutOfRange = computed(() => baseFrequency.value < 250 || baseFrequency.value > 450)
+const breathPerMinute = computed(() => (60 / breathPeriod.value).toFixed(1))
 
 const binaural = useBinauralBeats()
 const session = useSessionEngine()
@@ -28,7 +54,8 @@ const PRESETS = [
   { name: 'Theta', desc: 'Meditation', hz: '4–8 Hz', base: 180, delta: 6, color: '#a78bfa' },
   { name: 'Alpha', desc: 'Relaxation', hz: '8–12 Hz', base: 220, delta: 10, color: '#2dd4bf' },
   { name: 'Beta', desc: 'Focus', hz: '12–30 Hz', base: 300, delta: 20, color: '#34d399' },
-  { name: 'Gamma', desc: 'Flow state', hz: '30+ Hz', base: 400, delta: 40, color: '#fbbf24' },
+  // 40 Hz would exceed Oster's fusion limit and stop being heard as a beat.
+  { name: 'Gamma', desc: 'Flow state', hz: '30-35 Hz', base: 400, delta: 32, color: '#fbbf24' },
 ]
 
 const WAVE_TYPES: { value: OscillatorType, label: string }[] = [
@@ -335,6 +362,132 @@ const beatPulsePeriod = computed(() => {
         </p>
       </div>
 
+      <!-- Beat mode -->
+      <div>
+        <p class="label mb-2">
+          Beat mode
+        </p>
+        <div class="gap-1 grid grid-cols-3">
+          <button
+            v-for="m in BEAT_MODES"
+            :key="m.id"
+            class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
+            :class="beatMode === m.id
+              ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
+              : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
+            @click="beatMode = m.id"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+        <p class="hint mt-1.5">
+          {{ beatModeHint }}
+        </p>
+      </div>
+
+      <!-- Session pulse -->
+      <div class="p-3 panel space-y-2.5">
+        <div class="flex items-center justify-between">
+          <p class="label">
+            Session pulse
+          </p>
+          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+            <input v-model="pulseEnabled" type="checkbox">
+            Audible
+          </label>
+        </div>
+        <p class="hint">
+          A slow swell the device stroke and the slideshow lock to in phase, so
+          what you hear and what you feel are the same beat.
+        </p>
+
+        <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+          <input v-model="pulseFollowsSession" type="checkbox">
+          Follow session intensity
+        </label>
+
+        <div>
+          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+            <span>Tempo</span>
+            <span class="font-mono">{{ pulseCpm }} / min</span>
+          </div>
+          <input
+            v-model.number="pulseCpm" type="range" min="12" max="160" step="1"
+            class="accent w-full" :disabled="pulseFollowsSession"
+          >
+        </div>
+
+        <div>
+          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+            <span>Depth</span>
+            <span class="font-mono">{{ (pulseDepth * 100).toFixed(0) }}%</span>
+          </div>
+          <input v-model.number="pulseDepth" type="range" min="0" max="1" step="0.01" class="accent w-full">
+        </div>
+      </div>
+
+      <!-- Session arc -->
+      <div>
+        <p class="label mb-2">
+          Session arc
+        </p>
+        <div class="gap-1 grid grid-cols-2">
+          <button
+            v-for="a in ARCS"
+            :key="a.id"
+            class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
+            :class="sessionArc === a.id
+              ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
+              : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
+            @click="sessionArc = a.id"
+          >
+            {{ a.label }}
+          </button>
+        </div>
+        <p class="hint mt-1.5">
+          {{ arcHint }}
+        </p>
+        <div v-if="sessionArc === 'edged'" class="mt-2">
+          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+            <span>Passes before wind-down</span>
+            <span class="font-mono">{{ edgeCycles }}</span>
+          </div>
+          <input v-model.number="edgeCycles" type="range" min="1" max="8" step="1" class="accent w-full">
+        </div>
+      </div>
+
+      <!-- Breath pacing -->
+      <div class="p-3 panel space-y-2.5">
+        <div class="flex items-center justify-between">
+          <p class="label">
+            Breath pacing
+          </p>
+          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+            <input v-model="breathEnabled" type="checkbox">
+            On
+          </label>
+        </div>
+        <p class="hint">
+          Swells the noise bed to breathe along with, longer out than in. Needs
+          the noise layer on. This is the one part of this panel with a solid
+          physiological mechanism behind it rather than entrainment folklore.
+        </p>
+        <div>
+          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+            <span>Rate</span>
+            <span class="font-mono">{{ breathPerMinute }} / min</span>
+          </div>
+          <input v-model.number="breathPeriod" type="range" min="4" max="20" step="0.5" class="accent w-full">
+        </div>
+        <div>
+          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+            <span>In / out</span>
+            <span class="font-mono">{{ (breathInhaleRatio * 100).toFixed(0) }} / {{ (100 - breathInhaleRatio * 100).toFixed(0) }}</span>
+          </div>
+          <input v-model.number="breathInhaleRatio" type="range" min="0.25" max="0.5" step="0.01" class="accent w-full">
+        </div>
+      </div>
+
       <!-- Presets -->
       <div>
         <p class="label mb-2">
@@ -383,9 +536,14 @@ const beatPulsePeriod = computed(() => {
             class="primary-slider w-full"
             @input="onBaseFreq"
           >
-          <div class="text-[10px] text-fg-faint mb-2 mt-1 flex justify-between">
+          <div class="text-[10px] text-fg-faint mb-1 mt-1 flex justify-between">
             <span>40 Hz</span><span>500 Hz</span>
           </div>
+          <p v-if="carrierOutOfRange" class="hint text-amber-400/80 mb-2">
+            Beat perception is widest around 250&ndash;450 Hz, and falls away
+            entirely above about 1 kHz. Outside that band the beat gets harder to
+            hear, whatever the delta says.
+          </p>
           <!-- Solfeggio / tuning presets -->
           <div class="flex flex-wrap gap-1">
             <button

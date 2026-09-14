@@ -28,6 +28,27 @@ let noiseGainP: GainNode | null = null
 let noiseGainBr: GainNode | null = null
 let noiseMasterGain: GainNode | null = null
 
+// Beat-layer amplitude modulation (isochronic mode) and the shared session pulse
+let beatAmGain: GainNode | null = null
+let beatAmLfo: OscillatorNode | null = null
+let beatAmDepthGain: GainNode | null = null
+
+let pulseGain: GainNode | null = null
+let pulseLfo: OscillatorNode | null = null
+let pulseDepthGain: GainNode | null = null
+
+// Analytic mirror of the pulse LFO so other subsystems can phase-lock to it.
+let pulseStartedAt = 0
+let pulseRateHz = 0
+let pulseDepth = 0
+
+// Breath pacing: slow asymmetric swell on the noise bed
+let breathLfo: OscillatorNode | null = null
+let breathDepthGain: GainNode | null = null
+
+export type BeatMode = 'binaural' | 'monaural' | 'isochronic'
+let _mode: BeatMode = 'binaural'
+
 // Timers
 let beatDriftTimer: number | null = null
 let morphTimer: number | null = null
@@ -36,6 +57,57 @@ let fadeOutTimer: number | null = null
 // Current audio state (for drift/morph reference)
 let _baseFreq = 200
 let _delta = 6
+
+/**
+ * Build a PeriodicWave matching an arbitrary single-cycle shape.
+ *
+ * Used for the isochronic pulse (a band-limited pulse has much steeper onsets
+ * than a sine, and steep onsets are what actually drive the auditory system)
+ * and for the breath cue, where the exhale needs to be longer than the inhale.
+ */
+function makeCurveWave(ctx: AudioContext, shape: (t: number) => number, harmonics = 24): PeriodicWave {
+  const N = 512
+  const real = new Float32Array(harmonics + 1)
+  const imag = new Float32Array(harmonics + 1)
+
+  for (let k = 1; k <= harmonics; k++) {
+    let re = 0
+    let im = 0
+    for (let n = 0; n < N; n++) {
+      const v = shape(n / N)
+      const ang = (2 * Math.PI * k * n) / N
+      re += v * Math.cos(ang)
+      im -= v * Math.sin(ang)
+    }
+    real[k] = (2 * re) / N
+    imag[k] = (2 * im) / N
+  }
+  return ctx.createPeriodicWave(real, imag, { disableNormalization: false })
+}
+
+/** Band-limited pulse: fast attack, short hold, smooth decay. */
+function pulseShape(t: number): number {
+  if (t < 0.08)
+    return t / 0.08
+  if (t < 0.28)
+    return 1
+  if (t < 0.62)
+    return 1 - (t - 0.28) / 0.34
+  return 0
+}
+
+/**
+ * Breath envelope with a longer exhale than inhale — the asymmetry is the part
+ * with actual evidence behind it, not the absolute rate.
+ */
+function breathShape(inhaleRatio: number) {
+  return (t: number): number => {
+    if (t < inhaleRatio)
+      return 0.5 - 0.5 * Math.cos((Math.PI * t) / inhaleRatio)
+    const u = (t - inhaleRatio) / (1 - inhaleRatio)
+    return 0.5 + 0.5 * Math.cos(Math.PI * u)
+  }
+}
 
 function getAC(): typeof AudioContext {
   return (window as any).AudioContext ?? (window as any).webkitAudioContext
@@ -87,8 +159,41 @@ export function useBinauralBeats() {
     merger = audioCtx.createChannelMerger(2)
     masterGain = audioCtx.createGain()
     masterGain.gain.value = 0 // start silent — fade in below
-    merger.connect(masterGain)
+
+    // merger -> beat AM (isochronic only) -> session pulse AM -> master
+    beatAmGain = audioCtx.createGain()
+    beatAmGain.gain.value = 1
+    pulseGain = audioCtx.createGain()
+    pulseGain.gain.value = 1
+
+    merger.connect(beatAmGain)
+    beatAmGain.connect(pulseGain)
+    pulseGain.connect(masterGain)
     masterGain.connect(audioCtx.destination)
+
+    // Beat-layer modulator: only audible in isochronic mode, where the pulse
+    // rate *is* the beat frequency.
+    beatAmLfo = audioCtx.createOscillator()
+    beatAmLfo.setPeriodicWave(makeCurveWave(audioCtx, pulseShape))
+    beatAmLfo.frequency.value = Math.max(0.1, delta)
+    beatAmDepthGain = audioCtx.createGain()
+    beatAmDepthGain.gain.value = 0
+    beatAmLfo.connect(beatAmDepthGain)
+    beatAmDepthGain.connect(beatAmGain.gain)
+    beatAmLfo.start()
+
+    // Session pulse: the shared clock. Silent until setPulse() raises depth.
+    pulseLfo = audioCtx.createOscillator()
+    pulseLfo.setPeriodicWave(makeCurveWave(audioCtx, pulseShape))
+    pulseLfo.frequency.value = 1
+    pulseDepthGain = audioCtx.createGain()
+    pulseDepthGain.gain.value = 0
+    pulseLfo.connect(pulseDepthGain)
+    pulseDepthGain.connect(pulseGain.gain)
+    pulseLfo.start()
+    pulseStartedAt = audioCtx.currentTime
+    pulseRateHz = 1
+    pulseDepth = 0
 
     // Base binaural pair
     baseGainL = audioCtx.createGain()
@@ -102,8 +207,7 @@ export function useBinauralBeats() {
     baseOscR.frequency.value = baseFreq + delta
     baseOscL.connect(baseGainL)
     baseOscR.connect(baseGainR)
-    baseGainL.connect(merger, 0, 0)
-    baseGainR.connect(merger, 0, 1)
+    applyRouting(_mode)
 
     // Harmonic 1 (+1 octave, gain=0)
     h1GainL = audioCtx.createGain()
@@ -145,7 +249,7 @@ export function useBinauralBeats() {
     if (fadeOutTimer !== null) { clearTimeout(fadeOutTimer); fadeOutTimer = null }
     stopBeatDrift()
     stopMorph()
-    ;[baseOscL, baseOscR, h1OscL, h1OscR, h2OscL, h2OscR].forEach((o) => {
+    ;[baseOscL, baseOscR, h1OscL, h1OscR, h2OscL, h2OscR, beatAmLfo, pulseLfo, breathLfo].forEach((o) => {
       try { o?.stop() }
       catch {}
     })
@@ -160,6 +264,14 @@ export function useBinauralBeats() {
     h1GainL = h1GainR = null
     h2OscL = h2OscR = null
     h2GainL = h2GainR = null
+    beatAmGain = beatAmDepthGain = null
+    beatAmLfo = null
+    pulseGain = pulseDepthGain = null
+    pulseLfo = null
+    breathLfo = null
+    breathDepthGain = null
+    pulseRateHz = 0
+    pulseDepth = 0
   }
 
   // Fade out master + noise, then stop the audio context
@@ -199,6 +311,8 @@ export function useBinauralBeats() {
     h1OscR?.frequency.setTargetAtTime((baseFreq + delta) * 2, t, tau)
     h2OscL?.frequency.setTargetAtTime(baseFreq * 4, t, tau)
     h2OscR?.frequency.setTargetAtTime((baseFreq + delta) * 4, t, tau)
+    // In isochronic mode the gate rate is the beat, so it tracks delta too.
+    beatAmLfo?.frequency.setTargetAtTime(Math.max(0.1, delta), t, tau)
   }
 
   function setWaveType(type: OscillatorType) {
@@ -343,8 +457,137 @@ export function useBinauralBeats() {
     }
   }
 
+  /**
+   * Route the tone pair according to the beat mode.
+   *
+   * - binaural   — one tone per ear; the beat exists only in the listener's head
+   *                and is the weakest of the three at driving a cortical response
+   * - monaural   — both tones to both ears, so they physically interfere and the
+   *                beat is a real acoustic event
+   * - isochronic — a single tone gated on and off at the beat rate; steep onsets
+   *                give the strongest response of the three, at the cost of being
+   *                impossible to ignore
+   */
+  function applyRouting(mode: BeatMode) {
+    if (!merger || !baseGainL || !baseGainR)
+      return
+    _mode = mode
+
+    try {
+      baseGainL.disconnect()
+      baseGainR.disconnect()
+    }
+    catch {}
+
+    if (mode === 'binaural') {
+      baseGainL.connect(merger, 0, 0)
+      baseGainR.connect(merger, 0, 1)
+      baseGainL.gain.value = 1
+      baseGainR.gain.value = 1
+      if (beatAmDepthGain && audioCtx)
+        beatAmDepthGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1)
+    }
+    else if (mode === 'monaural') {
+      // Both tones into both ears so the beat is physically present.
+      baseGainL.connect(merger, 0, 0)
+      baseGainL.connect(merger, 0, 1)
+      baseGainR.connect(merger, 0, 0)
+      baseGainR.connect(merger, 0, 1)
+      baseGainL.gain.value = 0.5
+      baseGainR.gain.value = 0.5
+      if (beatAmDepthGain && audioCtx)
+        beatAmDepthGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1)
+    }
+    else {
+      // Single carrier, gated by the beat-rate modulator.
+      baseGainL.connect(merger, 0, 0)
+      baseGainL.connect(merger, 0, 1)
+      baseGainL.gain.value = 1
+      baseGainR.gain.value = 0
+      if (beatAmDepthGain && audioCtx && beatAmGain) {
+        beatAmGain.gain.setTargetAtTime(0.5, audioCtx.currentTime, 0.1)
+        beatAmDepthGain.gain.setTargetAtTime(0.5, audioCtx.currentTime, 0.1)
+      }
+    }
+  }
+
+  function setMode(mode: BeatMode) {
+    applyRouting(mode)
+  }
+
+  /**
+   * Set the session pulse — the slow swell everything else locks to.
+   *
+   * `rateHz` is changed without resetting the oscillator's phase, and the
+   * analytic mirror is re-anchored to match, so `getPulseClock()` stays exact
+   * across tempo changes and nothing jumps.
+   */
+  function setPulse(rateHz: number, depth: number, rampSec = 0.6) {
+    if (!audioCtx || !pulseLfo || !pulseDepthGain || !pulseGain)
+      return
+    const now = audioCtx.currentTime
+    const r = Math.max(0.05, Math.min(8, rateHz))
+    const d = Math.max(0, Math.min(1, depth))
+
+    // Preserve phase across a rate change.
+    const phase = ((now - pulseStartedAt) * pulseRateHz) % 1
+    pulseStartedAt = now - phase / r
+    pulseRateHz = r
+    pulseDepth = d
+
+    pulseLfo.frequency.setTargetAtTime(r, now, 0.05)
+    // Centre the carrier so the modulator swings between 1-d and 1.
+    pulseGain.gain.setTargetAtTime(1 - d / 2, now, rampSec / 3)
+    pulseDepthGain.gain.setTargetAtTime(d / 2, now, rampSec / 3)
+  }
+
+  /**
+   * Current pulse phase, for anything that needs to move in time with the
+   * audio — the device stroke, the slideshow, the visual LFO. Returns null when
+   * the engine is not running.
+   */
+  function getPulseClock(): { phase: number, rateHz: number, depth: number } | null {
+    if (!audioCtx || pulseRateHz <= 0)
+      return null
+    const raw = (audioCtx.currentTime - pulseStartedAt) * pulseRateHz
+    return { phase: ((raw % 1) + 1) % 1, rateHz: pulseRateHz, depth: pulseDepth }
+  }
+
+  /**
+   * Breath cue on the noise bed. The default 0.1 Hz (six per minute) with a
+   * longer exhale is the one part of this stack with a solid mechanism behind
+   * it — baroreflex resonance — rather than entrainment folklore.
+   */
+  function setBreath(enabled: boolean, periodSec = 10, inhaleRatio = 0.4, depth = 0.5) {
+    if (!audioCtx || !noiseMasterGain)
+      return
+    const now = audioCtx.currentTime
+
+    if (!enabled) {
+      if (breathDepthGain)
+        breathDepthGain.gain.setTargetAtTime(0, now, 0.5)
+      return
+    }
+
+    if (!breathLfo) {
+      breathLfo = audioCtx.createOscillator()
+      breathDepthGain = audioCtx.createGain()
+      breathDepthGain.gain.value = 0
+      breathLfo.connect(breathDepthGain)
+      breathDepthGain.connect(noiseMasterGain.gain)
+      breathLfo.start()
+    }
+    breathLfo.setPeriodicWave(makeCurveWave(audioCtx, breathShape(inhaleRatio), 16))
+    breathLfo.frequency.setTargetAtTime(1 / Math.max(2, periodSec), now, 0.5)
+    breathDepthGain!.gain.setTargetAtTime(Math.max(0, Math.min(1, depth)), now, 1.5)
+  }
+
   return {
     start,
+    setMode,
+    setPulse,
+    getPulseClock,
+    setBreath,
     stop,
     fadeOut,
     setVolume,
