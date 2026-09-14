@@ -37,7 +37,8 @@ export function useSessionEngine() {
   const lfo = useLFO()
 
   function on(event: string, fn: EventHandler): () => void {
-    if (!listeners.has(event)) listeners.set(event, new Set())
+    if (!listeners.has(event))
+      listeners.set(event, new Set())
     listeners.get(event)!.add(fn)
     return () => listeners.get(event)?.delete(fn)
   }
@@ -83,13 +84,15 @@ export function useSessionEngine() {
       const t = Math.min(1, (Date.now() - startTime) / durationMs)
       const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
       store.beatDelta.value = from + (to - from) * eased
-      if (t < 1) requestAnimationFrame(frame)
+      if (t < 1)
+        requestAnimationFrame(frame)
     }
     requestAnimationFrame(frame)
   }
 
   function scheduleNextPhase(phaseIdx: number) {
-    if (!sessionRunning) return
+    if (!sessionRunning)
+      return
     const nextIdx = phaseIdx + 1
 
     if (nextIdx >= PHASE_ORDER.length) {
@@ -127,7 +130,8 @@ export function useSessionEngine() {
       scheduleNextPhase(0)
     }, entryDuration * 1000)
 
-    if (store.driftMode.value) startDrift()
+    if (store.driftMode.value)
+      startDrift()
 
     emit('sessionStart', { phase: 'entry' })
   }
@@ -145,7 +149,8 @@ export function useSessionEngine() {
     stopDrift()
 
     function driftTick() {
-      if (!sessionRunning || !store.driftMode.value) return
+      if (!sessionRunning || !store.driftMode.value)
+        return
 
       const currentDelta = store.beatDelta.value
       const variation = (Math.random() * 2 - 1) * 0.35
@@ -169,9 +174,11 @@ export function useSessionEngine() {
   }
 
   function jumpToPhase(targetPhase: SessionPhase) {
-    if (!sessionRunning) return
+    if (!sessionRunning)
+      return
     const idx = PHASE_ORDER.indexOf(targetPhase)
-    if (idx < 0) return
+    if (idx < 0)
+      return
     if (phaseTimer !== null) { clearTimeout(phaseTimer); phaseTimer = null }
     store.phase.value = targetPhase
     applyPhaseConfig(targetPhase)

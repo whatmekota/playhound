@@ -1,7 +1,8 @@
+import type { FsEntry } from '~/lib/fsWalk'
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { walkDirectory, type FsEntry } from '~/lib/fsWalk'
-import { renameEntry, sanitizeFilename, extOf } from '~/lib/fsRename'
+import { computed, ref } from 'vue'
+import { extOf, renameEntry, sanitizeFilename } from '~/lib/fsRename'
+import { walkDirectory } from '~/lib/fsWalk'
 import { handleDb } from '~/lib/idb'
 
 export type PairStatus = 'matched' | 'video-only' | 'script-only'
@@ -15,7 +16,7 @@ export interface OrgPair {
   status: PairStatus
 }
 
-const VIDEO_EXT = /\.(mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
+const VIDEO_EXT = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 const SCRIPT_EXT = /\.funscript$/i
 const HANDLE_KEY = 'organizerDirHandle'
 const LIBRARY_HANDLE_KEY = 'lastDirHandle'
@@ -23,7 +24,8 @@ const LIBRARY_HANDLE_KEY = 'lastDirHandle'
 function buildPairs(entries: FsEntry[]): OrgPair[] {
   const byDir = new Map<string, FsEntry[]>()
   for (const e of entries) {
-    if (!VIDEO_EXT.test(e.name) && !SCRIPT_EXT.test(e.name)) continue
+    if (!VIDEO_EXT.test(e.name) && !SCRIPT_EXT.test(e.name))
+      continue
     const list = byDir.get(e.dirRelPath) ?? []
     list.push(e)
     byDir.set(e.dirRelPath, list)
@@ -37,11 +39,14 @@ function buildPairs(entries: FsEntry[]): OrgPair[] {
 
     for (const v of videos) {
       const base = v.name.slice(0, v.name.length - extOf(v.name).length).toLowerCase()
-      const matched = scripts.filter(s => {
-        if (usedScripts.has(s)) return false
+      const matched = scripts.filter((s) => {
+        if (usedScripts.has(s))
+          return false
         const sBase = s.name.slice(0, s.name.length - extOf(s.name).length).toLowerCase()
-        if (sBase === base) return true
-        if (!sBase.startsWith(base)) return false
+        if (sBase === base)
+          return true
+        if (!sBase.startsWith(base))
+          return false
         // Only treat as a match if what follows the video's basename looks like a
         // separator-prefixed suffix (alt-axis tag), not an unrelated longer name.
         return /^[\s\-_.(]/.test(sBase.slice(base.length))
@@ -58,7 +63,8 @@ function buildPairs(entries: FsEntry[]): OrgPair[] {
     }
 
     for (const s of scripts) {
-      if (usedScripts.has(s)) continue
+      if (usedScripts.has(s))
+        continue
       result.push({
         key: `${dir}/${s.name}`,
         dir,
@@ -92,9 +98,11 @@ export const useOrganizerStore = defineStore('organizer', () => {
   async function requestReadWrite(handle: FileSystemDirectoryHandle): Promise<boolean> {
     try {
       let perm = await (handle as any).queryPermission({ mode: 'readwrite' })
-      if (perm !== 'granted') perm = await (handle as any).requestPermission({ mode: 'readwrite' })
+      if (perm !== 'granted')
+        perm = await (handle as any).requestPermission({ mode: 'readwrite' })
       return perm === 'granted'
-    } catch {
+    }
+    catch {
       return false
     }
   }
@@ -116,14 +124,16 @@ export const useOrganizerStore = defineStore('organizer', () => {
       await handleDb.set(HANDLE_KEY, handle)
       await setRoot(handle)
       return true
-    } catch {
+    }
+    catch {
       return false // user cancelled
     }
   }
 
   async function useLibraryFolder(): Promise<boolean> {
     const handle = await handleDb.get(LIBRARY_HANDLE_KEY)
-    if (!handle) return false
+    if (!handle)
+      return false
     await handleDb.set(HANDLE_KEY, handle)
     await setRoot(handle)
     return true
@@ -131,31 +141,37 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   async function restoreFolder(): Promise<boolean> {
     const handle = await handleDb.get(HANDLE_KEY)
-    if (!handle) return false
+    if (!handle)
+      return false
     restoring.value = true
     try {
       await setRoot(handle)
       return true
-    } finally {
+    }
+    finally {
       restoring.value = false
     }
   }
 
   async function retryPermission() {
-    if (!rootHandle.value) return
+    if (!rootHandle.value)
+      return
     writable.value = await requestReadWrite(rootHandle.value)
   }
 
   async function rescan() {
-    if (!rootHandle.value) return
+    if (!rootHandle.value)
+      return
     scanning.value = true
     error.value = null
     try {
       const entries = await walkDirectory(rootHandle.value)
       pairs.value = buildPairs(entries)
-    } catch (e: any) {
+    }
+    catch (e: any) {
       error.value = e?.message ?? 'Scan failed'
-    } finally {
+    }
+    finally {
       scanning.value = false
     }
   }
@@ -170,7 +186,8 @@ export const useOrganizerStore = defineStore('organizer', () => {
   /** Rename a video + all of its matched scripts together, preserving each script's alt-axis suffix. */
   async function renamePair(pair: OrgPair, newBasenameRaw: string) {
     const newBasename = sanitizeFilename(newBasenameRaw)
-    if (!newBasename || newBasename === pair.basename) return
+    if (!newBasename || newBasename === pair.basename)
+      return
     if (!writable.value) { error.value = 'No write permission — click "Enable editing"'; return }
 
     renamingKey.value = pair.key
@@ -190,10 +207,12 @@ export const useOrganizerStore = defineStore('organizer', () => {
       }
       pair.basename = newBasename
       pair.key = `${pair.dir}/${newBasename}`
-    } catch (e: any) {
+    }
+    catch (e: any) {
       error.value = `Rename failed: ${e?.message ?? e}`
       await rescan() // resync in case of partial rename
-    } finally {
+    }
+    finally {
       renamingKey.value = null
     }
   }
@@ -201,31 +220,38 @@ export const useOrganizerStore = defineStore('organizer', () => {
   /** Rename a single file (e.g. an orphan script, or one alt-axis script within a pair) without touching its siblings. */
   async function renameSingle(pair: OrgPair, entry: FsEntry, newNameRaw: string) {
     const newName = sanitizeFilename(newNameRaw)
-    if (!newName || newName === entry.name) return
+    if (!newName || newName === entry.name)
+      return
     if (!writable.value) { error.value = 'No write permission — click "Enable editing"'; return }
 
     renamingKey.value = pair.key
     error.value = null
     try {
       const updated = await renameEntry(entry, newName)
-      if (pair.video === entry) pair.video = updated
+      if (pair.video === entry)
+        pair.video = updated
       const idx = pair.scripts.indexOf(entry)
-      if (idx !== -1) pair.scripts[idx] = updated
-    } catch (e: any) {
+      if (idx !== -1)
+        pair.scripts[idx] = updated
+    }
+    catch (e: any) {
       error.value = `Rename failed: ${e?.message ?? e}`
       await rescan()
-    } finally {
+    }
+    finally {
       renamingKey.value = null
     }
   }
 
   /** Bulk find/replace basenames across a set of pairs. Returns how many were actually renamed. */
   async function bulkRename(scope: OrgPair[], find: string, replace: string, useRegex: boolean): Promise<number> {
-    if (!find) return 0
+    if (!find)
+      return 0
     let re: RegExp
     try {
       re = useRegex ? new RegExp(find, 'g') : new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
-    } catch {
+    }
+    catch {
       error.value = 'Invalid regular expression'
       return 0
     }
@@ -241,9 +267,26 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   return {
-    rootHandle, rootName, scanning, restoring, writable, error, pairs, renamingKey,
-    hasRoot, missingScriptCount, orphanScriptCount, matchedCount,
-    openFolder, useLibraryFolder, restoreFolder, retryPermission, rescan, clear,
-    renamePair, renameSingle, bulkRename,
+    rootHandle,
+    rootName,
+    scanning,
+    restoring,
+    writable,
+    error,
+    pairs,
+    renamingKey,
+    hasRoot,
+    missingScriptCount,
+    orphanScriptCount,
+    matchedCount,
+    openFolder,
+    useLibraryFolder,
+    restoreFolder,
+    retryPermission,
+    rescan,
+    clear,
+    renamePair,
+    renameSingle,
+    bulkRename,
   }
 })

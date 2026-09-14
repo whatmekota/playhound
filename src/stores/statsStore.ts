@@ -2,8 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
 export interface FinishEvent {
-  at: number      // seconds into video
-  ts: number      // unix timestamp
+  at: number // seconds into video
+  ts: number // unix timestamp
 }
 
 export interface VideoStat {
@@ -17,7 +17,8 @@ export interface VideoStat {
 const STORAGE_KEY = 'mwhoplayer:stats'
 
 function load(): Record<string, VideoStat> {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') } catch { return {} }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') }
+  catch { return {} }
 }
 
 export const useStatsStore = defineStore('stats', () => {

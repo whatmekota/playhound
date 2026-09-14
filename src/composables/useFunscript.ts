@@ -1,7 +1,8 @@
+import type { ScriptMatch } from '~/stores/libraryStore'
+import type { ScriptFile } from '~/stores/scriptStore'
 import { ref } from 'vue'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
-import { useScriptStore, type ScriptFile } from '~/stores/scriptStore'
-import type { ScriptMatch } from '~/stores/libraryStore'
+import { useScriptStore } from '~/stores/scriptStore'
 
 export function useFunscript() {
   const scriptStore = useScriptStore()
@@ -19,7 +20,8 @@ export function useFunscript() {
       const results = await parseMatches(matches, videoFile.name)
       scriptStore.setAutoDetected(results)
       return results
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
@@ -33,7 +35,8 @@ export function useFunscript() {
       const results = await parseMatches(matches, videoBasename)
       scriptStore.setScripts(results)
       return results
-    } finally {
+    }
+    finally {
       loading.value = false
     }
   }
@@ -58,7 +61,8 @@ export function useFunscript() {
           // script for that channel has been registered yet.
           const alreadyHasPrimary = enabledChannels.has(axis.channel)
           const enabled = !isAlt && !alreadyHasPrimary
-          if (enabled) enabledChannels.add(axis.channel)
+          if (enabled)
+            enabledChannels.add(axis.channel)
 
           results.push({
             path: file.name,
@@ -73,7 +77,8 @@ export function useFunscript() {
             parsed: axis,
           })
         }
-      } catch (e: any) {
+      }
+      catch (e: any) {
         error.value = e.message
         console.warn('Failed to parse', file.name, e)
       }

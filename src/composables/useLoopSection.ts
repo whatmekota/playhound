@@ -37,9 +37,11 @@ export function useLoopSection() {
    * Returns the time to seek to, or null if no action needed.
    */
   function checkLoop(currentTime: number): number | null {
-    if (!playerStore.loopActive) return null
+    if (!playerStore.loopActive)
+      return null
     const { loopStart, loopEnd } = playerStore
-    if (loopStart === null || loopEnd === null) return null
+    if (loopStart === null || loopEnd === null)
+      return null
 
     if (currentTime >= loopEnd) {
       return loopStart

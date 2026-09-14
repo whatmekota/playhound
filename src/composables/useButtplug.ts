@@ -11,16 +11,18 @@
  *   bp.sendLinear(channel, position01, durationMs)
  */
 
-import { ref, computed } from 'vue'
-import {
-  ButtplugClient,
+import type {
   ButtplugClientDevice,
+} from 'buttplug'
+import {
   ButtplugBrowserWebsocketClientConnector,
+  ButtplugClient,
   DeviceOutput,
   OutputType,
 } from 'buttplug'
-import { useDeviceStore } from '~/stores/deviceStore'
+import { computed, ref } from 'vue'
 import { logCommand } from '~/lib/serialLog'
+import { useDeviceStore } from '~/stores/deviceStore'
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
 let client: ButtplugClient | null = null
@@ -37,7 +39,8 @@ export function useButtplug() {
   const deviceStore = useDeviceStore()
 
   async function connect(url = serverUrl.value) {
-    if (client) await disconnect()
+    if (client)
+      await disconnect()
     error.value = null
     try {
       client = new ButtplugClient('MWHOPlayer')
@@ -61,32 +64,38 @@ export function useButtplug() {
       localStorage.setItem('bp:url', url)
       // client.devices is a Map<number, ButtplugClientDevice>
       devices.value = [...(client.devices as unknown as Map<number, ButtplugClientDevice>).values()]
-    } catch (e: any) {
+    }
+    catch (e: any) {
       error.value = e?.message ?? 'Connection failed'
       client = null
     }
   }
 
   async function disconnect() {
-    try { await client?.disconnect() } catch {}
+    try { await client?.disconnect() }
+    catch {}
     client = null
     connected.value = false
     devices.value = []
   }
 
   async function startScan() {
-    if (!client) return
+    if (!client)
+      return
     scanning.value = true
-    try { await client.startScanning() } catch (e: any) { error.value = e?.message }
+    try { await client.startScanning() }
+    catch (e: any) { error.value = e?.message }
     setTimeout(async () => {
-      try { await client?.stopScanning() } catch {}
+      try { await client?.stopScanning() }
+      catch {}
       scanning.value = false
     }, 5000)
   }
 
   async function stopScan() {
     scanning.value = false
-    try { await client?.stopScanning() } catch {}
+    try { await client?.stopScanning() }
+    catch {}
   }
 
   /**
@@ -94,14 +103,16 @@ export function useButtplug() {
    * Called every frame from useFunscript alongside TCode sends.
    */
   async function sendLinear(position: number, durationMs: number) {
-    if (!enabled.value || !connected.value || devices.value.length === 0) return
+    if (!enabled.value || !connected.value || devices.value.length === 0)
+      return
 
-    const axisConfig = deviceStore.axisConfigs['L0']
+    const axisConfig = deviceStore.axisConfigs.L0
     let pos = position
     if (axisConfig) {
       const range = axisConfig.max - axisConfig.min
       pos = axisConfig.min + pos * range
-      if (axisConfig.invert) pos = axisConfig.min + axisConfig.max - pos
+      if (axisConfig.invert)
+        pos = axisConfig.min + axisConfig.max - pos
     }
     pos = Math.max(0, Math.min(1, pos))
     const dur = Math.max(50, Math.round(durationMs))
@@ -110,14 +121,16 @@ export function useButtplug() {
 
     for (const device of devices.value) {
       try {
-        if (device.hasOutput(OutputType.PositionWithDuration)) {
+        if (device.hasOutput(OutputType.HwPositionWithDuration)) {
           // Linear stroker (OSR2, Handy, etc.) — percent 0–1, duration in ms
           await device.runOutput(DeviceOutput.PositionWithDuration.percent(pos, dur))
-        } else if (device.hasOutput(OutputType.Vibrate)) {
+        }
+        else if (device.hasOutput(OutputType.Vibrate)) {
           // Vibrator — use position as intensity
           await device.runOutput(DeviceOutput.Vibrate.percent(pos))
         }
-      } catch {
+      }
+      catch {
         // device might have disconnected mid-play, ignore
       }
     }
@@ -125,7 +138,8 @@ export function useButtplug() {
 
   async function stopAll() {
     for (const device of devices.value) {
-      try { await device.stop() } catch {}
+      try { await device.stop() }
+      catch {}
     }
   }
 
@@ -135,13 +149,25 @@ export function useButtplug() {
   }
 
   const deviceCount = computed(() => devices.value.length)
-  const hasLinear = computed(() => devices.value.some(d => d.hasOutput(OutputType.PositionWithDuration)))
+  const hasLinear = computed(() => devices.value.some(d => d.hasOutput(OutputType.HwPositionWithDuration)))
   const hasVibrators = computed(() => devices.value.some(d => d.hasOutput(OutputType.Vibrate)))
 
   return {
-    connected, scanning, devices, error, serverUrl, enabled,
-    deviceCount, hasLinear, hasVibrators,
-    connect, disconnect, startScan, stopScan,
-    sendLinear, stopAll, setEnabled,
+    connected,
+    scanning,
+    devices,
+    error,
+    serverUrl,
+    enabled,
+    deviceCount,
+    hasLinear,
+    hasVibrators,
+    connect,
+    disconnect,
+    startScan,
+    stopScan,
+    sendLinear,
+    stopAll,
+    setEnabled,
   }
 }

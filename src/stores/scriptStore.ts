@@ -1,6 +1,6 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 import type { ParsedAxis } from '~/lib/funscriptParser'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
 
 export interface ScriptFile {
   path: string
@@ -22,9 +22,9 @@ export const useScriptStore = defineStore('script', () => {
   const activeScripts = computed(() => scripts.value.filter(s => s.enabled))
   const hasScripts = computed(() => scripts.value.length > 0)
   const primaryScript = computed(() =>
-    scripts.value.find(s => s.channel === 'L0' && s.enabled && !s.isAlt) ??
-    scripts.value.find(s => s.channel === 'L0' && s.enabled) ??
-    activeScripts.value[0] ?? null
+    scripts.value.find(s => s.channel === 'L0' && s.enabled && !s.isAlt)
+    ?? scripts.value.find(s => s.channel === 'L0' && s.enabled)
+    ?? activeScripts.value[0] ?? null,
   )
 
   function setScripts(newScripts: ScriptFile[]) {
@@ -39,11 +39,12 @@ export const useScriptStore = defineStore('script', () => {
 
   function toggleScript(path: string, channel: string) {
     const s = scripts.value.find(x => x.path === path && x.channel === channel)
-    if (!s) return
+    if (!s)
+      return
     if (!s.enabled) {
       scripts.value
         .filter(x => x.channel === channel && !(x.path === path && x.channel === channel))
-        .forEach(x => { x.enabled = false })
+        .forEach((x) => { x.enabled = false })
     }
     s.enabled = !s.enabled
   }
@@ -54,8 +55,14 @@ export const useScriptStore = defineStore('script', () => {
   }
 
   return {
-    scripts, autoDetected,
-    activeScripts, hasScripts, primaryScript,
-    setScripts, setAutoDetected, toggleScript, clearScripts,
+    scripts,
+    autoDetected,
+    activeScripts,
+    hasScripts,
+    primaryScript,
+    setScripts,
+    setAutoDetected,
+    toggleScript,
+    clearScripts,
   }
 })

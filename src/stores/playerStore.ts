@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const LS_KEY = 'mwhoplayer:player'
 function load() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') } catch { return {} }
+  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') }
+  catch { return {} }
 }
 const saved = load()
 
@@ -11,8 +12,8 @@ export const usePlayerStore = defineStore('player', () => {
   // Video state
   const videoPath = ref<string | null>(null)
   const videoUrl = ref<string | null>(null)
-  const videoDuration = ref(0)       // seconds
-  const currentTime = ref(0)         // seconds
+  const videoDuration = ref(0) // seconds
+  const currentTime = ref(0) // seconds
   const isPlaying = ref(false)
   const playbackSpeed = ref<number>(saved.playbackSpeed ?? 1.0)
   const volume = ref<number>(saved.volume ?? 1.0)
@@ -29,23 +30,23 @@ export const usePlayerStore = defineStore('player', () => {
 
   // Loop section (A-B loop)
   const loopEnabled = ref(false)
-  const loopStart = ref<number | null>(null)  // seconds
-  const loopEnd = ref<number | null>(null)    // seconds
+  const loopStart = ref<number | null>(null) // seconds
+  const loopEnd = ref<number | null>(null) // seconds
 
   // Fullscreen
   const isFullscreen = ref(false)
 
   // Computed
   const progress = computed(() =>
-    videoDuration.value > 0 ? currentTime.value / videoDuration.value : 0
+    videoDuration.value > 0 ? currentTime.value / videoDuration.value : 0,
   )
 
   const hasLoop = computed(() =>
-    loopStart.value !== null && loopEnd.value !== null
+    loopStart.value !== null && loopEnd.value !== null,
   )
 
   const loopActive = computed(() =>
-    loopEnabled.value && hasLoop.value
+    loopEnabled.value && hasLoop.value,
   )
 
   // Persist volume + speed
@@ -80,23 +81,40 @@ export const usePlayerStore = defineStore('player', () => {
     loopEnabled.value = false
   }
 
-
   function showControls() {
     controlsVisible.value = true
-    if (controlsTimeout.value) clearTimeout(controlsTimeout.value)
+    if (controlsTimeout.value)
+      clearTimeout(controlsTimeout.value)
     controlsTimeout.value = setTimeout(() => {
-      if (isPlaying.value) controlsVisible.value = false
+      if (isPlaying.value)
+        controlsVisible.value = false
     }, 3000)
   }
 
   return {
-    videoPath, videoUrl, videoDuration, currentTime, isPlaying,
-    playbackSpeed, volume, isMuted,
+    videoPath,
+    videoUrl,
+    videoDuration,
+    currentTime,
+    isPlaying,
+    playbackSpeed,
+    volume,
+    isMuted,
     sbs180,
-    controlsVisible, controlsTimeout,
-    loopEnabled, loopStart, loopEnd,
+    controlsVisible,
+    controlsTimeout,
+    loopEnabled,
+    loopStart,
+    loopEnd,
     isFullscreen,
-    progress, hasLoop, loopActive,
-    setVideo, setLoopStart, setLoopEnd, clearLoop, toggleSbs, showControls,
+    progress,
+    hasLoop,
+    loopActive,
+    setVideo,
+    setLoopStart,
+    setLoopEnd,
+    clearLoop,
+    toggleSbs,
+    showControls,
   }
 })

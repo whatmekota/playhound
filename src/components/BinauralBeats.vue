@@ -3,10 +3,21 @@ import type { NoiseType, SessionPhase } from '~/stores/audio'
 import { useAudioStore } from '~/stores/audio'
 
 const {
-  baseFrequency, beatDelta, volume, waveType, isPlaying, currentPreset,
-  intensity, phase, driftMode, sessionActive,
-  noiseEnabled, noiseVolume, noiseType,
-  harmonicsEnabled, beatDriftEnabled,
+  baseFrequency,
+  beatDelta,
+  volume,
+  waveType,
+  isPlaying,
+  currentPreset,
+  intensity,
+  phase,
+  driftMode,
+  sessionActive,
+  noiseEnabled,
+  noiseVolume,
+  noiseType,
+  harmonicsEnabled,
+  beatDriftEnabled,
 } = useAudioStore()
 
 const binaural = useBinauralBeats()
@@ -63,7 +74,8 @@ function applyPreset(p: typeof PRESETS[0]) {
     const startTime = Date.now()
     const dur = 5000
 
-    if (morphAnimFrame !== null) cancelAnimationFrame(morphAnimFrame)
+    if (morphAnimFrame !== null)
+      cancelAnimationFrame(morphAnimFrame)
     binaural.morphTo(p.base, p.delta, 5)
 
     function frame() {
@@ -71,7 +83,8 @@ function applyPreset(p: typeof PRESETS[0]) {
       const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
       baseFrequency.value = startBase + (p.base - startBase) * eased
       beatDelta.value = startDelta + (p.delta - startDelta) * eased
-      if (t < 1) morphAnimFrame = requestAnimationFrame(frame)
+      if (t < 1)
+        morphAnimFrame = requestAnimationFrame(frame)
     }
     morphAnimFrame = requestAnimationFrame(frame)
   }
@@ -88,14 +101,16 @@ function onBaseFreq(e: Event) {
   baseFrequency.value = v
   currentPreset.value = ''
   binaural.stopMorph()
-  if (isPlaying.value) binaural.setFrequencies(v, beatDelta.value)
+  if (isPlaying.value)
+    binaural.setFrequencies(v, beatDelta.value)
 }
 
 function setBaseFreq(hz: number) {
   baseFrequency.value = hz
   currentPreset.value = ''
   binaural.stopMorph()
-  if (isPlaying.value) binaural.setFrequencies(hz, beatDelta.value)
+  if (isPlaying.value)
+    binaural.setFrequencies(hz, beatDelta.value)
 }
 
 function onBeatDelta(e: Event) {
@@ -104,18 +119,21 @@ function onBeatDelta(e: Event) {
   currentPreset.value = ''
   binaural.stopMorph()
   binaural.stopBeatDrift()
-  if (isPlaying.value) binaural.setFrequencies(baseFrequency.value, v)
+  if (isPlaying.value)
+    binaural.setFrequencies(baseFrequency.value, v)
 }
 
 function onVolume(e: Event) {
   const v = +(e.target as HTMLInputElement).value
   volume.value = v
-  if (isPlaying.value) binaural.setVolume(v)
+  if (isPlaying.value)
+    binaural.setVolume(v)
 }
 
 function onWaveType(t: OscillatorType) {
   waveType.value = t
-  if (isPlaying.value) binaural.setWaveType(t)
+  if (isPlaying.value)
+    binaural.setWaveType(t)
 }
 
 // --- Master intensity ---
@@ -128,7 +146,8 @@ function onIntensity(e: Event) {
   binaural.stopMorph()
   binaural.stopBeatDrift()
   currentPreset.value = ''
-  if (isPlaying.value) binaural.setFrequencies(baseFrequency.value, newDelta)
+  if (isPlaying.value)
+    binaural.setFrequencies(baseFrequency.value, newDelta)
   if (noiseEnabled.value && isPlaying.value)
     binaural.setNoiseVolume(0.05 + v * 0.35)
 }
@@ -148,18 +167,21 @@ watch([noiseEnabled, isPlaying], ([noiseOn, playing]) => {
 function onNoiseVolume(e: Event) {
   const v = +(e.target as HTMLInputElement).value
   noiseVolume.value = v
-  if (isPlaying.value && noiseEnabled.value) binaural.setNoiseVolume(v)
+  if (isPlaying.value && noiseEnabled.value)
+    binaural.setNoiseVolume(v)
 }
 
 function setNoiseType(t: NoiseType) {
   noiseType.value = t
-  if (isPlaying.value && noiseEnabled.value) binaural.morphNoise(t, 3)
+  if (isPlaying.value && noiseEnabled.value)
+    binaural.morphNoise(t, 3)
 }
 
 // --- Harmonics ---
 
 watch(harmonicsEnabled, (on) => {
-  if (isPlaying.value) binaural.setHarmonics(on)
+  if (isPlaying.value)
+    binaural.setHarmonics(on)
 })
 
 // --- Beat drift ---
@@ -181,7 +203,8 @@ watch(beatDriftEnabled, (on) => {
 
 watch(driftMode, (on) => {
   if (sessionActive.value) {
-    if (on) session.startDrift()
+    if (on)
+      session.startDrift()
     else session.stopDrift()
   }
 })
@@ -192,11 +215,13 @@ function togglePlay() {
   if (isPlaying.value) {
     isPlaying.value = false
     binaural.fadeOut(2)
-    if (sessionActive.value) session.stopSession()
+    if (sessionActive.value)
+      session.stopSession()
   }
   else {
     binaural.start(baseFrequency.value, beatDelta.value, volume.value, waveType.value)
-    if (harmonicsEnabled.value) binaural.setHarmonics(true)
+    if (harmonicsEnabled.value)
+      binaural.setHarmonics(true)
     if (noiseEnabled.value) {
       binaural.startNoise(noiseVolume.value)
       binaural.morphNoise(noiseType.value, 0.5)
@@ -219,7 +244,8 @@ function toggleSession() {
     session.stopSession()
   }
   else {
-    if (!isPlaying.value) togglePlay()
+    if (!isPlaying.value)
+      togglePlay()
     session.startSession()
   }
 }
@@ -281,11 +307,11 @@ const beatPulsePeriod = computed(() => {
         <!-- Beat pulse ring -->
         <div
           v-if="isPlaying"
-          class="pointer-events-none inset-0 absolute flex items-center justify-center"
+          class="flex pointer-events-none items-center inset-0 justify-center absolute"
         >
           <div
-            class="beat-pulse-ring rounded-full border border-teal-400/40"
-            :style="{ '--pulse-period': beatPulsePeriod + 's' }"
+            class="beat-pulse-ring border border-teal-400/40 rounded-full"
+            :style="{ '--pulse-period': `${beatPulsePeriod}s` }"
           />
         </div>
 
@@ -304,7 +330,7 @@ const beatPulsePeriod = computed(() => {
 
       <!-- Master Intensity -->
       <div class="p-4 border border-zinc-800 rounded-2xl bg-zinc-900">
-        <div class="mb-2 flex justify-between items-center">
+        <div class="mb-2 flex items-center justify-between">
           <label class="text-sm text-zinc-300 font-medium">Master Intensity</label>
           <span class="text-sm text-teal-400 font-mono">{{ Math.round(intensity * 100) }}%</span>
         </div>
@@ -322,7 +348,7 @@ const beatPulsePeriod = computed(() => {
       <!-- Presets -->
       <div>
         <p class="text-xs text-zinc-500 tracking-wider mb-3 uppercase">
-          Presets <span class="normal-case text-zinc-700">(morphs smoothly when playing)</span>
+          Presets <span class="text-zinc-700 normal-case">(morphs smoothly when playing)</span>
         </p>
         <div class="gap-2 grid grid-cols-5">
           <button
@@ -365,11 +391,11 @@ const beatPulsePeriod = computed(() => {
             class="primary-slider w-full"
             @input="onBaseFreq"
           >
-          <div class="text-[10px] text-zinc-600 mt-1 mb-2 flex justify-between">
+          <div class="text-[10px] text-zinc-600 mb-2 mt-1 flex justify-between">
             <span>40 Hz</span><span>500 Hz</span>
           </div>
           <!-- Solfeggio / tuning presets -->
-          <div class="flex gap-1 flex-wrap">
+          <div class="flex flex-wrap gap-1">
             <button
               v-for="sf in SOLFEGGIO"
               :key="sf.hz"
@@ -442,7 +468,7 @@ const beatPulsePeriod = computed(() => {
           <div class="flex items-center justify-between">
             <label class="text-sm text-zinc-300 font-medium">Ambient Noise</label>
             <button
-              class="text-xs px-3 py-1 rounded-full font-medium transition-colors"
+              class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
               :class="noiseEnabled ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
               @click="noiseEnabled = !noiseEnabled"
             >
@@ -451,12 +477,12 @@ const beatPulsePeriod = computed(() => {
           </div>
 
           <Transition name="expand">
-            <div v-if="noiseEnabled" class="space-y-3 pl-3 border-l border-zinc-800">
+            <div v-if="noiseEnabled" class="pl-3 border-l border-zinc-800 space-y-3">
               <div class="flex gap-2">
                 <button
                   v-for="nt in NOISE_TYPES"
                   :key="nt.value"
-                  class="flex-1 text-center py-2 rounded-lg text-xs font-medium transition-colors"
+                  class="text-xs font-medium py-2 text-center rounded-lg flex-1 transition-colors"
                   :class="noiseType === nt.value
                     ? 'bg-teal-700 text-white'
                     : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
@@ -465,7 +491,7 @@ const beatPulsePeriod = computed(() => {
                   <div class="font-semibold">
                     {{ nt.label }}
                   </div>
-                  <div class="text-zinc-500 text-[10px] mt-0.5">
+                  <div class="text-[10px] text-zinc-500 mt-0.5">
                     {{ nt.desc }}
                   </div>
                 </button>
@@ -498,7 +524,7 @@ const beatPulsePeriod = computed(() => {
             </p>
           </div>
           <button
-            class="text-xs px-3 py-1 rounded-full font-medium transition-colors"
+            class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
             :class="harmonicsEnabled ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
             @click="harmonicsEnabled = !harmonicsEnabled"
           >
@@ -517,7 +543,7 @@ const beatPulsePeriod = computed(() => {
             </p>
           </div>
           <button
-            class="text-xs px-3 py-1 rounded-full font-medium transition-colors"
+            class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
             :class="beatDriftEnabled ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
             @click="beatDriftEnabled = !beatDriftEnabled"
           >
@@ -532,7 +558,7 @@ const beatPulsePeriod = computed(() => {
           <p class="text-xs text-zinc-500 tracking-wider uppercase">
             Session Engine
           </p>
-          <div v-if="phase !== 'idle'" class="flex items-center gap-2">
+          <div v-if="phase !== 'idle'" class="flex gap-2 items-center">
             <div class="rounded-full h-2 w-2 animate-pulse" :style="{ background: phaseColor }" />
             <span class="text-xs font-medium" :style="{ color: phaseColor }">{{ phaseLabel }}</span>
           </div>
@@ -547,7 +573,7 @@ const beatPulsePeriod = computed(() => {
           <div
             v-for="ph in ['entry', 'build', 'peak', 'descent']"
             :key="ph"
-            class="flex-1 rounded-full transition-all duration-500"
+            class="rounded-full flex-1 transition-all duration-500"
             :style="{
               background: PHASE_META[ph].color,
               opacity: phase === ph ? 1 : 0.25,
@@ -560,7 +586,7 @@ const beatPulsePeriod = computed(() => {
           <button
             v-for="ph in (['entry', 'build', 'peak', 'descent'] as SessionPhase[])"
             :key="ph"
-            class="text-[10px] px-2 py-1 rounded-lg flex-1 font-medium transition-all"
+            class="text-[10px] font-medium px-2 py-1 rounded-lg flex-1 transition-all"
             :class="phase === ph
               ? 'text-zinc-900 font-semibold'
               : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'"
@@ -573,7 +599,7 @@ const beatPulsePeriod = computed(() => {
 
         <div class="flex gap-3">
           <button
-            class="flex-1 text-sm font-semibold py-2.5 rounded-xl transition-all active:scale-95"
+            class="text-sm font-semibold py-2.5 rounded-xl flex-1 transition-all active:scale-95"
             :class="sessionActive
               ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200'
               : 'bg-teal-600 hover:bg-teal-500 text-white'"
@@ -583,7 +609,7 @@ const beatPulsePeriod = computed(() => {
           </button>
 
           <button
-            class="text-xs px-3 rounded-xl font-medium transition-colors"
+            class="text-xs font-medium px-3 rounded-xl transition-colors"
             :class="driftMode ? 'bg-purple-700 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
             @click="driftMode = !driftMode"
           >
@@ -641,8 +667,12 @@ const beatPulsePeriod = computed(() => {
 }
 
 @keyframes wave-flow {
-  from { transform: translateX(0); }
-  to { transform: translateX(200px); }
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(200px);
+  }
 }
 .wave1 {
   animation: wave-flow calc(4s / var(--speed, 1)) linear infinite;
@@ -652,8 +682,16 @@ const beatPulsePeriod = computed(() => {
 }
 
 @keyframes beat-ring {
-  0%   { width: 20px; height: 20px; opacity: 0.6; }
-  100% { width: 72px; height: 72px; opacity: 0; }
+  0% {
+    width: 20px;
+    height: 20px;
+    opacity: 0.6;
+  }
+  100% {
+    width: 72px;
+    height: 72px;
+    opacity: 0;
+  }
 }
 .beat-pulse-ring {
   animation: beat-ring var(--pulse-period, 1s) ease-out infinite;
@@ -661,7 +699,9 @@ const beatPulsePeriod = computed(() => {
 
 .expand-enter-active,
 .expand-leave-active {
-  transition: opacity 0.3s ease, max-height 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    max-height 0.3s ease;
   max-height: 200px;
   overflow: hidden;
 }

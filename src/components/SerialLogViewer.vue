@@ -15,9 +15,11 @@ function clearLog() { serialLog.value = [] }
       title="Serial log"
       @click="open = !open"
     >
-      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+        />
       </svg>
       Log
     </button>
@@ -25,27 +27,31 @@ function clearLog() { serialLog.value = [] }
     <Transition name="popup">
       <div
         v-if="open"
-        class="absolute top-full mt-2 right-0 z-50 rounded-xl border shadow-2xl flex flex-col"
+        class="mt-2 border rounded-xl flex flex-col shadow-2xl right-0 top-full absolute z-50"
         style="background:var(--bg-850); border-color:var(--border); width:420px; height:260px"
       >
         <!-- Header -->
-        <div class="flex items-center justify-between px-3 py-2 border-b shrink-0"
-          style="border-color:var(--border)">
+        <div
+          class="px-3 py-2 border-b flex shrink-0 items-center justify-between"
+          style="border-color:var(--border)"
+        >
           <span class="text-xs font-medium font-mono" style="color:var(--text-muted)">Serial Log</span>
-          <div class="flex items-center gap-2">
+          <div class="flex gap-2 items-center">
             <span class="text-[10px]" style="color:var(--text-faint)">{{ serialLog.length }} cmds</span>
-            <button class="text-[10px] hover:opacity-80" style="color:var(--text-muted)" @click="clearLog">Clear</button>
+            <button class="text-[10px] hover:opacity-80" style="color:var(--text-muted)" @click="clearLog">
+              Clear
+            </button>
           </div>
         </div>
         <!-- Log lines -->
-        <div class="flex-1 overflow-y-auto p-2 font-mono">
-          <div v-if="!serialLog.length" class="text-[11px] text-center mt-4" style="color:var(--text-faint)">
+        <div class="font-mono p-2 flex-1 overflow-y-auto">
+          <div v-if="!serialLog.length" class="text-[11px] mt-4 text-center" style="color:var(--text-faint)">
             No commands yet
           </div>
           <div
             v-for="(line, i) in serialLog"
             :key="i"
-            class="text-[11px] leading-5 truncate hover:whitespace-normal hover:overflow-visible hover:z-10"
+            class="text-[11px] leading-5 truncate hover:whitespace-normal hover:z-10 hover:overflow-visible"
             style="color:var(--text-muted)"
           >
             <span style="color:var(--text-faint)">{{ line.slice(0, 8) }}</span>
@@ -58,6 +64,15 @@ function clearLog() { serialLog.value = [] }
 </template>
 
 <style scoped>
-.popup-enter-active, .popup-leave-active { transition: opacity 0.1s, transform 0.1s; }
-.popup-enter-from, .popup-leave-to { opacity: 0; transform: translateY(4px); }
+.popup-enter-active,
+.popup-leave-active {
+  transition:
+    opacity 0.1s,
+    transform 0.1s;
+}
+.popup-enter-from,
+.popup-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
 </style>

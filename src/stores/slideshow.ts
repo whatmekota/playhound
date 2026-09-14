@@ -8,8 +8,8 @@ export interface SlideshowItem {
   type: 'image' | 'video' | 'youtube'
   src: string
   label: string
-  duration?: number          // per-slide delay override (seconds)
-  fit?: 'contain' | 'cover'  // per-slide object-fit
+  duration?: number // per-slide delay override (seconds)
+  fit?: 'contain' | 'cover' // per-slide object-fit
 }
 
 export interface SlideshowOverlay {
@@ -75,7 +75,8 @@ function moveItem(from: number, to: number) {
 
 function updateItem(id: string, patch: Partial<SlideshowItem>) {
   const item = items.find(i => i.id === id)
-  if (item) Object.assign(item, patch)
+  if (item)
+    Object.assign(item, patch)
 }
 
 function addOverlay(overlay: Omit<SlideshowOverlay, 'id'>) {
@@ -84,19 +85,30 @@ function addOverlay(overlay: Omit<SlideshowOverlay, 'id'>) {
 
 function removeOverlay(id: string) {
   const idx = overlays.findIndex(o => o.id === id)
-  if (idx >= 0) overlays.splice(idx, 1)
+  if (idx >= 0)
+    overlays.splice(idx, 1)
 }
 
 function updateOverlay(id: string, patch: Partial<SlideshowOverlay>) {
   const o = overlays.find(o => o.id === id)
-  if (o) Object.assign(o, patch)
+  if (o)
+    Object.assign(o, patch)
 }
 
 export function useSlideshowStore() {
   return {
-    items, settings, isPlaying, currentIndex,
-    addItem, removeItem, moveItem, updateItem,
-    overlays, addOverlay, removeOverlay, updateOverlay,
+    items,
+    settings,
+    isPlaying,
+    currentIndex,
+    addItem,
+    removeItem,
+    moveItem,
+    updateItem,
+    overlays,
+    addOverlay,
+    removeOverlay,
+    updateOverlay,
     ALL_TRANSITIONS,
   }
 }

@@ -1,3 +1,5 @@
 <template>
-  <div class="flex items-center justify-center h-full text-white/20 text-sm">VRM viewer removed</div>
+  <div class="text-sm text-white/20 flex h-full items-center justify-center">
+    VRM viewer removed
+  </div>
 </template>

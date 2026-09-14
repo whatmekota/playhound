@@ -1,6 +1,6 @@
-import { ref, onUnmounted, onMounted } from 'vue'
-import { useDeviceStore } from '~/stores/deviceStore'
+import { onUnmounted, ref } from 'vue'
 import { webSerial } from '~/lib/browserApi'
+import { useDeviceStore } from '~/stores/deviceStore'
 
 // ── Singleton port state — shared across all callers ─────────────────────────
 let port: SerialPort | null = null
@@ -20,9 +20,11 @@ export function useSerialPort() {
     store.connectionError = null
     try {
       const selectedPort = await webSerial.requestPort()
-      if (!selectedPort) return
+      if (!selectedPort)
+        return
       await connect(selectedPort, baudRate)
-    } finally {
+    }
+    finally {
       connecting.value = false
     }
   }
@@ -37,26 +39,31 @@ export function useSerialPort() {
       store.portPath = 'Web Serial Port'
       store.connectionError = null
       startReadLoop()
-    } catch (e: any) {
+    }
+    catch (e: any) {
       store.connectionError = e.message
     }
   }
 
   async function disconnect() {
     readLoopActive = false
-    try { writer?.releaseLock() } catch {}
-    try { await port?.close() } catch {}
+    try { writer?.releaseLock() }
+    catch {}
+    try { await port?.close() }
+    catch {}
     writer = null
     port = null
     store.connected = false
   }
 
   async function write(data: string) {
-    if (!writer) return
+    if (!writer)
+      return
     store.lastCommand = data.trim()
     try {
       await writer.write(new TextEncoder().encode(data))
-    } catch (e: any) {
+    }
+    catch (e: any) {
       // Only hard-disconnect on fatal errors, not transient buffer issues
       const msg: string = e?.message ?? ''
       if (msg.includes('disconnected') || msg.includes('closed') || msg.includes('device lost')) {
@@ -68,16 +75,21 @@ export function useSerialPort() {
   }
 
   function startReadLoop() {
-    if (!port?.readable) return
+    if (!port?.readable)
+      return
     readLoopActive = true
     const reader = port.readable.getReader()
     ;(async () => {
       try {
+        // eslint-disable-next-line no-unmodified-loop-condition -- cleared by disconnect()
         while (readLoopActive) {
           const { done } = await reader.read()
-          if (done) break
+          if (done)
+            break
         }
-      } catch { /* port closed */ } finally {
+      }
+      catch { /* port closed */ }
+      finally {
         reader.releaseLock()
         store.connected = false
       }

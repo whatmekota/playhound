@@ -1,10 +1,11 @@
-import { suffixToAxis, extractSuffix, type AxisDef } from './axisMap'
+import type { AxisDef } from './axisMap'
+import { extractSuffix, suffixToAxis } from './axisMap'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface FunscriptAction {
-  at: number   // milliseconds
-  pos: number  // 0–100 (raw), stored as 0–1 internally after normalization
+  at: number // milliseconds
+  pos: number // 0–100 (raw), stored as 0–1 internally after normalization
 }
 
 export interface ParsedAxis {
@@ -12,9 +13,9 @@ export interface ParsedAxis {
   axisKey: string
   label: string
   axisDef: AxisDef
-  actions: FunscriptAction[]  // sorted by .at, pos in 0–1 range
+  actions: FunscriptAction[] // sorted by .at, pos in 0–1 range
   filePath: string
-  duration: number  // ms, last action time
+  duration: number // ms, last action time
 }
 
 export interface ParsedFunscript {
@@ -37,12 +38,13 @@ export function parseFunscriptContent(
   content: string,
   filePath: string,
   videoBasename: string,
-  explicitSuffix?: string
+  explicitSuffix?: string,
 ): ParsedFunscript {
   let raw: any
   try {
     raw = JSON.parse(content)
-  } catch {
+  }
+  catch {
     throw new Error(`Invalid JSON in funscript: ${filePath}`)
   }
 
@@ -53,7 +55,7 @@ export function parseFunscriptContent(
       const axisKey = axisData.id ?? axisData.name ?? 'default'
       const axisDef = suffixToAxis(axisKey)
       const actions = normalizeActions(
-        Array.isArray(axisData.actions) ? axisData.actions : []
+        Array.isArray(axisData.actions) ? axisData.actions : [],
       )
       axes.push({
         channel: axisDef.channel,
@@ -108,13 +110,15 @@ export function parseFunscriptContent(
     // Additional axes from the top-level "axes" array
     for (const axisData of raw.axes) {
       const axisKey = ((axisData.id ?? axisData.name ?? '') as string).toLowerCase()
-      if (!axisKey) continue
+      if (!axisKey)
+        continue
       const axisDef = suffixToAxis(axisKey)
       const actions = normalizeActions(
-        Array.isArray(axisData.actions) ? axisData.actions : []
+        Array.isArray(axisData.actions) ? axisData.actions : [],
       )
       // Skip if this channel is already present (avoid duplicate L0)
-      if (axes.some(a => a.channel === axisDef.channel)) continue
+      if (axes.some(a => a.channel === axisDef.channel))
+        continue
       axes.push({
         channel: axisDef.channel,
         axisKey,
@@ -173,9 +177,12 @@ function getFilename(filePath: string): string {
  * Get the interpolated position (0–1) for a given time (ms) from sorted actions.
  */
 export function interpolatePosition(actions: FunscriptAction[], timeMs: number): number {
-  if (actions.length === 0) return 0.5
-  if (timeMs <= actions[0].at) return actions[0].pos
-  if (timeMs >= actions[actions.length - 1].at) return actions[actions.length - 1].pos
+  if (actions.length === 0)
+    return 0.5
+  if (timeMs <= actions[0].at)
+    return actions[0].pos
+  if (timeMs >= actions[actions.length - 1].at)
+    return actions[actions.length - 1].pos
 
   // Binary search for the surrounding pair
   let lo = 0
@@ -183,7 +190,8 @@ export function interpolatePosition(actions: FunscriptAction[], timeMs: number):
 
   while (lo < hi - 1) {
     const mid = (lo + hi) >> 1
-    if (actions[mid].at <= timeMs) lo = mid
+    if (actions[mid].at <= timeMs)
+      lo = mid
     else hi = mid
   }
 
@@ -198,7 +206,8 @@ export function interpolatePosition(actions: FunscriptAction[], timeMs: number):
  */
 export function nextActionAt(actions: FunscriptAction[], timeMs: number): number | null {
   for (let i = 0; i < actions.length; i++) {
-    if (actions[i].at > timeMs) return actions[i].at
+    if (actions[i].at > timeMs)
+      return actions[i].at
   }
   return null
 }

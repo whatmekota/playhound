@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
-import { useLoopSection } from '~/composables/useLoopSection'
-import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useStatsStore } from '~/stores/statsStore'
 
+const emit = defineEmits<{
+  seek: [time: number]
+}>()
 const playerStore = usePlayerStore()
 const scriptStore = useScriptStore()
 const bookmarkStore = useBookmarkStore()
 const statsStore = useStatsStore()
-const { setLoopStart, setLoopEnd, checkLoop } = useLoopSection()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const timelineEl = ref<HTMLDivElement | null>(null)
@@ -20,23 +21,21 @@ const isHovering = ref(false)
 const hoverX = ref(0)
 const hoverTime = ref(0)
 
-const emit = defineEmits<{
-  seek: [time: number]
-}>()
-
 // ─── Waveform drawing ─────────────────────────────────────────────────────────
 
 function formatTime(secs: number): string {
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
   const s = Math.floor(secs % 60)
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  if (h > 0)
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
   const primary = scriptStore.primaryScript
-  if (!primary || primary.parsed.actions.length < 2) return
+  if (!primary || primary.parsed.actions.length < 2)
+    return
   const actions = primary.parsed.actions
   const BUCKETS = Math.max(1, Math.floor(W / 3))
   const bucketMs = (duration * 1000) / BUCKETS
@@ -50,7 +49,8 @@ function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, durati
   const bw = W / BUCKETS
   for (let b = 0; b < BUCKETS; b++) {
     const v = intensity[b]
-    if (v < 0.01) continue
+    if (v < 0.01)
+      continue
     // cool blue → hot magenta
     const hue = 260 - v * 220
     const sat = 60 + v * 40
@@ -62,9 +62,11 @@ function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, durati
 
 function drawTimeline() {
   const canvas = canvasEl.value
-  if (!canvas) return
+  if (!canvas)
+    return
   const ctx = canvas.getContext('2d')
-  if (!ctx) return
+  if (!ctx)
+    return
 
   const W = canvas.width
   const H = canvas.height
@@ -97,11 +99,13 @@ function drawTimeline() {
       const x1 = (actions[i + 1].at / (duration * 1000)) * W
       const y1 = H - actions[i + 1].pos * H
 
-      if (i === 0) ctx.moveTo(x0, y0)
+      if (i === 0)
+        ctx.moveTo(x0, y0)
       ctx.lineTo(x1, y1)
     }
     ctx.stroke()
-  } else {
+  }
+  else {
     ctx.fillStyle = 'rgba(255,255,255,0.08)'
     ctx.fillRect(0, H / 2 - 2, W, 4)
   }
@@ -118,7 +122,8 @@ function drawTimeline() {
     ctx.moveTo(lx0, 0); ctx.lineTo(lx0, H)
     ctx.moveTo(lx1, 0); ctx.lineTo(lx1, H)
     ctx.stroke()
-  } else if (playerStore.loopStart !== null) {
+  }
+  else if (playerStore.loopStart !== null) {
     const lx = (playerStore.loopStart / duration) * W
     ctx.strokeStyle = 'rgba(217, 70, 239, 0.8)'
     ctx.lineWidth = 2
@@ -203,20 +208,22 @@ watch(
     hoverX,
   ],
   drawTimeline,
-  { flush: 'post' }
+  { flush: 'post' },
 )
 
 // ─── Interaction ──────────────────────────────────────────────────────────────
 
 function posToTime(clientX: number): number {
-  if (!timelineEl.value) return 0
+  if (!timelineEl.value)
+    return 0
   const rect = timelineEl.value.getBoundingClientRect()
   const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
   return ratio * playerStore.videoDuration
 }
 
 function onMouseDown(e: MouseEvent) {
-  if (e.button !== 0) return
+  if (e.button !== 0)
+    return
   const time = posToTime(e.clientX)
 
   // Check if clicking near loop markers
@@ -247,18 +254,22 @@ function onMouseDown(e: MouseEvent) {
 }
 
 function onMouseMove(e: MouseEvent) {
-  if (!timelineEl.value) return
+  if (!timelineEl.value)
+    return
   const rect = timelineEl.value.getBoundingClientRect()
   hoverX.value = e.clientX - rect.left
   hoverTime.value = posToTime(e.clientX)
 
-  if (!isDragging.value) return
+  if (!isDragging.value)
+    return
   const time = posToTime(e.clientX)
   if (dragTarget.value === 'scrub') {
     emit('seek', time)
-  } else if (dragTarget.value === 'loopStart') {
+  }
+  else if (dragTarget.value === 'loopStart') {
     playerStore.setLoopStart(time)
-  } else if (dragTarget.value === 'loopEnd') {
+  }
+  else if (dragTarget.value === 'loopEnd') {
     playerStore.setLoopEnd(time)
   }
 }
@@ -280,7 +291,8 @@ onMounted(() => {
       drawTimeline()
     }
   })
-  if (timelineEl.value) observer.observe(timelineEl.value)
+  if (timelineEl.value)
+    observer.observe(timelineEl.value)
 })
 
 onUnmounted(() => {
@@ -292,20 +304,22 @@ onUnmounted(() => {
 <template>
   <div
     ref="timelineEl"
-    class="relative w-full h-12 cursor-pointer select-none group"
+    class="group h-12 w-full cursor-pointer select-none relative"
     @mousedown="onMouseDown"
     @mouseenter="isHovering = true"
     @mouseleave="isHovering = false"
   >
     <canvas
       ref="canvasEl"
-      class="absolute inset-0 w-full h-full"
+      class="h-full w-full inset-0 absolute"
     />
     <!-- Hover time tooltip -->
     <div
       v-if="isHovering && playerStore.videoDuration > 0"
-      class="absolute top-1 pointer-events-none text-[10px] font-mono text-white/70 bg-black/60 px-1.5 py-0.5 rounded"
-      :style="{ left: Math.min(hoverX, (timelineEl?.clientWidth ?? 0) - 60) + 'px' }"
-    >{{ formatTime(hoverTime) }}</div>
+      class="text-[10px] text-white/70 font-mono px-1.5 py-0.5 rounded bg-black/60 pointer-events-none top-1 absolute"
+      :style="{ left: `${Math.min(hoverX, (timelineEl?.clientWidth ?? 0) - 60)}px` }"
+    >
+      {{ formatTime(hoverTime) }}
+    </div>
   </div>
 </template>

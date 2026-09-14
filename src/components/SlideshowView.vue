@@ -1,12 +1,21 @@
 <script setup lang="ts">
 import type { TransitionName } from '~/stores/slideshow'
-import { useSlideshowStore } from '~/stores/slideshow'
 import { useAudioStore } from '~/stores/audio'
+import { useSlideshowStore } from '~/stores/slideshow'
 
 const {
-  items, settings, isPlaying, currentIndex,
-  addItem, removeItem, moveItem, updateItem,
-  overlays, addOverlay, removeOverlay, updateOverlay,
+  items,
+  settings,
+  isPlaying,
+  currentIndex,
+  addItem,
+  removeItem,
+  moveItem,
+  updateItem,
+  overlays,
+  addOverlay,
+  removeOverlay,
+  updateOverlay,
   ALL_TRANSITIONS,
 } = useSlideshowStore()
 const audioStore = useAudioStore()
@@ -39,16 +48,19 @@ function getSlideDelay(): number {
     const beats = settings.value.beatsPerSlide ?? 8
     return (beats / Math.max(0.25, audioStore.beatDelta.value)) * 1000
   }
+  // eslint-disable-next-line ts/no-use-before-define -- hoisted; read after setup
   const base = (currentItem.value?.duration ?? settings.value.delay) * 1000
   return session.variantDelay(base, 0.2)
 }
 
 function scheduleNext() {
   clearScheduled()
-  if (items.length === 0 || !isPlaying.value) return
+  if (items.length === 0 || !isPlaying.value)
+    return
   timer = setTimeout(() => {
     advance()
-    if (isPlaying.value) scheduleNext()
+    if (isPlaying.value)
+      scheduleNext()
   }, getSlideDelay())
 }
 
@@ -61,12 +73,14 @@ const randomPickedTransition = ref<TransitionName>('fade')
 
 function pickRandom(): TransitionName {
   const pool = settings.value.transitionPool ?? []
-  if (!pool.length) return 'fade'
+  if (!pool.length)
+    return 'fade'
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
 function advance() {
-  if (items.length === 0) return
+  if (items.length === 0)
+    return
 
   // Pick random transition before changing slide so it's ready
   if (settings.value.randomTransition) {
@@ -101,15 +115,20 @@ function advance() {
 }
 
 function prev() {
-  if (items.length === 0) return
-  if (currentIndex.value > 0) currentIndex.value--
-  else if (settings.value.loop) currentIndex.value = items.length - 1
-  if (isPlaying.value) scheduleNext()
+  if (items.length === 0)
+    return
+  if (currentIndex.value > 0)
+    currentIndex.value--
+  else if (settings.value.loop)
+    currentIndex.value = items.length - 1
+  if (isPlaying.value)
+    scheduleNext()
 }
 
 function next() {
   advance()
-  if (isPlaying.value) scheduleNext()
+  if (isPlaying.value)
+    scheduleNext()
 }
 
 function togglePlay() {
@@ -124,7 +143,8 @@ watch(isPlaying, (p) => {
 // Sync LFO speed to beat frequency; also re-schedule if beat-sync is active
 watch(() => audioStore.beatDelta.value, (delta) => {
   lfo.syncToFreq(delta)
-  if (settings.value.beatSync && isPlaying.value) scheduleNext()
+  if (settings.value.beatSync && isPlaying.value)
+    scheduleNext()
 })
 
 // Auto-transition: update the picked transition when phase changes
@@ -163,11 +183,13 @@ function openOverlayFilePicker() { overlayFileInput.value?.click() }
 
 function onFileInput(e: Event) {
   const files = (e.target as HTMLInputElement).files
-  if (!files) return
+  if (!files)
+    return
   for (const file of Array.from(files)) {
     const isImage = file.type.startsWith('image/')
     const isVideo = file.type.startsWith('video/')
-    if (!isImage && !isVideo) continue
+    if (!isImage && !isVideo)
+      continue
     addItem({ type: isImage ? 'image' : 'video', src: URL.createObjectURL(file), label: file.name })
   }
   ;(e.target as HTMLInputElement).value = ''
@@ -175,11 +197,13 @@ function onFileInput(e: Event) {
 
 function onOverlayFileInput(e: Event) {
   const files = (e.target as HTMLInputElement).files
-  if (!files) return
+  if (!files)
+    return
   for (const file of Array.from(files)) {
     const isImage = file.type.startsWith('image/')
     const isVideo = file.type.startsWith('video/')
-    if (!isImage && !isVideo) continue
+    if (!isImage && !isVideo)
+      continue
     addOverlay({
       type: isImage ? 'image' : 'video',
       src: URL.createObjectURL(file),
@@ -199,7 +223,7 @@ function addYoutube({ youtubeId, label }: { youtubeId: string, label: string }) 
 
 function randomizeVideoStart(e: Event) {
   const video = e.target as HTMLVideoElement
-  if (video.duration && isFinite(video.duration))
+  if (video.duration && Number.isFinite(video.duration))
     video.currentTime = Math.random() * video.duration
 }
 
@@ -209,7 +233,8 @@ const dragOverIdx = ref<number | null>(null)
 
 function onDragStart(e: DragEvent, i: number) {
   dragStartIdx.value = i
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+  if (e.dataTransfer)
+    e.dataTransfer.effectAllowed = 'move'
 }
 function onDragOver(e: DragEvent, i: number) {
   e.preventDefault()
@@ -221,7 +246,8 @@ function onDrop(e: DragEvent, i: number) {
   if (dragStartIdx.value !== null && dragStartIdx.value !== i) {
     const from = dragStartIdx.value
     moveItem(from, i)
-    if (currentIndex.value === from) currentIndex.value = i
+    if (currentIndex.value === from)
+      currentIndex.value = i
   }
   dragStartIdx.value = null
   dragOverIdx.value = null
@@ -233,7 +259,8 @@ function toggleTransitionPool(t: TransitionName) {
   const pool = settings.value.transitionPool ?? []
   const idx = pool.indexOf(t)
   if (idx >= 0) {
-    if (pool.length > 1) pool.splice(idx, 1)
+    if (pool.length > 1)
+      pool.splice(idx, 1)
   }
   else {
     pool.push(t)
@@ -244,7 +271,8 @@ function toggleTransitionPool(t: TransitionName) {
 const currentItem = computed(() => items[currentIndex.value])
 
 const ytUrl = computed(() => {
-  if (!currentItem.value || currentItem.value.type !== 'youtube') return ''
+  if (!currentItem.value || currentItem.value.type !== 'youtube')
+    return ''
   const id = currentItem.value.src
   return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&modestbranding=1&playsinline=1`
 })
@@ -268,7 +296,8 @@ const brightnessOverlayOpacity = computed(() =>
 )
 
 const lfoStyle = computed(() => {
-  if (!isPlaying.value) return {}
+  if (!isPlaying.value)
+    return {}
   return {
     transform: `scale(${lfo.values.zoom}) translate(${lfo.values.panX}px, ${lfo.values.panY}px)`,
     opacity: lfo.values.opacity,
@@ -309,7 +338,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
             :alt="currentItem.label"
             :style="lfoStyle"
             :class="currentItem.fit === 'cover' ? 'object-cover' : 'object-contain'"
-            class="h-full w-full will-change-transform"
+            class="will-change-transform h-full w-full"
             draggable="false"
           >
           <video
@@ -322,7 +351,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
             loop
             muted
             playsinline
-            class="h-full w-full will-change-transform"
+            class="will-change-transform h-full w-full"
             @loadedmetadata="randomizeVideoStart"
           />
           <iframe
@@ -338,7 +367,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
       <!-- Audio-reactive brightness overlay -->
       <div
-        class="pointer-events-none inset-0 absolute z-10 bg-black transition-opacity duration-500"
+        class="bg-black pointer-events-none transition-opacity duration-500 inset-0 absolute z-10"
         :style="{ opacity: brightnessOverlayOpacity }"
       />
 
@@ -476,9 +505,9 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
               <div v-else class="space-y-1">
                 <p class="text-[10px] text-zinc-500">
-                  Advances every N beats · current: {{ ((settings.beatsPerSlide ?? 8) / Math.max(0.25, audioStore.beatDelta)).toFixed(1) }}s
+                  Advances every N beats · current: {{ ((settings.beatsPerSlide ?? 8) / Math.max(0.25, audioStore.beatDelta.value)).toFixed(1) }}s
                 </p>
-                <div class="flex gap-1 flex-wrap">
+                <div class="flex flex-wrap gap-1">
                   <button
                     v-for="n in [1, 2, 4, 8, 16, 32]"
                     :key="n"
@@ -504,7 +533,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
               <!-- Fixed single transition -->
               <div v-if="!settings.randomTransition">
-                <div class="gap-1 grid grid-cols-2 mb-2">
+                <div class="mb-2 gap-1 grid grid-cols-2">
                   <button
                     v-for="t in ALL_TRANSITIONS"
                     :key="t"
@@ -561,7 +590,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                 </p>
                 <span v-if="lfo.active.value && isPlaying" class="text-[10px] text-teal-500/70">● active</span>
               </div>
-              <div class="space-y-1.5 mb-3">
+              <div class="mb-3 space-y-1.5">
                 <label class="flex gap-2 cursor-pointer items-center">
                   <input v-model="lfo.config.zoomEnabled" type="checkbox" class="accent-teal-500">
                   <span class="text-xs text-zinc-400">Zoom</span>
@@ -608,7 +637,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   <div class="i-carbon-add text-[10px]" /> Add
                 </button>
               </div>
-              <p v-if="overlays.length === 0" class="text-[10px] text-zinc-600 text-center py-2">
+              <p v-if="overlays.length === 0" class="text-[10px] text-zinc-600 py-2 text-center">
                 Layer images, GIFs or videos over slides
               </p>
               <div class="space-y-2">
@@ -628,7 +657,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                       class="text-[10px] flex-shrink-0"
                       :class="overlay.type === 'video' ? 'i-carbon-video text-blue-400' : 'i-carbon-image text-teal-400'"
                     />
-                    <span class="text-xs text-zinc-300 truncate flex-1">{{ overlay.label }}</span>
+                    <span class="text-xs text-zinc-300 flex-1 truncate">{{ overlay.label }}</span>
                     <button
                       class="text-zinc-600 ml-auto flex-shrink-0 transition-colors hover:text-red-400"
                       @click="removeOverlay(overlay.id)"
@@ -637,7 +666,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     </button>
                   </div>
                   <div class="flex gap-2 items-center">
-                    <span class="text-[10px] text-zinc-500 w-7 flex-shrink-0 text-right">{{ Math.round(overlay.opacity * 100) }}%</span>
+                    <span class="text-[10px] text-zinc-500 text-right flex-shrink-0 w-7">{{ Math.round(overlay.opacity * 100) }}%</span>
                     <input
                       type="range" min="0" max="1" step="0.01"
                       :value="overlay.opacity"
@@ -646,7 +675,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     >
                     <select
                       :value="overlay.blendMode"
-                      class="text-[10px] bg-zinc-700 text-zinc-300 rounded px-1 py-0.5 outline-none flex-shrink-0 border-none"
+                      class="text-[10px] text-zinc-300 px-1 py-0.5 outline-none rounded border-none bg-zinc-700 flex-shrink-0"
                       @change="updateOverlay(overlay.id, { blendMode: ($event.target as HTMLSelectElement).value })"
                     >
                       <option v-for="bm in BLEND_MODES" :key="bm" :value="bm">
@@ -679,7 +708,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   v-for="(item, i) in items"
                   :key="item.id"
                   draggable="true"
-                  class="p-1.5 rounded-lg flex gap-1.5 cursor-pointer transition-colors items-center border-t-2"
+                  class="p-1.5 border-t-2 rounded-lg flex gap-1.5 cursor-pointer transition-colors items-center"
                   :class="[
                     i === currentIndex ? 'bg-zinc-700' : 'hover:bg-zinc-800',
                     dragOverIdx === i && dragStartIdx !== i ? 'border-teal-500' : 'border-transparent',
@@ -698,7 +727,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     class="text-[10px] flex-shrink-0"
                     :class="item.type === 'youtube' ? 'i-carbon-logo-youtube text-red-400' : item.type === 'video' ? 'i-carbon-video text-blue-400' : 'i-carbon-image text-teal-400'"
                   />
-                  <span class="text-xs text-zinc-300 truncate flex-1">{{ item.label }}</span>
+                  <span class="text-xs text-zinc-300 flex-1 truncate">{{ item.label }}</span>
                   <!-- Per-slide fit toggle -->
                   <button
                     class="text-[9px] px-1 py-0.5 rounded flex-shrink-0 transition-colors"
@@ -714,7 +743,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     min="0.5" max="3600" step="0.5"
                     :value="item.duration ?? ''"
                     :placeholder="`${settings.delay}`"
-                    class="text-[10px] bg-transparent text-zinc-500 rounded w-8 text-center border border-zinc-700 outline-none focus:border-teal-600 py-0.5 flex-shrink-0"
+                    class="text-[10px] text-zinc-500 py-0.5 text-center outline-none border border-zinc-700 rounded bg-transparent flex-shrink-0 w-8 focus:border-teal-600"
                     title="Duration override (s), empty = global delay"
                     @click.stop
                     @change="updateItem(item.id, { duration: ($event.target as HTMLInputElement).value ? +($event.target as HTMLInputElement).value : undefined })"
@@ -810,7 +839,9 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
 .zoom-enter-active,
 .zoom-leave-active {
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
 }
 .zoom-enter-from {
   opacity: 0;
@@ -823,7 +854,9 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
 .flip-enter-active,
 .flip-leave-active {
-  transition: transform 0.55s ease, opacity 0.55s ease;
+  transition:
+    transform 0.55s ease,
+    opacity 0.55s ease;
 }
 .flip-enter-from {
   transform: perspective(900px) rotateY(90deg);
@@ -836,7 +869,9 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
 .blur-enter-active,
 .blur-leave-active {
-  transition: opacity 0.55s ease, filter 0.55s ease;
+  transition:
+    opacity 0.55s ease,
+    filter 0.55s ease;
 }
 .blur-enter-from,
 .blur-leave-to {
@@ -857,7 +892,9 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 
 .rotate-enter-active,
 .rotate-leave-active {
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition:
+    opacity 0.5s ease,
+    transform 0.5s ease;
 }
 .rotate-enter-from {
   opacity: 0;

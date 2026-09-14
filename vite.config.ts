@@ -5,7 +5,6 @@ import Vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
-import VueMacros from 'unplugin-vue-macros/vite'
 import { defineConfig } from 'vitest/config'
 import { VueRouterAutoImports } from 'vue-router/unplugin'
 import VueRouter from 'vue-router/vite'
@@ -39,16 +38,11 @@ export default defineConfig({
       dts: 'src/typed-router.d.ts',
     }),
 
-    VueMacros({
-      defineOptions: false,
-      defineModels: false,
-      plugins: {
-        vue: Vue({
-          script: {
-            propsDestructure: true,
-            defineModel: true,
-          },
-        }),
+    // defineOptions / defineModel / props destructure are all native in Vue 3.5,
+    // so the former unplugin-vue-macros wrapper is no longer needed.
+    Vue({
+      script: {
+        propsDestructure: true,
       },
     }),
 

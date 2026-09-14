@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import * as THREE from 'three'
 /**
  * SbsViewer — 180° SBS equirectangular viewer using Three.js
  *
@@ -6,10 +7,11 @@
  * maps it onto the inside of a sphere (180° equirect), and lets the user
  * pan with mouse drag and zoom with scroll wheel — like desktop YouTube 360.
  */
-import { ref, onMounted, onUnmounted, watch } from 'vue'
-import * as THREE from 'three'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 
 const props = defineProps<{ videoEl: HTMLVideoElement | null }>()
+
+const emit = defineEmits<{ click: [], dblclick: [] }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 
@@ -24,19 +26,17 @@ let rafId: number | null = null
 // Yaw = horizontal pan (left/right), Pitch = vertical tilt (up/down)
 let yaw = 180
 let pitch = 0
-let fov = 90  // degrees — scroll to zoom
+let fov = 90 // degrees — scroll to zoom
 
 const MIN_FOV = 30
 const MAX_FOV = 110
-const PITCH_LIMIT = 85  // degrees
+const PITCH_LIMIT = 85 // degrees
 
 // ─── Mouse drag ──────────────────────────────────────────────────────────────
 let dragging = false
 let lastX = 0
 let lastY = 0
-let didDrag = false  // true if mouse moved significantly during press
-
-const emit = defineEmits<{ click: [], dblclick: [] }>()
+let didDrag = false // true if mouse moved significantly during press
 
 function onPointerDown(e: PointerEvent) {
   dragging = true
@@ -47,12 +47,14 @@ function onPointerDown(e: PointerEvent) {
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (!dragging) return
+  if (!dragging)
+    return
   const dx = e.clientX - lastX
   const dy = e.clientY - lastY
-  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true
-  const sensitivity = fov / 500   // slower when zoomed in
-  yaw   -= dx * sensitivity
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3)
+    didDrag = true
+  const sensitivity = fov / 500 // slower when zoomed in
+  yaw -= dx * sensitivity
   pitch += dy * sensitivity
   pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, pitch))
   lastX = e.clientX
@@ -63,22 +65,25 @@ function onPointerUp(e: PointerEvent) {
   dragging = false
   canvasRef.value?.releasePointerCapture(e.pointerId)
   // Only toggle play if user didn't drag
-  if (!didDrag) emit('click')
+  if (!didDrag)
+    emit('click')
 }
 
 function onWheel(e: WheelEvent) {
   e.preventDefault()
   fov += e.deltaY * 0.05
   fov = Math.max(MIN_FOV, Math.min(MAX_FOV, fov))
-  if (camera) camera.fov = fov
+  if (camera)
+    camera.fov = fov
   camera?.updateProjectionMatrix()
 }
 
 // ─── Three.js setup ───────────────────────────────────────────────────────────
 function initThree() {
-  if (!canvasRef.value) return
+  if (!canvasRef.value)
+    return
   const canvas = canvasRef.value
-  const w = canvas.clientWidth  || canvas.offsetWidth  || 800
+  const w = canvas.clientWidth || canvas.offsetWidth || 800
   const h = canvas.clientHeight || canvas.offsetHeight || 450
 
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -95,11 +100,13 @@ function initThree() {
 }
 
 function buildSphere() {
-  if (!props.videoEl || !scene) return
+  if (!props.videoEl || !scene)
+    return
 
   // Dispose old
   if (sphere) { scene.remove(sphere); sphere.geometry.dispose(); (sphere.material as THREE.Material).dispose() }
-  if (texture) texture.dispose()
+  if (texture)
+    texture.dispose()
 
   // VideoTexture — Three.js will call texImage2D every frame automatically
   texture = new THREE.VideoTexture(props.videoEl)
@@ -114,13 +121,13 @@ function buildSphere() {
 
   // Sphere geometry — large, viewed from inside
   const geo = new THREE.SphereGeometry(
-    500,   // radius
-    60,    // widthSegments
-    40,    // heightSegments
-    0,                   // phiStart  — start at 0
-    Math.PI,             // phiLength — only front 180° (half sphere)
+    500, // radius
+    60, // widthSegments
+    40, // heightSegments
+    0, // phiStart  — start at 0
+    Math.PI, // phiLength — only front 180° (half sphere)
     0,
-    Math.PI              // thetaLength — full vertical
+    Math.PI, // thetaLength — full vertical
   )
 
   // Flip normals so we see the inside
@@ -134,7 +141,8 @@ function buildSphere() {
 function startLoop() {
   function loop() {
     rafId = requestAnimationFrame(loop)
-    if (!renderer || !scene || !camera) return
+    if (!renderer || !scene || !camera)
+      return
 
     // Update texture from video every frame
     if (texture && props.videoEl && !props.videoEl.paused) {
@@ -142,12 +150,12 @@ function startLoop() {
     }
 
     // Apply yaw/pitch to camera
-    const yawRad   = THREE.MathUtils.degToRad(yaw)
+    const yawRad = THREE.MathUtils.degToRad(yaw)
     const pitchRad = THREE.MathUtils.degToRad(pitch)
     // Convert spherical to look-at direction
     const x = Math.sin(yawRad) * Math.cos(pitchRad)
     const y = Math.sin(pitchRad)
-    const z = -Math.cos(yawRad) * Math.cos(pitchRad)  // negative Z = forward
+    const z = -Math.cos(yawRad) * Math.cos(pitchRad) // negative Z = forward
     camera.lookAt(x, y, z)
 
     renderer.render(scene, camera)
@@ -156,7 +164,8 @@ function startLoop() {
 }
 
 function onResize() {
-  if (!canvasRef.value || !renderer || !camera) return
+  if (!canvasRef.value || !renderer || !camera)
+    return
   const w = canvasRef.value.clientWidth
   const h = canvasRef.value.clientHeight
   renderer.setSize(w, h, false)
@@ -171,7 +180,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (rafId !== null) cancelAnimationFrame(rafId)
+  if (rafId !== null)
+    cancelAnimationFrame(rafId)
   window.removeEventListener('resize', onResize)
   texture?.dispose()
   sphere?.geometry.dispose()
@@ -181,14 +191,15 @@ onUnmounted(() => {
 
 // Rebuild sphere when video element changes
 watch(() => props.videoEl, (el) => {
-  if (el) buildSphere()
+  if (el)
+    buildSphere()
 })
 </script>
 
 <template>
   <canvas
     ref="canvasRef"
-    class="w-full h-full block"
+    class="h-full w-full block"
     style="cursor: grab; touch-action: none;"
     :style="dragging ? 'cursor:grabbing' : 'cursor:grab'"
     @pointerdown="onPointerDown"

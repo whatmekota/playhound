@@ -20,7 +20,8 @@ let rafId: number | null = null
 let startTime: number | null = null
 
 function tick(ts: number) {
-  if (startTime === null) startTime = ts
+  if (startTime === null)
+    startTime = ts
   const t = (ts - startTime) / 1000
   const dm = config.depthMultiplier
 
@@ -45,7 +46,8 @@ function tick(ts: number) {
 
 export function useLFO() {
   function start() {
-    if (rafId !== null) return
+    if (rafId !== null)
+      return
     active.value = true
     rafId = requestAnimationFrame(tick)
   }

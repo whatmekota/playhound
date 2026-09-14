@@ -8,12 +8,13 @@ export async function openVideoFile(): Promise<File | null> {
       const [handle] = await (window as any).showOpenFilePicker({
         types: [{
           description: 'Video Files',
-          accept: { 'video/*': ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v', '.wmv', '.flv'] }
+          accept: { 'video/*': ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v', '.wmv', '.flv'] },
         }],
-        multiple: false
+        multiple: false,
       })
       return await handle.getFile()
-    } catch {
+    }
+    catch {
       return null // user cancelled
     }
   }
@@ -26,15 +27,15 @@ export async function openScriptFiles(): Promise<File[]> {
     try {
       const handles = await (window as any).showOpenFilePicker({
         types: [{ description: 'Funscript Files', accept: { 'application/json': ['.funscript'] } }],
-        multiple: true
+        multiple: true,
       })
       return Promise.all(handles.map((h: any) => h.getFile()))
-    } catch {
+    }
+    catch {
       return []
     }
   }
-  const file = await inputFilePicker(['.funscript'], true)
-  return file ? (Array.isArray(file) ? file : [file]) : []
+  return inputFilePicker(['.funscript'], true)
 }
 
 /** Open an entire directory and return all files in it — alias for openFolderInput */
@@ -44,13 +45,14 @@ export const openDirectory = openFolderInput
  * Open a folder picker and return both the files AND the directory handle
  * (handle can be stored in IDB and reused after refresh).
  */
-export async function openFolderWithHandle(): Promise<{ files: File[]; handle: FileSystemDirectoryHandle | null }> {
+export async function openFolderWithHandle(): Promise<{ files: File[], handle: FileSystemDirectoryHandle | null }> {
   if ('showDirectoryPicker' in window) {
     try {
       const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' })
       const files = await collectHandleFiles(dirHandle)
       return { files, handle: dirHandle }
-    } catch {
+    }
+    catch {
       return { files: [], handle: null }
     }
   }
@@ -64,15 +66,18 @@ export async function openFolderWithHandle(): Promise<{ files: File[]; handle: F
  * Returns null if permission is denied or API not available.
  */
 export async function reopenFromHandle(handle: FileSystemDirectoryHandle): Promise<File[] | null> {
-  if (!handle || !('queryPermission' in handle)) return null
+  if (!handle || !('queryPermission' in handle))
+    return null
   try {
     let perm = await (handle as any).queryPermission({ mode: 'read' })
     if (perm !== 'granted') {
       perm = await (handle as any).requestPermission({ mode: 'read' })
     }
-    if (perm !== 'granted') return null
+    if (perm !== 'granted')
+      return null
     return collectHandleFiles(handle)
-  } catch {
+  }
+  catch {
     return null
   }
 }
@@ -92,19 +97,21 @@ async function collectHandleFiles(dirHandle: any): Promise<File[]> {
   for await (const entry of dirHandle.values()) {
     if (entry.kind === 'file') {
       files.push(await entry.getFile())
-    } else if (entry.kind === 'directory') {
+    }
+    else if (entry.kind === 'directory') {
       // recurse one level for sub-folders (e.g. organised libraries)
       try {
         const sub = await collectHandleFiles(entry)
         files.push(...sub)
-      } catch {}
+      }
+      catch {}
     }
   }
   return files
 }
 
 function webkitDirInput(): Promise<File[]> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     ;(input as any).webkitdirectory = true
@@ -115,8 +122,11 @@ function webkitDirInput(): Promise<File[]> {
   })
 }
 
+function inputFilePicker(accept: string[]): Promise<File | null>
+function inputFilePicker(accept: string[], multiple: false): Promise<File | null>
+function inputFilePicker(accept: string[], multiple: true): Promise<File[]>
 function inputFilePicker(accept: string[], multiple = false): Promise<File | File[] | null> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = accept.join(',')
@@ -137,7 +147,8 @@ export const storage = {
     try {
       const raw = localStorage.getItem(key)
       return raw ? JSON.parse(raw) : null
-    } catch {
+    }
+    catch {
       return null
     }
   },
@@ -146,7 +157,7 @@ export const storage = {
   },
   delete(key: string) {
     localStorage.removeItem(key)
-  }
+  },
 }
 
 // ── Web Serial API ────────────────────────────────────────────────────────────
@@ -155,16 +166,19 @@ export const webSerial = {
   supported: 'serial' in navigator,
 
   async listPorts(): Promise<SerialPort[]> {
-    if (!this.supported) return []
+    if (!this.supported)
+      return []
     return (navigator as any).serial.getPorts()
   },
 
   async requestPort(): Promise<SerialPort | null> {
-    if (!this.supported) return null
+    if (!this.supported)
+      return null
     try {
       return await (navigator as any).serial.requestPort()
-    } catch {
+    }
+    catch {
       return null
     }
-  }
+  },
 }

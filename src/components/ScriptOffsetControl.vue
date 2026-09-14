@@ -12,8 +12,8 @@ function clamp(val: number) {
 }
 
 function setOffset(script: typeof scriptStore.scripts[0], val: string) {
-  const n = parseInt(val, 10)
-  script.offsetMs = isNaN(n) ? 0 : clamp(n)
+  const n = Number.parseInt(val, 10)
+  script.offsetMs = Number.isNaN(n) ? 0 : clamp(n)
 }
 
 function resetAll() {
@@ -24,14 +24,16 @@ function resetAll() {
 <template>
   <div class="relative">
     <button
-      class="btn-ghost text-xs px-2 py-1 font-mono"
+      class="btn-ghost text-xs font-mono px-2 py-1"
       :class="open ? 'text-accent-400 bg-accent-600/20' : 'text-white/40'"
       title="Script offset (ms)"
       @click="open = !open"
     >
-      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
       </svg>
       <span>Offset</span>
     </button>
@@ -39,15 +41,17 @@ function resetAll() {
     <Transition name="popup">
       <div
         v-if="open"
-        class="absolute bottom-full mb-2 right-0 z-50 rounded-xl border shadow-2xl p-3 w-64"
+        class="mb-2 p-3 border rounded-xl w-64 shadow-2xl bottom-full right-0 absolute z-50"
         style="background:var(--bg-850); border-color:var(--border)"
       >
-        <div class="flex items-center justify-between mb-2">
+        <div class="mb-2 flex items-center justify-between">
           <span class="text-xs font-medium" style="color:var(--text-muted)">Script Offset (ms)</span>
-          <button class="text-[10px] hover:opacity-80" style="color:var(--text-muted)" @click="resetAll">Reset all</button>
+          <button class="text-[10px] hover:opacity-80" style="color:var(--text-muted)" @click="resetAll">
+            Reset all
+          </button>
         </div>
 
-        <div v-if="!hasScripts" class="text-xs text-center py-2" style="color:var(--text-faint)">
+        <div v-if="!hasScripts" class="text-xs py-2 text-center" style="color:var(--text-faint)">
           No scripts loaded
         </div>
 
@@ -55,35 +59,39 @@ function resetAll() {
           <div
             v-for="script in scriptStore.scripts"
             :key="script.path + script.channel"
-            class="flex items-center gap-2"
+            class="flex gap-2 items-center"
           >
             <!-- Channel badge -->
-            <span class="text-[10px] font-mono w-6 shrink-0" style="color:var(--accent)">{{ script.channel }}</span>
+            <span class="text-[10px] font-mono shrink-0 w-6" style="color:var(--accent)">{{ script.channel }}</span>
             <!-- Label -->
             <span class="text-[11px] flex-1 truncate" style="color:var(--text-muted)" :title="script.label">
               {{ script.label }}
               <span v-if="script.isAlt" class="text-[9px] ml-1 opacity-60">({{ script.altName }})</span>
             </span>
             <!-- Offset input -->
-            <div class="flex items-center gap-1 shrink-0">
+            <div class="flex shrink-0 gap-1 items-center">
               <button
-                class="w-5 h-5 rounded flex items-center justify-center hover:opacity-80 transition-opacity text-xs"
+                class="text-xs rounded flex h-5 w-5 transition-opacity items-center justify-center hover:opacity-80"
                 style="background:var(--bg-700); color:var(--text)"
                 @click="script.offsetMs = clamp(script.offsetMs - 50)"
-              >−</button>
+              >
+                −
+              </button>
               <input
                 type="number"
                 :value="script.offsetMs"
-                class="w-16 text-center text-xs rounded py-0.5 focus:outline-none"
+                class="text-xs py-0.5 text-center rounded w-16 focus:outline-none"
                 style="background:var(--bg-900); border:1px solid var(--border); color:var(--text)"
                 step="50"
                 @change="setOffset(script, ($event.target as HTMLInputElement).value)"
-              />
+              >
               <button
-                class="w-5 h-5 rounded flex items-center justify-center hover:opacity-80 transition-opacity text-xs"
+                class="text-xs rounded flex h-5 w-5 transition-opacity items-center justify-center hover:opacity-80"
                 style="background:var(--bg-700); color:var(--text)"
                 @click="script.offsetMs = clamp(script.offsetMs + 50)"
-              >+</button>
+              >
+                +
+              </button>
             </div>
           </div>
         </div>
@@ -97,6 +105,15 @@ function resetAll() {
 </template>
 
 <style scoped>
-.popup-enter-active, .popup-leave-active { transition: opacity 0.1s, transform 0.1s; }
-.popup-enter-from, .popup-leave-to { opacity: 0; transform: translateY(4px); }
+.popup-enter-active,
+.popup-leave-active {
+  transition:
+    opacity 0.1s,
+    transform 0.1s;
+}
+.popup-enter-from,
+.popup-leave-to {
+  opacity: 0;
+  transform: translateY(4px);
+}
 </style>

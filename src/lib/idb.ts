@@ -11,19 +11,25 @@ const DB_VERSION = 3
 let db: IDBDatabase | null = null
 
 function openDB(): Promise<IDBDatabase> {
-  if (db) return Promise.resolve(db)
+  if (db)
+    return Promise.resolve(db)
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = (e) => {
+    req.onupgradeneeded = () => {
       const d = req.result
-      if (!d.objectStoreNames.contains('thumbs'))     d.createObjectStore('thumbs')
-      if (!d.objectStoreNames.contains('meta'))       d.createObjectStore('meta')
-      if (!d.objectStoreNames.contains('handles'))    d.createObjectStore('handles')
-      if (!d.objectStoreNames.contains('playlists'))  d.createObjectStore('playlists')
-      if (!d.objectStoreNames.contains('vidmeta'))    d.createObjectStore('vidmeta')
+      if (!d.objectStoreNames.contains('thumbs'))
+        d.createObjectStore('thumbs')
+      if (!d.objectStoreNames.contains('meta'))
+        d.createObjectStore('meta')
+      if (!d.objectStoreNames.contains('handles'))
+        d.createObjectStore('handles')
+      if (!d.objectStoreNames.contains('playlists'))
+        d.createObjectStore('playlists')
+      if (!d.objectStoreNames.contains('vidmeta'))
+        d.createObjectStore('vidmeta')
     }
     req.onsuccess = () => { db = req.result; resolve(db) }
-    req.onerror   = () => reject(req.error)
+    req.onerror = () => reject(req.error)
   })
 }
 
@@ -36,7 +42,7 @@ export async function idbGet<T>(store: string, key: string): Promise<T | undefin
   return new Promise((resolve, reject) => {
     const req = tx(store, 'readonly').get(key)
     req.onsuccess = () => resolve(req.result)
-    req.onerror   = () => reject(req.error)
+    req.onerror = () => reject(req.error)
   })
 }
 
@@ -45,7 +51,7 @@ export async function idbSet(store: string, key: string, value: unknown): Promis
   return new Promise((resolve, reject) => {
     const req = tx(store, 'readwrite').put(value, key)
     req.onsuccess = () => resolve()
-    req.onerror   = () => reject(req.error)
+    req.onerror = () => reject(req.error)
   })
 }
 
@@ -67,9 +73,9 @@ export const handleDb = {
     return new Promise<void>((resolve, reject) => {
       const req = db!.transaction('handles', 'readwrite').objectStore('handles').delete(key)
       req.onsuccess = () => resolve()
-      req.onerror   = () => reject(req.error)
+      req.onerror = () => reject(req.error)
     })
-  }
+  },
 }
 
 export const playlistDb = {
@@ -80,10 +86,10 @@ export const playlistDb = {
     return new Promise<void>((resolve, reject) => {
       const req = db!.transaction('playlists', 'readwrite').objectStore('playlists').delete(key)
       req.onsuccess = () => resolve()
-      req.onerror   = () => reject(req.error)
+      req.onerror = () => reject(req.error)
     })
   },
-  getAll: async (): Promise<{ key: string; value: any }[]> => {
+  getAll: async (): Promise<{ key: string, value: any }[]> => {
     await openDB()
     return new Promise((resolve, reject) => {
       const store = db!.transaction('playlists', 'readonly').objectStore('playlists')
@@ -94,9 +100,9 @@ export const playlistDb = {
         (e.target as any).result.forEach((v: any) => values.push(v))
         resolve(keys.map((k, i) => ({ key: k, value: values[i] })))
       }
-      store.getAll().onerror = () => reject()
+      store.getAll().onerror = () => reject(new Error('IndexedDB getAll failed'))
     })
-  }
+  },
 }
 
 /** Per-video user-editable metadata (merged with script metadata as source of truth) */
@@ -119,4 +125,3 @@ export const videoMetaDb = {
   get: (filename: string) => idbGet<VideoMeta>('vidmeta', filename),
   set: (filename: string, value: VideoMeta) => idbSet('vidmeta', filename, value),
 }
-

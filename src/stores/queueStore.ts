@@ -1,3 +1,4 @@
+import type { VideoEntry } from './libraryStore'
 /**
  * Queue store — manages the current playback queue.
  *
@@ -7,23 +8,23 @@
  * index, repeat mode and shuffle state.
  */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import type { VideoEntry } from './libraryStore'
+import { computed, ref } from 'vue'
 
 export type RepeatMode = 'off' | 'one' | 'all'
 
 const LS_KEY = 'mwhoplayer:queue'
 function loadPrefs() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') } catch { return {} }
+  try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') }
+  catch { return {} }
 }
 
 export const useQueueStore = defineStore('queue', () => {
   const prefs = loadPrefs()
 
-  const queue       = ref<VideoEntry[]>([])
-  const currentIdx  = ref(-1)
-  const repeatMode  = ref<RepeatMode>(prefs.repeat ?? 'off')
-  const shuffle     = ref<boolean>(prefs.shuffle ?? false)
+  const queue = ref<VideoEntry[]>([])
+  const currentIdx = ref(-1)
+  const repeatMode = ref<RepeatMode>(prefs.repeat ?? 'off')
+  const shuffle = ref<boolean>(prefs.shuffle ?? false)
   /** Shuffled index order (indices into queue), rebuilt when shuffle is toggled on */
   const shuffleOrder = ref<number[]>([])
 
@@ -39,7 +40,8 @@ export const useQueueStore = defineStore('queue', () => {
 
   function setShuffle(on: boolean) {
     shuffle.value = on
-    if (on) buildShuffleOrder()
+    if (on)
+      buildShuffleOrder()
     savePrefs()
   }
 
@@ -59,18 +61,21 @@ export const useQueueStore = defineStore('queue', () => {
     queue.value = entries
     const idx = entries.findIndex(e => e.name === startEntry.name)
     currentIdx.value = idx >= 0 ? idx : 0
-    if (shuffle.value) buildShuffleOrder()
+    if (shuffle.value)
+      buildShuffleOrder()
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
   const current = computed(() =>
-    currentIdx.value >= 0 ? queue.value[currentIdx.value] ?? null : null
+    currentIdx.value >= 0 ? queue.value[currentIdx.value] ?? null : null,
   )
 
   /** Returns the next VideoEntry to play, or null if nothing follows */
   function peekNext(): VideoEntry | null {
-    if (!queue.value.length) return null
-    if (repeatMode.value === 'one') return queue.value[currentIdx.value] ?? null
+    if (!queue.value.length)
+      return null
+    if (repeatMode.value === 'one')
+      return queue.value[currentIdx.value] ?? null
 
     if (shuffle.value && shuffleOrder.value.length) {
       const pos = shuffleOrder.value.indexOf(currentIdx.value)
@@ -81,25 +86,30 @@ export const useQueueStore = defineStore('queue', () => {
       // Reached end of shuffle order
       if (repeatMode.value === 'all') {
         buildShuffleOrder()
-        return queue.value[shuffleOrder.value[1]] ?? null  // [0] is current
+        return queue.value[shuffleOrder.value[1]] ?? null // [0] is current
       }
       return null
     }
 
     const next = currentIdx.value + 1
-    if (next < queue.value.length) return queue.value[next] ?? null
-    if (repeatMode.value === 'all') return queue.value[0] ?? null
+    if (next < queue.value.length)
+      return queue.value[next] ?? null
+    if (repeatMode.value === 'all')
+      return queue.value[0] ?? null
     return null
   }
 
   function peekPrev(): VideoEntry | null {
-    if (!queue.value.length) return null
-    if (repeatMode.value === 'one') return queue.value[currentIdx.value] ?? null
+    if (!queue.value.length)
+      return null
+    if (repeatMode.value === 'one')
+      return queue.value[currentIdx.value] ?? null
 
     if (shuffle.value && shuffleOrder.value.length) {
       const pos = shuffleOrder.value.indexOf(currentIdx.value)
       const prevPos = pos - 1
-      if (prevPos >= 0) return queue.value[shuffleOrder.value[prevPos]] ?? null
+      if (prevPos >= 0)
+        return queue.value[shuffleOrder.value[prevPos]] ?? null
       if (repeatMode.value === 'all') {
         return queue.value[shuffleOrder.value[shuffleOrder.value.length - 1]] ?? null
       }
@@ -107,27 +117,32 @@ export const useQueueStore = defineStore('queue', () => {
     }
 
     const prev = currentIdx.value - 1
-    if (prev >= 0) return queue.value[prev] ?? null
-    if (repeatMode.value === 'all') return queue.value[queue.value.length - 1] ?? null
+    if (prev >= 0)
+      return queue.value[prev] ?? null
+    if (repeatMode.value === 'all')
+      return queue.value[queue.value.length - 1] ?? null
     return null
   }
 
   /** Advance to next and return it */
   function next(): VideoEntry | null {
     const entry = peekNext()
-    if (!entry) return null
+    if (!entry)
+      return null
     currentIdx.value = queue.value.indexOf(entry)
     if (shuffle.value) {
       const pos = shuffleOrder.value.indexOf(currentIdx.value)
       // rotate so current is at head
-      if (pos > 0) shuffleOrder.value = [...shuffleOrder.value.slice(pos), ...shuffleOrder.value.slice(0, pos)]
+      if (pos > 0)
+        shuffleOrder.value = [...shuffleOrder.value.slice(pos), ...shuffleOrder.value.slice(0, pos)]
     }
     return entry
   }
 
   function prev(): VideoEntry | null {
     const entry = peekPrev()
-    if (!entry) return null
+    if (!entry)
+      return null
     currentIdx.value = queue.value.indexOf(entry)
     return entry
   }
@@ -136,9 +151,19 @@ export const useQueueStore = defineStore('queue', () => {
   const hasPrev = computed(() => peekPrev() !== null)
 
   return {
-    queue, currentIdx, repeatMode, shuffle,
-    current, hasNext, hasPrev,
-    setQueue, next, prev, peekNext, peekPrev,
-    setRepeat, setShuffle,
+    queue,
+    currentIdx,
+    repeatMode,
+    shuffle,
+    current,
+    hasNext,
+    hasPrev,
+    setQueue,
+    next,
+    prev,
+    peekNext,
+    peekPrev,
+    setRepeat,
+    setShuffle,
   }
 })

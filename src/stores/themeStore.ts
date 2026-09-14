@@ -9,10 +9,10 @@ export interface Theme {
 }
 
 export const THEMES: Theme[] = [
-  { id: 'dark',       label: 'Dark' },
-  { id: 'light',      label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'light', label: 'Light' },
   { id: 'catppuccin', label: 'Catppuccin' },
-  { id: 'dracula',    label: 'Dracula' },
+  { id: 'dracula', label: 'Dracula' },
 ]
 
 export const useThemeStore = defineStore('theme', () => {

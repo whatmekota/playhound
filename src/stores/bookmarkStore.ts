@@ -4,7 +4,7 @@ import { ref, watch } from 'vue'
 export interface Bookmark {
   id: string
   videoName: string
-  time: number      // seconds
+  time: number // seconds
   label: string
   createdAt: number
 }
@@ -12,7 +12,8 @@ export interface Bookmark {
 const STORAGE_KEY = 'mwhoplayer:bookmarks'
 
 function load(): Bookmark[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') } catch { return [] }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') }
+  catch { return [] }
 }
 
 export const useBookmarkStore = defineStore('bookmarks', () => {
@@ -42,14 +43,16 @@ export const useBookmarkStore = defineStore('bookmarks', () => {
 
   function rename(id: string, label: string) {
     const b = bookmarks.value.find(x => x.id === id)
-    if (b) b.label = label
+    if (b)
+      b.label = label
   }
 
   return { bookmarks, forVideo, add, remove, rename }
 })
 
 function formatTime(s: number) {
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
-  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
-  return `${m}:${String(sec).padStart(2,'0')}`
+  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60)
+  if (h > 0)
+    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  return `${m}:${String(sec).padStart(2, '0')}`
 }

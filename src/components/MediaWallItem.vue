@@ -136,12 +136,12 @@ const youtubeUrl = computed(() => {
   >
     <!-- Grab handle -->
     <div
-      class="absolute top-1.5 left-1.5 w-7 h-7 rounded-md z-20 flex items-center justify-center transition-opacity"
+      class="rounded-md flex h-7 w-7 transition-opacity items-center left-1.5 top-1.5 justify-center absolute z-20"
       :class="isDragging ? 'opacity-100 cursor-grabbing' : 'cursor-grab opacity-30 hover:opacity-90'"
       style="background: rgba(0,0,0,0.55); touch-action: none"
       @pointerdown.stop="startDrag"
     >
-      <div class="i-carbon-move text-white text-sm" />
+      <div class="i-carbon-move text-sm text-white" />
     </div>
 
     <!-- Media content -->

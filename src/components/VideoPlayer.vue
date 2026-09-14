@@ -1,24 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { usePlayerStore } from '~/stores/playerStore'
-import { useScriptStore } from '~/stores/scriptStore'
-import { useQueueStore } from '~/stores/queueStore'
-import { useLibraryStore } from '~/stores/libraryStore'
-import { useVideoSync } from '~/composables/useVideoSync'
-import { useLoopSection } from '~/composables/useLoopSection'
-import { useFunscript } from '~/composables/useFunscript'
-import { useTCode } from '~/composables/useTCode'
-import SbsViewer from './SbsViewer.vue'
 import type { VideoEntry } from '~/stores/libraryStore'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useLoopSection } from '~/composables/useLoopSection'
+import { useVideoSync } from '~/composables/useVideoSync'
+import { useLibraryStore } from '~/stores/libraryStore'
+import { usePlayerStore } from '~/stores/playerStore'
+import { useQueueStore } from '~/stores/queueStore'
+import { useScriptStore } from '~/stores/scriptStore'
+import SbsViewer from './SbsViewer.vue'
 
-const emit = defineEmits<{ ended: []; select: [entry: VideoEntry]; queue: [entries: VideoEntry[], selected: VideoEntry] }>()
+const emit = defineEmits<{ ended: [], select: [entry: VideoEntry], queue: [entries: VideoEntry[], selected: VideoEntry] }>()
 const playerStore = usePlayerStore()
 const scriptStore = useScriptStore()
 const queueStore = useQueueStore()
 const library = useLibraryStore()
 const { attach, start, stop, onSeeked } = useVideoSync()
 const { checkLoop } = useLoopSection()
-const { homeAllAxes } = useTCode()
 
 // ─── Fullscreen sidebar ───────────────────────────────────────────────────────
 const fsSidebarHover = ref(false)
@@ -32,31 +29,35 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const containerEl = ref<HTMLDivElement | null>(null)
 const isBuffering = ref(false)
 
-function onWaiting()    { isBuffering.value = true }
-function onCanPlay()    { isBuffering.value = false }
-function onLoadStart()  { isBuffering.value = true }
+function onWaiting() { isBuffering.value = true }
+function onCanPlay() { isBuffering.value = false }
+function onLoadStart() { isBuffering.value = true }
 
 // ─── Fullscreen overlay seek bar ──────────────────────────────────────────────
 const fsBarEl = ref<HTMLDivElement | null>(null)
 const fsCanvasEl = ref<HTMLCanvasElement | null>(null)
-const fsHover = ref(false)   // bottom-zone hover → expand bar
+const fsHover = ref(false) // bottom-zone hover → expand bar
 const fsDragging = ref(false)
 
 function formatTime(s: number) {
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
-  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
-  return `${m}:${String(sec).padStart(2,'0')}`
+  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60)
+  if (h > 0)
+    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  return `${m}:${String(sec).padStart(2, '0')}`
 }
 
 function drawFsBar() {
   const canvas = fsCanvasEl.value
-  if (!canvas) return
+  if (!canvas)
+    return
   const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const W = canvas.width, H = canvas.height
+  if (!ctx)
+    return
+  const W = canvas.width; const H = canvas.height
   ctx.clearRect(0, 0, W, H)
   const duration = playerStore.videoDuration
-  if (duration === 0) return
+  if (duration === 0)
+    return
 
   // background track
   ctx.fillStyle = 'rgba(255,255,255,0.15)'
@@ -72,7 +73,8 @@ function drawFsBar() {
     for (let i = 0; i < actions.length; i++) {
       const x = (actions[i].at / (duration * 1000)) * W
       const y = H - actions[i].pos * H
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+      if (i === 0)
+        ctx.moveTo(x, y); else ctx.lineTo(x, y)
     }
     ctx.stroke()
   }
@@ -105,19 +107,21 @@ function drawFsBar() {
 }
 
 watch(
-  [() => playerStore.currentTime, () => playerStore.loopStart, () => playerStore.loopEnd,
-   () => scriptStore.primaryScript, () => playerStore.videoDuration, fsHover],
-  drawFsBar, { flush: 'post' }
+  [() => playerStore.currentTime, () => playerStore.loopStart, () => playerStore.loopEnd, () => scriptStore.primaryScript, () => playerStore.videoDuration, fsHover],
+  drawFsBar,
+  { flush: 'post' },
 )
 
 function fsPosToTime(clientX: number) {
-  if (!fsCanvasEl.value) return 0
+  if (!fsCanvasEl.value)
+    return 0
   const rect = fsCanvasEl.value.getBoundingClientRect()
   return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * playerStore.videoDuration
 }
 
 function onFsBarMouseDown(e: MouseEvent) {
-  if (e.button !== 0) return
+  if (e.button !== 0)
+    return
   fsDragging.value = true
   const t = fsPosToTime(e.clientX)
   seek(t)
@@ -136,16 +140,17 @@ function onFsBarMouseUp() { fsDragging.value = false }
 // resize canvas when bar is shown / window resizes
 let fsResizeObs: ResizeObserver | null = null
 
-
 // ─── Video event handlers ─────────────────────────────────────────────────────
 
 function onLoadedMetadata() {
-  if (!videoEl.value) return
+  if (!videoEl.value)
+    return
   playerStore.videoDuration = videoEl.value.duration
 }
 
 function onTimeUpdate() {
-  if (!videoEl.value) return
+  if (!videoEl.value)
+    return
   playerStore.currentTime = videoEl.value.currentTime
 
   // A-B loop check
@@ -186,13 +191,16 @@ function pause() {
 }
 
 function togglePlay() {
-  if (!videoEl.value) return
-  if (videoEl.value.paused) videoEl.value.play()
+  if (!videoEl.value)
+    return
+  if (videoEl.value.paused)
+    videoEl.value.play()
   else videoEl.value.pause()
 }
 
 function seek(seconds: number) {
-  if (!videoEl.value) return
+  if (!videoEl.value)
+    return
   videoEl.value.currentTime = Math.max(0, Math.min(playerStore.videoDuration, seconds))
 }
 
@@ -201,20 +209,24 @@ function seekRelative(delta: number) {
 }
 
 function setSpeed(speed: number) {
-  if (!videoEl.value) return
+  if (!videoEl.value)
+    return
   playerStore.playbackSpeed = speed
   videoEl.value.playbackRate = speed
 }
 
 function setVolume(vol: number) {
-  if (!videoEl.value) return
+  if (!videoEl.value)
+    return
   playerStore.volume = vol
   videoEl.value.volume = vol
-  if (vol > 0) playerStore.isMuted = false
+  if (vol > 0)
+    playerStore.isMuted = false
 }
 
 function toggleMute() {
-  if (!videoEl.value) return
+  if (!videoEl.value)
+    return
   playerStore.isMuted = !playerStore.isMuted
   videoEl.value.muted = playerStore.isMuted
 }
@@ -223,7 +235,8 @@ function toggleMute() {
 
 function onKeyDown(e: KeyboardEvent) {
   // Don't capture if focus is in an input
-  if ((e.target as HTMLElement).tagName === 'INPUT') return
+  if ((e.target as HTMLElement).tagName === 'INPUT')
+    return
 
   switch (e.code) {
     case 'Space':
@@ -275,7 +288,8 @@ const speedOsd = ref(false)
 let speedOsdTimer: ReturnType<typeof setTimeout> | null = null
 function showSpeedOsd() {
   speedOsd.value = true
-  if (speedOsdTimer) clearTimeout(speedOsdTimer)
+  if (speedOsdTimer)
+    clearTimeout(speedOsdTimer)
   speedOsdTimer = setTimeout(() => { speedOsd.value = false }, 1200)
 }
 
@@ -283,7 +297,8 @@ function toggleFullscreen() {
   if (!document.fullscreenElement) {
     containerEl.value?.requestFullscreen()
     playerStore.isFullscreen = true
-  } else {
+  }
+  else {
     document.exitFullscreen()
     playerStore.isFullscreen = false
   }
@@ -292,15 +307,18 @@ function toggleFullscreen() {
 // ─── Watch for external store changes ────────────────────────────────────────
 
 watch(() => playerStore.playbackSpeed, (speed) => {
-  if (videoEl.value) videoEl.value.playbackRate = speed
+  if (videoEl.value)
+    videoEl.value.playbackRate = speed
 })
 
 watch(() => playerStore.volume, (vol) => {
-  if (videoEl.value) videoEl.value.volume = vol
+  if (videoEl.value)
+    videoEl.value.volume = vol
 })
 
 watch(() => playerStore.isMuted, (muted) => {
-  if (videoEl.value) videoEl.value.muted = muted
+  if (videoEl.value)
+    videoEl.value.muted = muted
 })
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -325,7 +343,7 @@ onMounted(() => {
 // (it's v-if'd on videoUrl, so it's a new DOM node on each video load)
 watch(videoEl, (el) => {
   if (el) {
-    isBuffering.value = true  // new element = new video loading
+    isBuffering.value = true // new element = new video loading
     attach(el)
     el.volume = playerStore.volume
     el.muted = playerStore.isMuted
@@ -366,27 +384,31 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
 <template>
   <div
     ref="containerEl"
-    class="relative w-full h-full bg-black flex items-center justify-center overflow-hidden"
+    class="bg-black flex h-full w-full items-center justify-center relative overflow-hidden"
     @mousemove="playerStore.showControls()"
     @dblclick.prevent="toggleFullscreen()"
   >
     <!-- No video loaded state -->
     <div
       v-if="!playerStore.videoUrl"
-      class="flex flex-col items-center gap-3 text-white/30 select-none pointer-events-none"
+      class="text-white/30 flex flex-col gap-3 pointer-events-none select-none items-center"
     >
-      <svg class="w-20 h-20 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
-          d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+      <svg class="opacity-30 h-20 w-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path
+          stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+          d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
+        />
       </svg>
-      <p class="text-sm">Drop a video file or use File → Open</p>
+      <p class="text-sm">
+        Drop a video file or use File → Open
+      </p>
     </div>
 
     <!-- Video element — hidden visually (but alive) when SBS 180° is on -->
     <video
       v-if="playerStore.videoUrl"
       ref="videoEl"
-      class="w-full h-full object-contain"
+      class="h-full w-full object-contain"
       :class="{ 'invisible absolute': playerStore.sbs180 }"
       :src="playerStore.videoUrl"
       :volume="playerStore.volume"
@@ -407,8 +429,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
     <!-- 180° SBS Three.js viewer overlaid on top of the hidden video -->
     <SbsViewer
       v-if="playerStore.sbs180 && playerStore.videoUrl"
-      :videoEl="videoEl"
-      class="absolute inset-0 z-10"
+      :video-el="videoEl"
+      class="inset-0 absolute z-10"
       @click="togglePlay()"
       @dblclick="toggleFullscreen()"
       @mousemove="playerStore.showControls()"
@@ -418,11 +440,11 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
     <Transition name="fade-quick">
       <div
         v-if="!playerStore.isPlaying && playerStore.videoUrl"
-        class="absolute inset-0 flex items-center justify-center pointer-events-none"
+        class="flex pointer-events-none items-center inset-0 justify-center absolute"
       >
-        <div class="bg-black/40 rounded-full p-5">
-          <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+        <div class="p-5 rounded-full bg-black/40">
+          <svg class="text-white h-10 w-10" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
           </svg>
         </div>
       </div>
@@ -430,7 +452,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
 
     <!-- Speed OSD -->
     <Transition name="fade-quick">
-      <div v-if="speedOsd" class="absolute top-4 right-4 bg-black/60 text-white text-sm font-mono px-3 py-1.5 rounded-lg pointer-events-none">
+      <div v-if="speedOsd" class="text-sm text-white font-mono px-3 py-1.5 rounded-lg bg-black/60 pointer-events-none right-4 top-4 absolute">
         {{ playerStore.playbackSpeed }}×
       </div>
     </Transition>
@@ -439,11 +461,11 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
     <Transition name="fade-quick">
       <div
         v-if="isBuffering && playerStore.videoUrl"
-        class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-3"
+        class="flex flex-col gap-3 pointer-events-none items-center inset-0 justify-center absolute"
       >
-        <div class="bg-black/50 rounded-2xl px-6 py-4 flex flex-col items-center gap-3">
-          <div class="w-10 h-10 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
-          <span class="text-white/70 text-xs font-medium tracking-wide">Buffering…</span>
+        <div class="px-6 py-4 rounded-2xl bg-black/50 flex flex-col gap-3 items-center">
+          <div class="border-2 border-white/20 border-t-white/80 rounded-full h-10 w-10 animate-spin" />
+          <span class="text-xs text-white/70 tracking-wide font-medium">Buffering…</span>
         </div>
       </div>
     </Transition>
@@ -452,75 +474,90 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
     <Transition name="fs-bar">
       <div
         v-if="playerStore.isFullscreen && playerStore.videoUrl"
-        class="absolute bottom-0 left-0 right-0 z-30 group/fsbar"
+        class="group/fsbar bottom-0 left-0 right-0 absolute z-30"
         @mouseenter="fsHover = true; playerStore.showControls()"
         @mouseleave="fsHover = false"
       >
         <!-- gradient backdrop — expands with the bar -->
-        <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none transition-all duration-200"
-          :class="fsHover || !playerStore.isPlaying ? 'h-full' : 'h-16'" />
+        <div
+          class="pointer-events-none transition-all duration-200 inset-0 absolute from-black/80 to-transparent via-black/30 bg-gradient-to-t"
+          :class="fsHover || !playerStore.isPlaying ? 'h-full' : 'h-16'"
+        />
 
         <!-- Controls row — shown when hovering or paused -->
         <Transition name="fade-quick">
-          <div v-if="fsHover || !playerStore.isPlaying"
-            class="relative flex items-center gap-2 px-4 pb-2 pt-1 text-white select-none">
-
+          <div
+            v-if="fsHover || !playerStore.isPlaying"
+            class="text-white px-4 pb-2 pt-1 flex gap-2 select-none items-center relative"
+          >
             <!-- Prev -->
-            <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/20 transition-colors shrink-0 disabled:opacity-30"
-              :disabled="!queueStore.hasPrev" @click.stop="$emit('ended')">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+            <button
+              class="rounded flex shrink-0 h-7 w-7 transition-colors items-center justify-center hover:bg-white/20 disabled:opacity-30"
+              :disabled="!queueStore.hasPrev" @click.stop="$emit('ended')"
+            >
+              <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg>
             </button>
 
             <!-- Play/Pause -->
-            <button class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors shrink-0"
-              @click.stop="togglePlay()">
-              <svg v-if="!playerStore.isPlaying" class="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-              <svg v-else class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <button
+              class="rounded-full flex shrink-0 h-8 w-8 transition-colors items-center justify-center hover:bg-white/20"
+              @click.stop="togglePlay()"
+            >
+              <svg v-if="!playerStore.isPlaying" class="ml-0.5 h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+              <svg v-else class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
             </button>
 
             <!-- Next -->
-            <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/20 transition-colors shrink-0 disabled:opacity-30"
-              :disabled="!queueStore.hasNext" @click.stop="$emit('ended')">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm2.5-6l5.5 4V8z"/><path d="M16 6h2v12h-2z"/></svg>
+            <button
+              class="rounded flex shrink-0 h-7 w-7 transition-colors items-center justify-center hover:bg-white/20 disabled:opacity-30"
+              :disabled="!queueStore.hasNext" @click.stop="$emit('ended')"
+            >
+              <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm2.5-6l5.5 4V8z" /><path d="M16 6h2v12h-2z" /></svg>
             </button>
 
             <!-- Time -->
-            <span class="text-xs font-mono text-white/80 shrink-0">
+            <span class="text-xs text-white/80 font-mono shrink-0">
               {{ formatTime(playerStore.currentTime) }} / {{ formatTime(playerStore.videoDuration) }}
             </span>
 
             <div class="flex-1" />
 
             <!-- Shuffle indicator -->
-            <button class="w-7 h-7 flex items-center justify-center rounded transition-colors shrink-0"
+            <button
+              class="rounded flex shrink-0 h-7 w-7 transition-colors items-center justify-center"
               :class="queueStore.shuffle ? 'text-accent-400 bg-accent-600/20' : 'hover:bg-white/20 text-white/50'"
-              @click.stop="queueStore.setShuffle(!queueStore.shuffle)">
-              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+              @click.stop="queueStore.setShuffle(!queueStore.shuffle)"
+            >
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4" />
               </svg>
             </button>
 
             <!-- Speed badge -->
-            <span v-if="playerStore.playbackSpeed !== 1" class="text-xs font-mono text-accent-400 shrink-0">
+            <span v-if="playerStore.playbackSpeed !== 1" class="text-xs text-accent-400 font-mono shrink-0">
               {{ playerStore.playbackSpeed }}×
             </span>
 
             <!-- Mute -->
-            <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/20 transition-colors shrink-0"
-              @click.stop="toggleMute()">
-              <svg v-if="playerStore.isMuted || playerStore.volume===0" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4"/>
+            <button
+              class="rounded flex shrink-0 h-7 w-7 transition-colors items-center justify-center hover:bg-white/20"
+              @click.stop="toggleMute()"
+            >
+              <svg v-if="playerStore.isMuted || playerStore.volume === 0" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l-4-4m0 4l4-4" />
               </svg>
-              <svg v-else class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+              <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" />
               </svg>
             </button>
 
             <!-- Exit fullscreen -->
-            <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-white/20 transition-colors shrink-0"
-              @click.stop="toggleFullscreen()">
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9L4 4m0 0v4m0-4h4M15 9l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0v-4m0 4h4M15 15l5 5m0 0v-4m0 4h-4"/>
+            <button
+              class="rounded flex shrink-0 h-7 w-7 transition-colors items-center justify-center hover:bg-white/20"
+              @click.stop="toggleFullscreen()"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9L4 4m0 0v4m0-4h4M15 9l5-5m0 0v4m0-4h-4M9 15l-5 5m0 0v-4m0 4h4M15 15l5 5m0 0v-4m0 4h-4" />
               </svg>
             </button>
           </div>
@@ -529,56 +566,63 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         <!-- Seek bar -->
         <div
           ref="fsBarEl"
-          class="relative w-full cursor-pointer transition-all duration-200 ease-out"
+          class="w-full cursor-pointer transition-all duration-200 ease-out relative"
           :class="fsHover || !playerStore.isPlaying ? 'h-10' : 'h-1'"
           @mousedown.stop="onFsBarMouseDown"
         >
-          <canvas ref="fsCanvasEl" class="absolute inset-0 w-full h-full" />
+          <canvas ref="fsCanvasEl" class="h-full w-full inset-0 absolute" />
         </div>
       </div>
     </Transition>
 
     <!-- ─── Fullscreen right sidebar (library) ────────────────────────────── -->
     <Transition name="fs-sidebar">
-      <div v-if="playerStore.isFullscreen && library.hasVideos"
-        class="absolute top-0 right-0 bottom-0 z-40 flex"
+      <div
+        v-if="playerStore.isFullscreen && library.hasVideos"
+        class="flex bottom-0 right-0 top-0 absolute z-40"
         @mouseenter="fsSidebarHover = true; playerStore.showControls()"
-        @mouseleave="fsSidebarHover = false">
-
+        @mouseleave="fsSidebarHover = false"
+      >
         <!-- Hover trigger strip -->
-        <div class="w-3 h-full" />
+        <div class="h-full w-3" />
 
         <!-- Sidebar panel — slides in on hover -->
         <Transition name="fs-sidebar-panel">
-          <div v-if="fsSidebarHover"
-            class="w-72 h-full bg-black/85 backdrop-blur-md border-l border-white/10 flex flex-col shadow-2xl">
+          <div
+            v-if="fsSidebarHover"
+            class="border-l border-white/10 bg-black/85 flex flex-col h-full w-72 shadow-2xl backdrop-blur-md"
+          >
             <!-- Header -->
-            <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 shrink-0">
-              <svg class="w-3.5 h-3.5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-              <span class="text-xs font-medium text-white/60 flex-1">Library</span>
+            <div class="px-3 py-2 border-b border-white/10 flex shrink-0 gap-2 items-center">
+              <svg class="text-white/40 h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" /></svg>
+              <span class="text-xs text-white/60 font-medium flex-1">Library</span>
               <span class="text-[10px] text-white/25">{{ library.videos.length }} videos</span>
             </div>
             <!-- Search -->
             <div class="px-2 py-1.5 border-b border-white/5 shrink-0">
-              <input v-model="fsSidebarSearch" type="text" placeholder="Search…" class="input w-full py-1 h-7 text-xs" @click.stop />
+              <input v-model="fsSidebarSearch" type="text" placeholder="Search…" class="input text-xs py-1 h-7 w-full" @click.stop>
             </div>
             <!-- List -->
             <div class="flex-1 overflow-y-auto" @click.stop>
-              <div v-for="entry in fsSidebarFiltered" :key="entry.name"
-                class="group flex items-center gap-2 px-3 py-2 hover:bg-white/10 transition-colors cursor-pointer border-b border-white/[0.04]"
+              <div
+                v-for="entry in fsSidebarFiltered" :key="entry.name"
+                class="group px-3 py-2 border-b border-white/[0.04] flex gap-2 cursor-pointer transition-colors items-center hover:bg-white/10"
                 :class="playerStore.videoPath?.endsWith(entry.name) ? 'bg-accent-600/20' : ''"
-                @click.stop="emit('select', entry); emit('queue', fsSidebarFiltered, entry)">
-                <div class="w-12 h-7 rounded bg-surface-800 shrink-0 overflow-hidden">
-                  <img v-if="entry.thumbnailUrl" :src="entry.thumbnailUrl" class="w-full h-full object-cover" />
-                  <div v-else class="w-full h-full flex items-center justify-center">
-                    <svg class="w-3 h-3 text-white/15" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                @click.stop="emit('select', entry); emit('queue', fsSidebarFiltered, entry)"
+              >
+                <div class="rounded bg-surface-800 shrink-0 h-7 w-12 overflow-hidden">
+                  <img v-if="entry.thumbnailUrl" :src="entry.thumbnailUrl" class="h-full w-full object-cover">
+                  <div v-else class="flex h-full w-full items-center justify-center">
+                    <svg class="text-white/15 h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                   </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="text-[11px] text-white/70 group-hover:text-white truncate transition-colors">{{ entry.basename }}</p>
-                  <div class="flex items-center gap-1 mt-0.5">
-                    <span v-if="entry.hasScript" class="text-[9px] text-accent-300">✦</span>
-                    <span class="text-[9px] text-white/25">{{ (entry.file.size/1024/1024).toFixed(0) }}MB</span>
+                  <p class="text-[11px] text-white/70 truncate transition-colors group-hover:text-white">
+                    {{ entry.basename }}
+                  </p>
+                  <div class="mt-0.5 flex gap-1 items-center">
+                    <span v-if="entry.hasScript" class="text-accent-300 text-[9px]">✦</span>
+                    <span class="text-[9px] text-white/25">{{ (entry.file.size / 1024 / 1024).toFixed(0) }}MB</span>
                   </div>
                 </div>
               </div>
@@ -591,22 +635,30 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
 </template>
 
 <style scoped>
-.fade-quick-enter-active, .fade-quick-leave-active {
+.fade-quick-enter-active,
+.fade-quick-leave-active {
   transition: opacity 0.15s;
 }
-.fade-quick-enter-from, .fade-quick-leave-to {
+.fade-quick-enter-from,
+.fade-quick-leave-to {
   opacity: 0;
 }
-.fs-bar-enter-active, .fs-bar-leave-active {
+.fs-bar-enter-active,
+.fs-bar-leave-active {
   transition: opacity 0.3s ease;
 }
-.fs-bar-enter-from, .fs-bar-leave-to {
+.fs-bar-enter-from,
+.fs-bar-leave-to {
   opacity: 0;
 }
-.fs-sidebar-panel-enter-active, .fs-sidebar-panel-leave-active {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+.fs-sidebar-panel-enter-active,
+.fs-sidebar-panel-leave-active {
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
-.fs-sidebar-panel-enter-from, .fs-sidebar-panel-leave-to {
+.fs-sidebar-panel-enter-from,
+.fs-sidebar-panel-leave-to {
   transform: translateX(100%);
   opacity: 0;
 }

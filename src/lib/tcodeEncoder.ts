@@ -3,8 +3,8 @@
 
 export interface TCodeCommand {
   channel: string
-  position: number   // 0–1 normalized
-  interval: number   // milliseconds
+  position: number // 0–1 normalized
+  interval: number // milliseconds
 }
 
 export interface AxisLimits {
@@ -20,12 +20,13 @@ export interface AxisLimits {
 export function encodeTCode(
   cmd: TCodeCommand,
   limits?: AxisLimits,
-  version: 'v2' | 'v3' = 'v3'
+  version: 'v2' | 'v3' = 'v3',
 ): string {
   let pos = cmd.position
 
   if (limits) {
-    if (limits.invert) pos = 1 - pos
+    if (limits.invert)
+      pos = 1 - pos
     pos = limits.min + pos * (limits.max - limits.min)
   }
 
@@ -34,7 +35,8 @@ export function encodeTCode(
   let rawStr: string
   if (version === 'v2') {
     rawStr = Math.round(pos * 999).toString().padStart(3, '0')
-  } else {
+  }
+  else {
     rawStr = Math.round(pos * 9999).toString().padStart(4, '0')
   }
 
@@ -51,7 +53,8 @@ export function encodeBatch(cmds: TCodeCommand[], limitsMap?: Record<string, Axi
 }
 
 export function calcInterval(nextActionMs: number | null, currentMs: number, speed: number): number {
-  if (nextActionMs === null) return 500
+  if (nextActionMs === null)
+    return 500
   const raw = (nextActionMs - currentMs) / speed
   return Math.max(10, Math.min(5000, Math.round(raw)))
 }

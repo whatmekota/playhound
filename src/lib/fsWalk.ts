@@ -27,14 +27,17 @@ export async function walkDirectory(dir: FileSystemDirectoryHandle, relPath = ''
           fileHandle: handle,
           file,
         })
-      } catch {
+      }
+      catch {
         // Skip files that can't be read (permission race, deleted mid-scan, etc.)
       }
-    } else if (handle.kind === 'directory') {
+    }
+    else if (handle.kind === 'directory') {
       const childRel = relPath ? `${relPath}/${handle.name}` : handle.name
       try {
         out.push(...await walkDirectory(handle, childRel))
-      } catch {
+      }
+      catch {
         // Skip unreadable subdirectories
       }
     }

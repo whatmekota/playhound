@@ -18,13 +18,13 @@
     "resolveJsonModule": true,
     "types": [
       "vite/client",
-      "unplugin-vue-macros/macros-global"
+      "w3c-web-serial"
     ],
     "allowJs": true,
     "strict": true,
     "strictNullChecks": true,
-    "noUnusedLocals": false,
     "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": false,
     "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

@@ -1,7 +1,7 @@
-import { useDeviceStore } from '~/stores/deviceStore'
-import { useThemeStore } from '~/stores/themeStore'
-import { usePlayerStore } from '~/stores/playerStore'
 import { storage } from '~/lib/browserApi'
+import { useDeviceStore } from '~/stores/deviceStore'
+import { usePlayerStore } from '~/stores/playerStore'
+import { useThemeStore } from '~/stores/themeStore'
 
 const GOON_VERSION = 1
 
@@ -59,15 +59,20 @@ export function useSettings() {
         try {
           const text = await file.text()
           const data = JSON.parse(text)
-          if (data._app !== 'MWHOPlayer') throw new Error('Not a MWHOPlayer settings file')
+          if (data._app !== 'MWHOPlayer')
+            throw new Error('Not a MWHOPlayer settings file')
 
           // Apply all sections
-          if (data.device) deviceStore.deserialize(data.device)
+          if (data.device)
+            deviceStore.deserialize(data.device)
           if (data.player) {
             const playerStore = usePlayerStore()
-            if (typeof data.player.volume === 'number') playerStore.volume = data.player.volume
-            if (typeof data.player.isMuted === 'boolean') playerStore.isMuted = data.player.isMuted
-            if (typeof data.player.playbackSpeed === 'number') playerStore.playbackSpeed = data.player.playbackSpeed
+            if (typeof data.player.volume === 'number')
+              playerStore.volume = data.player.volume
+            if (typeof data.player.isMuted === 'boolean')
+              playerStore.isMuted = data.player.isMuted
+            if (typeof data.player.playbackSpeed === 'number')
+              playerStore.playbackSpeed = data.player.playbackSpeed
           }
           if (data.theme) {
             const themeStore = useThemeStore()
@@ -76,7 +81,8 @@ export function useSettings() {
 
           save()
           resolve()
-        } catch (e: any) {
+        }
+        catch (e: any) {
           reject(new Error(e?.message ?? 'Failed to import settings'))
         }
       }

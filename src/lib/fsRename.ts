@@ -2,6 +2,7 @@ import type { FsEntry } from '~/lib/fsWalk'
 
 /** Strip characters illegal in Windows/macOS filenames */
 export function sanitizeFilename(name: string): string {
+  // eslint-disable-next-line no-control-regex -- stripping control chars is the point
   return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '').trim()
 }
 
@@ -17,7 +18,8 @@ export function extOf(name: string): string {
  * that don't support it yet.
  */
 export async function renameEntry(entry: FsEntry, newName: string): Promise<FsEntry> {
-  if (newName === entry.name) return entry
+  if (newName === entry.name)
+    return entry
   const handle: any = entry.fileHandle
 
   if (typeof handle.move === 'function') {

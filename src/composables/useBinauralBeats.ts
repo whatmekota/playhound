@@ -86,7 +86,7 @@ export function useBinauralBeats() {
 
     merger = audioCtx.createChannelMerger(2)
     masterGain = audioCtx.createGain()
-    masterGain.gain.value = 0  // start silent — fade in below
+    masterGain.gain.value = 0 // start silent — fade in below
     merger.connect(masterGain)
     masterGain.connect(audioCtx.destination)
 
@@ -145,7 +145,10 @@ export function useBinauralBeats() {
     if (fadeOutTimer !== null) { clearTimeout(fadeOutTimer); fadeOutTimer = null }
     stopBeatDrift()
     stopMorph()
-    ;[baseOscL, baseOscR, h1OscL, h1OscR, h2OscL, h2OscR].forEach((o) => { try { o?.stop() } catch {} })
+    ;[baseOscL, baseOscR, h1OscL, h1OscR, h2OscL, h2OscR].forEach((o) => {
+      try { o?.stop() }
+      catch {}
+    })
     stopNoise()
     audioCtx?.close()
     audioCtx = null
@@ -185,7 +188,8 @@ export function useBinauralBeats() {
   function setFrequencies(baseFreq: number, delta: number, rampSec = 0.1) {
     _baseFreq = baseFreq
     _delta = delta
-    if (!audioCtx) return
+    if (!audioCtx)
+      return
     const t = audioCtx.currentTime
     const tau = rampSec / 3
 
@@ -198,11 +202,15 @@ export function useBinauralBeats() {
   }
 
   function setWaveType(type: OscillatorType) {
-    ;[baseOscL, baseOscR, h1OscL, h1OscR, h2OscL, h2OscR].forEach((o) => { if (o) o.type = type })
+    ;[baseOscL, baseOscR, h1OscL, h1OscR, h2OscL, h2OscR].forEach((o) => {
+      if (o)
+        o.type = type
+    })
   }
 
   function setHarmonics(enabled: boolean) {
-    if (!audioCtx || !h1GainL || !h1GainR || !h2GainL || !h2GainR) return
+    if (!audioCtx || !h1GainL || !h1GainR || !h2GainL || !h2GainR)
+      return
     const t = audioCtx.currentTime
     const tau = 0.8
     h1GainL.gain.setTargetAtTime(enabled ? 0.35 : 0, t, tau)
@@ -214,7 +222,8 @@ export function useBinauralBeats() {
   // --- Noise layer ---
 
   function startNoise(vol: number) {
-    if (!audioCtx) return
+    if (!audioCtx)
+      return
     stopNoise()
 
     noiseMasterGain = audioCtx.createGain()
@@ -250,7 +259,10 @@ export function useBinauralBeats() {
   }
 
   function stopNoise() {
-    ;[noiseSrcW, noiseSrcP, noiseSrcBr].forEach((s) => { try { s?.stop() } catch {} })
+    ;[noiseSrcW, noiseSrcP, noiseSrcBr].forEach((s) => {
+      try { s?.stop() }
+      catch {}
+    })
     noiseSrcW = noiseSrcP = noiseSrcBr = null
     noiseGainW = noiseGainP = noiseGainBr = null
     noiseMasterGain?.disconnect()
@@ -263,7 +275,8 @@ export function useBinauralBeats() {
   }
 
   function morphNoise(type: 'white' | 'pink' | 'brown', duration = 3) {
-    if (!audioCtx || !noiseGainW || !noiseGainP || !noiseGainBr) return
+    if (!audioCtx || !noiseGainW || !noiseGainP || !noiseGainBr)
+      return
     const t = audioCtx.currentTime
     const tau = duration / 3
     noiseGainW.gain.setTargetAtTime(type === 'white' ? 1 : 0, t, tau)
@@ -302,7 +315,8 @@ export function useBinauralBeats() {
 
   function morphTo(targetBase: number, targetDelta: number, durationSec = 5) {
     stopMorph()
-    if (!audioCtx) return
+    if (!audioCtx)
+      return
 
     const startBase = _baseFreq
     const startDelta = _delta
@@ -317,7 +331,8 @@ export function useBinauralBeats() {
       const newBase = startBase + (targetBase - startBase) * eased
       const newDelta = startDelta + (targetDelta - startDelta) * eased
       setFrequencies(newBase, newDelta, stepMs / 1000)
-      if (step >= steps) stopMorph()
+      if (step >= steps)
+        stopMorph()
     }, stepMs) as unknown as number
   }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 
 const visible = ref(true)
 const gone = ref(false)
@@ -27,16 +27,17 @@ onMounted(() => {
         <div class="splash-logo">
           <!-- Womb tattoo SVG in #FF0057 -->
           <svg class="splash-svg" viewBox="0 0 680 680" xmlns="http://www.w3.org/2000/svg">
-<rect width="680" height="680" rx="120" fill="#0d0005"></rect>
-<rect width="680" height="680" rx="120" fill="none" stroke="#ff0057" stroke-width="8"></rect>
+            <rect width="680" height="680" rx="120" fill="#0d0005" />
+            <rect width="680" height="680" rx="120" fill="none" stroke="#ff0057" stroke-width="8" />
 
-<g stroke-linecap="square" stroke-linejoin="miter">
+            <g stroke-linecap="square" stroke-linejoin="miter">
 
-  <!-- M - bold and vivid -->
-  <path d="M 150,540 L 150,170 L 340,380 L 530,170 L 530,540" fill="none" stroke="#ff0057" stroke-width="52" stroke-opacity="1"></path>
+              <!-- M - bold and vivid -->
+              <path d="M 150,540 L 150,170 L 340,380 L 530,170 L 530,540" fill="none" stroke="#ff0057" stroke-width="52" stroke-opacity="1" />
 
-  <!-- Waveform - subtle/ghost -->
-  <polyline fill="none" stroke="#ff0057" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.25" points="
+              <!-- Waveform - subtle/ghost -->
+              <polyline
+                fill="none" stroke="#ff0057" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.25" points="
     60,340
     105,340
     115,270
@@ -68,12 +69,17 @@ onMounted(() => {
     562,270
     575,340
     620,340
-  "></polyline>
+  "
+              />
 
-</g>
-</svg>
-          <div class="splash-title">MWHO<span>PLAYER</span></div>
-          <div class="splash-sub">Funscript Player</div>
+            </g>
+          </svg>
+          <div class="splash-title">
+            MWHO<span>PLAYER</span>
+          </div>
+          <div class="splash-sub">
+            Funscript Player
+          </div>
         </div>
 
         <!-- loading bar -->
@@ -101,13 +107,17 @@ onMounted(() => {
 .splash-bg {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(255,0,87,0.12) 0%, transparent 70%);
+  background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(255, 0, 87, 0.12) 0%, transparent 70%);
   animation: pulse-bg 2s ease-in-out infinite alternate;
 }
 
 @keyframes pulse-bg {
-  from { opacity: 0.5; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .splash-logo {
@@ -119,20 +129,30 @@ onMounted(() => {
 }
 
 @keyframes logo-in {
-  from { opacity: 0; transform: translateY(20px) scale(0.9); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .splash-svg {
   width: 80px;
   height: 80px;
-  filter: drop-shadow(0 0 18px rgba(255,0,87,0.6));
+  filter: drop-shadow(0 0 18px rgba(255, 0, 87, 0.6));
   animation: glow-pulse 1.5s ease-in-out infinite alternate;
 }
 
 @keyframes glow-pulse {
-  from { filter: drop-shadow(0 0 12px rgba(255,0,87,0.5)); }
-  to   { filter: drop-shadow(0 0 28px rgba(255,0,87,0.9)); }
+  from {
+    filter: drop-shadow(0 0 12px rgba(255, 0, 87, 0.5));
+  }
+  to {
+    filter: drop-shadow(0 0 28px rgba(255, 0, 87, 0.9));
+  }
 }
 
 .splash-title {
@@ -140,23 +160,25 @@ onMounted(() => {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 0.2em;
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
   animation: logo-in 0.7s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.splash-title span { color: #FF0057; }
+.splash-title span {
+  color: #ff0057;
+}
 
 .splash-sub {
   font-size: 11px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255, 255, 255, 0.3);
   animation: logo-in 0.7s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .splash-bar-wrap {
   width: 180px;
   height: 2px;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 9999px;
   overflow: hidden;
   animation: logo-in 0.5s 0.5s both;
@@ -165,18 +187,29 @@ onMounted(() => {
 .splash-bar {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, #FF0057, #ff4d87);
+  background: linear-gradient(90deg, #ff0057, #ff4d87);
   border-radius: 9999px;
   animation: bar-fill 1.4s 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes bar-fill {
-  from { width: 0%; }
-  to   { width: 100%; }
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
 }
 
 /* Exit transition */
-.splash-enter-active { transition: opacity 0.3s; }
-.splash-leave-active { transition: opacity 0.6s ease; }
-.splash-enter-from, .splash-leave-to { opacity: 0; }
+.splash-enter-active {
+  transition: opacity 0.3s;
+}
+.splash-leave-active {
+  transition: opacity 0.6s ease;
+}
+.splash-enter-from,
+.splash-leave-to {
+  opacity: 0;
+}
 </style>

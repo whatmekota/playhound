@@ -1,12 +1,12 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { AXIS_MAP } from '~/lib/axisMap'
 import type { VideoMeta } from '~/lib/idb'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+import { AXIS_MAP } from '~/lib/axisMap'
 
 export interface ScriptMatch {
   file: File
   isAlt: boolean
-  altName: string   // e.g. "Bounce" extracted from "(Bounce)" or " Bounce" suffix
+  altName: string // e.g. "Bounce" extracted from "(Bounce)" or " Bounce" suffix
 }
 
 /** How the script type is classified — drives badge color in library */
@@ -21,7 +21,7 @@ export interface VideoEntry {
   scriptFiles: File[]
   scriptMatches: ScriptMatch[]
   thumbnailUrl: string | null
-  duration: number | null   // seconds, populated on first thumbnail/metadata load
+  duration: number | null // seconds, populated on first thumbnail/metadata load
   scriptType: ScriptType
   scriptMeta?: VideoMeta
   userMeta?: VideoMeta
@@ -41,11 +41,11 @@ async function sniffIsMerged(file: File): Promise<boolean> {
     const tailBuf = file.slice(Math.max(0, file.size - 1024))
     const [head, tail] = await Promise.all([headBuf.text(), tailBuf.text()])
     return /"axes"\s*:/.test(head) || /"axes"\s*:/.test(tail)
-  } catch {
+  }
+  catch {
     return false
   }
 }
-
 
 export const useLibraryStore = defineStore('library', () => {
   const videos = ref<VideoEntry[]>([])
@@ -61,7 +61,8 @@ export const useLibraryStore = defineStore('library', () => {
 
   function toggleStar(entry: VideoEntry) {
     entry.starred = !entry.starred
-    if (entry.starred) starredNames.add(entry.name)
+    if (entry.starred)
+      starredNames.add(entry.name)
     else starredNames.delete(entry.name)
     localStorage.setItem(STARS_KEY, JSON.stringify([...starredNames]))
   }
@@ -75,7 +76,7 @@ export const useLibraryStore = defineStore('library', () => {
     totalFiles.value = files.length
     folderName.value = files[0]?.webkitRelativePath?.split('/')[0] ?? 'Folder'
 
-    const videoExts = /\.(mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
+    const videoExts = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 
     // Build a name→File map for funscripts only (no content read)
     // Key: lowercase filename, Value: File handle
@@ -100,9 +101,10 @@ export const useLibraryStore = defineStore('library', () => {
         const matches: ScriptMatch[] = []
 
         for (const [key, sf] of scriptMap) {
-          if (!key.startsWith(basename)) continue
+          if (!key.startsWith(basename))
+            continue
           // Strip ".funscript" and the basename prefix to get the suffix
-          const withoutExt = key.slice(0, -'.funscript'.length)   // e.g. "video (bounce)" or "video.twist"
+          const withoutExt = key.slice(0, -'.funscript'.length) // e.g. "video (bounce)" or "video.twist"
           const suffix = withoutExt.slice(basename.length).trim() // e.g. " (bounce)" or ".twist" or ""
 
           // Clean suffix: strip surrounding parens, dots, spaces, dashes → "bounce", "twist", "r0"
@@ -117,7 +119,8 @@ export const useLibraryStore = defineStore('library', () => {
 
         // Sort: primary (exact) first, then alts alphabetically
         matches.sort((a, b) => {
-          if (a.isAlt !== b.isAlt) return a.isAlt ? 1 : -1
+          if (a.isAlt !== b.isAlt)
+            return a.isAlt ? 1 : -1
           return a.altName.localeCompare(b.altName)
         })
 
@@ -147,16 +150,16 @@ export const useLibraryStore = defineStore('library', () => {
     // Read tail+head of each .funscript to detect merged multi-axis files.
     // Run in batches to stay non-blocking.
     const singleScriptEntries = entries.filter(
-      e => e.scriptType === 'single' && e.scriptMatches.length === 1 && !e.scriptMatches[0].isAlt
+      e => e.scriptType === 'single' && e.scriptMatches.length === 1 && !e.scriptMatches[0].isAlt,
     )
     const SNIFF_BATCH = 50
     for (let i = 0; i < singleScriptEntries.length; i += SNIFF_BATCH) {
       const batch = singleScriptEntries.slice(i, i + SNIFF_BATCH)
-      await Promise.all(batch.map(async entry => {
+      await Promise.all(batch.map(async (entry) => {
         const isMerged = await sniffIsMerged(entry.scriptMatches[0].file)
         if (isMerged) {
           entry.scriptType = 'merged'
-          entry.scriptCount = 2  // placeholder; real count set after full parse in App.vue
+          entry.scriptCount = 2 // placeholder; real count set after full parse in App.vue
         }
       }))
       // Yield briefly between batches so UI can update

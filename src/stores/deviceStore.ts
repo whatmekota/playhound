@@ -1,15 +1,15 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { computed, ref } from 'vue'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 
 export interface AxisConfig {
   channel: string
   label: string
   enabled: boolean
-  min: number      // 0–1
-  max: number      // 0–1
+  min: number // 0–1
+  max: number // 0–1
   invert: boolean
-  defaultPos: number  // 0–1 resting position
+  defaultPos: number // 0–1 resting position
 }
 
 export interface DeviceConfig {
@@ -30,22 +30,22 @@ export interface AxisPresetEntry {
 }
 
 export interface DevicePreset {
-  id: string          // uuid or builtin key
+  id: string // uuid or builtin key
   name: string
   builtin: boolean
   axes: AxisPresetEntry[]
 }
 
 const DEFAULT_AXIS_CONFIGS: Record<string, AxisConfig> = {
-  L0: { channel: 'L0', label: 'Stroke',  enabled: true,  min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
-  L1: { channel: 'L1', label: 'Surge',   enabled: false, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
-  L2: { channel: 'L2', label: 'Sway',    enabled: false, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
-  R0: { channel: 'R0', label: 'Twist',   enabled: false, min: 0.1,  max: 0.9,  invert: false, defaultPos: 0.5 },
-  R1: { channel: 'R1', label: 'Roll',    enabled: false, min: 0.1,  max: 0.9,  invert: false, defaultPos: 0.5 },
-  R2: { channel: 'R2', label: 'Pitch',   enabled: false, min: 0.1,  max: 0.9,  invert: false, defaultPos: 0.5 },
-  V0: { channel: 'V0', label: 'Vibrate', enabled: false, min: 0.0,  max: 1.0,  invert: false, defaultPos: 0.0 },
-  A0: { channel: 'A0', label: 'Suction', enabled: false, min: 0.0,  max: 0.8,  invert: false, defaultPos: 0.0 },
-  A1: { channel: 'A1', label: 'Pump',    enabled: false, min: 0.0,  max: 0.8,  invert: false, defaultPos: 0.0 },
+  L0: { channel: 'L0', label: 'Stroke', enabled: true, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
+  L1: { channel: 'L1', label: 'Surge', enabled: false, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
+  L2: { channel: 'L2', label: 'Sway', enabled: false, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
+  R0: { channel: 'R0', label: 'Twist', enabled: false, min: 0.1, max: 0.9, invert: false, defaultPos: 0.5 },
+  R1: { channel: 'R1', label: 'Roll', enabled: false, min: 0.1, max: 0.9, invert: false, defaultPos: 0.5 },
+  R2: { channel: 'R2', label: 'Pitch', enabled: false, min: 0.1, max: 0.9, invert: false, defaultPos: 0.5 },
+  V0: { channel: 'V0', label: 'Vibrate', enabled: false, min: 0.0, max: 1.0, invert: false, defaultPos: 0.0 },
+  A0: { channel: 'A0', label: 'Suction', enabled: false, min: 0.0, max: 0.8, invert: false, defaultPos: 0.0 },
+  A1: { channel: 'A1', label: 'Pump', enabled: false, min: 0.0, max: 0.8, invert: false, defaultPos: 0.0 },
 }
 
 // ─── Built-in presets ─────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ const BUILTIN_PRESETS: DevicePreset[] = [
     name: 'Full Range (OSR2)',
     builtin: true,
     axes: [
-      { channel: 'L0', enabled: true,  min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
+      { channel: 'L0', enabled: true, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
       { channel: 'L1', enabled: false, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
       { channel: 'L2', enabled: false, min: 0.05, max: 0.95, invert: false, defaultPos: 0.5 },
       { channel: 'R0', enabled: false, min: 0.10, max: 0.90, invert: false, defaultPos: 0.5 },
@@ -71,7 +71,7 @@ const BUILTIN_PRESETS: DevicePreset[] = [
     name: 'Fleshlight',
     builtin: true,
     axes: [
-      { channel: 'L0', enabled: true,  min: 0.10, max: 0.85, invert: false, defaultPos: 0.5 },
+      { channel: 'L0', enabled: true, min: 0.10, max: 0.85, invert: false, defaultPos: 0.5 },
       { channel: 'L1', enabled: false, min: 0.10, max: 0.90, invert: false, defaultPos: 0.5 },
       { channel: 'L2', enabled: false, min: 0.10, max: 0.90, invert: false, defaultPos: 0.5 },
       { channel: 'R0', enabled: false, min: 0.15, max: 0.85, invert: false, defaultPos: 0.5 },
@@ -87,7 +87,7 @@ const BUILTIN_PRESETS: DevicePreset[] = [
     name: 'Small Onahole',
     builtin: true,
     axes: [
-      { channel: 'L0', enabled: true,  min: 0.20, max: 0.80, invert: false, defaultPos: 0.5 },
+      { channel: 'L0', enabled: true, min: 0.20, max: 0.80, invert: false, defaultPos: 0.5 },
       { channel: 'L1', enabled: false, min: 0.20, max: 0.80, invert: false, defaultPos: 0.5 },
       { channel: 'L2', enabled: false, min: 0.20, max: 0.80, invert: false, defaultPos: 0.5 },
       { channel: 'R0', enabled: false, min: 0.20, max: 0.80, invert: false, defaultPos: 0.5 },
@@ -106,7 +106,7 @@ export const useDeviceStore = defineStore('device', () => {
   const connected = ref(false)
   const tcodeVersion = ref<'v2' | 'v3'>('v3')
   const axisConfigs = ref<Record<string, AxisConfig>>(structuredClone(DEFAULT_AXIS_CONFIGS))
-  const deviceEnabled = ref(true)  // master toggle
+  const deviceEnabled = ref(true) // master toggle
 
   const availablePorts = ref<string[]>([])
   const connectionError = ref<string | null>(null)
@@ -116,11 +116,11 @@ export const useDeviceStore = defineStore('device', () => {
   const userPresets = ref<DevicePreset[]>([])
 
   const orderedAxes = computed(() =>
-    AXIS_PRIORITY.map(ch => axisConfigs.value[ch]).filter(Boolean)
+    AXIS_PRIORITY.map(ch => axisConfigs.value[ch]).filter(Boolean),
   )
 
   const enabledAxes = computed(() =>
-    orderedAxes.value.filter(a => a.enabled)
+    orderedAxes.value.filter(a => a.enabled),
   )
 
   // All presets: builtins first, then user-created
@@ -168,7 +168,7 @@ export const useDeviceStore = defineStore('device', () => {
       id: crypto.randomUUID(),
       name,
       builtin: false,
-      axes: AXIS_PRIORITY.map(ch => {
+      axes: AXIS_PRIORITY.map((ch) => {
         const cfg = axisConfigs.value[ch]
         return {
           channel: ch,
@@ -186,7 +186,8 @@ export const useDeviceStore = defineStore('device', () => {
 
   function renamePreset(id: string, name: string) {
     const p = userPresets.value.find(p => p.id === id)
-    if (p) p.name = name
+    if (p)
+      p.name = name
   }
 
   function deletePreset(id: string) {
@@ -196,17 +197,19 @@ export const useDeviceStore = defineStore('device', () => {
   /** Detect which preset currently matches the axis configs (if any) */
   function detectActivePreset(): string | null {
     for (const preset of allPresets.value) {
-      const match = preset.axes.every(entry => {
+      const match = preset.axes.every((entry) => {
         const cfg = axisConfigs.value[entry.channel]
-        if (!cfg) return false
+        if (!cfg)
+          return false
         return (
-          cfg.enabled === entry.enabled &&
-          Math.abs(cfg.min - entry.min) < 0.005 &&
-          Math.abs(cfg.max - entry.max) < 0.005 &&
-          cfg.invert === entry.invert
+          cfg.enabled === entry.enabled
+          && Math.abs(cfg.min - entry.min) < 0.005
+          && Math.abs(cfg.max - entry.max) < 0.005
+          && cfg.invert === entry.invert
         )
       })
-      if (match) return preset.id
+      if (match)
+        return preset.id
     }
     return null
   }
@@ -223,10 +226,14 @@ export const useDeviceStore = defineStore('device', () => {
   }
 
   function deserialize(data: any) {
-    if (!data) return
-    if (data.portPath) portPath.value = data.portPath
-    if (data.baudRate) baudRate.value = data.baudRate
-    if (data.tcodeVersion) tcodeVersion.value = data.tcodeVersion
+    if (!data)
+      return
+    if (data.portPath)
+      portPath.value = data.portPath
+    if (data.baudRate)
+      baudRate.value = data.baudRate
+    if (data.tcodeVersion)
+      tcodeVersion.value = data.tcodeVersion
     if (data.axisConfigs) {
       for (const [ch, cfg] of Object.entries(data.axisConfigs as Record<string, AxisConfig>)) {
         if (axisConfigs.value[ch]) {
@@ -234,18 +241,35 @@ export const useDeviceStore = defineStore('device', () => {
         }
       }
     }
-    if (typeof data.deviceEnabled === 'boolean') deviceEnabled.value = data.deviceEnabled
-    if (Array.isArray(data.userPresets)) userPresets.value = data.userPresets
+    if (typeof data.deviceEnabled === 'boolean')
+      deviceEnabled.value = data.deviceEnabled
+    if (Array.isArray(data.userPresets))
+      userPresets.value = data.userPresets
   }
 
   return {
-    portPath, baudRate, connected, tcodeVersion,
-    axisConfigs, deviceEnabled,
-    availablePorts, connectionError, lastCommand,
-    orderedAxes, enabledAxes,
-    userPresets, allPresets,
-    updateAxisConfig, resetAxisConfig, resetAllAxisConfigs,
-    applyPreset, saveAsPreset, renamePreset, deletePreset, detectActivePreset,
-    serialize, deserialize,
+    portPath,
+    baudRate,
+    connected,
+    tcodeVersion,
+    axisConfigs,
+    deviceEnabled,
+    availablePorts,
+    connectionError,
+    lastCommand,
+    orderedAxes,
+    enabledAxes,
+    userPresets,
+    allPresets,
+    updateAxisConfig,
+    resetAxisConfig,
+    resetAllAxisConfigs,
+    applyPreset,
+    saveAsPreset,
+    renamePreset,
+    deletePreset,
+    detectActivePreset,
+    serialize,
+    deserialize,
   }
 })
