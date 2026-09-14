@@ -9,7 +9,7 @@
 // Storage identifier, not a brand string. Renaming it would orphan every
 // user's playlists, video metadata and saved directory handles.
 const DB_NAME = 'mwhoplayer'
-const DB_VERSION = 3
+const DB_VERSION = 4
 let db: IDBDatabase | null = null
 
 function openDB(): Promise<IDBDatabase> {
@@ -29,6 +29,8 @@ function openDB(): Promise<IDBDatabase> {
         d.createObjectStore('playlists')
       if (!d.objectStoreNames.contains('vidmeta'))
         d.createObjectStore('vidmeta')
+      if (!d.objectStoreNames.contains('summaries'))
+        d.createObjectStore('summaries')
     }
     req.onsuccess = () => { db = req.result; resolve(db) }
     req.onerror = () => reject(req.error)
@@ -121,6 +123,44 @@ export interface VideoMeta {
   url?: string
   /** User rating 1-5 */
   rating?: number
+}
+
+export interface ScriptSummary {
+  /** Mean speed in position-units per second, 0-1 positions. */
+  meanSpeed: number
+  /** Mean stroke cycles per minute. */
+  meanSpm: number
+  peakSpeed: number
+  durationMs: number
+  /** When this was computed, so a changed script can be re-analysed. */
+  actionCount: number
+}
+
+/**
+ * Cached shape summaries, so the auto-director can compare videos it has not
+ * loaded. Keyed by video filename.
+ */
+export const summaryDb = {
+  get: (key: string) => idbGet<ScriptSummary>('summaries', key),
+  set: (key: string, value: ScriptSummary) => idbSet('summaries', key, value),
+  async all(): Promise<Record<string, ScriptSummary>> {
+    await openDB()
+    return new Promise((resolve, reject) => {
+      const store = db!.transaction('summaries', 'readonly').objectStore('summaries')
+      const keysReq = store.getAllKeys()
+      const valsReq = store.getAll()
+      valsReq.onsuccess = () => {
+        const out: Record<string, ScriptSummary> = {}
+        const keys = keysReq.result ?? []
+        const vals = valsReq.result ?? []
+        keys.forEach((k, i) => {
+          out[String(k)] = vals[i]
+        })
+        resolve(out)
+      }
+      valsReq.onerror = () => reject(new Error('IndexedDB getAll failed'))
+    })
+  },
 }
 
 export const videoMetaDb = {

@@ -6,7 +6,7 @@
  */
 
 export type PanelId
-  = | 'library' | 'playlists' | 'organizer'
+  = | 'library' | 'playlists' | 'director' | 'organizer'
     | 'scripts' | 'bookmarks' | 'eroscripts'
     | 'binaural' | 'wall' | 'slideshow'
     | 'device' | 'motion' | 'emulator'
@@ -50,6 +50,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
     panels: [
       { id: 'library', label: 'Library', icon: 'i-carbon-video', accent: 'text-accent-400', hint: 'Browse videos and matched scripts' },
       { id: 'playlists', label: 'Playlists', icon: 'i-carbon-list', accent: 'text-accent-400', hint: 'Saved and smart playlists' },
+      { id: 'director', label: 'Director', icon: 'i-carbon-machine-learning-model', accent: 'text-teal-400', hint: 'Picks what plays next to match the session' },
       { id: 'organizer', label: 'Organizer', icon: 'i-carbon-folder-move-to', accent: 'text-accent-400', hint: 'Rename videos and scripts together' },
     ],
   },

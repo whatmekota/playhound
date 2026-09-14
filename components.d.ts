@@ -16,6 +16,7 @@ declare module 'vue' {
     BookmarkPanel: typeof import('./src/components/BookmarkPanel.vue')['default']
     CollapsibleSection: typeof import('./src/components/CollapsibleSection.vue')['default']
     DevicePanel: typeof import('./src/components/DevicePanel.vue')['default']
+    DirectorPanel: typeof import('./src/components/DirectorPanel.vue')['default']
     EroScriptsPanel: typeof import('./src/components/EroScriptsPanel.vue')['default']
     FunscriptTimeline: typeof import('./src/components/FunscriptTimeline.vue')['default']
     LoopControls: typeof import('./src/components/LoopControls.vue')['default']

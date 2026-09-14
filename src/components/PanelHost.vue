@@ -5,6 +5,7 @@ import { findPanel, isMainSurface } from '~/lib/panels'
 import BinauralBeats from './BinauralBeats.vue'
 import BookmarkPanel from './BookmarkPanel.vue'
 import DevicePanel from './DevicePanel.vue'
+import DirectorPanel from './DirectorPanel.vue'
 import EroScriptsPanel from './EroScriptsPanel.vue'
 import MediaWall from './MediaWall.vue'
 import MotionPanel from './MotionPanel.vue'
@@ -66,6 +67,7 @@ const canPin = computed(() => !isMainSurface(props.id))
         @select="e => emit('select', e)"
         @queue="(l, s) => emit('queue', l, s)"
       />
+      <DirectorPanel v-else-if="id === 'director'" />
       <OrganizerPanel v-else-if="id === 'organizer'" />
       <ScriptPanel v-else-if="id === 'scripts'" />
       <BookmarkPanel v-else-if="id === 'bookmarks'" @seek="t => emit('seek', t)" />

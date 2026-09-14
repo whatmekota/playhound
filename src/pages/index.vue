@@ -16,6 +16,7 @@ import SplashScreen from '~/components/SplashScreen.vue'
 import StatusBar from '~/components/StatusBar.vue'
 import ThemePicker from '~/components/ThemePicker.vue'
 import VideoPlayer from '~/components/VideoPlayer.vue'
+import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { useGamepad } from '~/composables/useGamepad'
 import { useMotionEngine } from '~/composables/useMotionEngine'
@@ -46,6 +47,7 @@ const statsStore = useStatsStore()
 const bookmarkStore = useBookmarkStore()
 const motionStore = useMotionStore()
 const safety = useSafetyStore()
+const director = useAutoDirector()
 const showHeatmap = useLocalStorage('ph-timeline-heatmap', true)
 const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 
@@ -273,13 +275,33 @@ async function openSingleVideo() {
   }
 }
 
+/**
+ * The director chooses by script shape rather than queue order, falling back to
+ * the queue when it has nothing analysed to choose between.
+ */
+function directedNext() {
+  if (!director.enabled.value)
+    return null
+  return director.pickNext(playerStore.videoPath ?? undefined)
+}
+
 async function onVideoEnded() {
+  const picked = directedNext()
+  if (picked) {
+    await loadVideoFile(picked.file, picked.scriptMatches, true)
+    return
+  }
   const next = queueStore.next()
   if (next)
     await loadVideoFile(next.file, next.scriptMatches, true)
 }
 
 async function playNext() {
+  const picked = directedNext()
+  if (picked) {
+    await loadVideoFile(picked.file, picked.scriptMatches, true)
+    return
+  }
   const next = queueStore.next()
   if (next)
     await loadVideoFile(next.file, next.scriptMatches, true)
@@ -327,6 +349,11 @@ async function loadVideoFile(file: File, scriptMatches?: ScriptMatch[], autoplay
       if (s.enabled && deviceStore.axisConfigs[s.channel])
         deviceStore.axisConfigs[s.channel].enabled = true
     }
+
+    // Learn this video's shape as a side effect of playing it, so the
+    // director gets smarter without anyone running a sweep.
+    if (libEntry)
+      void director.summarise(libEntry)
 
     if (autoplay)
       setTimeout(() => videoPlayerRef.value?.play(), 80)
