@@ -60,7 +60,7 @@ function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, durati
     const hue = 260 - v * 220
     const sat = 60 + v * 40
     const lit = 30 + v * 28
-    ctx.fillStyle = `hsla(${hue},${sat}%,${lit}%,0.5)`
+    ctx.fillStyle = `hsla(${hue},${sat}%,${lit}%,0.4)`
     ctx.fillRect(x, 0, step + 1, H)
   }
 }
