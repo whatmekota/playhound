@@ -450,6 +450,11 @@ export function useBinauralBeats() {
     }, stepMs) as unknown as number
   }
 
+  /** True while morphTo is driving the oscillators on its own schedule. */
+  function isMorphing(): boolean {
+    return morphTimer !== null
+  }
+
   function stopMorph() {
     if (morphTimer !== null) {
       clearInterval(morphTimer)
@@ -584,6 +589,7 @@ export function useBinauralBeats() {
 
   return {
     start,
+    isMorphing,
     setMode,
     setPulse,
     getPulseClock,

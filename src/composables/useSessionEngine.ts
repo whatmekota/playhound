@@ -83,13 +83,26 @@ export function useSessionEngine() {
 
   function applyPhaseConfig(ph: SessionPhase) {
     const cfg = PHASE_CONFIG[ph]
-    // Each edged pass reaches a little higher than the last.
-    store.intensity.value = Math.min(1, cfg.intensity + edgeBoost)
+
+    // While the script is driving, it owns beat and intensity — the phase
+    // engine morphing on its own 8-second schedule would simply override it,
+    // which looks exactly like the script having no effect. The engine still
+    // owns the noise bed, the visual LFO and phase progression.
+    const scriptOwnsBeat = store.scriptDrive.value
+    const scriptOwnsIntensity = scriptOwnsBeat && store.scriptDriveIntensity.value
+
+    if (!scriptOwnsIntensity) {
+      // Each edged pass reaches a little higher than the last.
+      store.intensity.value = Math.min(1, cfg.intensity + edgeBoost)
+    }
 
     // Pick a target delta in the phase's beat range
     const targetDelta = cfg.beatRange[0] + Math.random() * (cfg.beatRange[1] - cfg.beatRange[0])
 
-    if (store.isPlaying.value) {
+    if (scriptOwnsBeat) {
+      // leave the beat to useScriptPulse
+    }
+    else if (store.isPlaying.value) {
       binaural.morphTo(store.baseFrequency.value, targetDelta, variantDelay(8, 0.25))
       // Mirror store value through an animation frame loop for UI display
       animateStoreValue(store.beatDelta.value, targetDelta, 8000)
@@ -283,7 +296,10 @@ export function useSessionEngine() {
       const variation = (Math.random() * 2 - 1) * 0.35
       const newDelta = Math.max(0.5, Math.min(40, currentDelta + variation))
 
-      if (store.isPlaying.value) {
+      if (store.scriptDrive.value) {
+        // The script sets the beat; drifting it as well just fights.
+      }
+      else if (store.isPlaying.value) {
         binaural.morphTo(store.baseFrequency.value, newDelta, variantDelay(4, 0.3))
         animateStoreValue(currentDelta, newDelta, variantDelay(4000, 0.3))
       }

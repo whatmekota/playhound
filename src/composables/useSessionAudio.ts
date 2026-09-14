@@ -47,6 +47,28 @@ export function useSessionAudio() {
     )
   }
 
+  /**
+   * Push carrier and beat into the engine whenever the store changes.
+   *
+   * Every setFrequencies call used to live in the Binaural panel's own event
+   * handlers, so anything else writing to the store — the script driver, a
+   * preset applied elsewhere — changed the displayed numbers without changing
+   * the sound, and nothing moved at all while that panel was closed. A
+   * deliberate morph drives the oscillators on its own schedule, so yield to it.
+   */
+  watch([audio.baseFrequency, audio.beatDelta], ([base, delta]) => {
+    if (!audio.isPlaying.value || binaural.isMorphing())
+      return
+    binaural.setFrequencies(base, delta, 0.15)
+  })
+
+  // Turning script-following on should actually be audible; the pulse is the
+  // part that carries the stroke, and it defaults to silent.
+  watch(audio.scriptDrive, (on) => {
+    if (on && !audio.pulseEnabled.value)
+      audio.pulseEnabled.value = true
+  })
+
   // Past Oster's limit the tones stop fusing into a beat, so clamp rather than
   // let the UI ask for something that cannot be heard as one.
   watch(audio.beatDelta, (d) => {
