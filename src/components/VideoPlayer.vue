@@ -3,6 +3,7 @@ import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useLoopSection } from '~/composables/useLoopSection'
 import { useVideoSync } from '~/composables/useVideoSync'
+import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useQueueStore } from '~/stores/queueStore'
@@ -38,13 +39,6 @@ const fsBarEl = ref<HTMLDivElement | null>(null)
 const fsCanvasEl = ref<HTMLCanvasElement | null>(null)
 const fsHover = ref(false) // bottom-zone hover → expand bar
 const fsDragging = ref(false)
-
-function formatTime(s: number) {
-  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60)
-  if (h > 0)
-    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-  return `${m}:${String(sec).padStart(2, '0')}`
-}
 
 function drawFsBar() {
   const canvas = fsCanvasEl.value
@@ -400,7 +394,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         />
       </svg>
       <p class="text-sm">
-        Drop a video file or use File → Open
+        Drop a video file here, or use Open above
       </p>
     </div>
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { usePlayerStore } from '~/stores/playerStore'
 
@@ -22,13 +23,6 @@ function commitEdit(id: string) {
   if (editLabel.value.trim())
     bookmarkStore.rename(id, editLabel.value.trim())
   editingId.value = null
-}
-
-function formatTime(s: number) {
-  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60)
-  if (h > 0)
-    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-  return `${m}:${String(sec).padStart(2, '0')}`
 }
 </script>
 

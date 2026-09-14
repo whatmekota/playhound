@@ -24,6 +24,7 @@ const filterMultiAxis = ref(false)
 const filterFavorites = ref(false)
 
 type SortKey = 'name' | 'size' | 'date' | 'duration'
+// Legacy key kept so the saved sort survives the rename.
 const LS_SORT = 'mwhoplayer:librarySort'
 function loadSort() {
   try { return JSON.parse(localStorage.getItem(LS_SORT) ?? '{}') }

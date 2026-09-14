@@ -34,7 +34,7 @@ function applyCustom() {
     </button>
 
     <Transition name="popup">
-      <div v-if="showMenu" class="panel mb-2 py-1.5 min-w-[90px] bottom-full left-1/2 absolute z-50 -translate-x-1/2">
+      <div v-if="showMenu" class="mb-2 py-1.5 panel min-w-[90px] bottom-full left-1/2 absolute z-50 -translate-x-1/2">
         <!-- Preset buttons -->
         <button
           v-for="s in SPEEDS" :key="s"

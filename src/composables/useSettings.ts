@@ -23,7 +23,7 @@ export function useSettings() {
     const themeStore = useThemeStore()
     return {
       _version: GOON_VERSION,
-      _app: 'MWHOPlayer',
+      _app: 'playhound',
       _exportedAt: new Date().toISOString(),
       device: deviceStore.serialize(),
       player: {
@@ -42,7 +42,7 @@ export function useSettings() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `mwhoplayer-settings-${new Date().toISOString().slice(0, 10)}.goon`
+    a.download = `playhound-settings-${new Date().toISOString().slice(0, 10)}.goon`
     a.click()
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
@@ -59,8 +59,9 @@ export function useSettings() {
         try {
           const text = await file.text()
           const data = JSON.parse(text)
-          if (data._app !== 'MWHOPlayer')
-            throw new Error('Not a MWHOPlayer settings file')
+          // MWHOPlayer is the pre-merge name; keep reading files it exported
+          if (data._app !== 'playhound' && data._app !== 'MWHOPlayer')
+            throw new Error('Not a playhound settings file')
 
           // Apply all sections
           if (data.device)

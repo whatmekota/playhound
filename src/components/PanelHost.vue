@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PanelId } from '~/lib/panels'
 import type { VideoEntry } from '~/stores/libraryStore'
-import { findPanel } from '~/lib/panels'
+import { findPanel, isMainSurface } from '~/lib/panels'
 import BinauralBeats from './BinauralBeats.vue'
 import BookmarkPanel from './BookmarkPanel.vue'
 import DevicePanel from './DevicePanel.vue'
@@ -19,7 +19,6 @@ import VideoLibrary from './VideoLibrary.vue'
 const props = defineProps<{
   id: PanelId
   pinned?: boolean
-  pinnable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,39 +30,33 @@ const emit = defineEmits<{
 }>()
 
 const def = computed(() => findPanel(props.id))
+// Canvas panels own the main area, so there is nothing to pin them into.
+const canPin = computed(() => !isMainSurface(props.id))
 </script>
 
 <template>
   <section class="flex flex-col min-h-0 overflow-hidden">
     <!-- Slim title strip so a pinned panel is identifiable at a glance -->
-    <header
-      v-if="pinnable"
-      class="px-2 border-b border-white/5 bg-surface-850 flex shrink-0 gap-1.5 h-7 items-center"
-    >
-      <div v-if="def" :class="[def.icon, def.accent]" class="text-xs" />
-      <span class="text-[10px] text-white/50 tracking-wider font-medium uppercase">
-        {{ def?.label }}
-      </span>
-      <div class="ml-auto flex gap-0.5 items-center">
+    <header class="panel-header">
+      <div v-if="def" :class="[def.icon, def.accent]" class="text-sm shrink-0" />
+      <span class="panel-title truncate">{{ def?.label }}</span>
+      <div class="ml-auto flex shrink-0 gap-0.5 items-center">
         <button
-          class="rounded flex h-5 w-5 transition-colors items-center justify-center"
-          :class="pinned ? 'text-accent-400 bg-accent-600/20' : 'text-white/25 hover:text-white/60 hover:bg-white/10'"
+          v-if="canPin"
+          class="btn-icon h-6 w-6"
+          :class="pinned ? 'text-accent-400 bg-accent-500/15' : ''"
           :title="pinned ? 'Unpin' : 'Pin above the active panel'"
           @click="emit('pin', id)"
         >
-          <div :class="pinned ? 'i-carbon-pin-filled' : 'i-carbon-pin'" class="text-[11px]" />
+          <div :class="pinned ? 'i-carbon-pin-filled' : 'i-carbon-pin'" class="text-xs" />
         </button>
-        <button
-          class="text-white/25 rounded flex h-5 w-5 transition-colors items-center justify-center hover:text-white/60 hover:bg-white/10"
-          title="Close"
-          @click="emit('close', id)"
-        >
-          <div class="i-carbon-close text-[11px]" />
+        <button class="btn-icon h-6 w-6" title="Close panel" @click="emit('close', id)">
+          <div class="i-carbon-close text-xs" />
         </button>
       </div>
     </header>
 
-    <div class="flex-1 min-h-0 overflow-hidden">
+    <div class="panel-body">
       <VideoLibrary
         v-if="id === 'library'"
         @select="e => emit('select', e)"

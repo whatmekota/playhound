@@ -10,9 +10,9 @@
   --surface-100: #efefef;
   --surface-200: #dcdcdc;
   --text: #ffffff;
-  --text-muted: rgba(255, 255, 255, 0.5);
-  --text-faint: rgba(255, 255, 255, 0.2);
-  --border: rgba(255, 255, 255, 0.07);
+  --text-muted: rgba(255, 255, 255, 0.55);
+  --text-faint: rgba(255, 255, 255, 0.3);
+  --border: rgba(255, 255, 255, 0.08);
   --accent: #c026d3;
   --accent-light: #e879f9;
   --accent-soft: rgba(192, 38, 211, 0.2);
@@ -20,29 +20,29 @@
 }
 
 [data-theme='light'] {
-  --bg-base: #f0f0f0;
-  --bg-900: #e8e8e8;
-  --bg-850: #dedede;
-  --bg-800: #d4d4d4;
-  --bg-700: #c0c0c0;
+  --bg-base: #f4f4f5;
+  --bg-900: #ffffff;
+  --bg-850: #fafafa;
+  --bg-800: #f0f0f1;
+  --bg-700: #e2e2e5;
   --surface-50: #ffffff;
   --surface-100: #f5f5f5;
   --surface-200: #e5e5e5;
-  --text: #111111;
-  --text-muted: rgba(0, 0, 0, 0.5);
-  --text-faint: rgba(0, 0, 0, 0.25);
-  --border: rgba(0, 0, 0, 0.1);
+  --text: #18181b;
+  --text-muted: rgba(24, 24, 27, 0.6);
+  --text-faint: rgba(24, 24, 27, 0.4);
+  --border: rgba(24, 24, 27, 0.12);
   --accent: #7c3aed;
-  --accent-light: #a78bfa;
+  --accent-light: #6d28d9;
   --accent-soft: rgba(124, 58, 237, 0.15);
-  --scrollbar: #c0c0c0;
+  --scrollbar: #c8c8cc;
   color-scheme: light;
 }
 
 [data-theme='catppuccin'] {
   --bg-base: #1e1e2e;
   --bg-900: #181825;
-  --bg-850: #13131e;
+  --bg-850: #232338;
   --bg-800: #313244;
   --bg-700: #45475a;
   --surface-50: #cdd6f4;
@@ -50,8 +50,8 @@
   --surface-200: #a6adc8;
   --text: #cdd6f4;
   --text-muted: #a6adc8;
-  --text-faint: #585b70;
-  --border: rgba(205, 214, 244, 0.08);
+  --text-faint: #7f849c;
+  --border: rgba(205, 214, 244, 0.1);
   --accent: #cba6f7;
   --accent-light: #f5c2e7;
   --accent-soft: rgba(203, 166, 247, 0.15);
@@ -61,16 +61,16 @@
 [data-theme='dracula'] {
   --bg-base: #282a36;
   --bg-900: #21222c;
-  --bg-850: #1a1b24;
+  --bg-850: #2d2f3d;
   --bg-800: #343746;
   --bg-700: #44475a;
   --surface-50: #f8f8f2;
   --surface-100: #e6e6e0;
   --surface-200: #c8c8c2;
   --text: #f8f8f2;
-  --text-muted: #6272a4;
-  --text-faint: #44475a;
-  --border: rgba(248, 248, 242, 0.07);
+  --text-muted: #a4aed4;
+  --text-faint: #6272a4;
+  --border: rgba(248, 248, 242, 0.09);
   --accent: #bd93f9;
   --accent-light: #ff79c6;
   --accent-soft: rgba(189, 147, 249, 0.2);
@@ -86,11 +86,17 @@ body,
   padding: 0;
 }
 
-* {
+*,
+::before,
+::after {
   box-sizing: border-box;
+  /* presetWind4 ships no default border colour, so a bare `border` utility
+     falls back to currentColor. Tailwind 3's preflight set this, and 39
+     templates inherited from the player rely on it. */
+  border-color: var(--border);
 }
 
-/* App manages its own theming — ignore the system preference */
+/* The app manages its own theming, so ignore the system preference. */
 html {
   color-scheme: only dark;
 }
@@ -109,9 +115,8 @@ html {
   color: var(--text);
 }
 
-/* bg-surface-* and text-accent-* resolve through the UnoCSS theme (uno.config.ts),
-   which points them at the variables above. Only the hardcoded white utilities
-   inherited from the player still need remapping, so light themes stay readable. */
+/* Hardcoded white utilities inherited from the player, remapped so the light
+   theme stays readable. Everything else resolves through the UnoCSS theme. */
 .text-white {
   color: var(--text) !important;
 }
@@ -161,14 +166,10 @@ html {
   border-color: var(--border) !important;
 }
 
-/* Thin vertical dividers in the toolbars */
-.w-px {
-  background-color: var(--border);
-}
-
+/* ── Scrollbars ─────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -176,6 +177,12 @@ html {
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
 }
 
 /* ── Range inputs ───────────────────────────────────────────────────────────── */
@@ -184,6 +191,7 @@ input[type='range'] {
   appearance: none;
   background: transparent;
   cursor: pointer;
+  height: 14px;
 }
 input[type='range']::-webkit-slider-runnable-track {
   height: 4px;
@@ -193,15 +201,18 @@ input[type='range']::-webkit-slider-runnable-track {
 input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
   border-radius: 50%;
   background: var(--text);
-  transition: transform 0.1s;
+  transition: transform 0.12s ease;
 }
 input[type='range']:hover::-webkit-slider-thumb {
-  transform: scale(1.2);
+  transform: scale(1.25);
+}
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 input[type='range'].accent::-webkit-slider-thumb {
   background: var(--accent);
@@ -218,49 +229,33 @@ input[type='range'].filled::-webkit-slider-runnable-track {
   );
 }
 
-/* ── Components ─────────────────────────────────────────────────────────────── */
-.btn-base {
-  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-         transition-colors duration-150 focus:outline-none;
-}
-.btn-primary {
-  @apply btn-base text-white;
-  background-color: var(--accent);
-}
-.btn-primary:hover {
-  filter: brightness(1.15);
-}
-.btn-ghost {
-  @apply btn-base bg-transparent hover:bg-white/10 hover:text-white;
-  color: var(--text-muted);
-}
-.btn-danger {
-  @apply btn-base bg-red-700 hover:bg-red-600 text-white;
+/* ── Checkboxes ─────────────────────────────────────────────────────────────── */
+input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
 }
 
-.panel {
-  @apply rounded-xl border;
-  background-color: var(--bg-850);
-  border-color: var(--border);
-}
-.label {
-  @apply text-xs font-medium uppercase tracking-wider;
-  color: var(--text-muted);
-}
-.input {
-  @apply rounded-lg px-3 py-1.5 text-sm focus:outline-none transition-colors;
-  background-color: var(--bg-900);
-  border: 1px solid var(--border);
-  color: var(--text);
-}
-.input:focus {
-  border-color: var(--accent);
+select.input {
+  cursor: pointer;
 }
 
-/* Multi-axis glow border */
+/* ── Multi-axis glow ────────────────────────────────────────────────────────── */
 .glow-multiaxis {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent),
     0 0 8px 1px color-mix(in srgb, var(--accent-soft) 50%, transparent);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+}
+
+/* ── Motion preferences ─────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

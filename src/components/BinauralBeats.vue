@@ -265,20 +265,10 @@ const beatPulsePeriod = computed(() => {
 </script>
 
 <template>
-  <div class="bg-zinc-950 h-full overflow-y-auto">
-    <div class="mx-auto px-6 py-8 max-w-2xl space-y-6">
-      <!-- Header -->
-      <div class="text-center">
-        <h1 class="text-2xl text-zinc-100 font-semibold mb-1">
-          Binaural Beats
-        </h1>
-        <p class="text-sm text-zinc-500">
-          🎧 Requires headphones — each ear receives a slightly different frequency
-        </p>
-      </div>
-
+  <div class="bg-surface-950 h-full overflow-y-auto">
+    <div class="mx-auto px-3 py-3 max-w-2xl space-y-4">
       <!-- Wave visualization + beat pulse -->
-      <div class="border border-zinc-800 rounded-2xl bg-zinc-900 flex h-24 items-center relative overflow-hidden">
+      <div class="border border-edge rounded-2xl bg-surface-900 flex h-24 items-center relative overflow-hidden">
         <svg
           class="h-full w-full inset-0 absolute"
           viewBox="0 0 600 96"
@@ -316,7 +306,7 @@ const beatPulsePeriod = computed(() => {
         </div>
 
         <div class="text-center w-full relative z-10">
-          <p class="text-xs text-zinc-400">
+          <p class="text-xs text-fg-muted">
             L: {{ baseFrequency.toFixed(0) }} Hz &nbsp;·&nbsp; R: {{ rightFreq.toFixed(1) }} Hz &nbsp;·&nbsp; Beat: {{ beatDelta.toFixed(1) }} Hz
           </p>
           <p v-if="currentPreset" class="text-sm text-teal-400 font-medium mt-1">
@@ -329,9 +319,9 @@ const beatPulsePeriod = computed(() => {
       </div>
 
       <!-- Master Intensity -->
-      <div class="p-4 border border-zinc-800 rounded-2xl bg-zinc-900">
+      <div class="p-4 border border-edge rounded-2xl bg-surface-900">
         <div class="mb-2 flex items-center justify-between">
-          <label class="text-sm text-zinc-300 font-medium">Master Intensity</label>
+          <label class="text-sm text-fg-muted font-medium">Master Intensity</label>
           <span class="text-sm text-teal-400 font-mono">{{ Math.round(intensity * 100) }}%</span>
         </div>
         <input
@@ -340,31 +330,33 @@ const beatPulsePeriod = computed(() => {
           class="primary-slider w-full"
           @input="onIntensity"
         >
-        <p class="text-[10px] text-zinc-600 mt-1">
+        <p class="text-[10px] text-fg-faint mt-1">
           Drives beat Hz, noise level, and visual intensity simultaneously
         </p>
       </div>
 
       <!-- Presets -->
       <div>
-        <p class="text-xs text-zinc-500 tracking-wider mb-3 uppercase">
-          Presets <span class="text-zinc-700 normal-case">(morphs smoothly when playing)</span>
+        <p class="label mb-2">
+          Presets <span class="text-fg-faint font-normal normal-case">&mdash; morphs smoothly while playing</span>
         </p>
-        <div class="gap-2 grid grid-cols-5">
+        <div class="gap-1.5 grid grid-cols-2 xl:grid-cols-3">
           <button
             v-for="p in PRESETS"
             :key="p.name"
-            class="p-3 text-left border rounded-xl transition-all active:scale-95 hover:scale-105"
+            class="px-2 py-1.5 text-left border rounded-lg transition-colors"
             :class="currentPreset === p.name
-              ? 'border-zinc-600 bg-zinc-800'
-              : 'border-zinc-800 bg-zinc-900 hover:border-zinc-700'"
+              ? 'border-accent-500/40 bg-accent-500/10'
+              : 'border-edge bg-surface-900 hover:bg-surface-800'"
             @click="applyPreset(p)"
           >
-            <div class="mb-2 rounded-full h-2 w-2" :style="{ background: p.color }" />
-            <p class="text-xs text-zinc-200 font-semibold">
-              {{ p.name }}
-            </p>
-            <p class="text-[10px] text-zinc-500 leading-tight mt-0.5">
+            <div class="flex gap-1.5 items-center">
+              <span class="rounded-full shrink-0 h-1.5 w-1.5" :style="{ background: p.color }" />
+              <p class="text-[11px] text-fg font-semibold truncate">
+                {{ p.name }}
+              </p>
+            </div>
+            <p class="text-[10px] text-fg-muted leading-tight mt-0.5">
               {{ p.desc }}
             </p>
             <p class="text-[10px] mt-1" :style="{ color: p.color }">
@@ -375,14 +367,14 @@ const beatPulsePeriod = computed(() => {
       </div>
 
       <!-- Manual controls -->
-      <div class="p-5 border border-zinc-800 rounded-2xl bg-zinc-900 space-y-5">
-        <p class="text-xs text-zinc-500 tracking-wider uppercase">
+      <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
+        <p class="text-xs text-fg-muted tracking-wider uppercase">
           Manual
         </p>
 
         <div>
           <div class="mb-2 flex justify-between">
-            <label class="text-sm text-zinc-300">Base Frequency</label>
+            <label class="text-sm text-fg-muted">Base Frequency</label>
             <span class="text-sm text-teal-400 font-mono">{{ baseFrequency.toFixed(0) }} Hz</span>
           </div>
           <input
@@ -391,7 +383,7 @@ const beatPulsePeriod = computed(() => {
             class="primary-slider w-full"
             @input="onBaseFreq"
           >
-          <div class="text-[10px] text-zinc-600 mb-2 mt-1 flex justify-between">
+          <div class="text-[10px] text-fg-faint mb-2 mt-1 flex justify-between">
             <span>40 Hz</span><span>500 Hz</span>
           </div>
           <!-- Solfeggio / tuning presets -->
@@ -402,7 +394,7 @@ const beatPulsePeriod = computed(() => {
               class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
               :class="baseFrequency === sf.hz
                 ? 'bg-teal-700 text-teal-100'
-                : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'"
+                : 'bg-surface-800 text-fg-muted hover:text-fg'"
               @click="setBaseFreq(sf.hz)"
             >
               {{ sf.label }}
@@ -412,7 +404,7 @@ const beatPulsePeriod = computed(() => {
 
         <div>
           <div class="mb-2 flex justify-between">
-            <label class="text-sm text-zinc-300">Beat Delta</label>
+            <label class="text-sm text-fg-muted">Beat Delta</label>
             <span class="text-sm text-teal-400 font-mono">{{ beatDelta.toFixed(1) }} Hz</span>
           </div>
           <input
@@ -421,14 +413,14 @@ const beatPulsePeriod = computed(() => {
             class="primary-slider w-full"
             @input="onBeatDelta"
           >
-          <div class="text-[10px] text-zinc-600 mt-1 flex justify-between">
+          <div class="text-[10px] text-fg-faint mt-1 flex justify-between">
             <span>0.5 Hz (Delta)</span><span>40 Hz (Gamma)</span>
           </div>
         </div>
 
         <div>
           <div class="mb-2 flex justify-between">
-            <label class="text-sm text-zinc-300">Volume</label>
+            <label class="text-sm text-fg-muted">Volume</label>
             <span class="text-sm text-teal-400 font-mono">{{ Math.round(volume * 100) }}%</span>
           </div>
           <input
@@ -440,7 +432,7 @@ const beatPulsePeriod = computed(() => {
         </div>
 
         <div>
-          <label class="text-sm text-zinc-300 mb-2 block">Wave Shape</label>
+          <label class="text-sm text-fg-muted mb-2 block">Wave Shape</label>
           <div class="flex gap-2">
             <button
               v-for="wt in WAVE_TYPES"
@@ -448,7 +440,7 @@ const beatPulsePeriod = computed(() => {
               class="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
               :class="waveType === wt.value
                 ? 'bg-teal-600 text-white'
-                : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'"
+                : 'bg-surface-800 text-fg-muted hover:bg-surface-700 hover:text-fg'"
               @click="onWaveType(wt.value)"
             >
               {{ wt.label }}
@@ -458,18 +450,18 @@ const beatPulsePeriod = computed(() => {
       </div>
 
       <!-- Audio Layers -->
-      <div class="p-5 border border-zinc-800 rounded-2xl bg-zinc-900 space-y-5">
-        <p class="text-xs text-zinc-500 tracking-wider uppercase">
+      <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
+        <p class="text-xs text-fg-muted tracking-wider uppercase">
           Audio Layers
         </p>
 
         <!-- Noise -->
         <div class="space-y-3">
           <div class="flex items-center justify-between">
-            <label class="text-sm text-zinc-300 font-medium">Ambient Noise</label>
+            <label class="text-sm text-fg-muted font-medium">Ambient Noise</label>
             <button
               class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-              :class="noiseEnabled ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
+              :class="noiseEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
               @click="noiseEnabled = !noiseEnabled"
             >
               {{ noiseEnabled ? 'On' : 'Off' }}
@@ -477,7 +469,7 @@ const beatPulsePeriod = computed(() => {
           </div>
 
           <Transition name="expand">
-            <div v-if="noiseEnabled" class="pl-3 border-l border-zinc-800 space-y-3">
+            <div v-if="noiseEnabled" class="pl-3 border-l border-edge space-y-3">
               <div class="flex gap-2">
                 <button
                   v-for="nt in NOISE_TYPES"
@@ -485,13 +477,13 @@ const beatPulsePeriod = computed(() => {
                   class="text-xs font-medium py-2 text-center rounded-lg flex-1 transition-colors"
                   :class="noiseType === nt.value
                     ? 'bg-teal-700 text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+                    : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
                   @click="setNoiseType(nt.value)"
                 >
                   <div class="font-semibold">
                     {{ nt.label }}
                   </div>
-                  <div class="text-[10px] text-zinc-500 mt-0.5">
+                  <div class="text-[10px] text-fg-muted mt-0.5">
                     {{ nt.desc }}
                   </div>
                 </button>
@@ -499,7 +491,7 @@ const beatPulsePeriod = computed(() => {
 
               <div>
                 <div class="mb-1.5 flex justify-between">
-                  <label class="text-xs text-zinc-400">Noise Volume</label>
+                  <label class="text-xs text-fg-muted">Noise Volume</label>
                   <span class="text-xs text-teal-400 font-mono">{{ Math.round(noiseVolume * 100) }}%</span>
                 </div>
                 <input
@@ -516,16 +508,16 @@ const beatPulsePeriod = computed(() => {
         <!-- Harmonics -->
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm text-zinc-300 font-medium">
+            <p class="text-sm text-fg-muted font-medium">
               Harmonic Stack
             </p>
-            <p class="text-[10px] text-zinc-600 mt-0.5">
+            <p class="text-[10px] text-fg-faint mt-0.5">
               Adds +1 and +2 octave layers (35%, 18% gain)
             </p>
           </div>
           <button
             class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-            :class="harmonicsEnabled ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
+            :class="harmonicsEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
             @click="harmonicsEnabled = !harmonicsEnabled"
           >
             {{ harmonicsEnabled ? 'On' : 'Off' }}
@@ -535,16 +527,16 @@ const beatPulsePeriod = computed(() => {
         <!-- Beat Drift -->
         <div class="flex items-center justify-between">
           <div>
-            <p class="text-sm text-zinc-300 font-medium">
+            <p class="text-sm text-fg-muted font-medium">
               Beat Drift
             </p>
-            <p class="text-[10px] text-zinc-600 mt-0.5">
+            <p class="text-[10px] text-fg-faint mt-0.5">
               ±0.4 Hz micro-variation every 2.5–6s
             </p>
           </div>
           <button
             class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-            :class="beatDriftEnabled ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
+            :class="beatDriftEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
             @click="beatDriftEnabled = !beatDriftEnabled"
           >
             {{ beatDriftEnabled ? 'On' : 'Off' }}
@@ -553,9 +545,9 @@ const beatPulsePeriod = computed(() => {
       </div>
 
       <!-- Session Engine -->
-      <div class="p-5 border border-zinc-800 rounded-2xl bg-zinc-900 space-y-4">
+      <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-4">
         <div class="flex items-center justify-between">
-          <p class="text-xs text-zinc-500 tracking-wider uppercase">
+          <p class="text-xs text-fg-muted tracking-wider uppercase">
             Session Engine
           </p>
           <div v-if="phase !== 'idle'" class="flex gap-2 items-center">
@@ -564,7 +556,7 @@ const beatPulsePeriod = computed(() => {
           </div>
         </div>
 
-        <p class="text-xs text-zinc-600">
+        <p class="text-xs text-fg-faint">
           Automatically evolves beat, noise and visual intensity through entry → build → peak → descent phases.
         </p>
 
@@ -588,8 +580,8 @@ const beatPulsePeriod = computed(() => {
             :key="ph"
             class="text-[10px] font-medium px-2 py-1 rounded-lg flex-1 transition-all"
             :class="phase === ph
-              ? 'text-zinc-900 font-semibold'
-              : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'"
+              ? 'text-fg-faint font-semibold'
+              : 'bg-surface-800 text-fg-muted hover:text-fg'"
             :style="phase === ph ? { background: PHASE_META[ph].color } : {}"
             @click="session.jumpToPhase(ph)"
           >
@@ -601,7 +593,7 @@ const beatPulsePeriod = computed(() => {
           <button
             class="text-sm font-semibold py-2.5 rounded-xl flex-1 transition-all active:scale-95"
             :class="sessionActive
-              ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200'
+              ? 'bg-surface-700 hover:bg-fg/15 text-fg'
               : 'bg-teal-600 hover:bg-teal-500 text-white'"
             @click="toggleSession"
           >
@@ -610,7 +602,7 @@ const beatPulsePeriod = computed(() => {
 
           <button
             class="text-xs font-medium px-3 rounded-xl transition-colors"
-            :class="driftMode ? 'bg-purple-700 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
+            :class="driftMode ? 'bg-purple-700 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
             @click="driftMode = !driftMode"
           >
             Drift Mode
@@ -623,7 +615,7 @@ const beatPulsePeriod = computed(() => {
         <button
           class="text-base font-semibold py-3.5 rounded-2xl w-48 transition-all active:scale-95"
           :class="isPlaying
-            ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200'
+            ? 'bg-surface-700 hover:bg-fg/15 text-fg'
             : 'bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/40'"
           @click="togglePlay"
         >

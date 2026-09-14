@@ -56,30 +56,30 @@ function close() {
         class="bg-black/70 flex items-center inset-0 justify-center fixed z-50 backdrop-blur-sm"
         @click.self="close"
       >
-        <div class="mx-4 p-6 border border-zinc-700 rounded-2xl bg-zinc-900 max-w-md w-full shadow-2xl">
-          <h3 class="text-base text-zinc-100 font-semibold mb-4">
+        <div class="mx-4 p-6 border border-edge rounded-2xl bg-surface-900 max-w-md w-full shadow-2xl">
+          <h3 class="text-base text-fg font-semibold mb-4">
             Add YouTube Video
           </h3>
           <div class="space-y-3">
             <div>
-              <label class="text-xs text-zinc-400 mb-1 block">URL or Video ID</label>
+              <label class="text-xs text-fg-muted mb-1 block">URL or Video ID</label>
               <input
                 v-model="url"
                 type="text"
                 placeholder="https://www.youtube.com/watch?v=..."
-                class="text-sm text-zinc-100 px-3 py-2 border border-zinc-700 rounded-lg bg-zinc-800 w-full transition-colors focus:outline-none focus:border-teal-500 placeholder-zinc-500"
+                class="text-sm text-fg px-3 py-2 border border-edge rounded-lg bg-surface-800 w-full transition-colors focus:outline-none focus:border-teal-500 placeholder-fg-faint"
                 autofocus
                 @keydown.enter="submit"
                 @keydown.esc="close"
               >
             </div>
             <div>
-              <label class="text-xs text-zinc-400 mb-1 block">Label (optional)</label>
+              <label class="text-xs text-fg-muted mb-1 block">Label (optional)</label>
               <input
                 v-model="label"
                 type="text"
                 placeholder="Rain sounds, Fireplace..."
-                class="text-sm text-zinc-100 px-3 py-2 border border-zinc-700 rounded-lg bg-zinc-800 w-full transition-colors focus:outline-none focus:border-teal-500 placeholder-zinc-500"
+                class="text-sm text-fg px-3 py-2 border border-edge rounded-lg bg-surface-800 w-full transition-colors focus:outline-none focus:border-teal-500 placeholder-fg-faint"
                 @keydown.enter="submit"
                 @keydown.esc="close"
               >
@@ -96,7 +96,7 @@ function close() {
               Add Video
             </button>
             <button
-              class="text-sm text-zinc-300 px-4 py-2 rounded-lg bg-zinc-800 transition-colors hover:bg-zinc-700"
+              class="text-sm text-fg-muted px-4 py-2 rounded-lg bg-surface-800 transition-colors hover:bg-surface-700"
               @click="close"
             >
               Cancel

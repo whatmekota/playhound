@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { formatTime } from '~/lib/time'
 
 export interface Bookmark {
   id: string
@@ -9,6 +10,7 @@ export interface Bookmark {
   createdAt: number
 }
 
+// Legacy key kept so existing bookmarks survive the rename.
 const STORAGE_KEY = 'mwhoplayer:bookmarks'
 
 function load(): Bookmark[] {
@@ -49,10 +51,3 @@ export const useBookmarkStore = defineStore('bookmarks', () => {
 
   return { bookmarks, forVideo, add, remove, rename }
 })
-
-function formatTime(s: number) {
-  const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60)
-  if (h > 0)
-    return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
-  return `${m}:${String(sec).padStart(2, '0')}`
-}

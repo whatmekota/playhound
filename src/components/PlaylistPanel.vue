@@ -92,7 +92,7 @@ function exportPlaylists() {
   const blob = new Blob([json], { type: 'application/json' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = 'mwhoplayer-playlists.json'
+  a.download = 'playhound-playlists.json'
   a.click()
   URL.revokeObjectURL(a.href)
 }

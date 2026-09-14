@@ -14,9 +14,18 @@ export type PanelId
 
 export type PanelGroupId = 'media' | 'script' | 'session' | 'device' | 'data'
 
+/**
+ * Where a panel renders. Most are inspectors that belong in the sidebar, but
+ * the media wall, slideshow and emulator are canvases — they were built as
+ * full-width views and are unusable squeezed into a 320px rail, so they take
+ * over the main area instead.
+ */
+export type PanelSurface = 'side' | 'main'
+
 export interface PanelDef {
   id: PanelId
   label: string
+  surface?: PanelSurface
   /** UnoCSS preset-icons class from @iconify-json/carbon */
   icon: string
   /** Tailwind-ish accent class used when the panel is active */
@@ -54,8 +63,8 @@ export const PANEL_GROUPS: PanelGroup[] = [
     label: 'Session',
     panels: [
       { id: 'binaural', label: 'Binaural', icon: 'i-carbon-headphones', accent: 'text-teal-400', hint: 'Binaural tone, noise and session phases' },
-      { id: 'wall', label: 'Media Wall', icon: 'i-carbon-grid', accent: 'text-teal-400', hint: 'Free-placed images, video and YouTube' },
-      { id: 'slideshow', label: 'Slideshow', icon: 'i-carbon-play-outline', accent: 'text-teal-400', hint: 'Beat-synced slideshow' },
+      { id: 'wall', label: 'Media Wall', surface: 'main', icon: 'i-carbon-grid', accent: 'text-teal-400', hint: 'Free-placed images, video and YouTube' },
+      { id: 'slideshow', label: 'Slideshow', surface: 'main', icon: 'i-carbon-play-outline', accent: 'text-teal-400', hint: 'Beat-synced slideshow' },
     ],
   },
   {
@@ -64,7 +73,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
     panels: [
       { id: 'device', label: 'Device', icon: 'i-carbon-plug', accent: 'text-accent-400', hint: 'Serial / Buttplug connection and axes' },
       { id: 'motion', label: 'Motion', icon: 'i-carbon-wave-height', accent: 'text-emerald-400', hint: 'What drives the device: script, session, beat or manual' },
-      { id: 'emulator', label: 'Emulator', icon: 'i-carbon-cube', accent: 'text-accent-400', hint: 'On-screen OSR preview' },
+      { id: 'emulator', label: 'Emulator', surface: 'main', icon: 'i-carbon-cube', accent: 'text-accent-400', hint: 'On-screen OSR preview' },
     ],
   },
   {
@@ -80,4 +89,9 @@ export const ALL_PANELS: PanelDef[] = PANEL_GROUPS.flatMap(g => g.panels)
 
 export function findPanel(id: PanelId | null): PanelDef | undefined {
   return id ? ALL_PANELS.find(p => p.id === id) : undefined
+}
+
+/** True when the panel takes over the main area rather than the sidebar. */
+export function isMainSurface(id: PanelId | null): boolean {
+  return findPanel(id)?.surface === 'main'
 }

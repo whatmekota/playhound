@@ -320,7 +320,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 </script>
 
 <template>
-  <div ref="slideshowRoot" class="bg-zinc-950 flex flex-col h-full w-full relative overflow-hidden">
+  <div ref="slideshowRoot" class="bg-surface-950 flex flex-col h-full w-full relative overflow-hidden">
     <!-- Background vignette -->
     <div class="pointer-events-none inset-0 absolute z-0" style="background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%)" />
 
@@ -402,19 +402,19 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
         v-if="items.length === 0"
         class="flex flex-col gap-4 items-center inset-0 justify-center absolute z-20"
       >
-        <div class="i-carbon-play-outline text-6xl text-zinc-700" />
-        <p class="text-sm text-zinc-500">
+        <div class="i-carbon-play-outline text-6xl text-fg-faint" />
+        <p class="text-sm text-fg-muted">
           Add images, videos, or YouTube links to start a slideshow
         </p>
         <div class="mt-1 flex gap-2">
           <button
-            class="text-sm text-zinc-300 px-4 py-2 rounded-lg bg-zinc-800 flex gap-2 transition-colors items-center hover:bg-zinc-700"
+            class="text-sm text-fg-muted px-4 py-2 rounded-lg bg-surface-800 flex gap-2 transition-colors items-center hover:bg-surface-700"
             @click="openFilePicker"
           >
             <div class="i-carbon-upload" /> Add Files
           </button>
           <button
-            class="text-sm text-zinc-300 px-4 py-2 rounded-lg bg-zinc-800 flex gap-2 transition-colors items-center hover:bg-zinc-700"
+            class="text-sm text-fg-muted px-4 py-2 rounded-lg bg-surface-800 flex gap-2 transition-colors items-center hover:bg-surface-700"
             @click="showYtModal = true"
           >
             <div class="i-carbon-logo-youtube text-red-400" /> YouTube
@@ -441,14 +441,14 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
       <!-- Top-right controls: fullscreen + settings -->
       <div class="flex gap-1.5 right-3 top-3 absolute z-30">
         <button
-          class="text-zinc-400 rounded-full bg-black/40 flex h-8 w-8 transition-colors items-center justify-center backdrop-blur hover:text-zinc-200"
+          class="text-fg-muted rounded-full bg-black/40 flex h-8 w-8 transition-colors items-center justify-center backdrop-blur hover:text-fg"
           :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
           @click="toggleFullscreen"
         >
           <div :class="isFullscreen ? 'i-carbon-minimize' : 'i-carbon-maximize'" />
         </button>
         <button
-          class="text-zinc-400 rounded-full bg-black/40 flex h-8 w-8 transition-colors items-center justify-center backdrop-blur hover:text-zinc-200"
+          class="text-fg-muted rounded-full bg-black/40 flex h-8 w-8 transition-colors items-center justify-center backdrop-blur hover:text-fg"
           @click="showSettings = !showSettings"
         >
           <div class="i-carbon-settings" />
@@ -459,13 +459,13 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
       <Transition name="slide-settings">
         <div
           v-if="showSettings"
-          class="p-4 border-l border-zinc-800 bg-zinc-900/95 h-full w-72 right-0 top-0 absolute z-30 overflow-y-auto backdrop-blur"
+          class="p-4 border-l border-edge bg-surface-900/95 h-full w-72 right-0 top-0 absolute z-30 overflow-y-auto backdrop-blur"
         >
           <div class="mb-4 flex items-center justify-between">
-            <h3 class="text-sm text-zinc-200 font-semibold">
+            <h3 class="text-sm text-fg font-semibold">
               Settings
             </h3>
-            <button class="text-zinc-500 hover:text-zinc-300" @click="showSettings = false">
+            <button class="text-fg-muted hover:text-fg" @click="showSettings = false">
               <div class="i-carbon-close" />
             </button>
           </div>
@@ -474,13 +474,13 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
             <!-- Delay + Beat Sync -->
             <div>
               <div class="mb-1 flex items-center justify-between">
-                <label class="text-xs text-zinc-400">
+                <label class="text-xs text-fg-muted">
                   Slide Delay
-                  <span class="text-zinc-600">(±20% variance)</span>
+                  <span class="text-fg-faint">(±20% variance)</span>
                 </label>
                 <label class="flex gap-1.5 cursor-pointer items-center">
                   <input v-model="settings.beatSync" type="checkbox" class="accent-teal-500">
-                  <span class="text-[10px] text-zinc-400">Beat sync</span>
+                  <span class="text-[10px] text-fg-muted">Beat sync</span>
                 </label>
               </div>
 
@@ -499,12 +499,12 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     class="flex-1"
                     @input="settings.delay = +($event.target as HTMLInputElement).value"
                   >
-                  <span class="text-xs text-zinc-500">s</span>
+                  <span class="text-xs text-fg-muted">s</span>
                 </div>
               </div>
 
               <div v-else class="space-y-1">
-                <p class="text-[10px] text-zinc-500">
+                <p class="text-[10px] text-fg-muted">
                   Advances every N beats · current: {{ ((settings.beatsPerSlide ?? 8) / Math.max(0.25, audioStore.beatDelta.value)).toFixed(1) }}s
                 </p>
                 <div class="flex flex-wrap gap-1">
@@ -512,7 +512,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     v-for="n in [1, 2, 4, 8, 16, 32]"
                     :key="n"
                     class="text-xs px-2 py-0.5 rounded transition-colors"
-                    :class="(settings.beatsPerSlide ?? 8) === n ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+                    :class="(settings.beatsPerSlide ?? 8) === n ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
                     @click="settings.beatsPerSlide = n"
                   >
                     {{ n }}
@@ -524,10 +524,10 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
             <!-- Transition -->
             <div>
               <div class="mb-2 flex items-center justify-between">
-                <label class="text-xs text-zinc-400">Transition</label>
+                <label class="text-xs text-fg-muted">Transition</label>
                 <label class="flex gap-1.5 cursor-pointer items-center">
                   <input v-model="settings.randomTransition" type="checkbox" class="accent-teal-500">
-                  <span class="text-[10px] text-zinc-400">Random</span>
+                  <span class="text-[10px] text-fg-muted">Random</span>
                 </label>
               </div>
 
@@ -538,7 +538,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     v-for="t in ALL_TRANSITIONS"
                     :key="t"
                     class="text-xs py-1.5 rounded-lg capitalize transition-colors"
-                    :class="settings.transition === t ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'"
+                    :class="settings.transition === t ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
                     @click="settings.transition = t"
                   >
                     {{ t }}
@@ -546,13 +546,13 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                 </div>
                 <label class="flex gap-2 cursor-pointer items-center">
                   <input v-model="settings.autoTransition" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-zinc-400">Auto by session phase</span>
+                  <span class="text-xs text-fg-muted">Auto by session phase</span>
                 </label>
               </div>
 
               <!-- Random pool selector -->
               <div v-else>
-                <p class="text-[10px] text-zinc-500 mb-1.5">
+                <p class="text-[10px] text-fg-muted mb-1.5">
                   Pool — toggle to include/exclude:
                 </p>
                 <div class="gap-1 grid grid-cols-2">
@@ -560,13 +560,13 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     v-for="t in ALL_TRANSITIONS"
                     :key="t"
                     class="text-xs py-1.5 rounded-lg capitalize transition-colors"
-                    :class="(settings.transitionPool ?? []).includes(t) ? 'bg-teal-600 text-white' : 'bg-zinc-800 text-zinc-500 hover:bg-zinc-700'"
+                    :class="(settings.transitionPool ?? []).includes(t) ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
                     @click="toggleTransitionPool(t)"
                   >
                     {{ t }}
                   </button>
                 </div>
-                <p v-if="transitionName" class="text-[10px] text-zinc-600 mt-1">
+                <p v-if="transitionName" class="text-[10px] text-fg-faint mt-1">
                   Next: {{ transitionName }}
                 </p>
               </div>
@@ -575,17 +575,17 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
             <!-- Loop / Shuffle -->
             <label class="flex gap-2 cursor-pointer items-center">
               <input v-model="settings.loop" type="checkbox" class="accent-teal-500">
-              <span class="text-xs text-zinc-300">Loop</span>
+              <span class="text-xs text-fg-muted">Loop</span>
             </label>
             <label class="flex gap-2 cursor-pointer items-center">
               <input v-model="settings.shuffle" type="checkbox" class="accent-teal-500">
-              <span class="text-xs text-zinc-300">Shuffle</span>
+              <span class="text-xs text-fg-muted">Shuffle</span>
             </label>
 
             <!-- LFO controls -->
-            <div class="pt-2 border-t border-zinc-800">
+            <div class="pt-2 border-t border-edge">
               <div class="mb-2 flex items-center justify-between">
-                <p class="text-xs text-zinc-400">
+                <p class="text-xs text-fg-muted">
                   LFO Animation
                 </p>
                 <span v-if="lfo.active.value && isPlaying" class="text-[10px] text-teal-500/70">● active</span>
@@ -593,23 +593,23 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
               <div class="mb-3 space-y-1.5">
                 <label class="flex gap-2 cursor-pointer items-center">
                   <input v-model="lfo.config.zoomEnabled" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-zinc-400">Zoom</span>
+                  <span class="text-xs text-fg-muted">Zoom</span>
                 </label>
                 <label class="flex gap-2 cursor-pointer items-center">
                   <input v-model="lfo.config.opacityEnabled" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-zinc-400">Opacity</span>
+                  <span class="text-xs text-fg-muted">Opacity</span>
                 </label>
                 <label class="flex gap-2 cursor-pointer items-center">
                   <input v-model="lfo.config.panEnabled" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-zinc-400">Pan</span>
+                  <span class="text-xs text-fg-muted">Pan</span>
                 </label>
                 <label class="flex gap-2 cursor-pointer items-center">
                   <input v-model="settings.lfoOverlays" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-zinc-400">Apply to overlays</span>
+                  <span class="text-xs text-fg-muted">Apply to overlays</span>
                 </label>
               </div>
               <div>
-                <label class="text-[10px] text-zinc-500 mb-1 block">
+                <label class="text-[10px] text-fg-muted mb-1 block">
                   Depth — {{ lfo.config.depthMultiplier.toFixed(1) }}×
                 </label>
                 <input
@@ -619,15 +619,15 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   @input="lfo.config.depthMultiplier = +($event.target as HTMLInputElement).value"
                 >
               </div>
-              <p class="text-[10px] text-zinc-600 mt-1.5">
+              <p class="text-[10px] text-fg-faint mt-1.5">
                 Speed syncs to beat frequency. Depth scales with session intensity.
               </p>
             </div>
 
             <!-- Overlays -->
-            <div class="pt-2 border-t border-zinc-800">
+            <div class="pt-2 border-t border-edge">
               <div class="mb-2 flex items-center justify-between">
-                <p class="text-xs text-zinc-400">
+                <p class="text-xs text-fg-muted">
                   Overlays ({{ overlays.length }})
                 </p>
                 <button
@@ -637,14 +637,14 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   <div class="i-carbon-add text-[10px]" /> Add
                 </button>
               </div>
-              <p v-if="overlays.length === 0" class="text-[10px] text-zinc-600 py-2 text-center">
+              <p v-if="overlays.length === 0" class="text-[10px] text-fg-faint py-2 text-center">
                 Layer images, GIFs or videos over slides
               </p>
               <div class="space-y-2">
                 <div
                   v-for="overlay in overlays"
                   :key="overlay.id"
-                  class="p-2 rounded-lg bg-zinc-800/60 space-y-2"
+                  class="p-2 rounded-lg bg-surface-800/60 space-y-2"
                 >
                   <div class="flex gap-2 items-center">
                     <input
@@ -657,16 +657,16 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                       class="text-[10px] flex-shrink-0"
                       :class="overlay.type === 'video' ? 'i-carbon-video text-blue-400' : 'i-carbon-image text-teal-400'"
                     />
-                    <span class="text-xs text-zinc-300 flex-1 truncate">{{ overlay.label }}</span>
+                    <span class="text-xs text-fg-muted flex-1 truncate">{{ overlay.label }}</span>
                     <button
-                      class="text-zinc-600 ml-auto flex-shrink-0 transition-colors hover:text-red-400"
+                      class="text-fg-faint ml-auto flex-shrink-0 transition-colors hover:text-red-400"
                       @click="removeOverlay(overlay.id)"
                     >
                       <div class="i-carbon-trash-can text-xs" />
                     </button>
                   </div>
                   <div class="flex gap-2 items-center">
-                    <span class="text-[10px] text-zinc-500 text-right flex-shrink-0 w-7">{{ Math.round(overlay.opacity * 100) }}%</span>
+                    <span class="text-[10px] text-fg-muted text-right flex-shrink-0 w-7">{{ Math.round(overlay.opacity * 100) }}%</span>
                     <input
                       type="range" min="0" max="1" step="0.01"
                       :value="overlay.opacity"
@@ -675,7 +675,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     >
                     <select
                       :value="overlay.blendMode"
-                      class="text-[10px] text-zinc-300 px-1 py-0.5 outline-none rounded border-none bg-zinc-700 flex-shrink-0"
+                      class="text-[10px] text-fg-muted px-1 py-0.5 outline-none rounded border-none bg-surface-700 flex-shrink-0"
                       @change="updateOverlay(overlay.id, { blendMode: ($event.target as HTMLSelectElement).value })"
                     >
                       <option v-for="bm in BLEND_MODES" :key="bm" :value="bm">
@@ -688,7 +688,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                       v-for="f in ['cover', 'contain', 'fill'] as const"
                       :key="f"
                       class="text-[10px] px-1.5 py-0.5 rounded capitalize transition-colors"
-                      :class="overlay.fit === f ? 'bg-teal-600/50 text-teal-300' : 'bg-zinc-700/40 text-zinc-500 hover:text-zinc-300'"
+                      :class="overlay.fit === f ? 'bg-teal-600/50 text-teal-300' : 'bg-surface-700/40 text-fg-muted hover:text-fg'"
                       @click="updateOverlay(overlay.id, { fit: f })"
                     >
                       {{ f }}
@@ -699,8 +699,8 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
             </div>
 
             <!-- Slides list -->
-            <div class="pt-3 border-t border-zinc-800">
-              <p class="text-xs text-zinc-500 mb-2">
+            <div class="pt-3 border-t border-edge">
+              <p class="text-xs text-fg-muted mb-2">
                 Slides ({{ items.length }})
               </p>
               <div class="max-h-64 overflow-y-auto space-y-0.5">
@@ -710,7 +710,7 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   draggable="true"
                   class="p-1.5 border-t-2 rounded-lg flex gap-1.5 cursor-pointer transition-colors items-center"
                   :class="[
-                    i === currentIndex ? 'bg-zinc-700' : 'hover:bg-zinc-800',
+                    i === currentIndex ? 'bg-surface-700' : 'hover:bg-surface-800',
                     dragOverIdx === i && dragStartIdx !== i ? 'border-teal-500' : 'border-transparent',
                     dragStartIdx === i ? 'opacity-40' : '',
                   ]"
@@ -721,17 +721,17 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   @drop="e => onDrop(e, i)"
                   @dragend="onDragEnd"
                 >
-                  <div class="i-carbon-drag-horizontal text-zinc-600 flex-shrink-0 cursor-grab" />
-                  <span class="text-[10px] text-zinc-500 flex-shrink-0 w-3">{{ i + 1 }}</span>
+                  <div class="i-carbon-drag-horizontal text-fg-faint flex-shrink-0 cursor-grab" />
+                  <span class="text-[10px] text-fg-muted flex-shrink-0 w-3">{{ i + 1 }}</span>
                   <div
                     class="text-[10px] flex-shrink-0"
                     :class="item.type === 'youtube' ? 'i-carbon-logo-youtube text-red-400' : item.type === 'video' ? 'i-carbon-video text-blue-400' : 'i-carbon-image text-teal-400'"
                   />
-                  <span class="text-xs text-zinc-300 flex-1 truncate">{{ item.label }}</span>
+                  <span class="text-xs text-fg-muted flex-1 truncate">{{ item.label }}</span>
                   <!-- Per-slide fit toggle -->
                   <button
                     class="text-[9px] px-1 py-0.5 rounded flex-shrink-0 transition-colors"
-                    :class="item.fit === 'cover' ? 'text-teal-400' : 'text-zinc-600 hover:text-zinc-400'"
+                    :class="item.fit === 'cover' ? 'text-teal-400' : 'text-fg-faint hover:text-fg-muted'"
                     :title="item.fit === 'cover' ? 'Cover (crop to fill)' : 'Contain (fit inside)'"
                     @click.stop="updateItem(item.id, { fit: item.fit === 'cover' ? undefined : 'cover' })"
                   >
@@ -743,13 +743,13 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                     min="0.5" max="3600" step="0.5"
                     :value="item.duration ?? ''"
                     :placeholder="`${settings.delay}`"
-                    class="text-[10px] text-zinc-500 py-0.5 text-center outline-none border border-zinc-700 rounded bg-transparent flex-shrink-0 w-8 focus:border-teal-600"
+                    class="text-[10px] text-fg-muted py-0.5 text-center outline-none border border-edge rounded bg-transparent flex-shrink-0 w-8 focus:border-teal-600"
                     title="Duration override (s), empty = global delay"
                     @click.stop
                     @change="updateItem(item.id, { duration: ($event.target as HTMLInputElement).value ? +($event.target as HTMLInputElement).value : undefined })"
                   >
                   <button
-                    class="text-zinc-600 flex-shrink-0 transition-colors hover:text-red-400"
+                    class="text-fg-faint flex-shrink-0 transition-colors hover:text-red-400"
                     @click.stop="removeItem(item.id)"
                   >
                     <div class="i-carbon-trash-can text-xs" />
@@ -758,13 +758,13 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
               </div>
               <div class="mt-2 flex gap-1">
                 <button
-                  class="text-xs text-zinc-400 py-1 rounded-lg bg-zinc-800 flex flex-1 gap-1 transition-colors items-center justify-center hover:bg-zinc-700"
+                  class="text-xs text-fg-muted py-1 rounded-lg bg-surface-800 flex flex-1 gap-1 transition-colors items-center justify-center hover:bg-surface-700"
                   @click="openFilePicker"
                 >
                   <div class="i-carbon-upload text-xs" /> Files
                 </button>
                 <button
-                  class="text-xs text-zinc-400 py-1 rounded-lg bg-zinc-800 flex flex-1 gap-1 transition-colors items-center justify-center hover:bg-zinc-700"
+                  class="text-xs text-fg-muted py-1 rounded-lg bg-surface-800 flex flex-1 gap-1 transition-colors items-center justify-center hover:bg-surface-700"
                   @click="showYtModal = true"
                 >
                   <div class="i-carbon-logo-youtube text-xs text-red-400" /> YouTube
@@ -777,9 +777,9 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
     </div>
 
     <!-- Playback controls -->
-    <div class="py-3 border-t border-zinc-800 bg-zinc-900 flex flex-shrink-0 gap-4 items-center justify-center z-20">
+    <div class="py-3 border-t border-edge bg-surface-900 flex flex-shrink-0 gap-4 items-center justify-center z-20">
       <button
-        class="text-zinc-300 rounded-full bg-zinc-800 flex h-9 w-9 transition-colors items-center justify-center hover:bg-zinc-700 disabled:opacity-40"
+        class="text-fg-muted rounded-full bg-surface-800 flex h-9 w-9 transition-colors items-center justify-center hover:bg-surface-700 disabled:opacity-40"
         :disabled="items.length === 0"
         @click="prev"
       >
@@ -787,14 +787,14 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
       </button>
       <button
         class="rounded-full flex h-11 w-11 transition-all items-center justify-center disabled:opacity-40 active:scale-95"
-        :class="isPlaying ? 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200' : 'bg-teal-600 hover:bg-teal-500 text-white'"
+        :class="isPlaying ? 'bg-surface-700 hover:bg-fg/15 text-fg' : 'bg-teal-600 hover:bg-teal-500 text-white'"
         :disabled="items.length === 0"
         @click="togglePlay"
       >
         <div :class="isPlaying ? 'i-carbon-pause-filled' : 'i-carbon-play-filled'" class="text-base" />
       </button>
       <button
-        class="text-zinc-300 rounded-full bg-zinc-800 flex h-9 w-9 transition-colors items-center justify-center hover:bg-zinc-700 disabled:opacity-40"
+        class="text-fg-muted rounded-full bg-surface-800 flex h-9 w-9 transition-colors items-center justify-center hover:bg-surface-700 disabled:opacity-40"
         :disabled="items.length === 0"
         @click="next"
       >

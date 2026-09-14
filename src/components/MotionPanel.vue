@@ -51,16 +51,11 @@ const sourceHint = computed(() =>
 </script>
 
 <template>
-  <div class="flex flex-col h-full overflow-y-auto">
-    <header class="px-3 py-2 border-b border-white/5 flex shrink-0 gap-2 items-center">
-      <div class="i-carbon-wave-height text-emerald-400" />
-      <h2 class="text-xs text-white/70 tracking-wider font-semibold uppercase">
-        Motion
-      </h2>
-      <span class="text-[10px] ml-auto" :class="statusTone">{{ statusText }}</span>
-    </header>
-
+  <div class="flex flex-col h-full">
     <div class="p-3 space-y-4">
+      <p class="text-[11px] font-medium" :class="statusTone">
+        {{ statusText }}
+      </p>
       <button
         class="text-xs font-medium px-3 py-2 rounded-lg flex gap-2 w-full transition-colors items-center justify-center"
         :class="motion.enabled
@@ -69,7 +64,7 @@ const sourceHint = computed(() =>
         @click="motion.enabled = !motion.enabled"
       >
         <div :class="motion.enabled ? 'i-carbon-pause-filled' : 'i-carbon-play-filled'" />
-        {{ motion.enabled ? 'Output on' : 'Output off' }}
+        {{ motion.enabled ? 'Stop output' : 'Start output' }}
       </button>
 
       <p v-if="!device.connected" class="text-[10px] text-amber-400/70 -mt-2">
@@ -99,7 +94,7 @@ const sourceHint = computed(() =>
         </p>
       </section>
 
-      <section v-if="motion.isGenerated" class="panel p-2.5 space-y-2">
+      <section v-if="motion.isGenerated" class="p-2.5 panel space-y-2">
         <div class="flex gap-0.5 h-8 items-end">
           <div
             v-for="(h, i) in meter"

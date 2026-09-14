@@ -7,3 +7,4 @@ dist-ssr
 .idea/
 *.local
 *.log
+.shots

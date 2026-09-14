@@ -56,6 +56,7 @@ export const useLibraryStore = defineStore('library', () => {
   const hasVideos = computed(() => videos.value.length > 0)
 
   // Persist starred video names across sessions
+  // Legacy storage key kept so existing data survives the rename.
   const STARS_KEY = 'mwhoplayer:starred'
   const starredNames = new Set<string>(JSON.parse(localStorage.getItem(STARS_KEY) ?? '[]'))
 

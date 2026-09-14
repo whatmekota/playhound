@@ -16,7 +16,8 @@ import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { openVideoFile, storage } from '~/lib/browserApi'
-import { findPanel } from '~/lib/panels'
+import { findPanel, isMainSurface } from '~/lib/panels'
+import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -48,7 +49,12 @@ const showKeybinds = ref(false)
 // ─── Panels ───────────────────────────────────────────────────────────────────
 const activePanel = ref<PanelId | null>('library')
 const pinnedPanel = ref<PanelId | null>(null)
-const showSidebar = computed(() => activePanel.value !== null || pinnedPanel.value !== null)
+
+/** Canvas panels (media wall, slideshow, emulator) replace the player instead
+ *  of squeezing into the sidebar. */
+const mainPanel = computed(() => (isMainSurface(activePanel.value) ? activePanel.value : null))
+const sidePanel = computed(() => (isMainSurface(activePanel.value) ? null : activePanel.value))
+const showSidebar = computed(() => sidePanel.value !== null || pinnedPanel.value !== null)
 
 function selectPanel(id: PanelId) {
   // Clicking the pinned panel's own icon focuses it rather than stacking twice.
@@ -61,6 +67,11 @@ function selectPanel(id: PanelId) {
 }
 
 function togglePin(id: PanelId) {
+  // Canvas panels cannot be pinned into the sidebar strip.
+  if (isMainSurface(id)) {
+    activePanel.value = id
+    return
+  }
   if (pinnedPanel.value === id) {
     pinnedPanel.value = null
     return
@@ -409,39 +420,49 @@ function onGlobalKeyDown(e: KeyboardEvent) {
     <SplashScreen />
 
     <!-- Header: identity and global actions only. Panel navigation lives in the rail. -->
-    <header class="px-3 border-b border-white/5 bg-surface-900 flex shrink-0 gap-2 h-9 items-center z-20">
-      <span class="text-xs text-accent-400 tracking-wide font-semibold shrink-0">playhound</span>
+    <header class="px-3 border-b border-edge bg-surface-900 flex shrink-0 gap-1.5 h-10 items-center z-20">
+      <div class="pr-1 flex shrink-0 gap-2 items-center">
+        <span class="text-[13px] tracking-tight font-bold">
+          play<span class="text-accent-400">hound</span>
+        </span>
+      </div>
 
-      <div class="bg-white/10 h-4 w-px" />
+      <div class="divider-x" />
 
-      <button class="btn-ghost text-xs px-2 py-1" title="Open a video file" @click="openSingleVideo">
-        <div class="i-carbon-document" />
+      <button class="btn-ghost text-xs px-2.5 py-1.5" title="Open a video file" @click="openSingleVideo">
+        <div class="i-carbon-document text-sm" />
         Open
       </button>
-      <button class="btn-ghost text-xs px-2 py-1" title="Play a random scripted video" @click="randomVideo">
-        <div class="i-carbon-shuffle" />
+      <button class="btn-ghost text-xs px-2.5 py-1.5" title="Play a random scripted video" @click="randomVideo">
+        <div class="i-carbon-shuffle text-sm" />
         Random
       </button>
 
-      <p class="text-xs text-white/40 px-2 flex-1 min-w-0 truncate">
+      <div class="divider-x" />
+
+      <p
+        class="text-xs px-1 flex-1 min-w-0 truncate"
+        :class="playerStore.videoPath ? 'text-fg-muted' : 'text-fg-faint'"
+        :title="playerStore.videoPath || undefined"
+      >
         {{ playerStore.videoPath || 'No video loaded' }}
       </p>
 
       <button
         v-if="playerStore.videoPath"
-        class="btn-ghost px-1.5 py-1"
+        class="btn-icon"
         :class="currentStarred ? 'text-amber-400' : ''"
         title="Star this video (S)"
         @click="starCurrentVideo"
       >
-        <div :class="currentStarred ? 'i-carbon-star-filled' : 'i-carbon-star'" />
+        <div :class="currentStarred ? 'i-carbon-star-filled' : 'i-carbon-star'" class="text-sm" />
       </button>
 
-      <div class="bg-white/10 h-4 w-px" />
+      <div class="divider-x" />
       <SerialLogViewer />
       <ThemePicker />
-      <button class="btn-ghost px-1.5 py-1" title="Keyboard shortcuts (?)" @click="showKeybinds = !showKeybinds">
-        <div class="i-carbon-rule" />
+      <button class="btn-icon" title="Keyboard shortcuts (?)" @click="showKeybinds = !showKeybinds">
+        <div class="i-carbon-keyboard text-sm" />
       </button>
     </header>
 
@@ -449,7 +470,9 @@ function onGlobalKeyDown(e: KeyboardEvent) {
       <!-- Player -->
       <div class="flex flex-1 flex-col min-w-0 overflow-hidden">
         <div class="group flex flex-1 relative overflow-hidden">
-          <div class="bg-black flex-1 overflow-hidden">
+          <!-- The player stays mounted behind a canvas panel so playback and
+               script sync survive a detour into the wall or slideshow. -->
+          <div v-show="!mainPanel" class="bg-black flex-1 overflow-hidden">
             <VideoPlayer
               ref="videoPlayerRef"
               @ended="onVideoEnded"
@@ -457,60 +480,84 @@ function onGlobalKeyDown(e: KeyboardEvent) {
               @queue="onQueue"
             />
           </div>
+
+          <PanelHost
+            v-if="mainPanel"
+            :id="mainPanel"
+            class="bg-surface-950 flex-1 min-w-0"
+            @select="onVideoSelected"
+            @queue="onQueue"
+            @seek="seekFromBookmark"
+            @pin="togglePin"
+            @close="closePanel"
+          />
         </div>
 
-        <div class="px-4 pb-3 pt-2 border-t border-white/5 bg-surface-900 flex shrink-0 flex-col gap-2">
+        <div class="px-4 pb-2.5 pt-2 border-t border-edge bg-surface-900 flex shrink-0 flex-col gap-1.5">
           <FunscriptTimeline @seek="seek" />
 
-          <div class="flex flex-wrap gap-1.5 items-center">
-            <button class="btn-ghost px-2 py-1.5" title="Previous" :disabled="!queueStore.hasPrev" @click="playPrev">
-              <div class="i-carbon-skip-back" />
-            </button>
-            <button class="btn-ghost px-2 py-1.5" title="Back 5s" @click="seekRelative(-5)">
-              <div class="i-carbon-rewind-5" />
-            </button>
-            <button
-              class="rounded-full bg-white/10 flex h-9 w-9 transition-colors items-center justify-center hover:bg-white/20"
-              title="Play / pause (space)"
-              @click="togglePlay"
-            >
-              <div :class="playerStore.isPlaying ? 'i-carbon-pause-filled' : 'i-carbon-play-filled-alt'" />
-            </button>
-            <button class="btn-ghost px-2 py-1.5" title="Forward 5s" @click="seekRelative(5)">
-              <div class="i-carbon-forward-5" />
-            </button>
-            <button class="btn-ghost px-2 py-1.5" title="Next" :disabled="!queueStore.hasNext" @click="playNext">
-              <div class="i-carbon-skip-forward" />
-            </button>
+          <div class="flex gap-2 items-center">
+            <!-- Left: elapsed / duration and volume -->
+            <div class="flex flex-1 gap-2 min-w-0 items-center">
+              <span class="text-[11px] text-fg-muted font-mono shrink-0 tabular-nums">
+                {{ formatTime(playerStore.currentTime, '0:00') }}
+                <span class="text-fg-faint">/</span>
+                {{ formatTime(playerStore.videoDuration, '0:00') }}
+              </span>
 
-            <div class="mx-1 bg-white/10 h-5 w-px" />
+              <div class="divider-x" />
 
-            <button class="btn-ghost px-1.5" title="Mute" @click="videoPlayerRef?.toggleMute()">
-              <div class="i-carbon-volume-up" />
-            </button>
-            <input
-              type="range" min="0" max="1" step="0.01" :value="playerStore.volume"
-              class="filled accent w-20" @input="updateVolumeFill"
-            >
+              <button class="btn-icon shrink-0" title="Mute" @click="videoPlayerRef?.toggleMute()">
+                <div class="i-carbon-volume-up text-sm" />
+              </button>
+              <input
+                type="range" min="0" max="1" step="0.01" :value="playerStore.volume"
+                class="accent filled shrink-0 w-20" title="Volume" @input="updateVolumeFill"
+              >
+            </div>
 
-            <div class="flex-1" />
+            <!-- Centre: transport -->
+            <div class="flex shrink-0 gap-1 items-center">
+              <button class="btn-icon" title="Previous" :disabled="!queueStore.hasPrev" @click="playPrev">
+                <div class="i-carbon-skip-back text-sm" />
+              </button>
+              <button class="btn-icon" title="Back 5s (left arrow)" @click="seekRelative(-5)">
+                <div class="i-carbon-rewind-5 text-sm" />
+              </button>
+              <button
+                class="text-white focusable rounded-full bg-accent-500 flex h-10 w-10 shadow-accent-500/20 shadow-lg transition items-center justify-center active:scale-95 hover:brightness-115"
+                :title="playerStore.isPlaying ? 'Pause (space)' : 'Play (space)'"
+                @click="togglePlay"
+              >
+                <div :class="playerStore.isPlaying ? 'i-carbon-pause-filled' : 'i-carbon-play-filled-alt'" class="text-base" />
+              </button>
+              <button class="btn-icon" title="Forward 5s (right arrow)" @click="seekRelative(5)">
+                <div class="i-carbon-forward-5 text-sm" />
+              </button>
+              <button class="btn-icon" title="Next" :disabled="!queueStore.hasNext" @click="playNext">
+                <div class="i-carbon-skip-forward text-sm" />
+              </button>
+            </div>
 
-            <LoopControls />
-            <ScriptOffsetControl />
-            <div class="mx-1 bg-white/10 h-5 w-px" />
-            <SpeedControl @speed="setSpeed" />
-            <div class="mx-1 bg-white/10 h-5 w-px" />
-            <button
-              class="btn-ghost text-xs font-medium px-2 py-1.5"
-              :class="playerStore.sbs180 ? 'text-accent-400 bg-accent-600/20' : ''"
-              title="180 degree side-by-side"
-              @click="playerStore.toggleSbs()"
-            >
-              180
-            </button>
-            <button class="btn-ghost px-2 py-1.5" title="Fullscreen (F)" @click="toggleFullscreen">
-              <div class="i-carbon-fit-to-screen" />
-            </button>
+            <!-- Right: tools -->
+            <div class="flex flex-1 gap-1 min-w-0 items-center justify-end">
+              <LoopControls />
+              <ScriptOffsetControl />
+              <div class="divider-x" />
+              <SpeedControl @speed="setSpeed" />
+              <div class="divider-x" />
+              <button
+                class="btn-ghost text-[11px] font-semibold px-2 py-1.5"
+                :class="playerStore.sbs180 ? 'text-accent-400 bg-accent-500/15' : ''"
+                title="180 degree side-by-side VR"
+                @click="playerStore.toggleSbs()"
+              >
+                180&deg;
+              </button>
+              <button class="btn-icon" title="Fullscreen (F)" @click="toggleFullscreen">
+                <div class="i-carbon-fit-to-screen text-sm" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -531,8 +578,7 @@ function onGlobalKeyDown(e: KeyboardEvent) {
             v-if="pinnedPanel"
             :id="pinnedPanel"
             pinned
-            pinnable
-            :style="activePanel ? { height: `${pinnedHeight}%` } : { flex: '1 1 0%' }"
+            :style="sidePanel ? { height: `${pinnedHeight}%` } : { flex: '1 1 0%' }"
             class="shrink-0"
             @select="onVideoSelected"
             @queue="onQueue"
@@ -542,15 +588,14 @@ function onGlobalKeyDown(e: KeyboardEvent) {
           />
 
           <div
-            v-if="pinnedPanel && activePanel"
+            v-if="pinnedPanel && sidePanel"
             class="bg-white/5 shrink-0 h-1 cursor-row-resize hover:bg-accent-500/40"
             @mousedown="onSplitDragDown"
           />
 
           <PanelHost
-            v-if="activePanel"
-            :id="activePanel"
-            :pinnable="!!pinnedPanel"
+            v-if="sidePanel"
+            :id="sidePanel"
             class="flex-1 min-h-0"
             @select="onVideoSelected"
             @queue="onQueue"
@@ -577,7 +622,7 @@ function onGlobalKeyDown(e: KeyboardEvent) {
       class="bg-black/70 flex items-center inset-0 justify-center absolute z-50"
       @click="showKeybinds = false"
     >
-      <div class="panel text-xs p-5 w-80 space-y-2" @click.stop>
+      <div class="text-xs p-5 panel w-80 space-y-2" @click.stop>
         <h3 class="text-sm font-semibold mb-3">
           Shortcuts
         </h3>

@@ -71,7 +71,7 @@ function addYoutube({ youtubeId, label }: { youtubeId: string, label: string }) 
 
 <template>
   <div
-    class="bg-zinc-950 h-full w-full relative overflow-hidden"
+    class="bg-surface-950 h-full w-full relative overflow-hidden"
     @dragover.prevent="isDragOver = true"
     @dragleave.self="isDragOver = false"
     @drop.prevent="onDrop"
@@ -94,8 +94,8 @@ function addYoutube({ youtubeId, label }: { youtubeId: string, label: string }) 
         v-if="items.length === 0"
         class="flex flex-col gap-3 pointer-events-none items-center inset-0 justify-center absolute"
       >
-        <div class="i-carbon-image text-6xl text-zinc-800" />
-        <p class="text-sm text-zinc-600">
+        <div class="i-carbon-image text-6xl text-fg-faint" />
+        <p class="text-sm text-fg-faint">
           Drop images / videos here, or use the toolbar below
         </p>
       </div>
@@ -117,24 +117,24 @@ function addYoutube({ youtubeId, label }: { youtubeId: string, label: string }) 
     </div>
 
     <!-- Toolbar -->
-    <div class="px-4 py-2 border border-zinc-700/60 rounded-full bg-zinc-900/90 flex gap-2 shadow-xl items-center bottom-4 left-1/2 absolute z-30 backdrop-blur -translate-x-1/2">
+    <div class="px-4 py-2 border border-edge/60 rounded-full bg-surface-900/90 flex gap-2 shadow-xl items-center bottom-4 left-1/2 absolute z-30 backdrop-blur -translate-x-1/2">
       <button
-        class="text-xs text-zinc-200 font-medium px-3 py-1.5 rounded-full bg-zinc-800 flex gap-1.5 transition-colors items-center hover:bg-zinc-700"
+        class="text-xs text-fg font-medium px-3 py-1.5 rounded-full bg-surface-800 flex gap-1.5 transition-colors items-center hover:bg-surface-700"
         @click="openFilePicker"
       >
         <div class="i-carbon-upload text-sm" />
         Add Files
       </button>
       <button
-        class="text-xs text-zinc-200 font-medium px-3 py-1.5 rounded-full bg-zinc-800 flex gap-1.5 transition-colors items-center hover:bg-zinc-700"
+        class="text-xs text-fg font-medium px-3 py-1.5 rounded-full bg-surface-800 flex gap-1.5 transition-colors items-center hover:bg-surface-700"
         @click="showYtModal = true"
       >
         <div class="i-carbon-logo-youtube text-sm text-red-400" />
         YouTube
       </button>
-      <div class="bg-zinc-700 h-4 w-px" />
+      <div class="bg-surface-700 h-4 w-px" />
       <button
-        class="text-xs text-zinc-500 font-medium px-3 py-1.5 rounded-full bg-zinc-800 flex gap-1.5 transition-colors items-center hover:text-red-400 hover:bg-red-900/50 disabled:opacity-30"
+        class="text-xs text-fg-muted font-medium px-3 py-1.5 rounded-full bg-surface-800 flex gap-1.5 transition-colors items-center hover:text-red-400 hover:bg-red-900/50 disabled:opacity-30"
         :disabled="items.length === 0"
         @click="clearAll()"
       >

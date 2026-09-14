@@ -1,20 +1,10 @@
 <script setup lang="ts">
 import { useLoopSection } from '~/composables/useLoopSection'
+import { formatTime } from '~/lib/time'
 import { usePlayerStore } from '~/stores/playerStore'
 
 const playerStore = usePlayerStore()
 const { setLoopStart, setLoopEnd, toggleLoop, clearLoop } = useLoopSection()
-
-function formatTime(secs: number | null): string {
-  if (secs === null)
-    return '--:--'
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  const s = Math.floor(secs % 60)
-  if (h > 0)
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 </script>
 
 <template>

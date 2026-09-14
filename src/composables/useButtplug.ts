@@ -43,7 +43,7 @@ export function useButtplug() {
       await disconnect()
     error.value = null
     try {
-      client = new ButtplugClient('MWHOPlayer')
+      client = new ButtplugClient('playhound')
 
       client.addListener('deviceadded', (d: ButtplugClientDevice) => {
         devices.value = [...devices.value, d]

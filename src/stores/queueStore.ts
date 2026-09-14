@@ -12,6 +12,7 @@ import { computed, ref } from 'vue'
 
 export type RepeatMode = 'off' | 'one' | 'all'
 
+// Legacy storage key kept so existing data survives the rename.
 const LS_KEY = 'mwhoplayer:queue'
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') }

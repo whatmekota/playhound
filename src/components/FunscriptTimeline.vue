@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
@@ -22,15 +23,6 @@ const hoverX = ref(0)
 const hoverTime = ref(0)
 
 // ─── Waveform drawing ─────────────────────────────────────────────────────────
-
-function formatTime(secs: number): string {
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  const s = Math.floor(secs % 60)
-  if (h > 0)
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 
 function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
   const primary = scriptStore.primaryScript

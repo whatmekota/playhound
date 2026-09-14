@@ -6,6 +6,8 @@
  *   "vidmeta"   — key: filename, value: VideoMeta (user editable overrides)
  */
 
+// Storage identifier, not a brand string. Renaming it would orphan every
+// user's playlists, video metadata and saved directory handles.
 const DB_NAME = 'mwhoplayer'
 const DB_VERSION = 3
 let db: IDBDatabase | null = null
