@@ -15,12 +15,16 @@ export type PanelId
 export type PanelGroupId = 'media' | 'script' | 'session' | 'device' | 'data'
 
 /**
- * Where a panel renders. Most are inspectors that belong in the sidebar, but
- * the media wall, slideshow and emulator are canvases — they were built as
- * full-width views and are unusable squeezed into a 320px rail, so they take
- * over the main area instead.
+ * Where a panel renders.
+ *
+ * - `side`    — an inspector in the sidebar (the default)
+ * - `main`    — a canvas that takes over the main area; the media wall and
+ *               slideshow were built as full-width views and are unusable
+ *               squeezed into a 320px rail
+ * - `overlay` — a floating, draggable window that sits above whatever else is
+ *               open, so it stays usable from any view
  */
-export type PanelSurface = 'side' | 'main'
+export type PanelSurface = 'side' | 'main' | 'overlay'
 
 export interface PanelDef {
   id: PanelId
@@ -73,7 +77,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
     panels: [
       { id: 'device', label: 'Device', icon: 'i-carbon-plug', accent: 'text-accent-400', hint: 'Serial / Buttplug connection and axes' },
       { id: 'motion', label: 'Motion', icon: 'i-carbon-wave-height', accent: 'text-emerald-400', hint: 'What drives the device: script, session, beat or manual' },
-      { id: 'emulator', label: 'Emulator', surface: 'main', icon: 'i-carbon-cube', accent: 'text-accent-400', hint: 'On-screen OSR preview' },
+      { id: 'emulator', label: 'Emulator', surface: 'overlay', icon: 'i-carbon-cube', accent: 'text-accent-400', hint: 'Floating OSR preview — usable over any view' },
     ],
   },
   {
@@ -94,4 +98,9 @@ export function findPanel(id: PanelId | null): PanelDef | undefined {
 /** True when the panel takes over the main area rather than the sidebar. */
 export function isMainSurface(id: PanelId | null): boolean {
   return findPanel(id)?.surface === 'main'
+}
+
+/** True when the panel is a floating window layered over the current view. */
+export function isOverlaySurface(id: PanelId | null): boolean {
+  return findPanel(id)?.surface === 'overlay'
 }

@@ -4,6 +4,7 @@ import type { ScriptMatch, VideoEntry } from '~/stores/libraryStore'
 import { computed, onMounted, ref, watch } from 'vue'
 import FunscriptTimeline from '~/components/FunscriptTimeline.vue'
 import LoopControls from '~/components/LoopControls.vue'
+import OsrEmulator from '~/components/OsrEmulator.vue'
 import PanelHost from '~/components/PanelHost.vue'
 import PanelRail from '~/components/PanelRail.vue'
 import ScriptOffsetControl from '~/components/ScriptOffsetControl.vue'
@@ -16,7 +17,7 @@ import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { openVideoFile, storage } from '~/lib/browserApi'
-import { findPanel, isMainSurface } from '~/lib/panels'
+import { findPanel, isMainSurface, isOverlaySurface } from '~/lib/panels'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -50,13 +51,34 @@ const showKeybinds = ref(false)
 const activePanel = ref<PanelId | null>('library')
 const pinnedPanel = ref<PanelId | null>(null)
 
-/** Canvas panels (media wall, slideshow, emulator) replace the player instead
- *  of squeezing into the sidebar. */
+/** Floating windows layered over whatever view is open. */
+const overlayPanels = ref<PanelId[]>([])
+const emuModel = ref<'OSR2' | 'SR6'>('OSR2')
+
+function isOverlayOpen(id: PanelId) {
+  return overlayPanels.value.includes(id)
+}
+
+function toggleOverlay(id: PanelId) {
+  const i = overlayPanels.value.indexOf(id)
+  if (i >= 0)
+    overlayPanels.value.splice(i, 1)
+  else
+    overlayPanels.value.push(id)
+}
+
+/** Canvas panels (media wall, slideshow) replace the player instead of being
+ *  squeezed into the sidebar. */
 const mainPanel = computed(() => (isMainSurface(activePanel.value) ? activePanel.value : null))
 const sidePanel = computed(() => (isMainSurface(activePanel.value) ? null : activePanel.value))
 const showSidebar = computed(() => sidePanel.value !== null || pinnedPanel.value !== null)
 
 function selectPanel(id: PanelId) {
+  // Floating windows toggle in place; they never take over a slot.
+  if (isOverlaySurface(id)) {
+    toggleOverlay(id)
+    return
+  }
   // Clicking the pinned panel's own icon focuses it rather than stacking twice.
   if (pinnedPanel.value === id) {
     pinnedPanel.value = null
@@ -67,6 +89,10 @@ function selectPanel(id: PanelId) {
 }
 
 function togglePin(id: PanelId) {
+  if (isOverlaySurface(id)) {
+    toggleOverlay(id)
+    return
+  }
   // Canvas panels cannot be pinned into the sidebar strip.
   if (isMainSurface(id)) {
     activePanel.value = id
@@ -82,6 +108,10 @@ function togglePin(id: PanelId) {
 }
 
 function closePanel(id: PanelId) {
+  if (isOverlaySurface(id)) {
+    overlayPanels.value = overlayPanels.value.filter(o => o !== id)
+    return
+  }
   if (pinnedPanel.value === id)
     pinnedPanel.value = null
   else if (activePanel.value === id)
@@ -144,6 +174,8 @@ interface UiState {
   activePanel?: PanelId | null
   pinnedPanel?: PanelId | null
   pinnedHeight?: number
+  overlayPanels?: PanelId[]
+  emuModel?: 'OSR2' | 'SR6'
   motion?: unknown
 }
 
@@ -158,6 +190,10 @@ onMounted(() => {
       pinnedPanel.value = ui.pinnedPanel ?? null
     if (typeof ui.pinnedHeight === 'number')
       pinnedHeight.value = Math.max(20, Math.min(80, ui.pinnedHeight))
+    if (Array.isArray(ui.overlayPanels))
+      overlayPanels.value = ui.overlayPanels
+    if (ui.emuModel === 'OSR2' || ui.emuModel === 'SR6')
+      emuModel.value = ui.emuModel
     if (ui.motion)
       motionStore.deserialize(ui.motion)
   }
@@ -165,13 +201,15 @@ onMounted(() => {
 })
 
 watch(
-  [sidebarWidth, activePanel, pinnedPanel, pinnedHeight, () => motionStore.serialize()],
+  [sidebarWidth, activePanel, pinnedPanel, pinnedHeight, overlayPanels, emuModel, () => motionStore.serialize()],
   () => {
     storage.set('uiState', {
       sidebarWidth: sidebarWidth.value,
       activePanel: activePanel.value,
       pinnedPanel: pinnedPanel.value,
       pinnedHeight: pinnedHeight.value,
+      overlayPanels: overlayPanels.value,
+      emuModel: emuModel.value,
       motion: motionStore.serialize(),
     })
   },
@@ -609,12 +647,21 @@ function onGlobalKeyDown(e: KeyboardEvent) {
       <PanelRail
         :active="activePanel"
         :pinned="pinnedPanel"
+        :overlays="overlayPanels"
         @select="selectPanel"
         @pin="togglePin"
       />
     </div>
 
     <StatusBar />
+
+    <!-- Floating windows: layered over whichever view is open -->
+    <OsrEmulator
+      v-if="isOverlayOpen('emulator')"
+      v-model:model="emuModel"
+      visible
+      @close="closePanel('emulator')"
+    />
 
     <!-- Keybinds overlay -->
     <div

@@ -3,7 +3,7 @@ import { nextTick, onUnmounted, ref, watch } from 'vue'
 import { setEmuInstance } from '~/composables/useTCode'
 
 const props = defineProps<{ model?: 'OSR2' | 'SR6', visible?: boolean }>()
-const emit = defineEmits<{ 'update:model': [v: 'OSR2' | 'SR6'] }>()
+const emit = defineEmits<{ 'update:model': [v: 'OSR2' | 'SR6'], 'close': [] }>()
 let OSREmulator: any = null
 let emuInst: any = null // local alias — also registered in useTCode via setEmuInstance
 
@@ -123,7 +123,7 @@ defineExpose({ write })
       @mousedown="onDragDown"
     >
       <span class="text-[10px] tracking-wider font-medium uppercase" style="color:var(--text-faint)">OSR Emu</span>
-      <!-- Model toggle — stop propagation so clicks don't start drag -->
+      <!-- Controls — stop propagation so clicks don't start a drag -->
       <div class="flex gap-0.5 items-center" @mousedown.stop>
         <button
           class="text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors"
@@ -138,6 +138,14 @@ defineExpose({ write })
           @click="emit('update:model', 'SR6')"
         >
           SR6
+        </button>
+        <button
+          class="ml-1 rounded flex h-5 w-5 transition-colors items-center justify-center hover:bg-fg/10"
+          title="Close emulator"
+          style="color:var(--text-faint)"
+          @click="emit('close')"
+        >
+          <div class="i-carbon-close text-[11px]" />
         </button>
       </div>
     </div>

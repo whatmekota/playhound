@@ -9,7 +9,6 @@ import EroScriptsPanel from './EroScriptsPanel.vue'
 import MediaWall from './MediaWall.vue'
 import MotionPanel from './MotionPanel.vue'
 import OrganizerPanel from './OrganizerPanel.vue'
-import OsrEmulator from './OsrEmulator.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
 import ScriptPanel from './ScriptPanel.vue'
 import SlideshowView from './SlideshowView.vue'
@@ -76,7 +75,6 @@ const canPin = computed(() => !isMainSurface(props.id))
       <SlideshowView v-else-if="id === 'slideshow'" />
       <DevicePanel v-else-if="id === 'device'" />
       <MotionPanel v-else-if="id === 'motion'" />
-      <OsrEmulator v-else-if="id === 'emulator'" visible />
       <StatsDashboard v-else-if="id === 'stats'" />
     </div>
   </section>

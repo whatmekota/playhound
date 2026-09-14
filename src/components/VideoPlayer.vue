@@ -385,7 +385,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
     <!-- No video loaded state -->
     <div
       v-if="!playerStore.videoUrl"
-      class="text-white/30 flex flex-col gap-3 pointer-events-none select-none items-center"
+      class="flex flex-col gap-3 pointer-events-none select-none items-center"
+      style="color: rgba(255, 255, 255, 0.35)"
     >
       <svg class="opacity-30 h-20 w-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path

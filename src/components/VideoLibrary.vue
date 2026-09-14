@@ -833,20 +833,20 @@ onUnmounted(() => {
 .chip {
   padding: 0.15rem 0.5rem;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.4);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   font-size: 11px;
   transition: all 0.15s;
   white-space: nowrap;
   cursor: pointer;
 }
 .chip:hover {
-  color: rgba(255, 255, 255, 0.7);
-  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  border-color: var(--text-faint);
 }
 .chip-active {
   border-color: var(--accent, rgb(99, 102, 241));
-  color: white;
+  color: var(--text);
   font-weight: 600;
   background: var(--accent-dim, rgba(99, 102, 241, 0.2));
 }

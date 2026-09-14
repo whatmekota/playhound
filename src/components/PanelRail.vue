@@ -2,15 +2,21 @@
 import type { PanelId } from '~/lib/panels'
 import { PANEL_GROUPS } from '~/lib/panels'
 
-defineProps<{
+const props = defineProps<{
   active: PanelId | null
   pinned: PanelId | null
+  /** Floating windows currently open; these highlight without owning a slot. */
+  overlays?: PanelId[]
 }>()
 
 const emit = defineEmits<{
   select: [id: PanelId]
   pin: [id: PanelId]
 }>()
+
+function isActive(id: PanelId) {
+  return props.active === id || (props.overlays?.includes(id) ?? false)
+}
 </script>
 
 <template>
@@ -29,11 +35,11 @@ const emit = defineEmits<{
         v-for="panel in group.panels"
         :key="panel.id"
         class="group rounded-lg flex shrink-0 h-8 w-8 transition-colors items-center justify-center relative"
-        :class="active === panel.id
-          ? [panel.accent, 'bg-white/10']
-          : 'text-white/40 hover:text-white/80 hover:bg-white/5'"
+        :class="isActive(panel.id)
+          ? [panel.accent, 'bg-fg/10']
+          : 'text-fg-faint hover:text-fg hover:bg-fg/5'"
         :aria-label="panel.label"
-        :aria-pressed="active === panel.id"
+        :aria-pressed="isActive(panel.id)"
         @click="emit('select', panel.id)"
         @click.middle.prevent="emit('pin', panel.id)"
       >

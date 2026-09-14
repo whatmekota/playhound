@@ -240,7 +240,7 @@ const youtubeUrl = computed(() => {
 .isl {
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--text-faint);
   border-radius: 4px;
   height: 3px;
   outline: none;
