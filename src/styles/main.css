@@ -1,3 +1,82 @@
+/* ── Theme variables ────────────────────────────────────────────────────────── */
+:root, [data-theme="dark"] {
+  --bg-base:       #0a0a0a;
+  --bg-900:        #111111;
+  --bg-850:        #181818;
+  --bg-800:        #1e1e1e;
+  --bg-700:        #2a2a2a;
+  --surface-50:    #f8f8f8;
+  --surface-100:   #efefef;
+  --surface-200:   #dcdcdc;
+  --text:          #ffffff;
+  --text-muted:    rgba(255,255,255,0.5);
+  --text-faint:    rgba(255,255,255,0.2);
+  --border:        rgba(255,255,255,0.07);
+  --accent:        #c026d3;
+  --accent-light:  #e879f9;
+  --accent-soft:   rgba(192,38,211,0.2);
+  --scrollbar:     #2a2a2a;
+}
+
+[data-theme="light"] {
+  --bg-base:       #f0f0f0;
+  --bg-900:        #e8e8e8;
+  --bg-850:        #dedede;
+  --bg-800:        #d4d4d4;
+  --bg-700:        #c0c0c0;
+  --surface-50:    #ffffff;
+  --surface-100:   #f5f5f5;
+  --surface-200:   #e5e5e5;
+  --text:          #111111;
+  --text-muted:    rgba(0,0,0,0.5);
+  --text-faint:    rgba(0,0,0,0.25);
+  --border:        rgba(0,0,0,0.1);
+  --accent:        #7c3aed;
+  --accent-light:  #a78bfa;
+  --accent-soft:   rgba(124,58,237,0.15);
+  --scrollbar:     #c0c0c0;
+  color-scheme: light;
+}
+
+[data-theme="catppuccin"] {
+  --bg-base:       #1e1e2e;
+  --bg-900:        #181825;
+  --bg-850:        #13131e;
+  --bg-800:        #313244;
+  --bg-700:        #45475a;
+  --surface-50:    #cdd6f4;
+  --surface-100:   #bac2de;
+  --surface-200:   #a6adc8;
+  --text:          #cdd6f4;
+  --text-muted:    #a6adc8;
+  --text-faint:    #585b70;
+  --border:        rgba(205,214,244,0.08);
+  --accent:        #cba6f7;
+  --accent-light:  #f5c2e7;
+  --accent-soft:   rgba(203,166,247,0.15);
+  --scrollbar:     #45475a;
+}
+
+[data-theme="dracula"] {
+  --bg-base:       #282a36;
+  --bg-900:        #21222c;
+  --bg-850:        #1a1b24;
+  --bg-800:        #343746;
+  --bg-700:        #44475a;
+  --surface-50:    #f8f8f2;
+  --surface-100:   #e6e6e0;
+  --surface-200:   #c8c8c2;
+  --text:          #f8f8f2;
+  --text-muted:    #6272a4;
+  --text-faint:    #44475a;
+  --border:        rgba(248,248,242,0.07);
+  --accent:        #bd93f9;
+  --accent-light:  #ff79c6;
+  --accent-soft:   rgba(189,147,249,0.2);
+  --scrollbar:     #44475a;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
 html,
 body,
 #app {
@@ -6,6 +85,120 @@ body,
   padding: 0;
 }
 
-html.dark {
-  color-scheme: dark;
+* { box-sizing: border-box; }
+
+/* App manages its own theming — ignore the system preference */
+html { color-scheme: only dark; }
+[data-theme="light"] { color-scheme: only light; }
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--bg-base);
+  color: var(--text);
+}
+
+/* bg-surface-* and text-accent-* resolve through the UnoCSS theme (uno.config.ts),
+   which points them at the variables above. Only the hardcoded white utilities
+   inherited from the player still need remapping, so light themes stay readable. */
+.text-white      { color: var(--text) !important; }
+.text-white\/80  { color: color-mix(in srgb, var(--text) 80%, transparent) !important; }
+.text-white\/70  { color: color-mix(in srgb, var(--text) 70%, transparent) !important; }
+.text-white\/60  { color: color-mix(in srgb, var(--text) 60%, transparent) !important; }
+.text-white\/50  { color: color-mix(in srgb, var(--text) 50%, transparent) !important; }
+.text-white\/40  { color: color-mix(in srgb, var(--text) 40%, transparent) !important; }
+.text-white\/30  { color: color-mix(in srgb, var(--text) 30%, transparent) !important; }
+.text-white\/20  { color: color-mix(in srgb, var(--text) 20%, transparent) !important; }
+.text-white\/10  { color: color-mix(in srgb, var(--text) 10%, transparent) !important; }
+
+.bg-white\/5     { background-color: color-mix(in srgb, var(--text) 5%, transparent) !important; }
+.bg-white\/10    { background-color: color-mix(in srgb, var(--text) 10%, transparent) !important; }
+.bg-white\/20    { background-color: color-mix(in srgb, var(--text) 20%, transparent) !important; }
+.hover\:bg-white\/10:hover { background-color: color-mix(in srgb, var(--text) 10%, transparent) !important; }
+.hover\:bg-white\/20:hover { background-color: color-mix(in srgb, var(--text) 20%, transparent) !important; }
+
+.border-white\/5,
+.border-white\/10 { border-color: var(--border) !important; }
+
+/* Thin vertical dividers in the toolbars */
+.w-px { background-color: var(--border); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 9999px; }
+
+/* ── Range inputs ───────────────────────────────────────────────────────────── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--bg-700);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 0.1s;
+}
+input[type='range']:hover::-webkit-slider-thumb { transform: scale(1.2); }
+input[type='range'].accent::-webkit-slider-thumb { background: var(--accent); }
+
+/* Track filled up to the thumb via the JS-set --pct custom property */
+input[type='range'].filled::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--pct, 0%),
+    var(--bg-700) var(--pct, 0%),
+    var(--bg-700) 100%
+  );
+}
+
+/* ── Components ─────────────────────────────────────────────────────────────── */
+.btn-base {
+  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+         transition-colors duration-150 focus:outline-none;
+}
+.btn-primary {
+  @apply btn-base text-white;
+  background-color: var(--accent);
+}
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-ghost {
+  @apply btn-base bg-transparent hover:bg-white/10 hover:text-white;
+  color: var(--text-muted);
+}
+.btn-danger { @apply btn-base bg-red-700 hover:bg-red-600 text-white; }
+
+.panel {
+  @apply rounded-xl border;
+  background-color: var(--bg-850);
+  border-color: var(--border);
+}
+.label {
+  @apply text-xs font-medium uppercase tracking-wider;
+  color: var(--text-muted);
+}
+.input {
+  @apply rounded-lg px-3 py-1.5 text-sm focus:outline-none transition-colors;
+  background-color: var(--bg-900);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.input:focus { border-color: var(--accent); }
+
+/* Multi-axis glow border */
+.glow-multiaxis {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent),
+              0 0 8px 1px color-mix(in srgb, var(--accent-soft) 50%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important;
 }

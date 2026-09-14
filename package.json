@@ -1,10 +1,14 @@
 {
+  "name": "playhound",
   "type": "module",
+  "version": "0.2.0",
   "private": true,
+  "description": "Audiovisual session engine and funscript video player with TCode/OSR device support",
   "packageManager": "pnpm@10.30.3",
   "scripts": {
+    "dev": "vite --host --port 6969",
+    "dev:proxy": "node es-proxy.mjs",
     "build": "vite build",
-    "dev": "vite --port 3333 --open",
     "lint": "eslint .",
     "typecheck": "vue-tsc",
     "preview": "vite preview",
@@ -13,7 +17,13 @@
     "postinstall": "npx simple-git-hooks"
   },
   "dependencies": {
+    "@pixiv/three-vrm": "catalog:frontend",
+    "@pixiv/three-vrm-animation": "catalog:frontend",
     "@vueuse/core": "catalog:frontend",
+    "buttplug": "catalog:frontend",
+    "osr-emu": "catalog:frontend",
+    "pinia": "catalog:frontend",
+    "three": "catalog:frontend",
     "vue": "catalog:frontend",
     "vue-router": "catalog:frontend"
   },
@@ -21,6 +31,7 @@
     "@antfu/eslint-config": "catalog:dev",
     "@iconify-json/carbon": "catalog:build",
     "@types/node": "catalog:dev",
+    "@types/three": "catalog:dev",
     "@unocss/eslint-plugin": "catalog:dev",
     "@vitejs/plugin-vue": "catalog:build",
     "@vue-macros/volar": "catalog:dev",

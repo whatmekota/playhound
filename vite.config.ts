@@ -16,6 +16,23 @@ export default defineConfig({
       '~/': `${path.resolve(__dirname, 'src')}/`,
     },
   },
+
+  build: {
+    // three / @pixiv/three-vrm push the vendor chunk well past the default warning
+    chunkSizeWarningLimit: 10000,
+  },
+
+  server: {
+    proxy: {
+      // EroScripts + Pixeldrain fetches are served by es-proxy.mjs (pnpm dev:proxy)
+      '/es-proxy': {
+        target: 'http://localhost:7071',
+        changeOrigin: true,
+        rewrite: p => p.replace(/^\/es-proxy/, ''),
+      },
+    },
+  },
+
   plugins: [
     // https://github.com/vuejs/router/pull/2603
     VueRouter({
@@ -42,8 +59,8 @@ export default defineConfig({
         '@vueuse/core',
         VueRouterAutoImports,
         {
-          // add any other imports you were relying on
           'vue-router/auto': ['useLink'],
+          'pinia': ['defineStore', 'storeToRefs'],
         },
       ],
       dts: true,

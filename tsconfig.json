@@ -4,6 +4,7 @@
     "jsx": "preserve",
     "lib": [
       "DOM",
+      "DOM.Iterable",
       "ESNext"
     ],
     "baseUrl": ".",
@@ -22,7 +23,8 @@
     "allowJs": true,
     "strict": true,
     "strictNullChecks": true,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
+    "noFallthroughCasesInSwitch": true,
     "noEmit": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,

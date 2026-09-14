@@ -1,23 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="h-full" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>Vitesse Lite</title>
-    <meta name="description" content="Opinionated Vite Starter Template" />
+    <title>playhound</title>
+    <meta name="description" content="Audiovisual session engine and funscript player with TCode/OSR device support" />
   </head>
-  <body class="font-sans dark:text-white dark:bg-hex-121212">
-    <div id="app"></div>
+  <body class="h-full bg-surface-950 text-white overflow-hidden">
+    <div id="app" class="h-full"></div>
     <noscript>
       <div>Please enable JavaScript to use this application.</div>
     </noscript>
     <script>
+      // Apply the persisted theme before first paint to avoid a flash
       ;(function () {
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-        const setting = localStorage.getItem('color-schema') || 'auto'
-        if (setting === 'dark' || (prefersDark && setting !== 'light'))
-          document.documentElement.classList.toggle('dark', true)
+        try {
+          var t = localStorage.getItem('theme') || 'dark'
+          document.documentElement.setAttribute('data-theme', t)
+        } catch (e) {}
       })()
     </script>
     <script type="module" src="/src/main.ts"></script>
