@@ -44,8 +44,31 @@ export function useMotionEngine() {
     script.activeScripts.length > 0 && player.isPlaying,
   )
 
+  /**
+   * Whether the thing the chosen source derives from is actually running.
+   *
+   * Without this the generator keeps stroking after the session ends or the
+   * audio stops: intensity and beat delta keep their last values, so `session`
+   * and `beat` still resolve to a perfectly valid rate with nothing driving
+   * them. Manual is the only source that stands on its own.
+   */
+  const sourceLive = computed(() => {
+    switch (motion.source) {
+      case 'manual':
+        return true
+      case 'session':
+        return audio.sessionActive.value
+      case 'beat':
+        return audio.isPlaying.value
+      case 'pulse':
+        return audio.isPlaying.value && getPulseClock() !== null
+      default:
+        return false
+    }
+  })
+
   const shouldRun = computed(() =>
-    motion.enabled && motion.isGenerated && !funscriptBusy.value,
+    motion.enabled && motion.isGenerated && sourceLive.value && !funscriptBusy.value,
   )
 
   /** Target strokes/min for the active source, before ramping and clamping. */
@@ -174,6 +197,7 @@ export function useMotionEngine() {
     start,
     stop,
     shouldRun,
+    sourceLive,
     funscriptBusy,
     /** Exposed for tests and the panel readout. */
     state: () => ({ phase, spm, depth }),

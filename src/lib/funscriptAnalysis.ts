@@ -118,6 +118,12 @@ export function strokePhaseAt(peaks: Peak[], tMs: number): { phase: number, rate
  * Sample the script into a fixed-resolution envelope of rate, speed and depth,
  * each averaged over a trailing window so the result is stable enough to drive
  * audio without chattering.
+ *
+ * Linear in the number of actions. Both window edges advance monotonically as
+ * the sample time does, so two pointers maintain the running sums instead of
+ * rescanning: a one-hour script is ~14k samples over ~100k actions, and
+ * rescanning per sample is over a billion operations, which locks the UI while
+ * a video loads.
  */
 export function buildEnvelope(
   actions: Action[],
@@ -131,34 +137,52 @@ export function buildEnvelope(
   const endMs = actions[actions.length - 1].at
   const out: EnvelopeSample[] = []
 
+  // Segment i spans actions[i] -> actions[i + 1].
+  let segLo = 0
+  let segHi = 0
+  let moved = 0
+  let elapsed = 0
+
+  // Peaks inside the window.
+  let pkLo = 0
+  let pkHi = 0
+  let promSum = 0
+
   for (let t = 0; t <= endMs; t += resolutionMs) {
     const from = t - windowMs
-    const to = t
 
-    // Speed: mean |dpos|/dt over the window.
-    let moved = 0
-    let elapsed = 0
-    for (let i = 1; i < actions.length; i++) {
-      const a = actions[i - 1]
-      const b = actions[i]
-      if (b.at < from || a.at > to)
-        continue
-      moved += Math.abs(b.pos - a.pos)
-      elapsed += b.at - a.at
+    // Extend the trailing edge: admit every segment starting at or before t.
+    while (segHi < actions.length - 1 && actions[segHi].at <= t) {
+      moved += Math.abs(actions[segHi + 1].pos - actions[segHi].pos)
+      elapsed += actions[segHi + 1].at - actions[segHi].at
+      segHi++
     }
+    // Retract the leading edge: drop segments ending before the window starts.
+    while (segLo < segHi && actions[segLo + 1].at < from) {
+      moved -= Math.abs(actions[segLo + 1].pos - actions[segLo].pos)
+      elapsed -= actions[segLo + 1].at - actions[segLo].at
+      segLo++
+    }
+
+    while (pkHi < peaks.length && peaks[pkHi].at <= t) {
+      promSum += peaks[pkHi].prominence
+      pkHi++
+    }
+    while (pkLo < pkHi && peaks[pkLo].at < from) {
+      promSum -= peaks[pkLo].prominence
+      pkLo++
+    }
+
     const speed = elapsed > 0 ? (moved / elapsed) * 1000 : 0
 
-    // Rate and depth from the peaks inside the window.
-    const inWin = peaks.filter(p => p.at >= from && p.at <= to)
+    const nPeaks = pkHi - pkLo
     let spm = 0
-    if (inWin.length >= 2) {
-      const span = inWin[inWin.length - 1].at - inWin[0].at
+    if (nPeaks >= 2) {
+      const span = peaks[pkHi - 1].at - peaks[pkLo].at
       if (span > 0)
-        spm = ((inWin.length - 1) / span) * 60000
+        spm = ((nPeaks - 1) / span) * 60000
     }
-    const depth = inWin.length
-      ? inWin.reduce((s, p) => s + p.prominence, 0) / inWin.length
-      : 0
+    const depth = nPeaks ? promSum / nPeaks : 0
 
     out.push({ at: t, spm, speed, depth })
   }

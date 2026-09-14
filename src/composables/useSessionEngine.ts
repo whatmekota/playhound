@@ -179,6 +179,7 @@ export function useSessionEngine() {
           store.sessionActive.value = false
           sessionRunning = false
           stopDrift()
+          store.intensity.value = 0
           emit('sessionEnd', {})
         }, dur * 1000)
         return
@@ -221,6 +222,8 @@ export function useSessionEngine() {
       store.sessionActive.value = false
       sessionRunning = false
       stopDrift()
+      // Settle intensity so nothing downstream keeps running off a stale value.
+      store.intensity.value = 0
       emit('sessionEnd', {})
       return
     }
@@ -264,6 +267,7 @@ export function useSessionEngine() {
     store.sessionActive.value = false
     if (phaseTimer !== null) { clearTimeout(phaseTimer); phaseTimer = null }
     stopDrift()
+    store.intensity.value = 0
     store.phase.value = 'idle'
     emit('sessionStop', {})
   }

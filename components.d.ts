@@ -14,6 +14,7 @@ declare module 'vue' {
     AddYoutubeModal: typeof import('./src/components/AddYoutubeModal.vue')['default']
     BinauralBeats: typeof import('./src/components/BinauralBeats.vue')['default']
     BookmarkPanel: typeof import('./src/components/BookmarkPanel.vue')['default']
+    CollapsibleSection: typeof import('./src/components/CollapsibleSection.vue')['default']
     DevicePanel: typeof import('./src/components/DevicePanel.vue')['default']
     EroScriptsPanel: typeof import('./src/components/EroScriptsPanel.vue')['default']
     FunscriptTimeline: typeof import('./src/components/FunscriptTimeline.vue')['default']

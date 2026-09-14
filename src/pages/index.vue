@@ -535,7 +535,13 @@ function onGlobalKeyDown(e: KeyboardEvent) {
           />
         </div>
 
-        <div class="px-4 pb-2.5 pt-2 border-t border-edge bg-surface-900 flex shrink-0 flex-col gap-1.5">
+        <!-- Hidden behind a canvas panel: the player is not visible, the canvas
+             brings its own controls, and two transport bars stacked is worse
+             than none. -->
+        <div
+          v-if="!mainPanel"
+          class="px-4 pb-2.5 pt-2 border-t border-edge bg-surface-900 flex shrink-0 flex-col gap-1.5"
+        >
           <FunscriptTimeline @seek="seek" />
 
           <div class="flex gap-2 items-center">

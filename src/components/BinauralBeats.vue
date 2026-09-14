@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { NoiseType, SessionPhase } from '~/stores/audio'
+import { useLocalStorage } from '@vueuse/core'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useAudioStore } from '~/stores/audio'
 import { useScriptStore } from '~/stores/scriptStore'
+import CollapsibleSection from './CollapsibleSection.vue'
 
 const {
   baseFrequency,
@@ -33,6 +35,24 @@ const {
   scriptDrive,
   scriptDriveIntensity,
 } = useAudioStore()
+
+const openBeat = useLocalStorage('ph-sec-beat', false)
+const openLayers = useLocalStorage('ph-sec-layers', false)
+const openSession = useLocalStorage('ph-sec-session', false)
+
+const beatSummary = computed(() =>
+  `${baseFrequency.value.toFixed(0)} Hz · Δ${beatDelta.value.toFixed(1)}`,
+)
+const layerSummary = computed(() =>
+  noiseEnabled.value ? `${noiseType.value} noise` : 'off',
+)
+const sessionSummary = computed(() => {
+  if (scriptDrive.value)
+    return 'script'
+  if (sessionActive.value)
+    return phase.value
+  return sessionArc.value
+})
 
 const scriptPulse = useScriptPulse()
 const scriptStore = useScriptStore()
@@ -353,6 +373,18 @@ const beatPulsePeriod = computed(() => {
         </div>
       </div>
 
+      <!-- Play button -->
+      <div class="pb-4 flex justify-center">
+        <button
+          class="text-base font-semibold py-3.5 rounded-2xl w-48 transition-all active:scale-95"
+          :class="isPlaying
+            ? 'bg-surface-700 hover:bg-fg/15 text-fg'
+            : 'bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/40'"
+          @click="togglePlay"
+        >
+          {{ isPlaying ? '■ Stop' : '▶ Play' }}
+        </button>
+      </div>
       <!-- Master Intensity -->
       <div class="p-4 border border-edge rounded-2xl bg-surface-900">
         <div class="mb-2 flex items-center justify-between">
@@ -370,471 +402,482 @@ const beatPulsePeriod = computed(() => {
         </p>
       </div>
 
-      <!-- Beat mode -->
-      <div>
-        <p class="label mb-2">
-          Beat mode
-        </p>
-        <div class="gap-1 grid grid-cols-3">
-          <button
-            v-for="m in BEAT_MODES"
-            :key="m.id"
-            class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
-            :class="beatMode === m.id
-              ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
-              : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
-            @click="beatMode = m.id"
-          >
-            {{ m.label }}
-          </button>
-        </div>
-        <p class="hint mt-1.5">
-          {{ beatModeHint }}
-        </p>
-      </div>
-
-      <!-- Drive from the funscript -->
-      <div class="p-3 panel space-y-2.5">
-        <div class="flex items-center justify-between">
-          <p class="label">
-            Follow the script
+      <CollapsibleSection
+        v-model:open="openBeat"
+        title="Beat"
+        icon="i-carbon-waveform"
+        :summary="beatSummary"
+        :active="isPlaying"
+      >
+        <!-- Beat mode -->
+        <div>
+          <p class="label mb-2">
+            Beat mode
           </p>
-          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-            <input v-model="scriptDrive" type="checkbox">
-            On
-          </label>
-        </div>
-        <p class="hint">
-          Builds the beat from the funscript you are watching: the pulse locks
-          to the stroke phase rather than running on its own tempo, so the audio
-          lands on the strokes.
-        </p>
-
-        <label
-          v-if="scriptDrive"
-          class="text-xs text-fg-muted flex gap-2 cursor-pointer items-center"
-        >
-          <input v-model="scriptDriveIntensity" type="checkbox">
-          Stroke speed also drives intensity
-        </label>
-
-        <p v-if="scriptDrive && !hasScript" class="hint text-amber-400/80">
-          No script loaded — nothing to follow yet.
-        </p>
-
-        <div
-          v-else-if="scriptDrive"
-          class="text-[11px] font-mono flex gap-2 items-center"
-        >
-          <span
-            class="rounded-full shrink-0 h-1.5 w-1.5"
-            :class="scriptPulse.locked.value ? 'bg-teal-400' : 'bg-fg/25'"
-          />
-          <span :class="scriptPulse.locked.value ? 'text-teal-400' : 'text-fg-faint'">
-            {{ scriptPulse.locked.value ? 'locked' : 'searching' }}
-          </span>
-          <span class="text-fg-faint">·</span>
-          <span class="text-fg-muted">{{ scriptPulse.scriptSpm.value.toFixed(0) }} spm</span>
-          <span class="text-fg-faint">·</span>
-          <span class="text-fg-muted">{{ (scriptPulse.scriptIntensity.value * 100).toFixed(0) }}%</span>
-        </div>
-      </div>
-
-      <!-- Session pulse -->
-      <div class="p-3 panel space-y-2.5">
-        <div class="flex items-center justify-between">
-          <p class="label">
-            Session pulse
+          <div class="gap-1 grid grid-cols-3">
+            <button
+              v-for="m in BEAT_MODES"
+              :key="m.id"
+              class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
+              :class="beatMode === m.id
+                ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
+                : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
+              @click="beatMode = m.id"
+            >
+              {{ m.label }}
+            </button>
+          </div>
+          <p class="hint mt-1.5">
+            {{ beatModeHint }}
           </p>
-          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-            <input v-model="pulseEnabled" type="checkbox">
-            Audible
-          </label>
         </div>
-        <p class="hint">
-          A slow swell the device stroke and the slideshow lock to in phase, so
-          what you hear and what you feel are the same beat.
-        </p>
 
-        <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-          <input v-model="pulseFollowsSession" type="checkbox">
-          Follow session intensity
-        </label>
-
+        <!-- Presets -->
         <div>
-          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-            <span>Tempo</span>
-            <span class="font-mono">{{ pulseCpm }} / min</span>
-          </div>
-          <input
-            v-model.number="pulseCpm" type="range" min="12" max="160" step="1"
-            class="accent w-full" :disabled="pulseFollowsSession"
-          >
-        </div>
-
-        <div>
-          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-            <span>Depth</span>
-            <span class="font-mono">{{ (pulseDepth * 100).toFixed(0) }}%</span>
-          </div>
-          <input v-model.number="pulseDepth" type="range" min="0" max="1" step="0.01" class="accent w-full">
-        </div>
-      </div>
-
-      <!-- Session arc -->
-      <div>
-        <p class="label mb-2">
-          Session arc
-        </p>
-        <div class="gap-1 grid grid-cols-2">
-          <button
-            v-for="a in ARCS"
-            :key="a.id"
-            class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
-            :class="sessionArc === a.id
-              ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
-              : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
-            @click="sessionArc = a.id"
-          >
-            {{ a.label }}
-          </button>
-        </div>
-        <p class="hint mt-1.5">
-          {{ arcHint }}
-        </p>
-        <div v-if="sessionArc === 'edged'" class="mt-2">
-          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-            <span>Passes before wind-down</span>
-            <span class="font-mono">{{ edgeCycles }}</span>
-          </div>
-          <input v-model.number="edgeCycles" type="range" min="1" max="8" step="1" class="accent w-full">
-        </div>
-      </div>
-
-      <!-- Breath pacing -->
-      <div class="p-3 panel space-y-2.5">
-        <div class="flex items-center justify-between">
-          <p class="label">
-            Breath pacing
+          <p class="label mb-2">
+            Presets <span class="text-fg-faint font-normal normal-case">&mdash; morphs smoothly while playing</span>
           </p>
-          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-            <input v-model="breathEnabled" type="checkbox">
-            On
-          </label>
-        </div>
-        <p class="hint">
-          Swells the noise bed to breathe along with, longer out than in. Needs
-          the noise layer on. This is the one part of this panel with a solid
-          physiological mechanism behind it rather than entrainment folklore.
-        </p>
-        <div>
-          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-            <span>Rate</span>
-            <span class="font-mono">{{ breathPerMinute }} / min</span>
+          <div class="gap-1.5 grid grid-cols-2 xl:grid-cols-3">
+            <button
+              v-for="p in PRESETS"
+              :key="p.name"
+              class="px-2 py-1.5 text-left border rounded-lg transition-colors"
+              :class="currentPreset === p.name
+                ? 'border-accent-500/40 bg-accent-500/10'
+                : 'border-edge bg-surface-900 hover:bg-surface-800'"
+              @click="applyPreset(p)"
+            >
+              <div class="flex gap-1.5 items-center">
+                <span class="rounded-full shrink-0 h-1.5 w-1.5" :style="{ background: p.color }" />
+                <p class="text-[11px] text-fg font-semibold truncate">
+                  {{ p.name }}
+                </p>
+              </div>
+              <p class="text-[10px] text-fg-muted leading-tight mt-0.5">
+                {{ p.desc }}
+              </p>
+              <p class="text-[10px] mt-1" :style="{ color: p.color }">
+                {{ p.hz }}
+              </p>
+            </button>
           </div>
-          <input v-model.number="breathPeriod" type="range" min="4" max="20" step="0.5" class="accent w-full">
         </div>
-        <div>
-          <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-            <span>In / out</span>
-            <span class="font-mono">{{ (breathInhaleRatio * 100).toFixed(0) }} / {{ (100 - breathInhaleRatio * 100).toFixed(0) }}</span>
-          </div>
-          <input v-model.number="breathInhaleRatio" type="range" min="0.25" max="0.5" step="0.01" class="accent w-full">
-        </div>
-      </div>
 
-      <!-- Presets -->
-      <div>
-        <p class="label mb-2">
-          Presets <span class="text-fg-faint font-normal normal-case">&mdash; morphs smoothly while playing</span>
-        </p>
-        <div class="gap-1.5 grid grid-cols-2 xl:grid-cols-3">
-          <button
-            v-for="p in PRESETS"
-            :key="p.name"
-            class="px-2 py-1.5 text-left border rounded-lg transition-colors"
-            :class="currentPreset === p.name
-              ? 'border-accent-500/40 bg-accent-500/10'
-              : 'border-edge bg-surface-900 hover:bg-surface-800'"
-            @click="applyPreset(p)"
-          >
-            <div class="flex gap-1.5 items-center">
-              <span class="rounded-full shrink-0 h-1.5 w-1.5" :style="{ background: p.color }" />
-              <p class="text-[11px] text-fg font-semibold truncate">
-                {{ p.name }}
+        <!-- Manual controls -->
+        <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
+          <p class="text-xs text-fg-muted tracking-wider uppercase">
+            Manual
+          </p>
+
+          <div>
+            <div class="mb-2 flex justify-between">
+              <label class="text-sm text-fg-muted">Base Frequency</label>
+              <span class="text-sm text-teal-400 font-mono">{{ baseFrequency.toFixed(0) }} Hz</span>
+            </div>
+            <input
+              type="range" min="40" max="500" step="1"
+              :value="baseFrequency"
+              class="primary-slider w-full"
+              @input="onBaseFreq"
+            >
+            <div class="text-[10px] text-fg-faint mb-1 mt-1 flex justify-between">
+              <span>40 Hz</span><span>500 Hz</span>
+            </div>
+            <p v-if="carrierOutOfRange" class="hint text-amber-400/80 mb-2">
+              Beat perception is widest around 250&ndash;450 Hz, and falls away
+              entirely above about 1 kHz. Outside that band the beat gets harder to
+              hear, whatever the delta says.
+            </p>
+            <!-- Solfeggio / tuning presets -->
+            <div class="flex flex-wrap gap-1">
+              <button
+                v-for="sf in SOLFEGGIO"
+                :key="sf.hz"
+                class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                :class="baseFrequency === sf.hz
+                  ? 'bg-teal-700 text-teal-100'
+                  : 'bg-surface-800 text-fg-muted hover:text-fg'"
+                @click="setBaseFreq(sf.hz)"
+              >
+                {{ sf.label }}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="mb-2 flex justify-between">
+              <label class="text-sm text-fg-muted">Beat Delta</label>
+              <span class="text-sm text-teal-400 font-mono">{{ beatDelta.toFixed(1) }} Hz</span>
+            </div>
+            <input
+              type="range" min="0.5" max="40" step="0.5"
+              :value="beatDelta"
+              class="primary-slider w-full"
+              @input="onBeatDelta"
+            >
+            <div class="text-[10px] text-fg-faint mt-1 flex justify-between">
+              <span>0.5 Hz (Delta)</span><span>40 Hz (Gamma)</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="mb-2 flex justify-between">
+              <label class="text-sm text-fg-muted">Volume</label>
+              <span class="text-sm text-teal-400 font-mono">{{ Math.round(volume * 100) }}%</span>
+            </div>
+            <input
+              type="range" min="0" max="1" step="0.01"
+              :value="volume"
+              class="primary-slider w-full"
+              @input="onVolume"
+            >
+          </div>
+
+          <div>
+            <label class="text-sm text-fg-muted mb-2 block">Wave Shape</label>
+            <div class="flex gap-2">
+              <button
+                v-for="wt in WAVE_TYPES"
+                :key="wt.value"
+                class="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                :class="waveType === wt.value
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-surface-800 text-fg-muted hover:bg-surface-700 hover:text-fg'"
+                @click="onWaveType(wt.value)"
+              >
+                {{ wt.label }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        v-model:open="openLayers"
+        title="Layers"
+        icon="i-carbon-layers"
+        :summary="layerSummary"
+        :active="noiseEnabled"
+      >
+        <!-- Audio Layers -->
+        <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
+          <p class="text-xs text-fg-muted tracking-wider uppercase">
+            Audio Layers
+          </p>
+
+          <!-- Noise -->
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <label class="text-sm text-fg-muted font-medium">Ambient Noise</label>
+              <button
+                class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
+                :class="noiseEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
+                @click="noiseEnabled = !noiseEnabled"
+              >
+                {{ noiseEnabled ? 'On' : 'Off' }}
+              </button>
+            </div>
+
+            <Transition name="expand">
+              <div v-if="noiseEnabled" class="pl-3 border-l border-edge space-y-3">
+                <div class="flex gap-2">
+                  <button
+                    v-for="nt in NOISE_TYPES"
+                    :key="nt.value"
+                    class="text-xs font-medium py-2 text-center rounded-lg flex-1 transition-colors"
+                    :class="noiseType === nt.value
+                      ? 'bg-teal-700 text-white'
+                      : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
+                    @click="setNoiseType(nt.value)"
+                  >
+                    <div class="font-semibold">
+                      {{ nt.label }}
+                    </div>
+                    <div class="text-[10px] text-fg-muted mt-0.5">
+                      {{ nt.desc }}
+                    </div>
+                  </button>
+                </div>
+
+                <div>
+                  <div class="mb-1.5 flex justify-between">
+                    <label class="text-xs text-fg-muted">Noise Volume</label>
+                    <span class="text-xs text-teal-400 font-mono">{{ Math.round(noiseVolume * 100) }}%</span>
+                  </div>
+                  <input
+                    type="range" min="0.01" max="0.6" step="0.01"
+                    :value="noiseVolume"
+                    class="primary-slider w-full"
+                    @input="onNoiseVolume"
+                  >
+                </div>
+              </div>
+            </Transition>
+          </div>
+
+          <!-- Harmonics -->
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-fg-muted font-medium">
+                Harmonic Stack
+              </p>
+              <p class="text-[10px] text-fg-faint mt-0.5">
+                Adds +1 and +2 octave layers (35%, 18% gain)
               </p>
             </div>
-            <p class="text-[10px] text-fg-muted leading-tight mt-0.5">
-              {{ p.desc }}
-            </p>
-            <p class="text-[10px] mt-1" :style="{ color: p.color }">
-              {{ p.hz }}
-            </p>
-          </button>
-        </div>
-      </div>
-
-      <!-- Manual controls -->
-      <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
-        <p class="text-xs text-fg-muted tracking-wider uppercase">
-          Manual
-        </p>
-
-        <div>
-          <div class="mb-2 flex justify-between">
-            <label class="text-sm text-fg-muted">Base Frequency</label>
-            <span class="text-sm text-teal-400 font-mono">{{ baseFrequency.toFixed(0) }} Hz</span>
-          </div>
-          <input
-            type="range" min="40" max="500" step="1"
-            :value="baseFrequency"
-            class="primary-slider w-full"
-            @input="onBaseFreq"
-          >
-          <div class="text-[10px] text-fg-faint mb-1 mt-1 flex justify-between">
-            <span>40 Hz</span><span>500 Hz</span>
-          </div>
-          <p v-if="carrierOutOfRange" class="hint text-amber-400/80 mb-2">
-            Beat perception is widest around 250&ndash;450 Hz, and falls away
-            entirely above about 1 kHz. Outside that band the beat gets harder to
-            hear, whatever the delta says.
-          </p>
-          <!-- Solfeggio / tuning presets -->
-          <div class="flex flex-wrap gap-1">
-            <button
-              v-for="sf in SOLFEGGIO"
-              :key="sf.hz"
-              class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
-              :class="baseFrequency === sf.hz
-                ? 'bg-teal-700 text-teal-100'
-                : 'bg-surface-800 text-fg-muted hover:text-fg'"
-              @click="setBaseFreq(sf.hz)"
-            >
-              {{ sf.label }}
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <div class="mb-2 flex justify-between">
-            <label class="text-sm text-fg-muted">Beat Delta</label>
-            <span class="text-sm text-teal-400 font-mono">{{ beatDelta.toFixed(1) }} Hz</span>
-          </div>
-          <input
-            type="range" min="0.5" max="40" step="0.5"
-            :value="beatDelta"
-            class="primary-slider w-full"
-            @input="onBeatDelta"
-          >
-          <div class="text-[10px] text-fg-faint mt-1 flex justify-between">
-            <span>0.5 Hz (Delta)</span><span>40 Hz (Gamma)</span>
-          </div>
-        </div>
-
-        <div>
-          <div class="mb-2 flex justify-between">
-            <label class="text-sm text-fg-muted">Volume</label>
-            <span class="text-sm text-teal-400 font-mono">{{ Math.round(volume * 100) }}%</span>
-          </div>
-          <input
-            type="range" min="0" max="1" step="0.01"
-            :value="volume"
-            class="primary-slider w-full"
-            @input="onVolume"
-          >
-        </div>
-
-        <div>
-          <label class="text-sm text-fg-muted mb-2 block">Wave Shape</label>
-          <div class="flex gap-2">
-            <button
-              v-for="wt in WAVE_TYPES"
-              :key="wt.value"
-              class="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-              :class="waveType === wt.value
-                ? 'bg-teal-600 text-white'
-                : 'bg-surface-800 text-fg-muted hover:bg-surface-700 hover:text-fg'"
-              @click="onWaveType(wt.value)"
-            >
-              {{ wt.label }}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Audio Layers -->
-      <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
-        <p class="text-xs text-fg-muted tracking-wider uppercase">
-          Audio Layers
-        </p>
-
-        <!-- Noise -->
-        <div class="space-y-3">
-          <div class="flex items-center justify-between">
-            <label class="text-sm text-fg-muted font-medium">Ambient Noise</label>
             <button
               class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-              :class="noiseEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-              @click="noiseEnabled = !noiseEnabled"
+              :class="harmonicsEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
+              @click="harmonicsEnabled = !harmonicsEnabled"
             >
-              {{ noiseEnabled ? 'On' : 'Off' }}
+              {{ harmonicsEnabled ? 'On' : 'Off' }}
             </button>
           </div>
 
-          <Transition name="expand">
-            <div v-if="noiseEnabled" class="pl-3 border-l border-edge space-y-3">
-              <div class="flex gap-2">
-                <button
-                  v-for="nt in NOISE_TYPES"
-                  :key="nt.value"
-                  class="text-xs font-medium py-2 text-center rounded-lg flex-1 transition-colors"
-                  :class="noiseType === nt.value
-                    ? 'bg-teal-700 text-white'
-                    : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                  @click="setNoiseType(nt.value)"
-                >
-                  <div class="font-semibold">
-                    {{ nt.label }}
-                  </div>
-                  <div class="text-[10px] text-fg-muted mt-0.5">
-                    {{ nt.desc }}
-                  </div>
-                </button>
-              </div>
-
-              <div>
-                <div class="mb-1.5 flex justify-between">
-                  <label class="text-xs text-fg-muted">Noise Volume</label>
-                  <span class="text-xs text-teal-400 font-mono">{{ Math.round(noiseVolume * 100) }}%</span>
-                </div>
-                <input
-                  type="range" min="0.01" max="0.6" step="0.01"
-                  :value="noiseVolume"
-                  class="primary-slider w-full"
-                  @input="onNoiseVolume"
-                >
-              </div>
+          <!-- Beat Drift -->
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm text-fg-muted font-medium">
+                Beat Drift
+              </p>
+              <p class="text-[10px] text-fg-faint mt-0.5">
+                ±0.4 Hz micro-variation every 2.5–6s
+              </p>
             </div>
-          </Transition>
-        </div>
-
-        <!-- Harmonics -->
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm text-fg-muted font-medium">
-              Harmonic Stack
-            </p>
-            <p class="text-[10px] text-fg-faint mt-0.5">
-              Adds +1 and +2 octave layers (35%, 18% gain)
-            </p>
+            <button
+              class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
+              :class="beatDriftEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
+              @click="beatDriftEnabled = !beatDriftEnabled"
+            >
+              {{ beatDriftEnabled ? 'On' : 'Off' }}
+            </button>
           </div>
-          <button
-            class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-            :class="harmonicsEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-            @click="harmonicsEnabled = !harmonicsEnabled"
-          >
-            {{ harmonicsEnabled ? 'On' : 'Off' }}
-          </button>
         </div>
+      </CollapsibleSection>
 
-        <!-- Beat Drift -->
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm text-fg-muted font-medium">
-              Beat Drift
+      <CollapsibleSection
+        v-model:open="openSession"
+        title="Session"
+        icon="i-carbon-flow"
+        :summary="sessionSummary"
+        :active="sessionActive"
+      >
+        <!-- Drive from the funscript -->
+        <div class="p-3 panel space-y-2.5">
+          <div class="flex items-center justify-between">
+            <p class="label">
+              Follow the script
             </p>
-            <p class="text-[10px] text-fg-faint mt-0.5">
-              ±0.4 Hz micro-variation every 2.5–6s
-            </p>
+            <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+              <input v-model="scriptDrive" type="checkbox">
+              On
+            </label>
           </div>
-          <button
-            class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-            :class="beatDriftEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-            @click="beatDriftEnabled = !beatDriftEnabled"
-          >
-            {{ beatDriftEnabled ? 'On' : 'Off' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Session Engine -->
-      <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-4">
-        <div class="flex items-center justify-between">
-          <p class="text-xs text-fg-muted tracking-wider uppercase">
-            Session Engine
+          <p class="hint">
+            Builds the beat from the funscript you are watching: the pulse locks
+            to the stroke phase rather than running on its own tempo, so the audio
+            lands on the strokes.
           </p>
-          <div v-if="phase !== 'idle'" class="flex gap-2 items-center">
-            <div class="rounded-full h-2 w-2 animate-pulse" :style="{ background: phaseColor }" />
-            <span class="text-xs font-medium" :style="{ color: phaseColor }">{{ phaseLabel }}</span>
+
+          <label
+            v-if="scriptDrive"
+            class="text-xs text-fg-muted flex gap-2 cursor-pointer items-center"
+          >
+            <input v-model="scriptDriveIntensity" type="checkbox">
+            Stroke speed also drives intensity
+          </label>
+
+          <p v-if="scriptDrive && !hasScript" class="hint text-amber-400/80">
+            No script loaded — nothing to follow yet.
+          </p>
+
+          <div
+            v-else-if="scriptDrive"
+            class="text-[11px] font-mono flex gap-2 items-center"
+          >
+            <span
+              class="rounded-full shrink-0 h-1.5 w-1.5"
+              :class="scriptPulse.locked.value ? 'bg-teal-400' : 'bg-fg/25'"
+            />
+            <span :class="scriptPulse.locked.value ? 'text-teal-400' : 'text-fg-faint'">
+              {{ scriptPulse.locked.value ? 'locked' : 'searching' }}
+            </span>
+            <span class="text-fg-faint">·</span>
+            <span class="text-fg-muted">{{ scriptPulse.scriptSpm.value.toFixed(0) }} spm</span>
+            <span class="text-fg-faint">·</span>
+            <span class="text-fg-muted">{{ (scriptPulse.scriptIntensity.value * 100).toFixed(0) }}%</span>
           </div>
         </div>
 
-        <p class="text-xs text-fg-faint">
-          Automatically evolves beat, noise and visual intensity through entry → build → peak → descent phases.
-        </p>
+        <!-- Session pulse -->
+        <div class="p-3 panel space-y-2.5">
+          <div class="flex items-center justify-between">
+            <p class="label">
+              Session pulse
+            </p>
+            <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+              <input v-model="pulseEnabled" type="checkbox">
+              Audible
+            </label>
+          </div>
+          <p class="hint">
+            A slow swell the device stroke and the slideshow lock to in phase, so
+            what you hear and what you feel are the same beat.
+          </p>
 
-        <!-- Phase timeline -->
-        <div v-if="sessionActive" class="flex gap-1 h-1.5">
-          <div
-            v-for="ph in ['entry', 'build', 'peak', 'descent']"
-            :key="ph"
-            class="rounded-full flex-1 transition-all duration-500"
-            :style="{
-              background: PHASE_META[ph].color,
-              opacity: phase === ph ? 1 : 0.25,
-            }"
-          />
+          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+            <input v-model="pulseFollowsSession" type="checkbox">
+            Follow session intensity
+          </label>
+
+          <div>
+            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+              <span>Tempo</span>
+              <span class="font-mono">{{ pulseCpm }} / min</span>
+            </div>
+            <input
+              v-model.number="pulseCpm" type="range" min="12" max="160" step="1"
+              class="accent w-full" :disabled="pulseFollowsSession"
+            >
+          </div>
+
+          <div>
+            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+              <span>Depth</span>
+              <span class="font-mono">{{ (pulseDepth * 100).toFixed(0) }}%</span>
+            </div>
+            <input v-model.number="pulseDepth" type="range" min="0" max="1" step="0.01" class="accent w-full">
+          </div>
         </div>
 
-        <!-- Phase jump buttons (only during active session) -->
-        <div v-if="sessionActive" class="flex gap-1">
-          <button
-            v-for="ph in (['entry', 'build', 'peak', 'descent'] as SessionPhase[])"
-            :key="ph"
-            class="text-[10px] font-medium px-2 py-1 rounded-lg flex-1 transition-all"
-            :class="phase === ph
-              ? 'text-fg-faint font-semibold'
-              : 'bg-surface-800 text-fg-muted hover:text-fg'"
-            :style="phase === ph ? { background: PHASE_META[ph].color } : {}"
-            @click="session.jumpToPhase(ph)"
-          >
-            {{ PHASE_META[ph].label }}
-          </button>
+        <!-- Session arc -->
+        <div>
+          <p class="label mb-2">
+            Session arc
+          </p>
+          <div class="gap-1 grid grid-cols-2">
+            <button
+              v-for="a in ARCS"
+              :key="a.id"
+              class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
+              :class="sessionArc === a.id
+                ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
+                : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
+              @click="sessionArc = a.id"
+            >
+              {{ a.label }}
+            </button>
+          </div>
+          <p class="hint mt-1.5">
+            {{ arcHint }}
+          </p>
+          <div v-if="sessionArc === 'edged'" class="mt-2">
+            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+              <span>Passes before wind-down</span>
+              <span class="font-mono">{{ edgeCycles }}</span>
+            </div>
+            <input v-model.number="edgeCycles" type="range" min="1" max="8" step="1" class="accent w-full">
+          </div>
         </div>
 
-        <div class="flex gap-3">
-          <button
-            class="text-sm font-semibold py-2.5 rounded-xl flex-1 transition-all active:scale-95"
-            :class="sessionActive
-              ? 'bg-surface-700 hover:bg-fg/15 text-fg'
-              : 'bg-teal-600 hover:bg-teal-500 text-white'"
-            @click="toggleSession"
-          >
-            {{ sessionActive ? '■ End Session' : '▶ Start Session' }}
-          </button>
-
-          <button
-            class="text-xs font-medium px-3 rounded-xl transition-colors"
-            :class="driftMode ? 'bg-purple-700 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-            @click="driftMode = !driftMode"
-          >
-            Drift Mode
-          </button>
+        <!-- Breath pacing -->
+        <div class="p-3 panel space-y-2.5">
+          <div class="flex items-center justify-between">
+            <p class="label">
+              Breath pacing
+            </p>
+            <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+              <input v-model="breathEnabled" type="checkbox">
+              On
+            </label>
+          </div>
+          <p class="hint">
+            Swells the noise bed to breathe along with, longer out than in. Needs
+            the noise layer on. This is the one part of this panel with a solid
+            physiological mechanism behind it rather than entrainment folklore.
+          </p>
+          <div>
+            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+              <span>Rate</span>
+              <span class="font-mono">{{ breathPerMinute }} / min</span>
+            </div>
+            <input v-model.number="breathPeriod" type="range" min="4" max="20" step="0.5" class="accent w-full">
+          </div>
+          <div>
+            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
+              <span>In / out</span>
+              <span class="font-mono">{{ (breathInhaleRatio * 100).toFixed(0) }} / {{ (100 - breathInhaleRatio * 100).toFixed(0) }}</span>
+            </div>
+            <input v-model.number="breathInhaleRatio" type="range" min="0.25" max="0.5" step="0.01" class="accent w-full">
+          </div>
         </div>
-      </div>
 
-      <!-- Play button -->
-      <div class="pb-4 flex justify-center">
-        <button
-          class="text-base font-semibold py-3.5 rounded-2xl w-48 transition-all active:scale-95"
-          :class="isPlaying
-            ? 'bg-surface-700 hover:bg-fg/15 text-fg'
-            : 'bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/40'"
-          @click="togglePlay"
-        >
-          {{ isPlaying ? '■ Stop' : '▶ Play' }}
-        </button>
-      </div>
+        <!-- Session Engine -->
+        <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-4">
+          <div class="flex items-center justify-between">
+            <p class="text-xs text-fg-muted tracking-wider uppercase">
+              Session Engine
+            </p>
+            <div v-if="phase !== 'idle'" class="flex gap-2 items-center">
+              <div class="rounded-full h-2 w-2 animate-pulse" :style="{ background: phaseColor }" />
+              <span class="text-xs font-medium" :style="{ color: phaseColor }">{{ phaseLabel }}</span>
+            </div>
+          </div>
+
+          <p class="text-xs text-fg-faint">
+            Automatically evolves beat, noise and visual intensity through entry → build → peak → descent phases.
+          </p>
+
+          <!-- Phase timeline -->
+          <div v-if="sessionActive" class="flex gap-1 h-1.5">
+            <div
+              v-for="ph in ['entry', 'build', 'peak', 'descent']"
+              :key="ph"
+              class="rounded-full flex-1 transition-all duration-500"
+              :style="{
+                background: PHASE_META[ph].color,
+                opacity: phase === ph ? 1 : 0.25,
+              }"
+            />
+          </div>
+
+          <!-- Phase jump buttons (only during active session) -->
+          <div v-if="sessionActive" class="flex gap-1">
+            <button
+              v-for="ph in (['entry', 'build', 'peak', 'descent'] as SessionPhase[])"
+              :key="ph"
+              class="text-[10px] font-medium px-2 py-1 rounded-lg flex-1 transition-all"
+              :class="phase === ph
+                ? 'text-fg-faint font-semibold'
+                : 'bg-surface-800 text-fg-muted hover:text-fg'"
+              :style="phase === ph ? { background: PHASE_META[ph].color } : {}"
+              @click="session.jumpToPhase(ph)"
+            >
+              {{ PHASE_META[ph].label }}
+            </button>
+          </div>
+
+          <div class="flex gap-3">
+            <button
+              class="text-sm font-semibold py-2.5 rounded-xl flex-1 transition-all active:scale-95"
+              :class="sessionActive
+                ? 'bg-surface-700 hover:bg-fg/15 text-fg'
+                : 'bg-teal-600 hover:bg-teal-500 text-white'"
+              @click="toggleSession"
+            >
+              {{ sessionActive ? '■ End Session' : '▶ Start Session' }}
+            </button>
+
+            <button
+              class="text-xs font-medium px-3 rounded-xl transition-colors"
+              :class="driftMode ? 'bg-purple-700 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
+              @click="driftMode = !driftMode"
+            >
+              Drift Mode
+            </button>
+          </div>
+        </div>
+      </CollapsibleSection>
     </div>
   </div>
 </template>
