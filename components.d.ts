@@ -26,6 +26,7 @@ declare module 'vue' {
     OsrEmulator: typeof import('./src/components/OsrEmulator.vue')['default']
     PanelHost: typeof import('./src/components/PanelHost.vue')['default']
     PanelRail: typeof import('./src/components/PanelRail.vue')['default']
+    PanicCover: typeof import('./src/components/PanicCover.vue')['default']
     PlaylistPanel: typeof import('./src/components/PlaylistPanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

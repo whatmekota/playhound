@@ -7,6 +7,7 @@ import LoopControls from '~/components/LoopControls.vue'
 import OsrEmulator from '~/components/OsrEmulator.vue'
 import PanelHost from '~/components/PanelHost.vue'
 import PanelRail from '~/components/PanelRail.vue'
+import PanicCover from '~/components/PanicCover.vue'
 import ScriptOffsetControl from '~/components/ScriptOffsetControl.vue'
 import SerialLogViewer from '~/components/SerialLogViewer.vue'
 import SpeedControl from '~/components/SpeedControl.vue'
@@ -16,6 +17,7 @@ import ThemePicker from '~/components/ThemePicker.vue'
 import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
 import { openVideoFile, storage } from '~/lib/browserApi'
@@ -27,6 +29,7 @@ import { useLibraryStore } from '~/stores/libraryStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useQueueStore } from '~/stores/queueStore'
+import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useStatsStore } from '~/stores/statsStore'
 
@@ -40,6 +43,7 @@ const queueStore = useQueueStore()
 const statsStore = useStatsStore()
 const bookmarkStore = useBookmarkStore()
 const motionStore = useMotionStore()
+const safety = useSafetyStore()
 const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 
 // Instantiate these once at the shell level so they keep running no matter
@@ -50,6 +54,12 @@ useScriptPulse()
 
 const videoPlayerRef = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const showKeybinds = ref(false)
+// Panic needs to reach video, audio and the device at once.
+const { toggle: togglePanic, resume: resumePanic } = useSafety({
+  pauseVideo: () => videoPlayerRef.value?.pause(),
+  playVideo: () => videoPlayerRef.value?.play(),
+  isVideoPlaying: () => playerStore.isPlaying,
+})
 
 // ─── Panels ───────────────────────────────────────────────────────────────────
 const activePanel = ref<PanelId | null>('library')
@@ -450,6 +460,24 @@ function onGlobalKeyDown(e: KeyboardEvent) {
     showKeybinds.value = !showKeybinds.value
   if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey)
     starCurrentVideo()
+
+  // Panic: reachable without thinking about it, and the same key puts it back.
+  if (e.code === 'Escape' || e.code === 'Backquote') {
+    e.preventDefault()
+    togglePanic()
+    return
+  }
+
+  // Nothing else should act while the screen is covered.
+  if (safety.panicked)
+    return
+
+  if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey)
+    playNext()
+  if (e.code === 'KeyP' && !e.ctrlKey && !e.metaKey)
+    playPrev()
+  if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey)
+    randomVideo()
 }
 </script>
 
@@ -664,6 +692,8 @@ function onGlobalKeyDown(e: KeyboardEvent) {
     </div>
 
     <StatusBar />
+
+    <PanicCover v-if="safety.panicked" @resume="resumePanic" />
 
     <!-- Floating windows: layered over whichever view is open -->
     <OsrEmulator
