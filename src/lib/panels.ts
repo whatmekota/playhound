@@ -9,7 +9,7 @@ export type PanelId
   = | 'library' | 'playlists' | 'director' | 'organizer'
     | 'scripts' | 'bookmarks' | 'eroscripts'
     | 'binaural' | 'wall' | 'slideshow'
-    | 'device' | 'motion' | 'emulator'
+    | 'device' | 'motion' | 'emulator' | 'remote'
     | 'stats'
 
 export type PanelGroupId = 'media' | 'script' | 'session' | 'device' | 'data'
@@ -78,6 +78,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
     panels: [
       { id: 'device', label: 'Device', icon: 'i-carbon-plug', accent: 'text-accent-400', hint: 'Serial / Buttplug connection and axes' },
       { id: 'motion', label: 'Motion', icon: 'i-carbon-wave-height', accent: 'text-emerald-400', hint: 'What drives the device: script, session, beat or manual' },
+      { id: 'remote', label: 'Remote', icon: 'i-carbon-mobile', accent: 'text-teal-400', hint: 'Control playback from your phone' },
       { id: 'emulator', label: 'Emulator', surface: 'overlay', icon: 'i-carbon-cube', accent: 'text-accent-400', hint: 'Floating OSR preview — usable over any view' },
     ],
   },

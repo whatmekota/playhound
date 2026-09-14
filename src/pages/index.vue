@@ -20,6 +20,7 @@ import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { useGamepad } from '~/composables/useGamepad'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
@@ -68,6 +69,15 @@ const { toggle: togglePanic, resume: resumePanic } = useSafety({
 
 // Gamepad: transport on the buttons, stroke rate or position on the sticks.
 useGamepad({
+  next: () => playNext(),
+  prev: () => playPrev(),
+  random: () => randomVideo(),
+  togglePlay: () => togglePlay(),
+  panic: () => togglePanic(),
+})
+
+// Phone remote, when switched on in the Remote panel.
+useRemoteHost({
   next: () => playNext(),
   prev: () => playPrev(),
   random: () => randomVideo(),

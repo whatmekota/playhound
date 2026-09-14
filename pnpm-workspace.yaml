@@ -3,6 +3,8 @@ shellEmulator: true
 trustPolicy: no-downgrade
 
 packages: []
+catalog:
+  ws: ^8.21.3
 catalogs:
   build:
     '@iconify-json/carbon': ^1.2.19

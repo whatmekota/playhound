@@ -9,8 +9,11 @@
 
 import http from 'node:http'
 import https from 'node:https'
+import os from 'node:os'
+import { WebSocketServer } from 'ws'
 
 const PORT = 7071
+const RC_PORT = 7072
 const TARGET = 'discuss.eroscripts.com'
 
 function makeRequest(hostname, path, reqHeaders, res, depth = 0) {
@@ -168,8 +171,94 @@ const server = http.createServer((req, res) => {
   makeRequest(TARGET, req.url, esHeaders, res)
 })
 
+// The EroScripts proxy forwards the user's session cookie, so it stays bound to
+// loopback. The remote-control relay is a separate server on its own port,
+// because that one genuinely has to be reachable from a phone on the LAN.
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`[ES Proxy] Running at http://localhost:${PORT}`)
   console.log(`[ES Proxy] EroScripts → https://${TARGET}`)
   console.log(`[ES Proxy] Pixeldrain → /pd/:id`)
+})
+
+// ── Remote-control relay ─────────────────────────────────────────────────────
+//
+// Dumb room-based broadcast: whatever a client sends is forwarded to the other
+// members of its room. Rooms are named by a random id the desktop generates and
+// shows, so nothing secret has to reach this process out of band, and guessing a
+// room is the only way in from the LAN.
+
+const rooms = new Map() // room -> Set<ws>
+
+const rcServer = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' })
+  res.end('playhound remote relay')
+})
+
+const wss = new WebSocketServer({ server: rcServer, path: '/rc' })
+
+wss.on('connection', (ws, req) => {
+  const url = new URL(req.url, 'http://localhost')
+  const room = url.searchParams.get('room')
+  const role = url.searchParams.get('role') === 'remote' ? 'remote' : 'host'
+
+  if (!room || room.length < 6) {
+    ws.close(1008, 'room required')
+    return
+  }
+
+  if (!rooms.has(room))
+    rooms.set(room, new Set())
+  const peers = rooms.get(room)
+  ws.__room = room
+  ws.__role = role
+  peers.add(ws)
+
+  // Tell both sides who else is present, so the UI can show a real status.
+  const announce = () => {
+    const counts = { hosts: 0, remotes: 0 }
+    for (const p of peers) {
+      if (p.__role === 'host')
+        counts.hosts++
+      else counts.remotes++
+    }
+    const msg = JSON.stringify({ type: 'peers', ...counts })
+    for (const p of peers) {
+      if (p.readyState === 1)
+        p.send(msg)
+    }
+  }
+  announce()
+
+  ws.on('message', (data) => {
+    const text = typeof data === 'string' ? data : data.toString()
+    for (const p of peers) {
+      if (p !== ws && p.readyState === 1)
+        p.send(text)
+    }
+  })
+
+  ws.on('close', () => {
+    peers.delete(ws)
+    if (peers.size === 0)
+      rooms.delete(room)
+    else announce()
+  })
+})
+
+function lanAddresses() {
+  const out = []
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const ni of list ?? []) {
+      if (ni.family === 'IPv4' && !ni.internal)
+        out.push(ni.address)
+    }
+  }
+  return out
+}
+
+rcServer.listen(RC_PORT, '0.0.0.0', () => {
+  console.log(`[Remote] Relay on ws://0.0.0.0:${RC_PORT}/rc`)
+  for (const ip of lanAddresses())
+    console.log(`[Remote]   reachable at ws://${ip}:${RC_PORT}/rc`)
+  console.log('[Remote] Open the Remote panel on the desktop for the phone URL.')
 })

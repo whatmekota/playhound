@@ -29,6 +29,7 @@ declare module 'vue' {
     PanelRail: typeof import('./src/components/PanelRail.vue')['default']
     PanicCover: typeof import('./src/components/PanicCover.vue')['default']
     PlaylistPanel: typeof import('./src/components/PlaylistPanel.vue')['default']
+    RemotePanel: typeof import('./src/components/RemotePanel.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SbsViewer: typeof import('./src/components/SbsViewer.vue')['default']

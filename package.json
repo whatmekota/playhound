@@ -48,7 +48,8 @@
     "unplugin-vue-components": "catalog:build",
     "vite": "catalog:build",
     "vitest": "catalog:dev",
-    "vue-tsc": "catalog:dev"
+    "vue-tsc": "catalog:dev",
+    "ws": "catalog:"
   },
   "resolutions": {
     "unplugin": "catalog:build",

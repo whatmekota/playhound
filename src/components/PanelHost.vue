@@ -11,6 +11,7 @@ import MediaWall from './MediaWall.vue'
 import MotionPanel from './MotionPanel.vue'
 import OrganizerPanel from './OrganizerPanel.vue'
 import PlaylistPanel from './PlaylistPanel.vue'
+import RemotePanel from './RemotePanel.vue'
 import ScriptPanel from './ScriptPanel.vue'
 import SlideshowView from './SlideshowView.vue'
 import StatsDashboard from './StatsDashboard.vue'
@@ -77,6 +78,7 @@ const canPin = computed(() => !isMainSurface(props.id))
       <SlideshowView v-else-if="id === 'slideshow'" />
       <DevicePanel v-else-if="id === 'device'" />
       <MotionPanel v-else-if="id === 'motion'" />
+      <RemotePanel v-else-if="id === 'remote'" />
       <StatsDashboard v-else-if="id === 'stats'" />
     </div>
   </section>

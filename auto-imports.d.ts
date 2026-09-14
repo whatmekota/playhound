@@ -7,6 +7,7 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const RC_PORT: typeof import('./src/composables/useRemoteLink').RC_PORT
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
   const analysisKey: typeof import('./src/composables/useScriptAnalysis').analysisKey
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
@@ -33,7 +34,6 @@ declare global {
   const debouncedWatch: typeof import('@vueuse/core').debouncedWatch
   const defineAsyncComponent: typeof import('vue').defineAsyncComponent
   const defineComponent: typeof import('vue').defineComponent
-  const defineLoader: typeof import('vue-router/auto')['defineLoader']
   const definePage: typeof import('vue-router/experimental').definePage
   const defineStore: typeof import('pinia').defineStore
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
@@ -94,9 +94,10 @@ declare global {
   const refManualReset: typeof import('@vueuse/core').refManualReset
   const refThrottled: typeof import('@vueuse/core').refThrottled
   const refWithControl: typeof import('@vueuse/core').refWithControl
+  const remoteRoom: typeof import('./src/composables/useRemoteLink').remoteRoom
+  const remoteUrl: typeof import('./src/composables/useRemoteLink').remoteUrl
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
-  const resolveUnref: typeof import('@vueuse/core')['resolveUnref']
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
   const shallowReactive: typeof import('vue').shallowReactive
@@ -246,6 +247,9 @@ declare global {
   const usePrevious: typeof import('@vueuse/core').usePrevious
   const useRafFn: typeof import('@vueuse/core').useRafFn
   const useRefHistory: typeof import('@vueuse/core').useRefHistory
+  const useRemoteHost: typeof import('./src/composables/useRemoteHost').useRemoteHost
+  const useRemoteLink: typeof import('./src/composables/useRemoteLink').useRemoteLink
+  const useRemoteStatus: typeof import('./src/composables/useRemoteStatus').useRemoteStatus
   const useResizeObserver: typeof import('@vueuse/core').useResizeObserver
   const useRoute: typeof import('vue-router').useRoute
   const useRouter: typeof import('vue-router').useRouter
@@ -338,6 +342,9 @@ declare global {
   export type { GamepadActions } from './src/composables/useGamepad'
   import('./src/composables/useGamepad')
   // @ts-ignore
+  export type { RemoteAction, RemoteState } from './src/composables/useRemoteLink'
+  import('./src/composables/useRemoteLink')
+  // @ts-ignore
   export type { ScriptAnalysis } from './src/composables/useScriptAnalysis'
   import('./src/composables/useScriptAnalysis')
   // @ts-ignore
@@ -351,6 +358,7 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly RC_PORT: UnwrapRef<typeof import('./src/composables/useRemoteLink')['RC_PORT']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
     readonly analysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analysisKey']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
@@ -437,6 +445,8 @@ declare module 'vue' {
     readonly refManualReset: UnwrapRef<typeof import('@vueuse/core')['refManualReset']>
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
+    readonly remoteRoom: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteRoom']>
+    readonly remoteUrl: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteUrl']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
@@ -588,6 +598,9 @@ declare module 'vue' {
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
+    readonly useRemoteHost: UnwrapRef<typeof import('./src/composables/useRemoteHost')['useRemoteHost']>
+    readonly useRemoteLink: UnwrapRef<typeof import('./src/composables/useRemoteLink')['useRemoteLink']>
+    readonly useRemoteStatus: UnwrapRef<typeof import('./src/composables/useRemoteStatus')['useRemoteStatus']>
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('vue-router')['useRouter']>
