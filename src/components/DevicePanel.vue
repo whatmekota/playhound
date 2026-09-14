@@ -314,16 +314,18 @@ onMounted(() => { load() })
 
     <!-- ─── Axes ────────────────────────────────────────────────────────────── -->
     <div class="panel overflow-hidden">
-      <button class="px-3 py-2 flex gap-2 w-full transition-colors items-center hover:bg-white/5" @click="toggleSection('axes')">
-        <svg class="text-white/40 shrink-0 h-3 w-3 transition-transform" :class="openSection === 'axes' ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
-        <span class="label text-left flex-1">Axes</span>
-        <span class="text-[10px] text-white/30 shrink-0">{{ deviceStore.enabledAxes.length }} active</span>
-        <button class="text-xs text-white/30 ml-1 shrink-0 transition-colors hover:text-white/60" @click.stop="homeAllAxes()">
+      <div class="flex transition-colors items-center hover:bg-white/5">
+        <button class="px-3 py-2 flex flex-1 gap-2 min-w-0 items-center" @click="toggleSection('axes')">
+          <svg class="text-white/40 shrink-0 h-3 w-3 transition-transform" :class="openSection === 'axes' ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+          <span class="label text-left flex-1">Axes</span>
+          <span class="text-[10px] text-white/30 shrink-0">{{ deviceStore.enabledAxes.length }} active</span>
+        </button>
+        <button class="text-xs text-white/30 px-3 py-2 shrink-0 transition-colors hover:text-white/60" @click="homeAllAxes()">
           Home All
         </button>
-      </button>
+      </div>
 
       <div v-if="openSection === 'axes'" class="mt-2 px-3 pb-3 flex flex-col gap-0">
         <div

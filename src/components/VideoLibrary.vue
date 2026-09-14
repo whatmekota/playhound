@@ -508,18 +508,60 @@ onUnmounted(() => {
     <!-- ══ Grid ═══════════════════════════════════════════════════════════════ -->
     <div v-else-if="viewMode === 'grid'" class="p-2 flex-1 overflow-y-auto">
       <div class="gap-2 grid grid-cols-2">
-        <button
-          v-for="entry in sortedFiltered" :key="entry.name"
-          class="group text-left border rounded-lg bg-surface-800 flex flex-col transition-all relative overflow-hidden hover:bg-surface-700"
-          :class="[
-            entry.scriptType === 'merged' ? 'border-glow-merged'
-            : entry.scriptType === 'multi' || entry.scriptCount > 1 ? 'border-glow-multi'
-              : 'border-white/5 hover:border-accent-500/30',
-          ]"
-          @click="emit('select', entry); emit('queue', sortedFiltered, entry); ensureThumb(entry)"
-          @mouseenter="ensureThumb(entry)"
-          @contextmenu.prevent="openCtx($event, entry)"
-        >
+        <div v-for="entry in sortedFiltered" :key="entry.name" class="group relative">
+          <button
+            class="text-left border rounded-lg bg-surface-800 flex flex-col w-full transition-all overflow-hidden hover:bg-surface-700"
+            :class="[
+              entry.scriptType === 'merged' ? 'border-glow-merged'
+              : entry.scriptType === 'multi' || entry.scriptCount > 1 ? 'border-glow-multi'
+                : 'border-white/5 hover:border-accent-500/30',
+            ]"
+            @click="emit('select', entry); emit('queue', sortedFiltered, entry); ensureThumb(entry)"
+            @mouseenter="ensureThumb(entry)"
+            @contextmenu.prevent="openCtx($event, entry)"
+          >
+            <!-- Thumb -->
+            <div class="bg-surface-900 aspect-video relative overflow-hidden">
+              <img v-if="entry.thumbnailUrl" :src="entry.thumbnailUrl" class="h-full w-full object-cover" alt="">
+              <div v-else class="flex h-full w-full items-center justify-center">
+                <svg class="text-white/10 h-6 w-6 transition-colors group-hover:text-white/20" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+              </div>
+              <!-- Script badge (top-right of thumb) -->
+              <div class="right-1 top-1 absolute">
+                <span
+                  class="text-[9px] px-1.5 py-0.5 rounded-full"
+                  :class="scriptBadge(entry).cls"
+                  :title="scriptBadge(entry).title"
+                >{{ scriptBadge(entry).text }}</span>
+              </div>
+              <!-- Duration overlay -->
+              <div v-if="entry.duration" class="text-[9px] text-white/80 leading-tight font-mono px-1 rounded bg-black/70 bottom-1 left-1 absolute">
+                {{ formatDuration(entry.duration) }}
+              </div>
+              <!-- Tags row (bottom of thumb, shown on hover) -->
+              <div v-if="hasMeta(entry)" class="px-1.5 py-1 opacity-0 flex flex-wrap gap-0.5 transition-opacity inset-x-0 bottom-0 absolute from-black/80 to-transparent bg-gradient-to-t group-hover:opacity-100">
+                <span
+                  v-for="tag in (effectiveMeta(entry).tags ?? []).slice(0, 4)" :key="tag"
+                  class="text-[8px] text-white/70 px-1 py-0 rounded bg-black/50"
+                >{{ tag }}</span>
+              </div>
+            </div>
+
+            <div class="px-2 py-1.5">
+              <p class="text-[11px] text-white/70 truncate transition-colors group-hover:text-white" :title="entry.name">
+                {{ entry.basename }}
+              </p>
+              <div class="mt-0.5 flex gap-1 items-center">
+                <p v-if="entry.duration" class="text-[10px] text-white/40 font-mono">
+                  {{ formatDuration(entry.duration) }}
+                </p>
+                <p class="text-[10px] text-white/20">
+                  {{ (entry.file.size / 1024 / 1024).toFixed(0) }} MB
+                </p>
+                <span v-if="effectiveMeta(entry).creator" class="text-[9px] text-white/20 truncate">· {{ effectiveMeta(entry).creator }}</span>
+              </div>
+            </div>
+          </button>
           <button
             class="p-0.5 rounded transition-opacity left-1 top-1 absolute z-10"
             :class="plStore.isFavorite(entry.name) ? 'opacity-100 text-yellow-400' : 'opacity-0 group-hover:opacity-60 text-white'"
@@ -527,49 +569,7 @@ onUnmounted(() => {
           >
             <svg class="h-3.5 w-3.5" :fill="plStore.isFavorite(entry.name) ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>
           </button>
-
-          <!-- Thumb -->
-          <div class="bg-surface-900 aspect-video relative overflow-hidden">
-            <img v-if="entry.thumbnailUrl" :src="entry.thumbnailUrl" class="h-full w-full object-cover" alt="">
-            <div v-else class="flex h-full w-full items-center justify-center">
-              <svg class="text-white/10 h-6 w-6 transition-colors group-hover:text-white/20" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-            </div>
-            <!-- Script badge (top-right of thumb) -->
-            <div class="right-1 top-1 absolute">
-              <span
-                class="text-[9px] px-1.5 py-0.5 rounded-full"
-                :class="scriptBadge(entry).cls"
-                :title="scriptBadge(entry).title"
-              >{{ scriptBadge(entry).text }}</span>
-            </div>
-            <!-- Duration overlay -->
-            <div v-if="entry.duration" class="text-[9px] text-white/80 leading-tight font-mono px-1 rounded bg-black/70 bottom-1 left-1 absolute">
-              {{ formatDuration(entry.duration) }}
-            </div>
-            <!-- Tags row (bottom of thumb, shown on hover) -->
-            <div v-if="hasMeta(entry)" class="px-1.5 py-1 opacity-0 flex flex-wrap gap-0.5 transition-opacity inset-x-0 bottom-0 absolute from-black/80 to-transparent bg-gradient-to-t group-hover:opacity-100">
-              <span
-                v-for="tag in (effectiveMeta(entry).tags ?? []).slice(0, 4)" :key="tag"
-                class="text-[8px] text-white/70 px-1 py-0 rounded bg-black/50"
-              >{{ tag }}</span>
-            </div>
-          </div>
-
-          <div class="px-2 py-1.5">
-            <p class="text-[11px] text-white/70 truncate transition-colors group-hover:text-white" :title="entry.name">
-              {{ entry.basename }}
-            </p>
-            <div class="mt-0.5 flex gap-1 items-center">
-              <p v-if="entry.duration" class="text-[10px] text-white/40 font-mono">
-                {{ formatDuration(entry.duration) }}
-              </p>
-              <p class="text-[10px] text-white/20">
-                {{ (entry.file.size / 1024 / 1024).toFixed(0) }} MB
-              </p>
-              <span v-if="effectiveMeta(entry).creator" class="text-[9px] text-white/20 truncate">· {{ effectiveMeta(entry).creator }}</span>
-            </div>
-          </div>
-        </button>
+        </div>
       </div>
     </div>
 
