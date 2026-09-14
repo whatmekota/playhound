@@ -33,24 +33,29 @@ describe('analysis performance', () => {
   })
 
   it('scales roughly linearly, not quadratically, with script length', () => {
+    // A 2x size gap put linear (~2x) and the noise floor uncomfortably close on
+    // a busy machine, so this compares 1x against 4x: linear lands near 4x and
+    // quadratic near 16x, which survives scheduler jitter. Timings take the
+    // best of several runs for the same reason.
     const base = longScript()
-    const half = base.slice(0, Math.floor(base.length / 2))
+    const quarter = base.slice(0, Math.floor(base.length / 4))
 
-    const timeIt = (a: typeof base) => {
-      const t0 = performance.now()
-      buildEnvelope(a)
-      return performance.now() - t0
+    const best = (a: typeof base) => {
+      let min = Number.POSITIVE_INFINITY
+      for (let i = 0; i < 5; i++) {
+        const t0 = performance.now()
+        buildEnvelope(a)
+        min = Math.min(min, performance.now() - t0)
+      }
+      return Math.max(0.05, min)
     }
 
-    // Warm up so JIT differences do not dominate the comparison.
-    timeIt(half)
-    timeIt(base)
+    // Warm up so JIT compilation does not land inside a measured run.
+    best(quarter)
+    best(base)
 
-    const tHalf = Math.max(0.5, timeIt(half))
-    const tFull = timeIt(base)
-
-    // Linear would be ~2x; quadratic ~4x. Allow generous headroom for noise.
-    expect(tFull / tHalf).toBeLessThan(3)
+    const ratio = best(base) / best(quarter)
+    expect(ratio).toBeLessThan(8)
   })
 
   it('stays fast for repeated phase lookups during playback', () => {

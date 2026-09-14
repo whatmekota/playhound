@@ -131,12 +131,11 @@ export const useQueueStore = defineStore('queue', () => {
     if (!entry)
       return null
     currentIdx.value = queue.value.indexOf(entry)
-    if (shuffle.value) {
-      const pos = shuffleOrder.value.indexOf(currentIdx.value)
-      // rotate so current is at head
-      if (pos > 0)
-        shuffleOrder.value = [...shuffleOrder.value.slice(pos), ...shuffleOrder.value.slice(0, pos)]
-    }
+    // The shuffle order is deliberately left alone. It used to be rotated so
+    // the current item sat at the head, which destroyed the history behind it:
+    // peekPrev then computed position 0 minus 1 and always returned null, so
+    // "previous" could never work while shuffled. Position is found by lookup
+    // anyway, so nothing needs moving.
     return entry
   }
 

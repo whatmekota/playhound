@@ -89,7 +89,7 @@ useRemoteHost({
 
 // ─── Panels ───────────────────────────────────────────────────────────────────
 const activePanel = ref<PanelId | null>('library')
-const pinnedPanel = ref<PanelId | null>(null)
+const pinnedPanel = ref<PanelId | null>('library')
 
 /** Floating windows layered over whatever view is open. */
 const overlayPanels = ref<PanelId[]>([])
@@ -269,7 +269,8 @@ function randomVideo() {
   const pool = library.videos.filter(v => v.hasScript)
   if (!pool.length)
     return
-  queueStore.setShuffle(true)
+  // Picking one at random should not silently switch the player into shuffle
+  // for good; shuffle is a mode the user chooses from the transport bar.
   queueStore.setQueue(pool, pool[Math.floor(Math.random() * pool.length)])
   const current = queueStore.current
   if (current)
@@ -455,6 +456,14 @@ function seekRelative(d: number) {
 function setSpeed(s: number) {
   videoPlayerRef.value?.setSpeed(s)
 }
+/** Off -> all -> one -> off, the order people expect from a player. */
+function cycleRepeat() {
+  const next = queueStore.repeatMode === 'off'
+    ? 'all'
+    : queueStore.repeatMode === 'all' ? 'one' : 'off'
+  queueStore.setRepeat(next)
+}
+
 function toggleFullscreen() {
   videoPlayerRef.value?.toggleFullscreen()
 }
@@ -690,6 +699,29 @@ function onGlobalKeyDown(e: KeyboardEvent) {
 
             <!-- Right: tools -->
             <div class="flex flex-1 gap-1 min-w-0 items-center justify-end">
+              <button
+                class="btn-icon"
+                :class="queueStore.shuffle ? 'text-accent-400 bg-accent-500/15' : ''"
+                :title="queueStore.shuffle ? 'Shuffle on' : 'Shuffle off'"
+                @click="queueStore.setShuffle(!queueStore.shuffle)"
+              >
+                <div class="i-carbon-shuffle text-sm" />
+              </button>
+
+              <button
+                class="btn-icon"
+                :class="queueStore.repeatMode !== 'off' ? 'text-accent-400 bg-accent-500/15' : ''"
+                :title="queueStore.repeatMode === 'off' ? 'Repeat off'
+                  : queueStore.repeatMode === 'all' ? 'Repeat all' : 'Repeat one'"
+                @click="cycleRepeat()"
+              >
+                <div
+                  :class="queueStore.repeatMode === 'one' ? 'i-carbon-repeat-one' : 'i-carbon-repeat'"
+                  class="text-sm"
+                />
+              </button>
+
+              <div class="divider-x" />
               <LoopControls />
               <ScriptOffsetControl />
               <div class="divider-x" />
