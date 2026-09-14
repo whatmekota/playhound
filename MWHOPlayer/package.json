@@ -1,0 +1,31 @@
+{
+  "name": "mwhoplayer",
+  "version": "0.1.0",
+  "description": "Funscript video player with TCode device support",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "^3.5.3",
+    "@pixiv/three-vrm-animation": "^3.5.3",
+    "buttplug": "^4.0.0",
+    "osr-emu": "^0.7.0",
+    "pinia": "^2.1.7",
+    "three": "^0.184.0",
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0",
+    "vue-tsc": "^2.0.0"
+  }
+}
