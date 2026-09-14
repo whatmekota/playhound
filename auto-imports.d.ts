@@ -193,7 +193,8 @@ declare global {
   const useFps: typeof import('@vueuse/core').useFps
   const useFullscreen: typeof import('@vueuse/core').useFullscreen
   const useFunscript: typeof import('./src/composables/useFunscript').useFunscript
-  const useGamepad: typeof import('@vueuse/core').useGamepad
+  const useGamepad: typeof import('./src/composables/useGamepad').useGamepad
+  const useGamepadStatus: typeof import('./src/composables/useGamepadStatus').useGamepadStatus
   const useGeolocation: typeof import('@vueuse/core').useGeolocation
   const useId: typeof import('vue').useId
   const useIdle: typeof import('@vueuse/core').useIdle
@@ -332,6 +333,9 @@ declare global {
   // @ts-ignore
   export type { BeatMode } from './src/composables/useBinauralBeats'
   import('./src/composables/useBinauralBeats')
+  // @ts-ignore
+  export type { GamepadActions } from './src/composables/useGamepad'
+  import('./src/composables/useGamepad')
   // @ts-ignore
   export type { ScriptAnalysis } from './src/composables/useScriptAnalysis'
   import('./src/composables/useScriptAnalysis')
@@ -530,7 +534,8 @@ declare module 'vue' {
     readonly useFps: UnwrapRef<typeof import('@vueuse/core')['useFps']>
     readonly useFullscreen: UnwrapRef<typeof import('@vueuse/core')['useFullscreen']>
     readonly useFunscript: UnwrapRef<typeof import('./src/composables/useFunscript')['useFunscript']>
-    readonly useGamepad: UnwrapRef<typeof import('@vueuse/core')['useGamepad']>
+    readonly useGamepad: UnwrapRef<typeof import('./src/composables/useGamepad')['useGamepad']>
+    readonly useGamepadStatus: UnwrapRef<typeof import('./src/composables/useGamepadStatus')['useGamepadStatus']>
     readonly useGeolocation: UnwrapRef<typeof import('@vueuse/core')['useGeolocation']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useIdle: UnwrapRef<typeof import('@vueuse/core')['useIdle']>

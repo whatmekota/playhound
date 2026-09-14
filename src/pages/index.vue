@@ -17,6 +17,7 @@ import StatusBar from '~/components/StatusBar.vue'
 import ThemePicker from '~/components/ThemePicker.vue'
 import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useFunscript } from '~/composables/useFunscript'
+import { useGamepad } from '~/composables/useGamepad'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
@@ -61,6 +62,15 @@ const { toggle: togglePanic, resume: resumePanic } = useSafety({
   pauseVideo: () => videoPlayerRef.value?.pause(),
   playVideo: () => videoPlayerRef.value?.play(),
   isVideoPlaying: () => playerStore.isPlaying,
+})
+
+// Gamepad: transport on the buttons, stroke rate or position on the sticks.
+useGamepad({
+  next: () => playNext(),
+  prev: () => playPrev(),
+  random: () => randomVideo(),
+  togglePlay: () => togglePlay(),
+  panic: () => togglePanic(),
 })
 
 // ─── Panels ───────────────────────────────────────────────────────────────────

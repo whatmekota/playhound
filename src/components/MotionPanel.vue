@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -9,6 +10,12 @@ const motion = useMotionStore()
 const audio = useAudioStore()
 const device = useDeviceStore()
 const { shouldRun, funscriptBusy } = useMotionEngine()
+const pad = useGamepadStatus()
+
+const MANUAL_MODES = [
+  { id: 'oscillate', label: 'Rate', hint: 'The stick sets how fast it strokes.' },
+  { id: 'direct', label: 'Direct', hint: 'The stick is the position — the device follows your thumb.' },
+] as const
 
 const SHAPES = [
   { id: 'sine', label: 'Sine' },
@@ -125,6 +132,80 @@ const sourceHint = computed(() =>
             <span class="font-mono">{{ (motion.manualDepth * 100).toFixed(0) }}%</span>
           </div>
           <input v-model.number="motion.manualDepth" type="range" min="0" max="1" step="0.01" class="accent w-full">
+        </div>
+      </section>
+
+      <section v-if="motion.source === 'manual'" class="space-y-1.5">
+        <p class="label">
+          Stick behaviour
+        </p>
+        <div class="flex gap-1">
+          <button
+            v-for="m in MANUAL_MODES"
+            :key="m.id"
+            class="text-[11px] px-2 py-1 rounded-md flex-1 transition-colors"
+            :class="motion.manualMode === m.id
+              ? 'bg-white/15 text-white'
+              : 'bg-white/5 text-white/40 hover:bg-white/10'"
+            :title="m.hint"
+            @click="motion.manualMode = m.id"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+        <p class="hint">
+          {{ MANUAL_MODES.find(m => m.id === motion.manualMode)?.hint }}
+        </p>
+      </section>
+
+      <section class="pt-1 border-t border-white/5 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <p class="label">
+            Gamepad
+          </p>
+          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+            <input v-model="motion.gamepadEnabled" type="checkbox">
+            On
+          </label>
+        </div>
+
+        <div v-if="motion.gamepadEnabled" class="space-y-1.5">
+          <div class="text-[11px] flex gap-2 items-center">
+            <span
+              class="rounded-full shrink-0 h-1.5 w-1.5"
+              :class="pad.connected.value ? 'bg-emerald-400' : 'bg-fg/25'"
+            />
+            <span :class="pad.connected.value ? 'text-fg-muted' : 'text-fg-faint'" class="truncate">
+              {{ pad.connected.value ? (pad.padName.value || 'Connected') : 'No gamepad detected' }}
+            </span>
+          </div>
+          <p v-if="!pad.connected.value" class="hint">
+            Press a button on the pad to wake it — browsers hide gamepads until
+            they are used.
+          </p>
+          <dl class="text-[10px] text-fg-faint gap-x-2 gap-y-0.5 grid grid-cols-2">
+            <dt>Left stick</dt><dd class="text-fg-muted">
+              Rate / position
+            </dd>
+            <dt>Right stick</dt><dd class="text-fg-muted">
+              Depth
+            </dd>
+            <dt>A</dt><dd class="text-fg-muted">
+              Play / pause
+            </dd>
+            <dt>B</dt><dd class="text-fg-muted">
+              Output on / off
+            </dd>
+            <dt>Y</dt><dd class="text-fg-muted">
+              Random video
+            </dd>
+            <dt>LB / RB</dt><dd class="text-fg-muted">
+              Previous / next
+            </dd>
+            <dt>Start</dt><dd class="text-fg-muted">
+              Panic
+            </dd>
+          </dl>
         </div>
       </section>
 

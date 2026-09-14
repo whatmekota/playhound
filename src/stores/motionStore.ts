@@ -53,6 +53,20 @@ export const useMotionStore = defineStore('motion', () => {
   const manualSpm = ref(60)
   const manualDepth = ref(0.7)
 
+  /**
+   * How the manual source behaves:
+   * - `oscillate` strokes at manualSpm, as before
+   * - `direct` follows gamepadPosition, so the device tracks the stick
+   */
+  const manualMode = ref<'oscillate' | 'direct'>('oscillate')
+
+  // ─── Gamepad ──────────────────────────────────────────────────────────────
+  const gamepadEnabled = ref(false)
+  /** Axis position requested by the stick, 0-1, used in direct mode. */
+  const gamepadPosition = ref(0.5)
+  /** Whether the stick is currently away from centre, for rate mode. */
+  const gamepadRateHeld = ref(false)
+
   // ─── Secondary axes ───────────────────────────────────────────────────────
   /** Drive R0/R1 alongside L0, at a slower rate and shallower depth. */
   const secondaryAxes = ref(false)
@@ -83,6 +97,8 @@ export const useMotionStore = defineStore('motion', () => {
       beatBandHi: beatBandHi.value,
       manualSpm: manualSpm.value,
       manualDepth: manualDepth.value,
+      manualMode: manualMode.value,
+      gamepadEnabled: gamepadEnabled.value,
       secondaryAxes: secondaryAxes.value,
       secondaryDepth: secondaryDepth.value,
       vibrateFromIntensity: vibrateFromIntensity.value,
@@ -113,6 +129,10 @@ export const useMotionStore = defineStore('motion', () => {
       source.value = data.source
     if (data.shape)
       shape.value = data.shape
+    if (data.manualMode === 'oscillate' || data.manualMode === 'direct')
+      manualMode.value = data.manualMode
+    if (typeof data.gamepadEnabled === 'boolean')
+      gamepadEnabled.value = data.gamepadEnabled
     if (typeof data.secondaryAxes === 'boolean')
       secondaryAxes.value = data.secondaryAxes
     if (typeof data.vibrateFromIntensity === 'boolean')
@@ -135,6 +155,10 @@ export const useMotionStore = defineStore('motion', () => {
     beatBandHi,
     manualSpm,
     manualDepth,
+    manualMode,
+    gamepadEnabled,
+    gamepadPosition,
+    gamepadRateHeld,
     secondaryAxes,
     secondaryDepth,
     vibrateFromIntensity,

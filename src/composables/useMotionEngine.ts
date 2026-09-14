@@ -74,7 +74,7 @@ export function useMotionEngine() {
   /** Target strokes/min for the active source, before ramping and clamping. */
   function targetSpm(): number {
     if (motion.source === 'manual')
-      return motion.manualSpm
+      return motion.manualMode === 'direct' ? 0 : motion.manualSpm
 
     if (motion.source === 'beat') {
       const beat = Math.max(0.1, audio.beatDelta.value)
@@ -126,8 +126,19 @@ export function useMotionEngine() {
     else
       phase = advancePhase(phase, spm, dt)
 
-    const unit = strokePosition(phase, motion.shape)
-    const pos = applyDepth(unit, motion.center, depth)
+    // Direct control bypasses the oscillator entirely: the stick *is* the
+    // position. Still ramped, so a flick of the thumb cannot snap the axis.
+    let pos: number
+    if (motion.source === 'manual' && motion.manualMode === 'direct') {
+      const want = applyDepth(motion.gamepadPosition, motion.center, 1)
+      // Limit travel speed to the same ceiling the oscillator obeys.
+      const maxTravelPerSec = (motion.maxSpm / 60) * 2
+      pos = rampToward(motion.currentPos, want, maxTravelPerSec, dt)
+    }
+    else {
+      const unit = strokePosition(phase, motion.shape)
+      pos = applyDepth(unit, motion.center, depth)
+    }
 
     sendPosition('L0', pos, SEND_INTERVAL_MS)
 
