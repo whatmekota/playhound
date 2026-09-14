@@ -30,6 +30,10 @@ export interface SlideshowSettings {
   shuffle: boolean
   beatSync: boolean
   beatsPerSlide: number
+  /** Advance on the shared session pulse instead of a timer. */
+  pulseSync: boolean
+  /** Pulse cycles per slide when pulseSync is on. */
+  pulsesPerSlide: number
   autoTransition: boolean
   lfoOverlays: boolean
   randomTransition: boolean
@@ -47,6 +51,8 @@ const settings = useLocalStorage<SlideshowSettings>('ph-ss-settings', {
   shuffle: false,
   beatSync: false,
   beatsPerSlide: 8,
+  pulseSync: false,
+  pulsesPerSlide: 8,
   autoTransition: false,
   lfoOverlays: false,
   randomTransition: false,

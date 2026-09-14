@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TransitionName } from '~/stores/slideshow'
+import { useBinauralBeats } from '~/composables/useBinauralBeats'
 import { useAudioStore } from '~/stores/audio'
 import { useSlideshowStore } from '~/stores/slideshow'
 
@@ -43,6 +44,49 @@ const PHASE_TRANSITIONS: Record<string, TransitionName> = {
 // --- Timer with variance ---
 let timer: ReturnType<typeof setTimeout> | null = null
 
+// --- Pulse-locked advance ---
+// Counts cycles of the shared session pulse so slides land on the same beat the
+// audio and the device are on, rather than merely at a similar rate.
+const { getPulseClock } = useBinauralBeats()
+let pulseRaf: number | null = null
+let lastPulsePhase = 0
+let pulsesSeen = 0
+
+function stopPulseWatch() {
+  if (pulseRaf !== null) {
+    cancelAnimationFrame(pulseRaf)
+    pulseRaf = null
+  }
+}
+
+function startPulseWatch() {
+  stopPulseWatch()
+  pulsesSeen = 0
+  const clock = getPulseClock()
+  lastPulsePhase = clock?.phase ?? 0
+
+  function frame() {
+    if (!settings.value.pulseSync || !isPlaying.value) {
+      pulseRaf = null
+      return
+    }
+    const c = getPulseClock()
+    if (c) {
+      // A wrap back past the start of the cycle is one completed pulse.
+      if (c.phase < lastPulsePhase)
+        pulsesSeen++
+      lastPulsePhase = c.phase
+
+      if (pulsesSeen >= Math.max(1, settings.value.pulsesPerSlide)) {
+        pulsesSeen = 0
+        advance()
+      }
+    }
+    pulseRaf = requestAnimationFrame(frame)
+  }
+  pulseRaf = requestAnimationFrame(frame)
+}
+
 function getSlideDelay(): number {
   if (settings.value.beatSync) {
     const beats = settings.value.beatsPerSlide ?? 8
@@ -57,6 +101,13 @@ function scheduleNext() {
   clearScheduled()
   if (items.length === 0 || !isPlaying.value)
     return
+
+  // Pulse sync drives advances from the audio clock, not a timer.
+  if (settings.value.pulseSync) {
+    startPulseWatch()
+    return
+  }
+  stopPulseWatch()
   timer = setTimeout(() => {
     advance()
     if (isPlaying.value)
@@ -66,6 +117,7 @@ function scheduleNext() {
 
 function clearScheduled() {
   if (timer !== null) { clearTimeout(timer); timer = null }
+  stopPulseWatch()
 }
 
 // Current random transition (refreshed on each advance when randomTransition is on)
@@ -144,6 +196,12 @@ watch(isPlaying, (p) => {
 watch(() => audioStore.beatDelta.value, (delta) => {
   lfo.syncToFreq(delta)
   if (settings.value.beatSync && isPlaying.value)
+    scheduleNext()
+})
+
+// Switching advance mode has to rebuild the schedule.
+watch(() => [settings.value.pulseSync, settings.value.pulsesPerSlide], () => {
+  if (isPlaying.value)
     scheduleNext()
 })
 
@@ -478,13 +536,40 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
                   Slide Delay
                   <span class="text-fg-faint">(±20% variance)</span>
                 </label>
-                <label class="flex gap-1.5 cursor-pointer items-center">
-                  <input v-model="settings.beatSync" type="checkbox" class="accent-teal-500">
-                  <span class="text-[10px] text-fg-muted">Beat sync</span>
-                </label>
+                <div class="flex gap-2.5 items-center">
+                  <label class="flex gap-1.5 cursor-pointer items-center">
+                    <input v-model="settings.pulseSync" type="checkbox" class="accent-teal-500">
+                    <span class="text-[10px] text-fg-muted">Pulse sync</span>
+                  </label>
+                  <label class="flex gap-1.5 cursor-pointer items-center">
+                    <input v-model="settings.beatSync" type="checkbox" class="accent-teal-500" :disabled="settings.pulseSync">
+                    <span class="text-[10px]" :class="settings.pulseSync ? 'text-fg-faint' : 'text-fg-muted'">Beat sync</span>
+                  </label>
+                </div>
               </div>
 
-              <div v-if="!settings.beatSync" class="space-y-1">
+              <div v-if="settings.pulseSync" class="space-y-1">
+                <p class="text-[10px] text-fg-muted">
+                  Advances on the shared session pulse, so slides land on the
+                  same beat as the audio and the device.
+                </p>
+                <div class="flex flex-wrap gap-1">
+                  <button
+                    v-for="n in [1, 2, 4, 8, 16, 32]"
+                    :key="n"
+                    class="text-xs px-2 py-0.5 rounded transition-colors"
+                    :class="settings.pulsesPerSlide === n
+                      ? 'bg-teal-500/20 text-teal-300'
+                      : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
+                    @click="settings.pulsesPerSlide = n"
+                  >
+                    {{ n }}
+                  </button>
+                  <span class="text-[10px] text-fg-faint ml-1 self-center">pulses / slide</span>
+                </div>
+              </div>
+
+              <div v-else-if="!settings.beatSync" class="space-y-1">
                 <input
                   type="range" min="0.2" max="60" step="0.2"
                   :value="settings.delay"

@@ -16,6 +16,7 @@ import ThemePicker from '~/components/ThemePicker.vue'
 import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
 import { openVideoFile, storage } from '~/lib/browserApi'
 import { findPanel, isMainSurface, isOverlaySurface } from '~/lib/panels'
@@ -45,6 +46,7 @@ const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 // which panel happens to be open.
 useMotionEngine()
 useSessionAudio()
+useScriptPulse()
 
 const videoPlayerRef = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const showKeybinds = ref(false)

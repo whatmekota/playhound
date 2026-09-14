@@ -28,6 +28,9 @@ export function useSessionAudio() {
   function pushPulse() {
     if (!audio.isPlaying.value)
       return
+    // useScriptPulse owns the pulse while the script is driving it.
+    if (audio.scriptDrive.value)
+      return
     binaural.setPulse(
       pulseHz(),
       audio.pulseEnabled.value ? audio.pulseDepth.value : 0,
@@ -57,7 +60,7 @@ export function useSessionAudio() {
   })
 
   watch(
-    [audio.pulseEnabled, audio.pulseCpm, audio.pulseDepth, audio.pulseFollowsSession, audio.intensity],
+    [audio.pulseEnabled, audio.pulseCpm, audio.pulseDepth, audio.pulseFollowsSession, audio.intensity, audio.scriptDrive],
     pushPulse,
   )
 

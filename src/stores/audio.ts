@@ -47,6 +47,13 @@ const pulseDepth = useLocalStorage('ph-pulse-depth', 0.45)
 /** Pulse follows session intensity rather than sitting at a fixed tempo. */
 const pulseFollowsSession = useLocalStorage('ph-pulse-follow', true)
 
+/**
+ * Derive the beat from the funscript being watched instead of a fixed tempo:
+ * the pulse locks to the script's stroke phase and its speed feeds intensity.
+ */
+const scriptDrive = useLocalStorage('ph-script-drive', false)
+const scriptDriveIntensity = useLocalStorage('ph-script-drive-intensity', true)
+
 /** Session shape: one smooth rise and fall, or repeated build-hold-retreat. */
 const sessionArc = useLocalStorage<'smooth' | 'edged'>('ph-session-arc', 'smooth')
 const edgeCycles = useLocalStorage('ph-edge-cycles', 3)
@@ -83,5 +90,7 @@ export function useAudioStore() {
     breathInhaleRatio,
     sessionArc,
     edgeCycles,
+    scriptDrive,
+    scriptDriveIntensity,
   }
 }

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { NoiseType, SessionPhase } from '~/stores/audio'
+import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useAudioStore } from '~/stores/audio'
+import { useScriptStore } from '~/stores/scriptStore'
 
 const {
   baseFrequency,
@@ -28,7 +30,13 @@ const {
   breathInhaleRatio,
   sessionArc,
   edgeCycles,
+  scriptDrive,
+  scriptDriveIntensity,
 } = useAudioStore()
+
+const scriptPulse = useScriptPulse()
+const scriptStore = useScriptStore()
+const hasScript = computed(() => scriptStore.activeScripts.length > 0)
 
 const BEAT_MODES = [
   { id: 'binaural', label: 'Binaural', hint: 'One tone per ear. The beat exists only in your head — the gentlest, and the weakest at driving a response.' },
@@ -383,6 +391,53 @@ const beatPulsePeriod = computed(() => {
         <p class="hint mt-1.5">
           {{ beatModeHint }}
         </p>
+      </div>
+
+      <!-- Drive from the funscript -->
+      <div class="p-3 panel space-y-2.5">
+        <div class="flex items-center justify-between">
+          <p class="label">
+            Follow the script
+          </p>
+          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+            <input v-model="scriptDrive" type="checkbox">
+            On
+          </label>
+        </div>
+        <p class="hint">
+          Builds the beat from the funscript you are watching: the pulse locks
+          to the stroke phase rather than running on its own tempo, so the audio
+          lands on the strokes.
+        </p>
+
+        <label
+          v-if="scriptDrive"
+          class="text-xs text-fg-muted flex gap-2 cursor-pointer items-center"
+        >
+          <input v-model="scriptDriveIntensity" type="checkbox">
+          Stroke speed also drives intensity
+        </label>
+
+        <p v-if="scriptDrive && !hasScript" class="hint text-amber-400/80">
+          No script loaded — nothing to follow yet.
+        </p>
+
+        <div
+          v-else-if="scriptDrive"
+          class="text-[11px] font-mono flex gap-2 items-center"
+        >
+          <span
+            class="rounded-full shrink-0 h-1.5 w-1.5"
+            :class="scriptPulse.locked.value ? 'bg-teal-400' : 'bg-fg/25'"
+          />
+          <span :class="scriptPulse.locked.value ? 'text-teal-400' : 'text-fg-faint'">
+            {{ scriptPulse.locked.value ? 'locked' : 'searching' }}
+          </span>
+          <span class="text-fg-faint">·</span>
+          <span class="text-fg-muted">{{ scriptPulse.scriptSpm.value.toFixed(0) }} spm</span>
+          <span class="text-fg-faint">·</span>
+          <span class="text-fg-muted">{{ (scriptPulse.scriptIntensity.value * 100).toFixed(0) }}%</span>
+        </div>
       </div>
 
       <!-- Session pulse -->
