@@ -31,8 +31,6 @@ catalogs:
     vitest: ^4.0.18
     vue-tsc: ^3.2.5
   frontend:
-    '@pixiv/three-vrm': ^3.5.3
-    '@pixiv/three-vrm-animation': ^3.5.3
     '@vueuse/core': ^14.2.1
     buttplug: ^4.0.0
     osr-emu: ^0.7.0

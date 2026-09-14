@@ -33,7 +33,6 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SbsViewer: typeof import('./src/components/SbsViewer.vue')['default']
-    ScriptEditor: typeof import('./src/components/ScriptEditor.vue')['default']
     ScriptOffsetControl: typeof import('./src/components/ScriptOffsetControl.vue')['default']
     ScriptPanel: typeof import('./src/components/ScriptPanel.vue')['default']
     SerialLogViewer: typeof import('./src/components/SerialLogViewer.vue')['default']
@@ -45,6 +44,5 @@ declare module 'vue' {
     ThemePicker: typeof import('./src/components/ThemePicker.vue')['default']
     VideoLibrary: typeof import('./src/components/VideoLibrary.vue')['default']
     VideoPlayer: typeof import('./src/components/VideoPlayer.vue')['default']
-    VrmViewer: typeof import('./src/components/VrmViewer.vue')['default']
   }
 }

@@ -17,7 +17,7 @@ export default defineConfig({
   },
 
   build: {
-    // three / @pixiv/three-vrm push the vendor chunk well past the default warning
+    // three (the 180-degree SBS viewer) pushes the vendor chunk past the default warning
     chunkSizeWarningLimit: 10000,
   },
 
