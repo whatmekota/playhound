@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShellAction } from '~/lib/hotkeys'
 import type { PanelId } from '~/lib/panels'
 import type { ScriptMatch, VideoEntry } from '~/stores/libraryStore'
 import { useLocalStorage } from '@vueuse/core'
@@ -25,6 +26,7 @@ import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
 import { openVideoFile, storage } from '~/lib/browserApi'
+import { HOTKEY_GROUPS, SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { findPanel, isMainSurface, isOverlaySurface } from '~/lib/panels'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
@@ -494,39 +496,61 @@ watch(() => playerStore.videoPath, (path) => {
 })
 
 // ─── Hotkeys ──────────────────────────────────────────────────────────────────
+function runShellAction(action: ShellAction) {
+  switch (action) {
+    case 'bookmark': {
+      if (!playerStore.videoPath)
+        return
+      const name = playerStore.videoPath.split(/\//).pop() ?? playerStore.videoPath
+      bookmarkStore.add(name, playerStore.currentTime)
+      break
+    }
+    case 'star':
+      starCurrentVideo()
+      break
+    case 'next':
+      playNext()
+      break
+    case 'prev':
+      playPrev()
+      break
+    case 'random':
+      randomVideo()
+      break
+    case 'panic':
+      togglePanic()
+      break
+    case 'help':
+      showKeybinds.value = !showKeybinds.value
+      break
+  }
+}
+
 function onGlobalKeyDown(e: KeyboardEvent) {
   const tag = (e.target as HTMLElement).tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA')
     return
+  // Leave browser and OS shortcuts alone.
+  if (e.ctrlKey || e.metaKey || e.altKey)
+    return
 
-  if (e.code === 'KeyB') {
-    if (!playerStore.videoPath)
-      return
-    const name = playerStore.videoPath.split(/[\\/]/).pop() ?? playerStore.videoPath
-    bookmarkStore.add(name, playerStore.currentTime)
-  }
-  if (e.key === '?' || (e.code === 'Slash' && e.shiftKey))
-    showKeybinds.value = !showKeybinds.value
-  if (e.code === 'KeyS' && !e.ctrlKey && !e.metaKey)
-    starCurrentVideo()
-
-  // Panic: reachable without thinking about it, and the same key puts it back.
-  if (e.code === 'Escape' || e.code === 'Backquote') {
+  // '?' is a shifted key, so match the character rather than the code.
+  if (e.key === '?') {
     e.preventDefault()
-    togglePanic()
+    runShellAction('help')
     return
   }
 
-  // Nothing else should act while the screen is covered.
-  if (safety.panicked)
+  const hit = SHELL_HOTKEYS.find(h => h.code === e.code)
+  if (!hit)
     return
 
-  if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey)
-    playNext()
-  if (e.code === 'KeyP' && !e.ctrlKey && !e.metaKey)
-    playPrev()
-  if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey)
-    randomVideo()
+  // Panic is the only thing that still works while the screen is covered.
+  if (safety.panicked && hit.action !== 'panic')
+    return
+
+  e.preventDefault()
+  runShellAction(hit.action)
 }
 </script>
 
@@ -763,28 +787,39 @@ function onGlobalKeyDown(e: KeyboardEvent) {
     <!-- Keybinds overlay -->
     <div
       v-if="showKeybinds"
-      class="bg-black/70 flex items-center inset-0 justify-center absolute z-50"
+      class="p-6 bg-black/70 flex items-center inset-0 justify-center absolute z-50"
       @click="showKeybinds = false"
     >
-      <div class="text-xs p-5 panel w-80 space-y-2" @click.stop>
-        <h3 class="text-sm font-semibold mb-3">
-          Shortcuts
-        </h3>
-        <div
-          v-for="k in [
-            ['Space', 'Play / pause'],
-            ['&#8592; / &#8594;', 'Seek 5 seconds'],
-            ['F', 'Fullscreen'],
-            ['B', 'Add bookmark'],
-            ['S', 'Star current video'],
-            ['?', 'This list'],
-          ]" :key="k[0]" class="text-white/60 flex justify-between"
-        >
-          <span class="text-white/40 font-mono" v-html="k[0]" />
-          <span>{{ k[1] }}</span>
+      <div
+        class="p-5 panel max-h-full w-[26rem] overflow-y-auto"
+        @click.stop
+      >
+        <div class="mb-3 flex gap-2 items-baseline">
+          <h3 class="text-sm font-semibold">
+            Shortcuts
+          </h3>
+          <span class="hint">Esc closes the panic cover, not this</span>
         </div>
-        <p class="text-[10px] text-white/30 pt-2">
-          Middle-click a rail icon to pin that panel.
+
+        <div class="space-y-3">
+          <section v-for="group in HOTKEY_GROUPS" :key="group.title">
+            <p class="label mb-1">
+              {{ group.title }}
+            </p>
+            <div
+              v-for="k in group.keys"
+              :key="k.keys"
+              class="text-xs py-0.5 flex gap-3 items-baseline"
+            >
+              <span class="text-fg-faint font-mono shrink-0 w-28">{{ k.keys }}</span>
+              <span class="text-fg-muted">{{ k.label }}</span>
+            </div>
+          </section>
+        </div>
+
+        <p class="hint mt-3 pt-3 border-t border-edge">
+          Middle-click a rail icon to pin that panel. Keys are ignored while
+          typing in a field.
         </p>
       </div>
     </div>
