@@ -2,6 +2,7 @@
 import type { PanelId } from '~/lib/panels'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { findPanel, isMainSurface } from '~/lib/panels'
+import BackupPanel from './BackupPanel.vue'
 import BinauralBeats from './BinauralBeats.vue'
 import BookmarkPanel from './BookmarkPanel.vue'
 import DevicePanel from './DevicePanel.vue'
@@ -80,6 +81,7 @@ const canPin = computed(() => !isMainSurface(props.id))
       <MotionPanel v-else-if="id === 'motion'" />
       <RemotePanel v-else-if="id === 'remote'" />
       <StatsDashboard v-else-if="id === 'stats'" />
+      <BackupPanel v-else-if="id === 'backup'" />
     </div>
   </section>
 </template>

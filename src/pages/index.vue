@@ -89,7 +89,7 @@ useRemoteHost({
 
 // ─── Panels ───────────────────────────────────────────────────────────────────
 const activePanel = ref<PanelId | null>('library')
-const pinnedPanel = ref<PanelId | null>('library')
+const pinnedPanel = ref<PanelId | null>(null)
 
 /** Floating windows layered over whatever view is open. */
 const overlayPanels = ref<PanelId[]>([])

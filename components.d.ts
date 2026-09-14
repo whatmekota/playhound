@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AddYoutubeModal: typeof import('./src/components/AddYoutubeModal.vue')['default']
+    BackupPanel: typeof import('./src/components/BackupPanel.vue')['default']
     BinauralBeats: typeof import('./src/components/BinauralBeats.vue')['default']
     BookmarkPanel: typeof import('./src/components/BookmarkPanel.vue')['default']
     CollapsibleSection: typeof import('./src/components/CollapsibleSection.vue')['default']

@@ -125,6 +125,43 @@ export interface VideoMeta {
   rating?: number
 }
 
+/**
+ * Whole-store access, for backup and restore.
+ *
+ * `handles` is deliberately not exportable: it holds FileSystemDirectoryHandle
+ * objects, which are neither serialisable nor valid outside the origin that
+ * created them. Folders have to be re-picked after a move.
+ */
+export const BACKUP_STORES = ['meta', 'playlists', 'vidmeta', 'summaries'] as const
+export type BackupStore = typeof BACKUP_STORES[number]
+
+export async function exportStore(name: BackupStore): Promise<[string, unknown][]> {
+  await openDB()
+  return new Promise((resolve, reject) => {
+    const store = db!.transaction(name, 'readonly').objectStore(name)
+    const keysReq = store.getAllKeys()
+    const valsReq = store.getAll()
+    valsReq.onsuccess = () => {
+      const keys = keysReq.result ?? []
+      const vals = valsReq.result ?? []
+      resolve(keys.map((k, i) => [String(k), vals[i]]))
+    }
+    valsReq.onerror = () => reject(new Error(`IndexedDB read failed: ${name}`))
+  })
+}
+
+export async function importStore(name: BackupStore, records: [string, unknown][]): Promise<void> {
+  await openDB()
+  return new Promise((resolve, reject) => {
+    const tr = db!.transaction(name, 'readwrite')
+    const store = tr.objectStore(name)
+    for (const [k, v] of records)
+      store.put(v, k)
+    tr.oncomplete = () => resolve()
+    tr.onerror = () => reject(new Error(`IndexedDB write failed: ${name}`))
+  })
+}
+
 export interface ScriptSummary {
   /** Mean speed in position-units per second, 0-1 positions. */
   meanSpeed: number

@@ -10,7 +10,7 @@ export type PanelId
     | 'scripts' | 'bookmarks' | 'eroscripts'
     | 'binaural' | 'wall' | 'slideshow'
     | 'device' | 'motion' | 'emulator' | 'remote'
-    | 'stats'
+    | 'stats' | 'backup'
 
 export type PanelGroupId = 'media' | 'script' | 'session' | 'device' | 'data'
 
@@ -86,6 +86,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
     id: 'data',
     label: 'Data',
     panels: [
+      { id: 'backup', label: 'Backup', icon: 'i-carbon-save', accent: 'text-teal-400', hint: 'What is stored here, and export / import it' },
       { id: 'stats', label: 'Stats', icon: 'i-carbon-chart-bar', accent: 'text-pink-400', hint: 'Session history' },
     ],
   },
