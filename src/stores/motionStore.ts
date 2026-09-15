@@ -60,6 +60,17 @@ export const useMotionStore = defineStore('motion', () => {
    */
   const manualMode = ref<'oscillate' | 'direct'>('oscillate')
 
+  // ─── Derived axes ─────────────────────────────────────────────────────────
+  /**
+   * Fill the axes a script does not drive, from the stroke axis itself.
+   * Off by default: it is an embellishment, not what the scripter wrote.
+   */
+  const synthEnabled = ref(false)
+  const synthDepth = ref(0.35)
+  const synthTwist = ref(true)
+  const synthRoll = ref(true)
+  const synthSurge = ref(false)
+
   // ─── Gamepad ──────────────────────────────────────────────────────────────
   const gamepadEnabled = ref(false)
   /** Axis position requested by the stick, 0-1, used in direct mode. */
@@ -98,6 +109,11 @@ export const useMotionStore = defineStore('motion', () => {
       manualSpm: manualSpm.value,
       manualDepth: manualDepth.value,
       manualMode: manualMode.value,
+      synthEnabled: synthEnabled.value,
+      synthDepth: synthDepth.value,
+      synthTwist: synthTwist.value,
+      synthRoll: synthRoll.value,
+      synthSurge: synthSurge.value,
       gamepadEnabled: gamepadEnabled.value,
       secondaryAxes: secondaryAxes.value,
       secondaryDepth: secondaryDepth.value,
@@ -133,6 +149,14 @@ export const useMotionStore = defineStore('motion', () => {
       manualMode.value = data.manualMode
     if (typeof data.gamepadEnabled === 'boolean')
       gamepadEnabled.value = data.gamepadEnabled
+    if (typeof data.synthEnabled === 'boolean')
+      synthEnabled.value = data.synthEnabled
+    if (typeof data.synthDepth === 'number')
+      synthDepth.value = data.synthDepth
+    for (const [k, target] of [['synthTwist', synthTwist], ['synthRoll', synthRoll], ['synthSurge', synthSurge]] as const) {
+      if (typeof data[k] === 'boolean')
+        target.value = data[k]
+    }
     if (typeof data.secondaryAxes === 'boolean')
       secondaryAxes.value = data.secondaryAxes
     if (typeof data.vibrateFromIntensity === 'boolean')
@@ -156,6 +180,11 @@ export const useMotionStore = defineStore('motion', () => {
     manualSpm,
     manualDepth,
     manualMode,
+    synthEnabled,
+    synthDepth,
+    synthTwist,
+    synthRoll,
+    synthSurge,
     gamepadEnabled,
     gamepadPosition,
     gamepadRateHeld,

@@ -2,15 +2,24 @@
 import { computed } from 'vue'
 import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { synthTargets } from '~/lib/axisSynth'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
+import { useScriptStore } from '~/stores/scriptStore'
 
 const motion = useMotionStore()
 const audio = useAudioStore()
 const device = useDeviceStore()
+const scriptStore = useScriptStore()
 const { shouldRun, funscriptBusy } = useMotionEngine()
 const pad = useGamepadStatus()
+
+const SYNTH_AXES = [
+  { key: 'synthTwist', label: 'Twist', hint: 'R0 — turns slowly and continuously' },
+  { key: 'synthRoll', label: 'Roll', hint: 'R1 — leans into the direction of travel' },
+  { key: 'synthSurge', label: 'Surge', hint: 'L1 — trails the stroke at reduced depth' },
+] as const
 
 const MANUAL_MODES = [
   { id: 'oscillate', label: 'Rate', hint: 'The stick sets how fast it strokes.' },
@@ -50,6 +59,20 @@ const meter = computed(() => {
     const d = Math.abs(i / 8 - pos)
     return Math.max(0.12, 1 - d * 2.2)
   })
+})
+
+/** Derived channels that are both selected and enabled on the device. */
+const derivedReady = computed(() => {
+  const wanted = synthTargets(
+    scriptStore.activeScripts.map(s => s.channel),
+    {
+      depth: motion.synthDepth,
+      twist: motion.synthTwist,
+      roll: motion.synthRoll,
+      surge: motion.synthSurge,
+    },
+  )
+  return wanted.filter(c => device.axisConfigs[c]?.enabled)
 })
 
 const sourceHint = computed(() =>
@@ -156,6 +179,56 @@ const sourceHint = computed(() =>
         <p class="hint">
           {{ MANUAL_MODES.find(m => m.id === motion.manualMode)?.hint }}
         </p>
+      </section>
+
+      <section class="pt-1 border-t border-white/5 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <p class="label">
+            Fill idle axes
+          </p>
+          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
+            <input v-model="motion.synthEnabled" type="checkbox">
+            On
+          </label>
+        </div>
+        <p class="hint">
+          Derives twist, roll and surge from the stroke curve, so a one-axis
+          script still moves a multi-axis device. Never overrides an axis the
+          script actually drives.
+        </p>
+
+        <div v-if="motion.synthEnabled" class="pt-0.5 space-y-2">
+          <div class="flex gap-1">
+            <button
+              v-for="a in SYNTH_AXES"
+              :key="a.key"
+              class="text-[11px] px-2 py-1 rounded-md flex-1 transition-colors"
+              :class="motion[a.key]
+                ? 'bg-white/15 text-white'
+                : 'bg-white/5 text-white/40 hover:bg-white/10'"
+              :title="a.hint"
+              @click="motion[a.key] = !motion[a.key]"
+            >
+              {{ a.label }}
+            </button>
+          </div>
+
+          <div>
+            <div class="text-[10px] text-white/40 mb-1 flex justify-between">
+              <span>Depth</span>
+              <span class="font-mono">{{ (motion.synthDepth * 100).toFixed(0) }}%</span>
+            </div>
+            <input v-model.number="motion.synthDepth" type="range" min="0" max="1" step="0.01" class="accent w-full">
+          </div>
+
+          <p v-if="!derivedReady.length" class="hint text-amber-400/80">
+            The axes it would drive are switched off in the Device panel, so
+            nothing will move.
+          </p>
+          <p v-else class="hint">
+            Driving {{ derivedReady.join(', ') }}.
+          </p>
+        </div>
       </section>
 
       <section class="pt-1 border-t border-white/5 space-y-1.5">
