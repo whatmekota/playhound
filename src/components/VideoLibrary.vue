@@ -51,6 +51,7 @@ const sortedFiltered = computed(() => {
   if (filterScripted.value)
     list = list.filter(v => v.hasScript)
   if (filterMultiAxis.value)
+    // Axis count, so a merged single file counts and alt takes do not.
     list = list.filter(v => v.scriptCount > 1 || v.scriptType === 'merged')
   if (filterFavorites.value)
     list = list.filter(v => v.starred)
@@ -82,22 +83,27 @@ function scriptBadge(entry: VideoEntry): { cls: string, text: string, title: str
   if (!entry.hasScript || t === 'none') {
     return { cls: 'bg-white/5 text-white/20', text: '—', title: 'No script' }
   }
+  const alts = entry.altCount > 0
+    ? `, ${entry.altCount} alternate take${entry.altCount === 1 ? '' : 's'}`
+    : ''
+  const chans = entry.channels?.length ? ` — ${entry.channels.join(', ')}` : ''
+
   if (t === 'merged') {
     return {
       cls: 'badge-merged text-white font-bold',
       text: `${entry.scriptCount}✦`,
-      title: `Merged multi-axis script (${entry.scriptCount} axes)`,
+      title: `Merged multi-axis script, ${entry.scriptCount} axes in one file${chans}${alts}`,
     }
   }
-  if (t === 'multi' || entry.scriptCount > 1) {
+  if (t === 'multi') {
     return {
       cls: 'badge-multi text-white font-bold',
       text: `${entry.scriptCount}✦`,
-      title: `Multi-axis (${entry.scriptCount} script files)`,
+      title: `Multi-axis, ${entry.scriptCount} axis files${alts}`,
     }
   }
   // single
-  return { cls: 'badge-single text-white', text: '✦', title: 'Scripted' }
+  return { cls: 'badge-single text-white', text: '✦', title: `Scripted${alts}` }
 }
 
 // ─── Thumbnails ───────────────────────────────────────────────────────────────
@@ -514,7 +520,7 @@ onUnmounted(() => {
             class="text-left border rounded-lg bg-surface-800 flex flex-col w-full transition-all overflow-hidden hover:bg-surface-700"
             :class="[
               entry.scriptType === 'merged' ? 'border-glow-merged'
-              : entry.scriptType === 'multi' || entry.scriptCount > 1 ? 'border-glow-multi'
+              : entry.scriptType === 'multi' ? 'border-glow-multi'
                 : 'border-white/5 hover:border-accent-500/30',
             ]"
             @click="emit('select', entry); emit('queue', sortedFiltered, entry); ensureThumb(entry)"
@@ -581,7 +587,7 @@ onUnmounted(() => {
         class="group px-3 py-2 border-b border-white/[0.04] flex gap-2.5 cursor-pointer transition-colors items-center relative hover:bg-white/5"
         :class="[
           entry.scriptType === 'merged' ? 'border-l-2 border-l-teal-400/50'
-          : entry.scriptType === 'multi' || entry.scriptCount > 1 ? 'border-l-2 border-l-indigo-400/50' : '',
+          : entry.scriptType === 'multi' ? 'border-l-2 border-l-indigo-400/50' : '',
         ]"
         @click="emit('select', entry); emit('queue', sortedFiltered, entry); ensureThumb(entry)"
         @mouseenter="ensureThumb(entry)"

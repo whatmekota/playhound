@@ -1,7 +1,10 @@
 import type { VideoMeta } from '~/lib/idb'
+import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { AXIS_MAP } from '~/lib/axisMap'
+import { metaDb } from '~/lib/idb'
+import { sniffScript } from '~/lib/scriptSniff'
 
 export interface ScriptMatch {
   file: File
@@ -17,7 +20,16 @@ export interface VideoEntry {
   name: string
   basename: string
   hasScript: boolean
+  /**
+   * Number of *axes*, not files. A merged script is one file holding several,
+   * and an alternate take is another file holding the same one, so counting
+   * files gets both wrong.
+   */
   scriptCount: number
+  /** TCode channels available, once known. */
+  channels?: string[]
+  /** Alternate takes, e.g. "clip (bounce).funscript". Not extra axes. */
+  altCount: number
   scriptFiles: File[]
   scriptMatches: ScriptMatch[]
   thumbnailUrl: string | null
@@ -29,22 +41,25 @@ export interface VideoEntry {
 }
 
 /**
- * Detect merged multi-axis funscript without full parse.
- * Regular single-axis scripts NEVER contain an "axes" key anywhere.
- * Merged scripts do — either top-level or inside metadata.
- * We check the first 1KB (catches metadata.axes style) and
- * last 1KB (catches top-level axes array that comes after the big actions block).
+ * Sniff a script, remembering the answer.
+ *
+ * Reading every script on every folder scan would be wasteful, and the answer
+ * only changes when the file does — so it is keyed by name, size and mtime.
  */
-async function sniffIsMerged(file: File): Promise<boolean> {
+async function cachedSniff(file: File): Promise<ScriptInfo> {
+  const key = `sniff:${file.name}|${file.size}|${file.lastModified}`
   try {
-    const headBuf = file.slice(0, 1024)
-    const tailBuf = file.slice(Math.max(0, file.size - 1024))
-    const [head, tail] = await Promise.all([headBuf.text(), tailBuf.text()])
-    return /"axes"\s*:/.test(head) || /"axes"\s*:/.test(tail)
+    const hit = await metaDb.get<ScriptInfo>(key)
+    if (hit?.channels)
+      return hit
   }
   catch {
-    return false
+    // cache miss or unavailable storage — fall through and read the file
   }
+
+  const info = await sniffScript(file)
+  void metaDb.set(key, info)
+  return info
 }
 
 export const useLibraryStore = defineStore('library', () => {
@@ -125,17 +140,25 @@ export const useLibraryStore = defineStore('library', () => {
           return a.altName.localeCompare(b.altName)
         })
 
+        // Alternate takes are the same axis done differently; they must not
+        // inflate the axis count or push an entry into the multi-axis filter.
+        const axisFiles = matches.filter(m => !m.isAlt)
+        const altFiles = matches.filter(m => m.isAlt)
+
         entries.push({
           file: f,
           name: f.name,
           basename: f.name.replace(/\.[^.]+$/, ''),
           hasScript: matches.length > 0,
-          scriptCount: matches.length,
+          scriptCount: axisFiles.length,
+          altCount: altFiles.length,
           scriptFiles: matches.map(m => m.file),
           scriptMatches: matches,
           thumbnailUrl: null,
           duration: null,
-          scriptType: matches.length === 0 ? 'none' : matches.length === 1 ? 'single' : 'multi',
+          scriptType: matches.length === 0
+            ? 'none'
+            : axisFiles.length > 1 ? 'multi' : 'single',
           starred: starredNames.has(f.name),
         })
       }
@@ -147,23 +170,29 @@ export const useLibraryStore = defineStore('library', () => {
     videos.value = entries
     scanning.value = false
 
-    // ── Post-scan: sniff single-script entries for merged format ──────────
-    // Read tail+head of each .funscript to detect merged multi-axis files.
-    // Run in batches to stay non-blocking.
-    const singleScriptEntries = entries.filter(
-      e => e.scriptType === 'single' && e.scriptMatches.length === 1 && !e.scriptMatches[0].isAlt,
+    // ── Post-scan: find merged multi-axis scripts ────────────────────────
+    // One file can hold every axis, which filename matching cannot see. Only
+    // entries that resolve to a single axis file are worth checking.
+    const candidates = entries.filter(
+      e => e.scriptType === 'single' && e.scriptMatches.some(m => !m.isAlt),
     )
-    const SNIFF_BATCH = 50
-    for (let i = 0; i < singleScriptEntries.length; i += SNIFF_BATCH) {
-      const batch = singleScriptEntries.slice(i, i + SNIFF_BATCH)
+
+    const SNIFF_BATCH = 24
+    for (let i = 0; i < candidates.length; i += SNIFF_BATCH) {
+      const batch = candidates.slice(i, i + SNIFF_BATCH)
       await Promise.all(batch.map(async (entry) => {
-        const isMerged = await sniffIsMerged(entry.scriptMatches[0].file)
-        if (isMerged) {
+        const match = entry.scriptMatches.find(m => !m.isAlt)
+        if (!match)
+          return
+
+        const info = await cachedSniff(match.file)
+        entry.channels = info.channels
+        if (info.merged) {
           entry.scriptType = 'merged'
-          entry.scriptCount = 2 // placeholder; real count set after full parse in App.vue
+          entry.scriptCount = info.channels.length
         }
       }))
-      // Yield briefly between batches so UI can update
+      // Yield between batches so the library stays responsive while scanning.
       await new Promise(r => setTimeout(r, 0))
     }
   }

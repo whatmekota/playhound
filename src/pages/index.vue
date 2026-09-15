@@ -342,9 +342,12 @@ async function loadVideoFile(file: File, scriptMatches?: ScriptMatch[], autoplay
     const isMerged = uniqueFiles.size === 1 && scriptStore.scripts.length > 1
     const libEntry = library.videos.find(v => v.file === file)
     if (libEntry) {
+      // A full parse is the most reliable answer there is, so let it correct
+      // whatever the library's cheaper scan concluded.
+      libEntry.channels = [...new Set(scriptStore.scripts.map(s => s.channel))]
       if (isMerged) {
         libEntry.scriptType = 'merged'
-        libEntry.scriptCount = Math.max(libEntry.scriptCount, scriptStore.scripts.length)
+        libEntry.scriptCount = libEntry.channels.length
       }
       if (!libEntry.scriptMeta && lastRawMetadata.value) {
         const fm = lastRawMetadata.value
