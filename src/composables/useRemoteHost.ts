@@ -81,6 +81,7 @@ export function useRemoteHost(actions: {
       audio: audio.isPlaying.value,
       intensity: audio.intensity.value,
       spm: motion.currentSpm,
+      phase: audio.phase.value,
     }
     link.send({ type: 'state', state })
   }
@@ -100,7 +101,7 @@ export function useRemoteHost(actions: {
 
   // Keep the phone honest about what the desktop is doing.
   watch(
-    () => [player.isPlaying, player.videoPath, motion.enabled, audio.isPlaying.value, safety.panicked],
+    () => [player.isPlaying, player.videoPath, motion.enabled, audio.isPlaying.value, safety.panicked, audio.phase.value],
     pushState,
   )
 

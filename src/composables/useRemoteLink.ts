@@ -13,6 +13,8 @@ export interface RemoteState {
   audio: boolean
   intensity: number
   spm: number
+  /** Session phase, so a remote can show what the session is doing. */
+  phase: string
 }
 
 /** Relay port from es-proxy.mjs. */

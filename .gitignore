@@ -8,3 +8,5 @@ dist-ssr
 *.local
 *.log
 .shots
+
+firmware/cyd-face/config.h
