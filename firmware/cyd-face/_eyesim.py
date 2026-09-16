@@ -15,7 +15,7 @@ BASE = dict(
     # big margin on that side and almost none on the inner one. A symmetric
     # margin either clips the flick or wastes half the screen.
     BODY_W=108, MARGIN_IN=8, MARGIN_OUT=40, EYE_H=138, ECY=98, EYE_CY=100, EYE_GAP=20,
-    LID_UP=32, LID_LO=22, IRIS_R=32, SLANT=0.13,
+    LID_UP=32, LID_LO=13, IRIS_R=32, SLANT=0.13,
     # UP_P well below 1 flattens the bell into a near-straight lid, which is
     # what the reference strokes actually are.
     UP_APEX=0.42, UP_P=0.38, LO_APEX=0.44, LO_P=0.80,
@@ -23,7 +23,7 @@ BASE = dict(
     BROW=True, BROW_GAP=18, BROW_T=9.0, BROW_ARC=1.0, BROW_TILT=10,
     UNDER=True, LOWER_T=2,
     IRIS_S=0.46, IRIS_DY=0, IRIS_FIX=None, HILITE=(-13,-13,8),
-    ANG=0.60,
+    ANG=0.60, LO_SHAPE="flat", LO_EDGE=0.20,
 )
 
 # Nothing is ever deleted from here: every shape that has been previewed stays
@@ -35,37 +35,41 @@ VARIANTS = {
                                  UP_APEX=0.36, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=34, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0,
+                                 LO_SHAPE="bell"),
     "B  wing, sharper":     dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=42, LID_LO=18, IRIS_R=29, SLANT=0.17,
                                  UP_APEX=0.32, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=40, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0,
+                                 LO_SHAPE="bell"),
     "C  wing, rounder":     dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=51, LID_LO=29, IRIS_R=29, SLANT=0.07,
                                  UP_APEX=0.43, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=26, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0,
+                                 LO_SHAPE="bell"),
     "F  wing, tareme":      dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=47, LID_LO=27, IRIS_R=29, SLANT=-0.06,
                                  UP_APEX=0.52, UP_P=0.78, LO_APEX=0.52, LO_P=0.95,
                                  LASH=13.0, LASH_BASE=5, FLICK=20, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0,
+                                 LO_SHAPE="bell"),
 
     # -- flat slot, from the heart sheet ----------------------------------
     "G  flat slot":          {},
-    "H  flatter, heavier":   dict(LID_UP=27, LID_LO=19, LASH=27.0, LASH_BASE=8,
+    "H  flatter, heavier":   dict(LID_UP=27, LID_LO=11, LASH=27.0, LASH_BASE=8,
                                   FLICK=40, FLICK_RISE=0.30, IRIS_R=33),
-    "I  sharp, small iris":  dict(LID_UP=35, LID_LO=21, UP_APEX=0.34, UP_P=0.52,
+    "I  sharp, small iris":  dict(LID_UP=35, LID_LO=14, UP_APEX=0.34, UP_P=0.52,
                                   SLANT=0.20, IRIS_R=25, FLICK=40, FLICK_RISE=0.55,
                                   LASH=17.0, BROW_GAP=11, BROW_T=5.0),
     # The crimson reference: almond rather than slot, a flat red iris with one
     # small high highlight, a hook that turns DOWN past the outer corner
     # (negative rise), and a thin sparse brow set well back.
-    "K  crimson":            dict(LID_UP=36, LID_LO=26, UP_APEX=0.40, UP_P=0.62,
+    "K  crimson":            dict(LID_UP=36, LID_LO=15, UP_APEX=0.40, UP_P=0.62,
                                   LO_APEX=0.46, LO_P=0.85, SLANT=0.10,
                                   IRIS_R=30, IRIS_S=0.47, IRIS_DY=-1,
                                   IRIS_FIX=((122,6,10),(224,26,28)),
@@ -74,9 +78,9 @@ VARIANTS = {
                                   BROW_GAP=26, BROW_T=2.0, BROW_TILT=6,
                                   UNDER=True, LOWER_T=2, ANG=0.70),
 
-    "J  extreme lash mass":  dict(LID_UP=24, LID_LO=17, LASH=34.0, LASH_BASE=10,
+    "J  extreme lash mass":  dict(LID_UP=24, LID_LO=10, LASH=34.0, LASH_BASE=10,
                                   FLICK=40, FLICK_RISE=0.22, IRIS_R=34, BROW_GAP=13),
-    "L  fully angular":      dict(ANG=1.0, LID_UP=34, LID_LO=22, UP_APEX=0.38,
+    "L  fully angular":      dict(ANG=1.0, LID_UP=34, LID_LO=14, UP_APEX=0.38,
                                   SLANT=0.16, LASH=22.0, FLICK=40, FLICK_RISE=0.35,
                                   IRIS_R=28, BROW_T=5.0),
 }
@@ -92,6 +96,14 @@ def tent(s, a):
     """Piecewise-linear peak at `a`: straight edges, hard apex."""
     if s <= 0.0 or s >= 1.0: return 0.0
     return s/a if s < a else (1.0-s)/(1.0-a)
+
+def trapezoid(s, edge):
+    """Flat across the middle, ramping only near the corners.
+
+    The lower lid in the references is a near-straight line. A peaked curve
+    there - however angular - makes the eye read as a diamond."""
+    if s <= 0.0 or s >= 1.0: return 0.0
+    return min(1.0, s/edge) * min(1.0, (1.0-s)/edge)
 
 def lidcurve(s, a, p, ang):
     """Blend the round bell toward the angular tent.
@@ -124,7 +136,10 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
     def sl(x): return int(-P["SLANT"]*(x-bcx)*outer)
     A=P["ANG"]
     def up(s): return lidcurve(s, P["UP_APEX"], P["UP_P"], A)
-    def lo(s): return lidcurve(s, P["LO_APEX"], P["LO_P"], A)
+    def lo(s):
+        if P["LO_SHAPE"] == "flat":
+            return trapezoid(s, P["LO_EDGE"])
+        return lidcurve(s, P["LO_APEX"], P["LO_P"], A)
     def bodyx(s):
         u=(1.0-s) if left else s; return M+int(u*(BW-1))
     def edges(x):
