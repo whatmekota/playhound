@@ -24,6 +24,12 @@ BASE = dict(
     UNDER=True, LOWER_T=2,
     IRIS_S=0.46, IRIS_DY=0, IRIS_FIX=None, HILITE=(-13,-13,8),
     ANG=0.60, LO_SHAPE="flat", LO_EDGE=0.20,
+    # Pupil: "round" is an ellipse, "shield" is flat-topped with straight sides
+    # and an elliptical bottom - the big black mass in the minimal references.
+    PUPIL="round", PUPIL_W=0.34, PUPIL_H=0.56, PUPIL_FLAT=0.30,
+    HILITE_SHAPE="dot",        # or "notch": a wedge bitten out of the pupil top
+    INNER_SPIKE=0,             # long tapering point at the inner corner too
+    LOWER_CROSS=False,         # crossing X lashes instead of teeth
 )
 
 # Nothing is ever deleted from here: every shape that has been previewed stays
@@ -80,6 +86,24 @@ VARIANTS = {
 
     "J  extreme lash mass":  dict(LID_UP=24, LID_LO=10, LASH=34.0, LASH_BASE=10,
                                   FLICK=40, FLICK_RISE=0.22, IRIS_R=34, BROW_GAP=13),
+    # The minimal reference: the black mass is the PUPIL, not the lash. Thin
+    # lid stroke, a long taper off both corners, a flat-topped pupil with a
+    # notch bitten out of it, and crossed lower lashes.
+    # An inner spike eats into the gap between the eyes, so this one budgets
+    # its widths differently: 2*100 body + 38 gap + 2*40 outer = 318 of 320,
+    # with a 20px inner margin for the spike to live in.
+    "M  minimal, big pupil": dict(ANG=0.75, LID_UP=34, LID_LO=12, LO_EDGE=0.14,
+                                  UP_APEX=0.44, BODY_W=100, EYE_GAP=38,
+                                  MARGIN_IN=20, MARGIN_OUT=40,
+                                  IRIS_R=30, IRIS_S=0.47, IRIS_DY=1,
+                                  IRIS_FIX=((250,248,252),(250,248,252)),
+                                  PUPIL="shield", PUPIL_W=0.78, PUPIL_H=0.92,
+                                  PUPIL_FLAT=0.26, HILITE_SHAPE="notch",
+                                  HILITE=(0,0,5),
+                                  LASH=7.0, LASH_BASE=3, FLICK=40, FLICK_RISE=0.30,
+                                  INNER_SPIKE=16, LOWER_CROSS=True,
+                                  BROW=False, UNDER=False, LOWER_T=2),
+
     "L  fully angular":      dict(ANG=1.0, LID_UP=34, LID_LO=14, UP_APEX=0.38,
                                   SLANT=0.16, LASH=22.0, FLICK=40, FLICK_RISE=0.35,
                                   IRIS_R=28, BROW_T=5.0),
@@ -173,10 +197,25 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
             d.ellipse([cx,t0-l,cx+2*l,t0+l],fill=(255,255,255))
             d.polygon([(cx-2*l,t0),(cx+2*l,t0),(cx,cy-3+r)],fill=(255,255,255))
         else:
-            rx,ry=int(R*0.34),int(R*0.56)
-            d.ellipse([cx-rx,cy-ry,cx+rx,cy+ry],fill=(14,8,26))
+            rx,ry=int(R*P["PUPIL_W"]),int(R*P["PUPIL_H"])
+            if P["PUPIL"]=="shield":
+                # Flat top, straight sides, elliptical bottom.
+                flat=P["PUPIL_FLAT"]
+                for k in range(2*ry):
+                    t=k/(2*ry-1)
+                    if t<flat: hw=rx
+                    else:
+                        q=(t-flat)/(1.0-flat)
+                        hw=int(rx*math.sqrt(max(0.0,1.0-q*q)))
+                    if hw>0: d.line([(cx-hw,cy-ry+k),(cx+hw,cy-ry+k)],fill=(14,8,26))
+            else:
+                d.ellipse([cx-rx,cy-ry,cx+rx,cy+ry],fill=(14,8,26))
             hx,hy,hr = P["HILITE"]
-            d.ellipse([cx+hx-hr,cy+hy-hr,cx+hx+hr,cy+hy+hr],fill=(255,255,255))
+            if P["HILITE_SHAPE"]=="notch":
+                d.polygon([(cx+hx-hr,cy-ry-1),(cx+hx+hr,cy-ry-1),
+                           (cx+hx,cy-ry+hr*2)],fill=(255,255,255))
+            else:
+                d.ellipse([cx+hx-hr,cy+hy-hr,cx+hx+hr,cy+hy+hr],fill=(255,255,255))
 
     for x in range(M, M+BW):
         s,yT,yB = edges(x); u=(x-M)/(BW-1)
@@ -194,7 +233,17 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
         bx=bodyx(s); by=ECY+sl(bx)-int(upOpen*up(s))-2; dr=int(outer)
         d.polygon([(bx-half,by),(bx+half,by),
                    (bx+dr*ln,by-int(ln*RISE))],fill=ink)
-    if loOpen>8:
+    if P["INNER_SPIKE"]:
+        ln=P["INNER_SPIKE"]; bx=bodyx(0.01); dr=-int(outer)
+        by=ECY+sl(bx)-int(upOpen*up(0.01))-1
+        d.polygon([(bx,by-3),(bx,by+3),(bx+dr*ln,by+int(ln*0.22))],fill=ink)
+
+    if P["LOWER_CROSS"] and loOpen>6:
+        for s in (0.30,0.48,0.66):
+            bx=bodyx(s); by=ECY+sl(bx)+int(loOpen*lo(s))
+            d.line([(bx-7,by-1),(bx+7,by+11)],fill=ink,width=2)
+            d.line([(bx+7,by-1),(bx-7,by+11)],fill=ink,width=2)
+    elif loOpen>8:
         for s in (0.34,0.50,0.66):
             bx=bodyx(s); by=ECY+sl(bx)+int(loOpen*lo(s)); dr=int(outer)
             d.polygon([(bx-3,by-2),(bx+3,by-2),(bx-dr*3,by+9)],fill=ink)
