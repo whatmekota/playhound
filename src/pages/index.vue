@@ -16,6 +16,7 @@ import SpeedControl from '~/components/SpeedControl.vue'
 import SplashScreen from '~/components/SplashScreen.vue'
 import StatusBar from '~/components/StatusBar.vue'
 import ThemePicker from '~/components/ThemePicker.vue'
+import UpNextStrip from '~/components/UpNextStrip.vue'
 import VideoPlayer from '~/components/VideoPlayer.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
@@ -647,6 +648,8 @@ function onGlobalKeyDown(e: KeyboardEvent) {
             @close="closePanel"
           />
         </div>
+
+        <UpNextStrip v-if="!mainPanel" @play="onVideoSelected" />
 
         <!-- Hidden behind a canvas panel: the player is not visible, the canvas
              brings its own controls, and two transport bars stacked is worse

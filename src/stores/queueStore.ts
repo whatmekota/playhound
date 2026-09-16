@@ -125,6 +125,53 @@ export const useQueueStore = defineStore('queue', () => {
     return null
   }
 
+  /**
+   * The next `count` entries, without changing anything.
+   *
+   * peekNext can rebuild the shuffle order when it runs off the end, which is
+   * fine for deciding what plays next but not for drawing a list, so this walks
+   * its own copy of the order and mutates nothing.
+   */
+  function peekUpcoming(count = 4): VideoEntry[] {
+    if (!queue.value.length || currentIdx.value < 0)
+      return []
+    if (repeatMode.value === 'one')
+      return []
+
+    const out: VideoEntry[] = []
+    const order = shuffle.value && shuffleOrder.value.length
+      ? shuffleOrder.value
+      : queue.value.map((_, i) => i)
+
+    let pos = order.indexOf(currentIdx.value)
+    if (pos < 0)
+      pos = 0
+
+    for (let n = 0; n < count; n++) {
+      pos++
+      if (pos >= order.length) {
+        if (repeatMode.value !== 'all')
+          break
+        pos = 0
+      }
+      const entry = queue.value[order[pos]]
+      // Guard against a wrapped list handing back the current item forever.
+      if (!entry || order[pos] === currentIdx.value)
+        break
+      out.push(entry)
+    }
+    return out
+  }
+
+  /** Jump straight to an entry already in the queue. */
+  function jumpTo(entry: VideoEntry): VideoEntry | null {
+    const idx = queue.value.findIndex(e => e.name === entry.name)
+    if (idx < 0)
+      return null
+    currentIdx.value = idx
+    return queue.value[idx] ?? null
+  }
+
   /** Advance to next and return it */
   function next(): VideoEntry | null {
     const entry = peekNext()
@@ -163,6 +210,8 @@ export const useQueueStore = defineStore('queue', () => {
     prev,
     peekNext,
     peekPrev,
+    peekUpcoming,
+    jumpTo,
     setRepeat,
     setShuffle,
   }

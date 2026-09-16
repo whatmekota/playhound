@@ -43,6 +43,7 @@ declare module 'vue' {
     StatsDashboard: typeof import('./src/components/StatsDashboard.vue')['default']
     StatusBar: typeof import('./src/components/StatusBar.vue')['default']
     ThemePicker: typeof import('./src/components/ThemePicker.vue')['default']
+    UpNextStrip: typeof import('./src/components/UpNextStrip.vue')['default']
     VideoLibrary: typeof import('./src/components/VideoLibrary.vue')['default']
     VideoPlayer: typeof import('./src/components/VideoPlayer.vue')['default']
   }
