@@ -19,6 +19,7 @@
 #include "config.h"
 #include "face.h"
 #include "net.h"
+#include "palette.h"
 #include "ui.h"
 
 static TFT_eSPI tft = TFT_eSPI();
@@ -58,9 +59,10 @@ void setup() {
 
   tft.init();
   tft.setRotation(1);              // landscape, USB on the left
-  tft.fillScreen(TFT_BLACK);
+  tft.invertDisplay(PANEL_INVERT);
 
   faceBegin(&tft);
+  tft.fillScreen(faceBackground());
   uiBegin(&tft);
   netBegin();
 }

@@ -20,3 +20,6 @@ void faceTick();
 
 /** Repaint on the next tick, e.g. after the control bar has been hidden. */
 void faceInvalidate();
+
+/** The face's background, so the control bar clears to the same colour. */
+uint16_t faceBackground();

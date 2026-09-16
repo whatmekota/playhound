@@ -25,6 +25,15 @@
 // with ?room=<this>. The relay only ever forwards between peers that know it.
 #define PH_ROOM         "paste-the-room-id-here"
 
+// ── Panel quirks ─────────────────────────────────────────────────────────
+// CYD revisions disagree about these, and the TFT_eSPI fix for them lives in a
+// User_Setup.h shared with every other sketch on the machine - so do it here.
+//
+//   PANEL_INVERT  background comes out white instead of black -> flip this
+//   PANEL_BGR     red and blue look swapped -> flip this
+#define PANEL_INVERT    1
+#define PANEL_BGR       0
+
 // ── Backlight (PWM via LEDC) ───────────────────────────────────────────────
 #define PIN_BL          21
 #define BL_FREQ_HZ      5000

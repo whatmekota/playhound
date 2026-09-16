@@ -131,5 +131,19 @@ should show 1 remote once the board is up.
 ## Layout
 
 The face owns everything above y=168 and the control bar everything below, so
-neither ever repaints the other. Eyes are drawn into a single 96×96 sprite that
-is pushed twice — ~18KB, which matters on a board with no PSRAM.
+neither ever repaints the other.
+
+One 104×112 eye sprite is pushed twice (~23KB), and the iris is a second 77×77
+sprite (~12KB) pushed into it with transparent corners. The iris is only rebuilt
+when its colours change — its vertical gradient is far too expensive to redraw at
+30fps. Blinking shrinks the eye vertically rather than sliding a lid across it,
+so the lash follows the current top edge and closes to a clean curved stroke.
+
+## Panel quirks
+
+`PANEL_INVERT` and `PANEL_BGR` in `config.h` handle the two things CYD revisions
+disagree about. They are applied in the sketch rather than in `User_Setup.h`,
+which is shared with every other sketch on the machine.
+
+- Background comes out **white** instead of black → flip `PANEL_INVERT`.
+- Red and blue look **swapped** → flip `PANEL_BGR`.

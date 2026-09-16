@@ -4,6 +4,7 @@
 #include "config.h"
 #include "face.h"
 #include "net.h"
+#include "palette.h"
 #include "ui.h"
 
 // ── Layout ──────────────────────────────────────────────────────────────────
@@ -17,17 +18,17 @@ static const uint32_t HIDE_AFTER_MS = 4500;
 struct Button {
   const char *label;
   PhAction    action;
-  uint16_t    tint;
+  Rgb         tint;
 };
 
 // Order runs left to right, with panic parked at the far right where it is
 // hard to hit by accident.
 static Button BUTTONS[BTN_COUNT] = {
-  { "<<",   ACT_PREV,        0x5AEB },
-  { ">||",  ACT_TOGGLE_PLAY, 0x2D7F },
-  { ">>",   ACT_NEXT,        0x5AEB },
-  { "RND",  ACT_RANDOM,      0x5AEB },
-  { "STOP", ACT_PANIC,       0xC000 },
+  { "<<",   ACT_PREV,        Rgb{ 88,  78, 112 } },
+  { ">||",  ACT_TOGGLE_PLAY, Rgb{ 96,  60, 160 } },
+  { ">>",   ACT_NEXT,        Rgb{ 88,  78, 112 } },
+  { "RND",  ACT_RANDOM,      Rgb{ 88,  78, 112 } },
+  { "STOP", ACT_PANIC,       Rgb{170,  34,  62 } },
 };
 
 static TFT_eSPI *gfx = nullptr;
@@ -61,11 +62,11 @@ static void drawButton(int i) {
     || (b.action == ACT_TOGGLE_PLAY && phState.playing)
     || (b.action == ACT_PANIC && phState.panicked);
 
-  const uint16_t bg = lit ? b.tint : gfx->color565(22, 26, 34);
-  const uint16_t fg = lit ? TFT_WHITE : gfx->color565(150, 160, 175);
+  const uint16_t bg = lit ? rgb(b.tint) : rgb(Rgb{26, 22, 36});
+  const uint16_t fg = lit ? rgb(Rgb{255, 255, 255}) : rgb(Rgb{158, 146, 176});
 
   gfx->fillRoundRect(x + 4, BTN_Y, BTN_W - 8, BTN_H, 8, bg);
-  gfx->drawRoundRect(x + 4, BTN_Y, BTN_W - 8, BTN_H, 8, gfx->color565(45, 52, 64));
+  gfx->drawRoundRect(x + 4, BTN_Y, BTN_W - 8, BTN_H, 8, rgb(Rgb{54, 46, 72}));
 
   const char *label = b.label;
   if (b.action == ACT_TOGGLE_PLAY)
@@ -79,7 +80,7 @@ static void drawButton(int i) {
 static void showBar() {
   visible = true;
   shownPlaying = phState.playing;
-  gfx->fillRect(0, UI_TOP, 320, 240 - UI_TOP, TFT_BLACK);
+  gfx->fillRect(0, UI_TOP, 320, 240 - UI_TOP, faceBackground());
   for (int i = 0; i < BTN_COUNT; i++)
     drawButton(i);
 }
@@ -87,7 +88,7 @@ static void showBar() {
 static void hideBar() {
   visible = false;
   pressed = -1;
-  gfx->fillRect(0, UI_TOP, 320, 240 - UI_TOP, TFT_BLACK);
+  gfx->fillRect(0, UI_TOP, 320, 240 - UI_TOP, faceBackground());
   faceInvalidate();
 }
 
