@@ -15,7 +15,7 @@ BASE = dict(
     # big margin on that side and almost none on the inner one. A symmetric
     # margin either clips the flick or wastes half the screen.
     BODY_W=108, MARGIN_IN=8, MARGIN_OUT=40, EYE_H=138, ECY=98, EYE_CY=100, EYE_GAP=20,
-    LID_UP=32, LID_LO=13, IRIS_R=32, SLANT=0.13,
+    LID_UP=32, LID_LO=13, IRIS_R=32,
     # UP_P well below 1 flattens the bell into a near-straight lid, which is
     # what the reference strokes actually are.
     UP_APEX=0.42, UP_P=0.38, LO_APEX=0.44, LO_P=0.80,
@@ -23,6 +23,10 @@ BASE = dict(
     BROW=True, BROW_GAP=18, BROW_T=9.0, BROW_ARC=1.0, BROW_TILT=10,
     UNDER=True, LOWER_T=2,
     IRIS_S=0.46, IRIS_DY=0, IRIS_FIX=None, HILITE=(-13,-13,8),
+    # SLANT rotates the eye about its centre, so it drops the inner corner as
+    # much as it lifts the outer one. LIFT raises only the outer end, anchored
+    # at the inner corner - which is what "outer corner higher" usually means.
+    SLANT=0.13, LIFT=0,
     ANG=0.60, LO_SHAPE="flat", LO_EDGE=0.20,
     # Pupil: "round" is an ellipse, "shield" is flat-topped with straight sides
     # and an elliptical bottom - the big black mass in the minimal references.
@@ -107,14 +111,14 @@ VARIANTS = {
     # M with the tilt from the drawn-over preview: the outer corner rides far
     # above the inner one and the flick carries that line on upward, so the
     # corner is an acute V pointing up and out rather than a flat taper.
-    "N  M, lifted outer":    dict(ANG=0.75, LID_UP=34, LID_LO=12, LO_EDGE=0.14,
+    "N  M, lifted outer":    dict(ANG=0.75, LID_UP=34, LID_LO=20, LO_EDGE=0.14,
                                   UP_APEX=0.44, BODY_W=100, EYE_GAP=38,
-                                  MARGIN_IN=20, MARGIN_OUT=40, SLANT=0.44,
+                                  MARGIN_IN=20, MARGIN_OUT=40, SLANT=0.10, LIFT=34,
                                   IRIS_R=30, IRIS_S=0.47, IRIS_DY=1,
                                   IRIS_FIX=((250,248,252),(250,248,252)),
-                                  PUPIL="shield", PUPIL_W=0.78, PUPIL_H=0.92,
+                                  PUPIL="shield", PUPIL_W=0.74, PUPIL_H=0.80,
                                   PUPIL_FLAT=0.26, HILITE_SHAPE="notch",
-                                  HILITE=(0,0,5),
+                                  HILITE=(0,0,4),
                                   LASH=7.0, LASH_BASE=3, FLICK=38, FLICK_RISE=0.85,
                                   INNER_SPIKE=16, LOWER_CROSS=True,
                                   BROW=False, UNDER=False, LOWER_T=2),
@@ -172,7 +176,7 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
 
     def S(x):
         u=(x-M)/(BW-1); return (1.0-u) if left else u
-    def sl(x): return int(-P["SLANT"]*(x-bcx)*outer)
+    def sl(x): return int(-P["SLANT"]*(x-bcx)*outer) - int(P["LIFT"]*S(x))
     A=P["ANG"]
     def up(s): return lidcurve(s, P["UP_APEX"], P["UP_P"], A)
     def lo(s):
@@ -228,7 +232,7 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
             hx,hy,hr = P["HILITE"]
             if P["HILITE_SHAPE"]=="notch":
                 d.polygon([(cx+hx-hr,cy-ry-1),(cx+hx+hr,cy-ry-1),
-                           (cx+hx,cy-ry+hr*2)],fill=(255,255,255))
+                           (cx+hx,cy-ry+hr+1)],fill=(255,255,255))
             else:
                 d.ellipse([cx+hx-hr,cy+hy-hr,cx+hx+hr,cy+hy+hr],fill=(255,255,255))
 
