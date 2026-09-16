@@ -105,5 +105,41 @@ export function useRemoteHost(actions: {
     pushState,
   )
 
+  // spm and intensity are written every animation frame, so they cannot go in
+  // the watch above - that would push sixty frames a second at the relay. They
+  // were previously left out altogether, which meant a remote only ever saw
+  // whatever they happened to be when a discrete field last changed: usually
+  // spm 0, taken the instant motion was switched on. Push them on a gate
+  // instead, once they have moved enough to be worth seeing.
+  const CONTINUOUS_MS = 250
+  const SPM_EPSILON = 2
+  const INTENSITY_EPSILON = 0.03
+
+  let lastContinuousAt = 0
+  let seenContinuous = false
+  let lastSpm = 0
+  let lastIntensity = 0
+
+  watch(
+    () => [motion.currentSpm, audio.intensity.value] as const,
+    ([spm, level]) => {
+      const moved = !seenContinuous
+        || Math.abs(spm - lastSpm) >= SPM_EPSILON
+        || Math.abs(level - lastIntensity) >= INTENSITY_EPSILON
+      if (!moved)
+        return
+
+      const now = performance.now()
+      if (now - lastContinuousAt < CONTINUOUS_MS)
+        return
+
+      lastContinuousAt = now
+      seenContinuous = true
+      lastSpm = spm
+      lastIntensity = level
+      pushState()
+    },
+  )
+
   return { connected: link.connected, peers: link.peers, room: remoteRoom }
 }
