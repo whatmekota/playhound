@@ -41,6 +41,15 @@ Install through the Arduino IDE library manager (or `arduino-cli lib install`):
 - **ArduinoJson** — Benoit Blanchon (v6; v7 also works)
 
 Board: _ESP32 Dev Module_, 240MHz, flash 4MB, partition _Default 4MB with spiffs_.
+The sketch uses about 89% of that partition, so if you add much to it, switch to
+_Huge APP (3MB No OTA)_ rather than trying to shrink the face.
+
+If Library Manager fails with **403 Forbidden**, that is `downloads.arduino.cc`
+refusing the request rather than anything local — a VPN exit IP is the usual
+cause. Either drop the VPN, or install from the upstream repo by hand: download
+<https://github.com/Links2004/arduinoWebSockets> as a zip and extract it into
+`Documents/Arduino/libraries/WebSockets` (the folder must contain
+`library.properties` directly, not another folder).
 
 ## TFT_eSPI setup
 
