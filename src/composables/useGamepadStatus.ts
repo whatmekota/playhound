@@ -9,7 +9,11 @@ import { ref } from 'vue'
  */
 const connected = ref(false)
 const padName = ref('')
+/** Raw axis values, so "is the stick even being read?" is answerable. */
+const axes = ref<number[]>([])
+/** Non-standard pads report different axis indices; worth surfacing. */
+const mapping = ref('')
 
 export function useGamepadStatus() {
-  return { connected, padName }
+  return { connected, padName, axes, mapping }
 }

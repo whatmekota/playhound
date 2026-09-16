@@ -38,7 +38,7 @@ export function useGamepad(actions: GamepadActions) {
   const motion = useMotionStore()
   const safety = useSafetyStore()
 
-  const { connected, padName } = useGamepadStatus()
+  const { connected, padName, axes, mapping } = useGamepadStatus()
 
   let raf: number | null = null
   let prevButtons: boolean[] = []
@@ -64,6 +64,8 @@ export function useGamepad(actions: GamepadActions) {
 
     connected.value = !!pad
     padName.value = pad?.id ?? ''
+    axes.value = pad ? Array.from(pad.axes) : []
+    mapping.value = pad?.mapping ?? ''
 
     if (pad) {
       // ── Buttons ──────────────────────────────────────────────────────────
@@ -86,24 +88,33 @@ export function useGamepad(actions: GamepadActions) {
       prevButtons = pad.buttons.map(b => b.pressed)
 
       // ── Sticks ───────────────────────────────────────────────────────────
-      if (motion.gamepadEnabled && motion.source === 'manual' && !safety.panicked) {
+      if (motion.gamepadEnabled && !safety.panicked) {
         // Left stick Y, inverted so pushing up means further out.
         const y = applyDeadzone(-(pad.axes[1] ?? 0))
         // Right stick Y trims depth.
         const depth = applyDeadzone(-(pad.axes[3] ?? 0))
 
-        if (motion.manualMode === 'direct') {
-          // Stick position maps straight onto axis position.
-          motion.gamepadPosition = clamp((y + 1) / 2, 0, 1)
-        }
-        else if (y !== 0 || motion.gamepadRateHeld) {
-          // Stick magnitude sets the stroke rate.
-          motion.manualSpm = Math.round(clamp(Math.abs(y) * motion.maxSpm, 0, motion.maxSpm))
-          motion.gamepadRateHeld = Math.abs(y) > 0
-        }
+        // The sticks only mean anything to the manual source. Requiring it to
+        // be selected first made them look broken: the buttons worked while
+        // the sticks did nothing, because Script is the default. Moving a
+        // stick is explicit enough to be treated as taking over.
+        if ((y !== 0 || depth !== 0) && motion.source !== 'manual')
+          motion.source = 'manual'
 
-        if (depth !== 0)
-          motion.manualDepth = clamp(motion.manualDepth + depth * 0.02, 0, 1)
+        if (motion.source === 'manual') {
+          if (motion.manualMode === 'direct') {
+            // Stick position maps straight onto axis position.
+            motion.gamepadPosition = clamp((y + 1) / 2, 0, 1)
+          }
+          else if (y !== 0 || motion.gamepadRateHeld) {
+            // Stick magnitude sets the stroke rate.
+            motion.manualSpm = Math.round(clamp(Math.abs(y) * motion.maxSpm, 0, motion.maxSpm))
+            motion.gamepadRateHeld = Math.abs(y) > 0
+          }
+
+          if (depth !== 0)
+            motion.manualDepth = clamp(motion.manualDepth + depth * 0.02, 0, 1)
+        }
       }
     }
 

@@ -75,6 +75,14 @@ const derivedReady = computed(() => {
   return wanted.filter(c => device.axisConfigs[c]?.enabled)
 })
 
+/** Centre-out bar for a -1..1 stick value. */
+function stickBar(v: number) {
+  const half = Math.min(1, Math.abs(v)) * 50
+  return v >= 0
+    ? { left: '50%', width: `${half}%` }
+    : { right: '50%', width: `${half}%` }
+}
+
 const sourceHint = computed(() =>
   MOTION_SOURCES.find(s => s.id === motion.source)?.hint ?? '',
 )
@@ -256,6 +264,38 @@ const sourceHint = computed(() =>
             Press a button on the pad to wake it — browsers hide gamepads until
             they are used.
           </p>
+
+          <!-- Live axis values: makes "is the stick being read?" answerable
+               without opening devtools. -->
+          <div v-else class="space-y-1">
+            <div class="text-[10px] text-fg-faint font-mono flex gap-2 items-center">
+              <span class="shrink-0 w-14">Left Y</span>
+              <div class="rounded-full bg-fg/10 flex-1 h-1 relative overflow-hidden">
+                <div
+                  class="bg-emerald-400 bottom-0 top-0 absolute"
+                  :style="stickBar(-(pad.axes.value[1] ?? 0))"
+                />
+              </div>
+              <span class="text-right w-9">{{ (-(pad.axes.value[1] ?? 0)).toFixed(2) }}</span>
+            </div>
+            <div class="text-[10px] text-fg-faint font-mono flex gap-2 items-center">
+              <span class="shrink-0 w-14">Right Y</span>
+              <div class="rounded-full bg-fg/10 flex-1 h-1 relative overflow-hidden">
+                <div
+                  class="bg-emerald-400 bottom-0 top-0 absolute"
+                  :style="stickBar(-(pad.axes.value[3] ?? 0))"
+                />
+              </div>
+              <span class="text-right w-9">{{ (-(pad.axes.value[3] ?? 0)).toFixed(2) }}</span>
+            </div>
+            <p v-if="pad.mapping.value && pad.mapping.value !== 'standard'" class="hint text-amber-400/80">
+              This pad reports a non-standard layout, so the sticks may sit on
+              different axes: {{ pad.axes.value.map(a => a.toFixed(1)).join(', ') }}
+            </p>
+            <p class="hint">
+              Moving a stick switches the source to Manual.
+            </p>
+          </div>
           <dl class="text-[10px] text-fg-faint gap-x-2 gap-y-0.5 grid grid-cols-2">
             <dt>Left stick</dt><dd class="text-fg-muted">
               Rate / position
