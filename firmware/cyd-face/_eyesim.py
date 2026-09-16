@@ -104,6 +104,21 @@ VARIANTS = {
                                   INNER_SPIKE=16, LOWER_CROSS=True,
                                   BROW=False, UNDER=False, LOWER_T=2),
 
+    # M with the tilt from the drawn-over preview: the outer corner rides far
+    # above the inner one and the flick carries that line on upward, so the
+    # corner is an acute V pointing up and out rather than a flat taper.
+    "N  M, lifted outer":    dict(ANG=0.75, LID_UP=34, LID_LO=12, LO_EDGE=0.14,
+                                  UP_APEX=0.44, BODY_W=100, EYE_GAP=38,
+                                  MARGIN_IN=20, MARGIN_OUT=40, SLANT=0.44,
+                                  IRIS_R=30, IRIS_S=0.47, IRIS_DY=1,
+                                  IRIS_FIX=((250,248,252),(250,248,252)),
+                                  PUPIL="shield", PUPIL_W=0.78, PUPIL_H=0.92,
+                                  PUPIL_FLAT=0.26, HILITE_SHAPE="notch",
+                                  HILITE=(0,0,5),
+                                  LASH=7.0, LASH_BASE=3, FLICK=38, FLICK_RISE=0.85,
+                                  INNER_SPIKE=16, LOWER_CROSS=True,
+                                  BROW=False, UNDER=False, LOWER_T=2),
+
     "L  fully angular":      dict(ANG=1.0, LID_UP=34, LID_LO=14, UP_APEX=0.38,
                                   SLANT=0.16, LASH=22.0, FLICK=40, FLICK_RISE=0.35,
                                   IRIS_R=28, BROW_T=5.0),
