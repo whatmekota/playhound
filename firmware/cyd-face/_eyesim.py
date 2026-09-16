@@ -30,7 +30,9 @@ BASE = dict(
     # slopes the whole eye, higher values keep the body level and hook only the
     # last part of it upward.
     SLANT=0.13, LIFT=0, LIFT_POW=1.0,
-    ANG=0.60, LO_SHAPE="flat", LO_EDGE=0.20,
+    ANG=0.60,
+    UP_SHAPE="bell", UP_EDGE_IN=0.30, UP_EDGE_OUT=0.12, RAMP_EASE=0.85,
+    LO_SHAPE="flat", LO_EDGE=0.20, LO_EDGE_IN=None, LO_EDGE_OUT=None,
     # Pupil: "round" is an ellipse, "shield" is flat-topped with straight sides
     # and an elliptical bottom - the big black mass in the minimal references.
     PUPIL="round", PUPIL_W=0.34, PUPIL_H=0.56, PUPIL_FLAT=0.30,
@@ -126,6 +128,23 @@ VARIANTS = {
                                   INNER_SPIKE=16, LOWER_CROSS=True,
                                   BROW=False, UNDER=False, LOWER_T=2),
 
+    # M, but with the upper lid as a plateau rather than an arch - flat and
+    # high across the eye, turning down only at the corners. Everything below
+    # the lid line is M unchanged, including the pupil and its clipping.
+    "O  M, flat top lid":    dict(ANG=0.75, LID_UP=36, LID_LO=12,
+                                  UP_SHAPE="flat", UP_EDGE_IN=0.30, UP_EDGE_OUT=0.13,
+                                  LO_EDGE_IN=0.16, LO_EDGE_OUT=0.10,
+                                  BODY_W=100, EYE_GAP=38,
+                                  MARGIN_IN=20, MARGIN_OUT=40, SLANT=0.13,
+                                  IRIS_R=30, IRIS_S=0.47, IRIS_DY=1,
+                                  IRIS_FIX=((250,248,252),(250,248,252)),
+                                  PUPIL="shield", PUPIL_W=0.78, PUPIL_H=0.92,
+                                  PUPIL_FLAT=0.26, HILITE_SHAPE="notch",
+                                  HILITE=(0,0,5),
+                                  LASH=7.0, LASH_BASE=3, FLICK=38, FLICK_RISE=0.55,
+                                  INNER_SPIKE=16, LOWER_CROSS=True,
+                                  BROW=False, UNDER=False, LOWER_T=2),
+
     "L  fully angular":      dict(ANG=1.0, LID_UP=34, LID_LO=14, UP_APEX=0.38,
                                   SLANT=0.16, LASH=22.0, FLICK=40, FLICK_RISE=0.35,
                                   IRIS_R=28, BROW_T=5.0),
@@ -143,13 +162,27 @@ def tent(s, a):
     if s <= 0.0 or s >= 1.0: return 0.0
     return s/a if s < a else (1.0-s)/(1.0-a)
 
-def trapezoid(s, edge):
+_EASE = 0.0   # set per-variant by eye_sprite before the lids are evaluated
+
+def _ramp(t, ease):
+    """Corner ramp. Linear at ease 0, sine-eased at 1.
+
+    A linear ramp meets the plateau at a hard angle and the eye reads as a
+    hexagon; easing lands it with zero slope so the corner rounds off."""
+    t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+    if ease <= 0.0: return t
+    return (1.0-ease)*t + ease*math.sin(t*math.pi*0.5)
+
+def plateau(s, edge_in, edge_out):
     """Flat across the middle, ramping only near the corners.
 
-    The lower lid in the references is a near-straight line. A peaked curve
-    there - however angular - makes the eye read as a diamond."""
+    Both bell() and tent() peak by construction, so a lid built from either is
+    an arch no matter where the apex sits. The references draw a lid that runs
+    flat and high across the whole eye and turns down only at the ends, which
+    is this. The two ramps are independent: the inner corner usually tapers
+    gradually while the outer one turns sharply into the flick."""
     if s <= 0.0 or s >= 1.0: return 0.0
-    return min(1.0, s/edge) * min(1.0, (1.0-s)/edge)
+    return _ramp(s/edge_in, _EASE) * _ramp((1.0-s)/edge_out, _EASE)
 
 def lidcurve(s, a, p, ang):
     """Blend the round bell toward the angular tent.
@@ -181,10 +214,17 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
         u=(x-M)/(BW-1); return (1.0-u) if left else u
     def sl(x): return int(-P["SLANT"]*(x-bcx)*outer) - int(P["LIFT"]*(S(x)**P["LIFT_POW"]))
     A=P["ANG"]
-    def up(s): return lidcurve(s, P["UP_APEX"], P["UP_P"], A)
+    global _EASE
+    _EASE = P["RAMP_EASE"]
+    lo_in  = P["LO_EDGE_IN"]  if P["LO_EDGE_IN"]  is not None else P["LO_EDGE"]
+    lo_out = P["LO_EDGE_OUT"] if P["LO_EDGE_OUT"] is not None else P["LO_EDGE"]
+    def up(s):
+        if P["UP_SHAPE"] == "flat":
+            return plateau(s, P["UP_EDGE_IN"], P["UP_EDGE_OUT"])
+        return lidcurve(s, P["UP_APEX"], P["UP_P"], A)
     def lo(s):
         if P["LO_SHAPE"] == "flat":
-            return trapezoid(s, P["LO_EDGE"])
+            return plateau(s, lo_in, lo_out)
         return lidcurve(s, P["LO_APEX"], P["LO_P"], A)
     def bodyx(s):
         u=(1.0-s) if left else s; return M+int(u*(BW-1))
