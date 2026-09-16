@@ -5,6 +5,7 @@
 #include "face.h"
 #include "net.h"
 #include "palette.h"
+#include "settings.h"
 #include "ui.h"
 
 // ── Layout ──────────────────────────────────────────────────────────────────
@@ -14,6 +15,11 @@ static const int BTN_H      = 58;
 static const int BTN_COUNT  = 5;
 static const int BTN_W      = 320 / BTN_COUNT;
 static const uint32_t HIDE_AFTER_MS = 4500;
+
+// A corner rather than a button: it must not compete with "tap anywhere to
+// reveal the controls", which is the gesture people will actually use.
+static const int GEAR_W = 62;
+static const int GEAR_H = 40;
 
 struct Button {
   const char *label;
@@ -62,12 +68,11 @@ static void drawButton(int i) {
     || (b.action == ACT_TOGGLE_PLAY && phState.playing)
     || (b.action == ACT_PANIC && phState.panicked);
 
-  const uint16_t bg = lit ? rgb(b.tint) : rgb(Rgb{26, 22, 36});
-  const uint16_t fg = lit ? rgb(Rgb{255, 255, 255}) : rgb(Rgb{158, 146, 176});
+  const uint16_t bg = lit ? rgb(b.tint) : themePanel();
+  const uint16_t fg = lit ? rgb(Rgb{255, 255, 255}) : themeMuted();
 
   gfx->fillRoundRect(x + 4, BTN_Y, BTN_W - 8, BTN_H, 8, bg);
-  gfx->drawRoundRect(x + 4, BTN_Y, BTN_W - 8, BTN_H, 8, rgb(Rgb{54, 46, 72}));
-
+  
   const char *label = b.label;
   if (b.action == ACT_TOGGLE_PLAY)
     label = phState.playing ? "||" : ">";
@@ -97,6 +102,10 @@ void uiBegin(TFT_eSPI *tft) {
   touchSpi.begin(PIN_TOUCH_CLK, PIN_TOUCH_MISO, PIN_TOUCH_MOSI, PIN_TOUCH_CS);
   ts.begin(touchSpi);
   ts.setRotation(1);           // match the display's landscape rotation
+}
+
+bool uiMenuOpen() {
+  return settingsMenuVisible();
 }
 
 bool uiTick() {
@@ -131,6 +140,23 @@ bool uiTick() {
 
     const int x = mapClamp(p.x, TOUCH_MIN_X, TOUCH_MAX_X, 0, 319);
     const int y = mapClamp(p.y, TOUCH_MIN_Y, TOUCH_MAX_Y, 0, 239);
+
+    if (settingsMenuVisible()) {
+      settingsMenuTap(x, y);
+      if (!settingsMenuVisible()) {
+        // Coming back from the menu: the face owns the screen again.
+        gfx->fillScreen(faceBackground());
+        faceInvalidate();
+      }
+      wasDown = down;
+      return false;
+    }
+
+    if (!visible && x < GEAR_W && y < GEAR_H) {
+      settingsMenuOpen(gfx);
+      wasDown = down;
+      return false;
+    }
 
     if (!visible) {
       showBar();

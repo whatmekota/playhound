@@ -10,3 +10,5 @@ dist-ssr
 .shots
 
 firmware/cyd-face/config.h
+
+firmware/cyd-face/_preview.png

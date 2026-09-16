@@ -17,3 +17,6 @@ void uiBegin(TFT_eSPI *tft);
 
 /** Poll touch, animate the bar. Call every loop. Returns true while visible. */
 bool uiTick();
+
+/** True while the settings menu covers the screen and the face must not draw. */
+bool uiMenuOpen();

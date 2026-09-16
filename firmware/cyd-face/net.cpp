@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "net.h"
+#include "settings.h"
 
 PhState phState;
 
@@ -92,44 +93,62 @@ static void onWsEvent(WStype_t type, uint8_t *payload, size_t length) {
   }
 }
 
-void netBegin() {
+static bool enabled = false;
+static bool wsStarted = false;
+
+// Nothing here blocks. The face has to be on screen immediately whether or not
+// there is a network, because in the standalone modes there may never be one.
+static void radioUp() {
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);          // keeps latency down; this is a remote
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-
   Serial.print(F("[net] joining "));
   Serial.println(F(WIFI_SSID));
 
-  uint32_t started = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) {
-    delay(250);
-    Serial.print('.');
+  if (!wsStarted) {
+    static char path[96];
+    snprintf(path, sizeof(path), "/rc?room=%s&role=remote", PH_ROOM);
+    ws.begin(PH_HOST, PH_PORT, path);
+    ws.onEvent(onWsEvent);
+    // A dropped socket is the normal case here, not an error: the desktop gets
+    // closed, the board stays on.
+    ws.setReconnectInterval(3000);
+    wsStarted = true;
   }
-  Serial.println();
+}
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("[net] no WiFi; will keep retrying"));
-  } else {
-    Serial.print(F("[net] ip "));
-    Serial.println(WiFi.localIP());
-  }
+static void radioDown() {
+  ws.disconnect();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  phState.connected = false;
+  phState.hostSeen = false;
+  Serial.println(F("[net] radio off"));
+}
 
-  static char path[96];
-  snprintf(path, sizeof(path), "/rc?room=%s&role=remote", PH_ROOM);
+void netSetEnabled(bool on) {
+  if (on == enabled)
+    return;
+  enabled = on;
+  if (on)
+    radioUp();
+  else
+    radioDown();
+}
 
-  ws.begin(PH_HOST, PH_PORT, path);
-  ws.onEvent(onWsEvent);
-  // A dropped socket is the normal case here, not an error: the desktop gets
-  // closed, the board stays on.
-  ws.setReconnectInterval(3000);
+void netBegin() {
+  netSetEnabled(settings.wifi);
 }
 
 void netLoop() {
-  ws.loop();
+  // The setting can change under us from the menu.
+  netSetEnabled(settings.wifi);
+  if (enabled)
+    ws.loop();
 }
 
 void netSend(PhAction action) {
-  if (!phState.connected)
+  if (!enabled || !phState.connected)
     return;
 
   char msg[64];

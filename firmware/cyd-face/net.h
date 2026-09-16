@@ -36,3 +36,6 @@ enum PhAction {
 void netBegin();
 void netLoop();
 void netSend(PhAction action);
+
+/** Bring the radio up or take it down without a reboot. */
+void netSetEnabled(bool on);

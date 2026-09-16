@@ -5,18 +5,44 @@ watches a playhound session and hides a control bar behind a tap.
 
 The eyes react to what the desktop is doing:
 
-| state                  | face                                             |
-| ---------------------- | ------------------------------------------------ |
-| no desktop in the room | dim blue, slow blinking, `waiting for playhound` |
-| idle                   | cool blue, wandering gaze                        |
-| playing                | warms toward red as intensity climbs             |
-| motion running         | bobs in time with the stroke rate                |
-| panicked               | eyes shut, screen dimmed, `shhh`                 |
+| state                  | face                                              |
+| ---------------------- | ------------------------------------------------- |
+| no desktop in the room | grey iris, slow blinking, `waiting for playhound` |
+| idle                   | cool blue, wandering gaze                         |
+| playing                | warms toward pink as intensity climbs             |
+| intensity high         | half lidded, gaze drifts up, heart pupils         |
+| motion running         | bobs in time with the stroke rate                 |
+| panicked               | eyes shut, screen dimmed, `shhh`                  |
 
-**Tap anywhere** to reveal `<<` / play-pause / `>>` / `RND` / `STOP`. The first
+**Tap the top-left corner** for settings. **Tap anywhere else** to reveal `<<` / play-pause / `>>` / `RND` / `STOP`. The first
 tap only reveals — it never fires anything — because the first touch of a board
 sitting on a desk is usually an accident. The bar hides itself after 4.5s, or on
 a tap above it.
+
+## Settings
+
+Five rows, tapped to cycle, saved to NVS so they survive a power cut.
+
+| row    | values                             |                                                              |
+| ------ | ---------------------------------- | ------------------------------------------------------------ |
+| mode   | auto / idle / tease / heart / demo | `auto` follows playhound; the rest drive the face themselves |
+| hearts | auto / always / never              | `auto` means hearts once intensity passes 0.72               |
+| theme  | light / dark                       | see **Themes** below                                         |
+| bright | dim / mid / full                   |                                                              |
+| wifi   | on / off                           | takes effect immediately, no reboot                          |
+
+Only `auto` needs a desktop. The other four synthesise their own state, so the
+board is worth having on a desk with nothing running — `demo` walks the whole
+range over 45 seconds, which is also the quickest way to see everything the face
+does.
+
+## Themes
+
+The reference art this is drawn from is black lash on white paper, and that is
+what `light` reproduces. On a dark background a black lash is invisible: the eye
+becomes a white silhouette with bites cut out of it, and the spikes outside the
+eye vanish entirely. `dark` therefore does not simply invert — it lifts the lash
+off the background to a dark violet so the shape still reads.
 
 ## How it connects
 
@@ -133,11 +159,31 @@ should show 1 remote once the board is up.
 The face owns everything above y=168 and the control bar everything below, so
 neither ever repaints the other.
 
-One 104×112 eye sprite is pushed twice (~23KB), and the iris is a second 77×77
-sprite (~12KB) pushed into it with transparent corners. The iris is only rebuilt
+One 116×116 eye sprite is pushed twice (~27KB), and the iris is a second 59×59
+sprite (~7KB) pushed into it with transparent corners. The iris is only rebuilt
 when its colours change — its vertical gradient is far too expensive to redraw at
-30fps. Blinking shrinks the eye vertically rather than sliding a lid across it,
-so the lash follows the current top edge and closes to a clean curved stroke.
+30fps.
+
+The eye is not an ellipse: the upper and lower lids are separate curves that both
+reach zero at the corners, which is what makes an almond with points rather than
+an oval. The outer corner is lifted by `SLANT`. The lash is drawn per column so
+it follows that outline exactly at any blink position, and it is heaviest over
+the _body_ of the eye rather than at the corner tip, where the eye has no height
+and a thick value would still render as a thin line.
+
+The sprite is sized around the artwork's extents, not the eye's — spikes reach
+70px above the eye centre and teeth 44px below, and anything outside the sprite
+is silently clipped. `_eyesim.py` renders the same geometry on the host into a
+sprite-sized buffer, which is how those bounds get checked without a flash cycle.
+It mirrors `face.cpp` constant for constant and has to be kept in step by hand.
+
+## Porting the face
+
+The eyes are deliberately easy to lift onto another board. All of the playhound
+coupling is in `resolveInput()`, plus `drawStatus()`/`drawTitle()`. The drawing
+itself needs only `fillSprite`, `drawFastVLine`, `drawFastHLine`, `drawPixel`,
+`drawCircle`, `fillCircle`, `fillEllipse`, `fillTriangle`, `pushToSprite` and
+`pushSprite` — swap those for the target's primitives and the rest is arithmetic.
 
 ## Panel quirks
 

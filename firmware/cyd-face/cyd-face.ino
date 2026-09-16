@@ -20,13 +20,13 @@
 #include "face.h"
 #include "net.h"
 #include "palette.h"
+#include "settings.h"
 #include "ui.h"
 
 static TFT_eSPI tft = TFT_eSPI();
 
 // ── Backlight ───────────────────────────────────────────────────────────────
 // Dimmed while nothing is happening: this thing may well sit next to a bed.
-static const int BL_IDLE = BL_LEVEL / 3;
 
 static void backlightBegin() {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -54,15 +54,16 @@ void setup() {
   delay(200);
   Serial.println(F("\n[playhound] face starting"));
 
+  settingsBegin();
   backlightBegin();
-  backlightSet(BL_LEVEL);
+  backlightSet(settingsBacklight());
 
   tft.init();
   tft.setRotation(1);              // landscape, USB on the left
   tft.invertDisplay(PANEL_INVERT);
 
   faceBegin(&tft);
-  tft.fillScreen(faceBackground());
+  tft.fillScreen(themeBg());
   uiBegin(&tft);
   netBegin();
 }
@@ -71,14 +72,18 @@ void loop() {
   netLoop();
 
   const bool barUp = uiTick();
-  faceTick();
+  if (!uiMenuOpen())
+    faceTick();
 
   // Full brightness while you are touching it or while something is playing;
   // dim otherwise. Panic goes darkest of all — the point is to disappear.
-  int level = BL_IDLE;
+  const int full = settingsBacklight();
+  const int idle = full / 3;
+
+  int level = idle;
   if (phState.panicked)
-    level = BL_IDLE / 2;
-  else if (barUp || phState.playing)
-    level = BL_LEVEL;
+    level = idle / 2;
+  else if (barUp || uiMenuOpen() || phState.playing || settingsStandalone())
+    level = full;
   backlightSet(level);
 }
