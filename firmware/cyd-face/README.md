@@ -159,31 +159,39 @@ should show 1 remote once the board is up.
 The face owns everything above y=168 and the control bar everything below, so
 neither ever repaints the other.
 
-One 116×116 eye sprite is pushed twice (~27KB), and the iris is a second 59×59
-sprite (~7KB) pushed into it with transparent corners. The iris is only rebuilt
-when its colours change — its vertical gradient is far too expensive to redraw at
-30fps.
+The face is variant **M** from `_eyesim.py`: a flat slot opening under a
+near-straight upper lid, with a large flat-topped pupil doing the work a lash
+mass does in the other shapes.
 
-The eye is not an ellipse: the upper and lower lids are separate curves that both
-reach zero at the corners, which is what makes an almond with points rather than
-an oval. The outer corner is lifted by `SLANT`. The lash is drawn per column so
-it follows that outline exactly at any blink position, and it is heaviest over
-the _body_ of the eye rather than at the corner tip, where the eye has no height
-and a thick value would still render as a thin line.
+One 160×138 eye sprite (~44KB) is pushed twice. There is no iris sprite — M's
+iris is the same colour as the sclera, so only the pupil is ever visible and it
+is drawn straight into the eye sprite.
 
-The sprite is sized around the artwork's extents, not the eye's — spikes reach
-70px above the eye centre and teeth 44px below, and anything outside the sprite
-is silently clipped. `_eyesim.py` renders the same geometry on the host into a
-sprite-sized buffer, which is how those bounds get checked without a flash cycle.
-It mirrors `face.cpp` constant for constant and has to be kept in step by hand.
+The sprite's margins are asymmetric, 20px inner and 40px outer, because the
+flick only ever extends past the outer corner and the inner spike only past the
+inner one. A symmetric margin would clip one of them or waste half the screen.
 
-## Porting the face
+Lid shapes matter more than their numbers:
 
-The eyes are deliberately easy to lift onto another board. All of the playhound
-coupling is in `resolveInput()`, plus `drawStatus()`/`drawTitle()`. The drawing
-itself needs only `fillSprite`, `drawFastVLine`, `drawFastHLine`, `drawPixel`,
-`drawCircle`, `fillCircle`, `fillEllipse`, `fillTriangle`, `pushToSprite` and
-`pushSprite` — swap those for the target's primitives and the rest is arithmetic.
+- the **upper** lid blends a smooth bell with a piecewise-linear tent (`ANG`),
+  because `sin()` alone is round no matter where its apex sits
+- the **lower** lid is a plateau — flat across the middle, ramping only at the
+  corners, eased so it meets the flat part without a hard angle. A peaked curve
+  there, however angular, makes the eye read as a diamond.
+
+## Changing the eyes
+
+`_eyesim.py` renders the same geometry on the host, into a sprite-sized buffer
+so clipping shows up there too. Try changes there first — it renders in a
+second, and it has caught things a photo would not, including lash weight
+peaking where the eye has no height and spikes being silently clipped off the
+sprite.
+
+    python _eyesim.py          # every variant, two per row
+    python _eyesim.py M        # one, across open/half/blink and both themes
+
+It carries fifteen named shapes and nothing is ever deleted from it. It mirrors
+`face.cpp` by hand, so the two have to be kept in step deliberately.
 
 ## Panel quirks
 

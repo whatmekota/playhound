@@ -3,38 +3,74 @@
 #include "palette.h"
 #include "settings.h"
 
-// -- Layout -----------------------------------------------------------------
-// The sprite is sized around the artwork's real extents, not the eye's: the
-// lash spikes reach 70px above the eye centre and the lower teeth 44px below,
-// and anything outside the sprite is silently clipped.
-static const int EYE_W    = 116;
-static const int EYE_H    = 116;
-static const int ECY      = 70;    // eye centre inside the sprite
-static const int EYE_CY   = 90;    // eye centre on screen
-static const int EYE_GAP  = 26;
-static const int LID_UP   = 47;    // how far the upper lid opens from centre
-static const int LID_LO   = 34;    // the lower lid is shallower - that is the almond
-static const int IRIS_R   = 29;
-static const int STATUS_Y = 2;
-static const int TITLE_Y  = 150;
+// ---------------------------------------------------------------------------
+// Variant M from _eyesim.py, ported constant for constant.
+//
+// The eye is a flat slot: a plateau-bottomed opening under a near-straight
+// upper lid, with a big flat-topped pupil doing the work that a lash mass does
+// in the other shapes. Keep this file and the simulator in step by hand - the
+// simulator is the place to try changes, because it renders in a second and
+// this does not.
+// ---------------------------------------------------------------------------
 
-// The outer corner rides higher than the inner one. This one number is most of
-// the difference between a cute round eye and a sharp one.
-static const float SLANT = 0.13f;
+// -- Sprite ------------------------------------------------------------------
+// The margins are asymmetric because the flick only ever extends past the
+// OUTER corner and the inner spike only past the inner one. A symmetric margin
+// would clip one of them or waste half the screen.
+static const int BODY_W    = 100;
+static const int MARGIN_IN = 20;
+static const int MARGIN_OUT= 40;
+static const int EYE_W     = MARGIN_IN + BODY_W + MARGIN_OUT;   // 160
+static const int EYE_H     = 138;
+static const int ECY       = 98;    // eye centre inside the sprite
+static const int EYE_CY    = 101;   // eye centre on screen
+static const int EYE_GAP   = 38;
+
+// -- Shape -------------------------------------------------------------------
+static const int   LID_UP     = 34;
+static const int   LID_LO     = 12;
+static const float SLANT      = 0.13f;
+static const float ANG        = 0.75f;   // 0 round, 1 piecewise linear
+static const float UP_APEX    = 0.44f;
+static const float UP_P       = 0.38f;
+static const float LO_EDGE    = 0.14f;
+static const float RAMP_EASE  = 0.85f;
+
+static const float LASH       = 7.0f;
+static const int   LASH_BASE  = 3;
+static const int   LOWER_T    = 2;
+static const int   FLICK      = 40;
+static const float FLICK_RISE = 0.30f;
+static const int   INNER_SPIKE= 16;
+
+// -- Pupil -------------------------------------------------------------------
+// M's iris is the same colour as the sclera, so only the pupil is ever drawn.
+static const int   PUPIL_R    = 30;
+static const float PUPIL_S    = 0.47f;   // position along the eye, inner to outer
+static const int   PUPIL_DY   = 1;
+static const float PUPIL_W    = 0.78f;
+static const float PUPIL_H    = 0.92f;
+static const float PUPIL_FLAT = 0.26f;   // fraction of the height that is flat
+static const int   NOTCH_R    = 5;
+
+static const int STATUS_Y = 145;
+static const int TITLE_Y  = 156;
 
 static TFT_eSPI *gfx = nullptr;
-static TFT_eSprite *eye  = nullptr;
-static TFT_eSprite *iris = nullptr;
+static TFT_eSprite *eye = nullptr;
 
-// Iris colour is the only colour in the face; everything else is theme ink.
-static const Rgb COOL_TOP { 10, 34, 78 };
-static const Rgb COOL_BOT { 96, 190, 232 };
-static const Rgb HOT_TOP  { 74, 4, 48 };
-static const Rgb HOT_BOT  { 255, 86, 156 };
-static const Rgb DEAD_TOP { 26, 24, 32 };
-static const Rgb DEAD_BOT { 88, 84, 98 };
+// Lid edges for the current eye, so the two passes over the columns do not
+// each pay for the transcendentals.
+static int16_t edgeTop[EYE_W];
+static int16_t edgeBot[EYE_W];
 
-// -- Animation state --------------------------------------------------------
+// The pupil carries what little colour the face has: near-black when idle,
+// deepening toward crimson as intensity climbs. M is monochrome by design, so
+// this stays dark enough not to fight the drawing.
+static const Rgb PUPIL_COOL { 14, 10, 28 };
+static const Rgb PUPIL_HOT  { 58, 6, 26 };
+
+// -- Animation state ---------------------------------------------------------
 static float lid       = 1.0f;
 static float lidTarget = 1.0f;
 static float lookX     = 0.0f;
@@ -49,7 +85,6 @@ static uint32_t nextBlinkAt = 0;
 static uint32_t blinkUntil  = 0;
 static uint32_t nextLookAt  = 0;
 static uint32_t lastFrameAt = 0;
-static int      irisKey     = -1;
 
 static char lastStatus[48] = {0};
 static char lastTitle[64]  = {0};
@@ -125,180 +160,205 @@ static bool heartsOn() {
 }
 
 // ---------------------------------------------------------------------------
-// The eye outline.
-//
-// Two different curves, both zero at the corners so they meet in a point: the
-// upper lid is fuller, the lower one shallower. That asymmetry is what makes an
-// almond rather than an ellipse.
+// Lid shapes
 // ---------------------------------------------------------------------------
-static float upperCurve(float u) {
-  return powf(sinf(PI * u), 0.70f);
+
+/** Smooth bell, warped so its apex lands at `a`. */
+static float bell(float s, float a, float p) {
+  if (s <= 0.0f || s >= 1.0f)
+    return 0.0f;
+  return powf(sinf(PI * powf(s, logf(0.5f) / logf(a))), p);
 }
 
-static float lowerCurve(float u) {
-  return powf(sinf(PI * u), 1.30f);
+/** Piecewise-linear peak at `a`: straight edges, hard apex. */
+static float tent(float s, float a) {
+  if (s <= 0.0f || s >= 1.0f)
+    return 0.0f;
+  return s < a ? s / a : (1.0f - s) / (1.0f - a);
 }
 
-/** Vertical offset that lifts the outer corner. */
-static int slantAt(int dx, float outerSign) {
-  return (int)(-SLANT * dx * outerSign);
+/** Blend of the two. sin() alone is round by construction. */
+static float lidUpper(float s) {
+  return (1.0f - ANG) * bell(s, UP_APEX, UP_P) + ANG * tent(s, UP_APEX);
 }
 
-static void drawHeart(TFT_eSprite *s, int cx, int cy, int r, uint16_t c) {
+/** Corner ramp, eased so it meets the plateau with no hard angle. */
+static float ramp(float t) {
+  t = clampf(t, 0.0f, 1.0f);
+  return (1.0f - RAMP_EASE) * t + RAMP_EASE * sinf(t * PI * 0.5f);
+}
+
+/**
+ * Lower lid: flat across the middle, ramping only at the corners.
+ *
+ * A peaked curve here - however angular - makes the eye read as a diamond.
+ */
+static float lidLower(float s) {
+  if (s <= 0.0f || s >= 1.0f)
+    return 0.0f;
+  return ramp(s / LO_EDGE) * ramp((1.0f - s) / LO_EDGE);
+}
+
+// ---------------------------------------------------------------------------
+// Pupil
+// ---------------------------------------------------------------------------
+static void drawHeart(int cx, int cy, int r, uint16_t c) {
   // The lobes have to sit a full radius apart or they merge into one blob and
   // the whole thing reads as a teardrop.
   const int lobe = (int)(r * 0.52f);
   const int top = cy - lobe / 2;
-  s->fillCircle(cx - lobe, top, lobe, c);
-  s->fillCircle(cx + lobe, top, lobe, c);
-  s->fillTriangle(cx - 2 * lobe, top, cx + 2 * lobe, top, cx, cy + r, c);
+  eye->fillCircle(cx - lobe, top, lobe, c);
+  eye->fillCircle(cx + lobe, top, lobe, c);
+  eye->fillTriangle(cx - 2 * lobe, top, cx + 2 * lobe, top, cx, cy + r, c);
 }
 
-// ---------------------------------------------------------------------------
-// The iris. Rebuilt only when its colours change - the gradient is far too
-// expensive to redraw at 30fps.
-// ---------------------------------------------------------------------------
-static void renderIris(float t, bool hearts) {
-  Rgb top, bot;
-  if (in.panicked || (settings.mode == MODE_AUTO && !phState.hostSeen)) {
-    top = DEAD_TOP;
-    bot = DEAD_BOT;
-  }
-  else {
-    top = mix(COOL_TOP, HOT_TOP, t);
-    bot = mix(COOL_BOT, HOT_BOT, t);
-  }
-
-  iris->fillSprite(TFT_TRANSPARENT);
-
-  for (int dy = -IRIS_R; dy <= IRIS_R; dy++) {
-    const float f = (float)dy / IRIS_R;
-    const int hw = (int)(IRIS_R * sqrtf(1.0f - f * f));
-    if (hw <= 0)
-      continue;
-    const Rgb c = mix(top, bot, (dy + IRIS_R) / (2.0f * IRIS_R));
-    iris->drawFastHLine(IRIS_R - hw, IRIS_R + dy, 2 * hw + 1, rgb(c));
-  }
-
-  // Heavy dark rim. In the references the iris reads almost as a solid shape,
-  // so this is thick rather than a hairline.
-  const uint16_t ring = rgb(mix(top, Rgb{0, 0, 0}, 0.62f));
-  for (int k = 0; k < 4; k++)
-    iris->drawCircle(IRIS_R, IRIS_R, IRIS_R - k, ring);
-
-  const uint16_t dark = rgb(mix(top, Rgb{0, 0, 0}, 0.80f));
-  const uint16_t white = rgb(Rgb{255, 255, 255});
-
+static void drawPupil(int cx, int cy, bool hearts, uint16_t ink, uint16_t sclera) {
   if (hearts) {
-    // A bright heart sitting in a dark pupil, which is how both heart
-    // references read.
-    iris->fillCircle(IRIS_R, IRIS_R, (int)(IRIS_R * 0.66f), dark);
-    drawHeart(iris, IRIS_R, IRIS_R - 3, (int)(IRIS_R * 0.55f), white);
+    const int r = (int)(PUPIL_R * 0.66f);
+    eye->fillCircle(cx, cy, r, ink);
+    drawHeart(cx, cy - 3, (int)(PUPIL_R * 0.55f), sclera);
+    return;
   }
-  else {
-    iris->fillEllipse(IRIS_R, IRIS_R, (int)(IRIS_R * 0.42f), (int)(IRIS_R * 0.52f), dark);
-    iris->fillCircle(IRIS_R - 11, IRIS_R - 12, 8, white);
-    iris->fillCircle(IRIS_R + 10, IRIS_R + 12, 4, rgb(Rgb{214, 232, 255}));
+
+  // Flat top, straight sides, elliptical bottom.
+  const int rx = (int)(PUPIL_R * PUPIL_W);
+  const int ry = (int)(PUPIL_R * PUPIL_H);
+  for (int k = 0; k < 2 * ry; k++) {
+    const float t = (float)k / (2 * ry - 1);
+    int hw;
+    if (t < PUPIL_FLAT) {
+      hw = rx;
+    }
+    else {
+      const float q = (t - PUPIL_FLAT) / (1.0f - PUPIL_FLAT);
+      hw = (int)(rx * sqrtf(fmaxf(0.0f, 1.0f - q * q)));
+    }
+    if (hw > 0)
+      eye->drawFastHLine(cx - hw, cy - ry + k, 2 * hw + 1, ink);
   }
+
+  // A wedge bitten out of the pupil's top edge.
+  eye->fillTriangle(cx - NOTCH_R, cy - ry - 1,
+                    cx + NOTCH_R, cy - ry - 1,
+                    cx, cy - ry + NOTCH_R + 1, sclera);
+}
+
+/** Two offset lines, because the sprite has no line width. */
+static void crossStroke(int x0, int y0, int x1, int y1, uint16_t c) {
+  eye->drawLine(x0, y0, x1, y1, c);
+  eye->drawLine(x0 + 1, y0, x1 + 1, y1, c);
 }
 
 // ---------------------------------------------------------------------------
-// One eye, drawn column by column so the lash follows the outline exactly at
-// any blink position.
+// One eye
 // ---------------------------------------------------------------------------
-static void drawEye(int cx, bool leftSide) {
-  const int scx = EYE_W / 2;
-  const float outerSign = leftSide ? -1.0f : 1.0f;
+static void drawEye(int bodyCx, bool leftSide) {
   const uint16_t BG = themeBg();
   const uint16_t SCLERA = themeSclera();
   const uint16_t INK = themeInk();
 
-  // Half lidded as intensity climbs - the look in the first reference.
+  const int start = leftSide ? MARGIN_OUT : MARGIN_IN;   // body x within sprite
+  const int bcx = start + BODY_W / 2;
+  const float outerSign = leftSide ? -1.0f : 1.0f;
+
   const float squint = clampf(in.intensity, 0, 1) * 0.34f;
   const float open   = in.panicked ? 0.0f : clampf(lid - squint, 0.0f, 1.0f);
-
   const int upOpen = (int)(LID_UP * open);
   const int loOpen = (int)(LID_LO * (0.45f + 0.55f * open));
 
   eye->fillSprite(BG);
 
-  // Sclera, one column at a time.
-  for (int x = 0; x < EYE_W; x++) {
-    const float u = (float)x / (EYE_W - 1);
-    const int sl = slantAt(x - scx, outerSign);
-    const int yT = ECY + sl - (int)(upOpen * upperCurve(u));
-    const int yB = ECY + sl + (int)(loOpen * lowerCurve(u));
-    if (yB > yT)
-      eye->drawFastVLine(x, yT, yB - yT, SCLERA);
+  // Lid edges once, then reused by the mask pass below.
+  for (int i = 0; i < BODY_W; i++) {
+    const int x = start + i;
+    const float u = (float)i / (BODY_W - 1);
+    const float s = leftSide ? (1.0f - u) : u;
+    const int sl = (int)(-SLANT * (x - bcx) * outerSign);
+    edgeTop[x] = ECY + sl - (int)(upOpen * lidUpper(s));
+    edgeBot[x] = ECY + sl + (int)(loOpen * lidLower(s));
+    if (edgeBot[x] > edgeTop[x])
+      eye->drawFastVLine(x, edgeTop[x], edgeBot[x] - edgeTop[x], SCLERA);
   }
 
   if (upOpen > 8) {
-    const int ix = scx + (int)(lookX * 12.0f);
-    const int iy = ECY + (int)(lookY * 9.0f);
-    iris->pushToSprite(eye, ix - IRIS_R, iy - IRIS_R, TFT_TRANSPARENT);
+    const float pu = leftSide ? (1.0f - PUPIL_S) : PUPIL_S;
+    const int px = start + (int)(pu * (BODY_W - 1)) + (int)(lookX * 7.0f);
+    const int py = ECY + PUPIL_DY + (int)(lookY * 5.0f);
+    const uint16_t pink = rgb(mix(PUPIL_COOL, PUPIL_HOT, in.intensity));
+    drawPupil(px, py, heartsOn(), pink, SCLERA);
   }
 
-  // Mask the iris back inside the lids, then lay the lash on top. One pass, so
-  // the lash always sits exactly on the edge it just trimmed.
-  for (int x = 0; x < EYE_W; x++) {
-    const float u = (float)x / (EYE_W - 1);
-    const int sl = slantAt(x - scx, outerSign);
-    const int yT = ECY + sl - (int)(upOpen * upperCurve(u));
-    const int yB = ECY + sl + (int)(loOpen * lowerCurve(u));
+  // Mask the pupil back inside the lids, then lay the lash on the edge it just
+  // trimmed. One pass, so the two can never disagree.
+  for (int i = 0; i < BODY_W; i++) {
+    const int x = start + i;
+    const float u = (float)i / (BODY_W - 1);
+    const float s = leftSide ? (1.0f - u) : u;
+    const int yT = edgeTop[x];
+    const int yB = edgeBot[x];
 
     if (yT > 0)
       eye->drawFastVLine(x, 0, yT, BG);
     if (yB < EYE_H)
       eye->drawFastVLine(x, yB, EYE_H - yB, BG);
 
-    // The lash wedge, heaviest over the body of the eye and toward the outer
-    // corner - not at the corner tip, where the eye has no height and the lash
-    // would read as a thin outline.
-    const float outerness = leftSide ? (1.0f - u) : u;
-    const int thick = 6 + (int)(17.0f * powf(sinf(PI * u), 0.50f)
-                                * (0.38f + 0.62f * outerness));
+    const float roundP = powf(sinf(PI * u), 0.45f);
+    const float angP = (u < 1.0f - u ? u : 1.0f - u) * 2.0f;
+    const float prof = (1.0f - ANG) * roundP + ANG * angP;
+    const int thick = LASH_BASE + (int)(LASH * prof * (0.30f + 0.70f * s));
+
     eye->drawFastVLine(x, yT - thick + 2, thick, INK);
-
-    // A hairline crease above the lash, as in both sketches.
-    if (u > 0.12f && u < 0.88f && upOpen > 14)
+    if (s > 0.10f && s < 0.92f && upOpen > 14)
       eye->drawPixel(x, yT - thick - 3, INK);
-
-    // Lower lid, a line rather than a wedge.
-    if (loOpen > 6)
-      eye->drawFastVLine(x, yB - 2, 4, INK);
+    if (loOpen > 5)
+      eye->drawFastVLine(x, yB - 1, LOWER_T + 1, INK);
   }
 
-  // Upper lash spikes, longer and sharper toward the outer corner.
-  for (int i = 0; i < 6; i++) {
-    const float u = 0.10f + i * 0.16f;
-    const float outerness = leftSide ? (1.0f - u) : u;
-    const int bx = (int)(u * (EYE_W - 1));
-    const int sl = slantAt(bx - scx, outerSign);
-    const int by = ECY + sl - (int)(upOpen * upperCurve(u)) - 2;
-    const int len = 10 + (int)(21.0f * outerness);
-    const int dir = (int)outerSign;
-    eye->fillTriangle(bx - 3, by,
-                      bx + 3, by,
-                      bx + dir * (int)(len * 0.62f), by - len, INK);
+  const int dir = (int)outerSign;
+  auto bodyX = [&](float s) {
+    const float u = leftSide ? (1.0f - s) : s;
+    return start + (int)(u * (BODY_W - 1));
+  };
+  auto lidY = [&](float s, int bx) {
+    return ECY + (int)(-SLANT * (bx - bcx) * outerSign) - (int)(upOpen * lidUpper(s)) - 2;
+  };
+
+  // The long flick off the outer corner, plus two smaller spikes inboard.
+  const float spikeS[3] = { 0.99f, 0.82f, 0.66f };
+  const int spikeLen[3] = { FLICK, (int)(FLICK * 0.42f), (int)(FLICK * 0.26f) };
+  const int spikeHalf[3] = { 5, 4, 3 };
+  for (int k = 0; k < 3; k++) {
+    const int bx = bodyX(spikeS[k]);
+    const int by = lidY(spikeS[k], bx);
+    const int ln = spikeLen[k];
+    eye->fillTriangle(bx - spikeHalf[k], by, bx + spikeHalf[k], by,
+                      bx + dir * ln, by - (int)(ln * FLICK_RISE), INK);
   }
 
-  // Lower lash teeth - small, and the thing that stops the eye reading as a
-  // plain outline.
-  if (loOpen > 10) {
-    for (int i = 0; i < 5; i++) {
-      const float u = 0.22f + i * 0.14f;
-      const int bx = (int)(u * (EYE_W - 1));
-      const int sl = slantAt(bx - scx, outerSign);
-      const int by = ECY + sl + (int)(loOpen * lowerCurve(u));
-      const int dir = (int)outerSign;
-      eye->fillTriangle(bx - 3, by - 2, bx + 3, by - 2, bx - dir * 3, by + 10, INK);
+  // A matching taper off the inner corner.
+  {
+    const int bx = bodyX(0.01f);
+    const int by = lidY(0.01f, bx) + 1;
+    eye->fillTriangle(bx, by - 3, bx, by + 3,
+                      bx - dir * INNER_SPIKE, by + (int)(INNER_SPIKE * 0.22f), INK);
+  }
+
+  // Crossed lower lashes.
+  if (loOpen > 6) {
+    const float crossS[3] = { 0.30f, 0.48f, 0.66f };
+    for (int k = 0; k < 3; k++) {
+      const int bx = bodyX(crossS[k]);
+      const int by = ECY + (int)(-SLANT * (bx - bcx) * outerSign)
+                   + (int)(loOpen * lidLower(crossS[k]));
+      crossStroke(bx - 7, by - 1, bx + 7, by + 11, INK);
+      crossStroke(bx + 7, by - 1, bx - 7, by + 11, INK);
     }
   }
 
-  eye->pushSprite(cx - EYE_W / 2, EYE_CY - ECY + (int)bob);
+  eye->pushSprite(bodyCx - BODY_W / 2 - start, EYE_CY - ECY + (int)bob);
 }
 
-/** One line of text above the eyes: what it is connected to and doing. */
+/** One line of text below the eyes: what it is connected to and doing. */
 static void drawStatus() {
   char line[48];
 
@@ -322,7 +382,7 @@ static void drawStatus() {
   strncpy(lastStatus, line, sizeof(lastStatus) - 1);
   lastStatus[sizeof(lastStatus) - 1] = '\0';
 
-  gfx->fillRect(0, STATUS_Y, 320, 12, themeBg());
+  gfx->fillRect(0, STATUS_Y, 320, 10, themeBg());
   if (!line[0])
     return;
   gfx->setTextDatum(TC_DATUM);
@@ -343,7 +403,7 @@ static void drawTitle() {
   strncpy(lastTitle, line, sizeof(lastTitle) - 1);
   lastTitle[sizeof(lastTitle) - 1] = '\0';
 
-  gfx->fillRect(0, TITLE_Y, 320, 14, themeBg());
+  gfx->fillRect(0, TITLE_Y, 320, 10, themeBg());
   if (!line[0])
     return;
 
@@ -369,17 +429,13 @@ uint16_t faceBackground() {
 void faceBegin(TFT_eSPI *tft) {
   gfx = tft;
 
-  // ~27KB and ~7KB at 16bpp, both on the heap. Comfortable on a board with no
+  // 160x138 at 16bpp is ~44KB on the heap. Comfortable on a board with no
   // PSRAM, but worth saying out loud if it ever fails.
   eye = new TFT_eSprite(tft);
   eye->setColorDepth(16);
   eye->createSprite(EYE_W, EYE_H);
 
-  iris = new TFT_eSprite(tft);
-  iris->setColorDepth(16);
-  iris->createSprite(IRIS_R * 2 + 1, IRIS_R * 2 + 1);
-
-  if (!eye->created() || !iris->created())
+  if (!eye->created())
     Serial.println(F("[face] sprite allocation failed"));
 
   nextBlinkAt = millis() + 1200;
@@ -389,7 +445,6 @@ void faceBegin(TFT_eSPI *tft) {
 void faceInvalidate() {
   lastStatus[0] = '\0';
   lastTitle[0] = '\0';
-  irisKey = -1;
 }
 
 void faceTick() {
@@ -404,16 +459,6 @@ void faceTick() {
 
   resolveInput(dt);
   const float t = in.intensity;
-  const bool hearts = heartsOn();
-
-  // Quantised, or a drifting intensity would rebuild the gradient every frame.
-  const int key = (in.panicked ? 1 : 0) | (hearts ? 2 : 0)
-                | ((settings.mode == MODE_AUTO && !phState.hostSeen) ? 4 : 0)
-                | ((int)(t * 15.0f) << 3);
-  if (key != irisKey) {
-    irisKey = key;
-    renderIris(t, hearts);
-  }
 
   // -- Blinking ------------------------------------------------------------
   if (!in.panicked) {
@@ -450,7 +495,7 @@ void faceTick() {
   // -- Bob -----------------------------------------------------------------
   if (in.moving && in.spm > 1 && !in.panicked) {
     bobPhase += (in.spm / 60.0f) * dt;
-    bob = sinf(bobPhase * TWO_PI) * 3.0f;
+    bob = sinf(bobPhase * TWO_PI) * 2.0f;
   }
   else {
     bob = approach(bob, 0.0f, 12.0f, dt);
@@ -459,7 +504,6 @@ void faceTick() {
   drawStatus();
   drawTitle();
 
-  const int cx = 160;
-  drawEye(cx - (EYE_W / 2 + EYE_GAP / 2), true);
-  drawEye(cx + (EYE_W / 2 + EYE_GAP / 2), false);
+  drawEye(160 - (BODY_W / 2 + EYE_GAP / 2), true);
+  drawEye(160 + (BODY_W / 2 + EYE_GAP / 2), false);
 }
