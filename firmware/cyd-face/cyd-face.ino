@@ -10,6 +10,12 @@
 
 #include <TFT_eSPI.h>
 
+// config.h holds WiFi credentials, so it is gitignored and does not exist in a
+// fresh checkout. Say so plainly rather than leaving a bare missing-header.
+#if !__has_include("config.h")
+#error "Copy config.example.h to config.h and fill in your WiFi, host and room."
+#endif
+
 #include "config.h"
 #include "face.h"
 #include "net.h"
