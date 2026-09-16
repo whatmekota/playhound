@@ -26,6 +26,7 @@ import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
+import { useVideoBeat } from '~/composables/useVideoBeat'
 import { openVideoFile, storage } from '~/lib/browserApi'
 import { HOTKEY_GROUPS, SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { findPanel, isMainSurface, isOverlaySurface } from '~/lib/panels'
@@ -60,6 +61,7 @@ const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 useMotionEngine()
 useSessionAudio()
 useScriptPulse()
+useVideoBeat()
 
 const videoPlayerRef = ref<InstanceType<typeof VideoPlayer> | null>(null)
 const showKeybinds = ref(false)

@@ -82,7 +82,7 @@ export function useSessionAudio() {
   })
 
   watch(
-    [audio.pulseEnabled, audio.pulseCpm, audio.pulseDepth, audio.pulseFollowsSession, audio.intensity, audio.scriptDrive],
+    [audio.pulseEnabled, audio.pulseCpm, audio.pulseDepth, audio.pulseFollowsSession, audio.intensity, audio.scriptDrive, audio.musicDrive],
     pushPulse,
   )
 

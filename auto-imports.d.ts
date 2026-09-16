@@ -303,6 +303,7 @@ declare global {
   const useVModel: typeof import('@vueuse/core').useVModel
   const useVModels: typeof import('@vueuse/core').useVModels
   const useVibrate: typeof import('@vueuse/core').useVibrate
+  const useVideoBeat: typeof import('./src/composables/useVideoBeat').useVideoBeat
   const useVideoSync: typeof import('./src/composables/useVideoSync').useVideoSync
   const useVirtualList: typeof import('@vueuse/core').useVirtualList
   const useWakeLock: typeof import('@vueuse/core').useWakeLock
@@ -654,6 +655,7 @@ declare module 'vue' {
     readonly useVModel: UnwrapRef<typeof import('@vueuse/core')['useVModel']>
     readonly useVModels: UnwrapRef<typeof import('@vueuse/core')['useVModels']>
     readonly useVibrate: UnwrapRef<typeof import('@vueuse/core')['useVibrate']>
+    readonly useVideoBeat: UnwrapRef<typeof import('./src/composables/useVideoBeat')['useVideoBeat']>
     readonly useVideoSync: UnwrapRef<typeof import('./src/composables/useVideoSync')['useVideoSync']>
     readonly useVirtualList: UnwrapRef<typeof import('@vueuse/core')['useVirtualList']>
     readonly useWakeLock: UnwrapRef<typeof import('@vueuse/core')['useWakeLock']>

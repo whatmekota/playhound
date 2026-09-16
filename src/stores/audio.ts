@@ -54,6 +54,13 @@ const pulseFollowsSession = useLocalStorage('ph-pulse-follow', true)
 const scriptDrive = useLocalStorage('ph-script-drive', false)
 const scriptDriveIntensity = useLocalStorage('ph-script-drive-intensity', true)
 
+/**
+ * Take the tempo from the music in the video rather than a fixed rate.
+ * Yields to a funscript, which describes what should happen far better than
+ * a drum hit does.
+ */
+const musicDrive = useLocalStorage('ph-music-drive', false)
+
 /** Session shape: one smooth rise and fall, or repeated build-hold-retreat. */
 const sessionArc = useLocalStorage<'smooth' | 'edged'>('ph-session-arc', 'smooth')
 const edgeCycles = useLocalStorage('ph-edge-cycles', 3)
@@ -92,5 +99,6 @@ export function useAudioStore() {
     edgeCycles,
     scriptDrive,
     scriptDriveIntensity,
+    musicDrive,
   }
 }
