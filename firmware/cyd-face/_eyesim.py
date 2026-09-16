@@ -11,12 +11,15 @@ import math, sys
 from PIL import Image, ImageDraw
 
 BASE = dict(
-    EYE_W=148, EYE_H=138, ECY=98, MARGIN=12, EYE_CY=100, EYE_GAP=6,
+    # The flick only ever extends past the OUTER corner, so the sprite has a
+    # big margin on that side and almost none on the inner one. A symmetric
+    # margin either clips the flick or wastes half the screen.
+    BODY_W=108, MARGIN_IN=8, MARGIN_OUT=40, EYE_H=138, ECY=98, EYE_CY=100, EYE_GAP=20,
     LID_UP=32, LID_LO=22, IRIS_R=32, SLANT=0.13,
     # UP_P well below 1 flattens the bell into a near-straight lid, which is
     # what the reference strokes actually are.
     UP_APEX=0.42, UP_P=0.38, LO_APEX=0.44, LO_P=0.80,
-    LASH=20.0, LASH_BASE=6, FLICK=44, FLICK_RISE=0.42,
+    LASH=20.0, LASH_BASE=6, FLICK=36, FLICK_RISE=0.42,
     BROW=True, BROW_GAP=18, BROW_T=9.0, BROW_ARC=1.0, BROW_TILT=10,
     UNDER=True, LOWER_T=2,
     IRIS_S=0.46, IRIS_DY=0,
@@ -26,25 +29,25 @@ BASE = dict(
 # available, so `python _eyesim.py <letter>` can bring any of them back.
 VARIANTS = {
     # -- tall almond / wing, the first pass -------------------------------
-    "A  wing, balanced":    dict(EYE_W=136, ECY=94, EYE_CY=98, EYE_GAP=8,
+    "A  wing, balanced":    dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=47, LID_LO=22, IRIS_R=29, SLANT=0.10,
                                  UP_APEX=0.36, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=34, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
                                  UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
-    "B  wing, sharper":     dict(EYE_W=136, ECY=94, EYE_CY=98, EYE_GAP=8,
+    "B  wing, sharper":     dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=42, LID_LO=18, IRIS_R=29, SLANT=0.17,
                                  UP_APEX=0.32, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
-                                 LASH=16.0, LASH_BASE=5, FLICK=42, FLICK_RISE=0.75,
+                                 LASH=16.0, LASH_BASE=5, FLICK=40, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
                                  UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
-    "C  wing, rounder":     dict(EYE_W=136, ECY=94, EYE_CY=98, EYE_GAP=8,
+    "C  wing, rounder":     dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=51, LID_LO=29, IRIS_R=29, SLANT=0.07,
                                  UP_APEX=0.43, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=26, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
                                  UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
-    "F  wing, tareme":      dict(EYE_W=136, ECY=94, EYE_CY=98, EYE_GAP=8,
+    "F  wing, tareme":      dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=47, LID_LO=27, IRIS_R=29, SLANT=-0.06,
                                  UP_APEX=0.52, UP_P=0.78, LO_APEX=0.52, LO_P=0.95,
                                  LASH=13.0, LASH_BASE=5, FLICK=20, FLICK_RISE=0.75,
@@ -54,12 +57,12 @@ VARIANTS = {
     # -- flat slot, from the heart sheet ----------------------------------
     "G  flat slot":          {},
     "H  flatter, heavier":   dict(LID_UP=27, LID_LO=19, LASH=27.0, LASH_BASE=8,
-                                  FLICK=52, FLICK_RISE=0.30, IRIS_R=33),
+                                  FLICK=40, FLICK_RISE=0.30, IRIS_R=33),
     "I  sharp, small iris":  dict(LID_UP=35, LID_LO=21, UP_APEX=0.34, UP_P=0.52,
-                                  SLANT=0.20, IRIS_R=25, FLICK=50, FLICK_RISE=0.55,
+                                  SLANT=0.20, IRIS_R=25, FLICK=40, FLICK_RISE=0.55,
                                   LASH=17.0, BROW_GAP=11, BROW_T=5.0),
     "J  extreme lash mass":  dict(LID_UP=24, LID_LO=17, LASH=34.0, LASH_BASE=10,
-                                  FLICK=58, FLICK_RISE=0.22, IRIS_R=34, BROW_GAP=13),
+                                  FLICK=40, FLICK_RISE=0.22, IRIS_R=34, BROW_GAP=13),
 }
 
 THEMES = {"light": ((240,238,246),(255,255,255),(10,8,16),(96,88,112)),
@@ -69,9 +72,16 @@ def bell(s, a, p):
     if s <= 0.0 or s >= 1.0: return 0.0
     return math.sin(math.pi * (s ** (math.log(0.5)/math.log(a)))) ** p
 
+def sprite_w(P):
+    return P["MARGIN_IN"] + P["BODY_W"] + P["MARGIN_OUT"]
+
+def body_start(P, left):
+    # Outer side is left for the left eye, right for the right eye.
+    return P["MARGIN_OUT"] if left else P["MARGIN_IN"]
+
 def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
-    W,H,ECY,M = P["EYE_W"],P["EYE_H"],P["ECY"],P["MARGIN"]
-    BW = W - 2*M
+    H,ECY = P["EYE_H"],P["ECY"]
+    W = sprite_w(P); BW = P["BODY_W"]; M = body_start(P, left)
     img=Image.new("RGB",(W,H),bg); d=ImageDraw.Draw(img)
     outer = -1.0 if left else 1.0
     op = max(0.0, min(1.0, lid - inten*0.34))
@@ -150,9 +160,12 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
 def panel(P, theme, lid, inten, hearts, label):
     bg,sclera,ink,muted = THEMES[theme]
     img=Image.new("RGB",(320,168),bg)
-    W,ECY,EYE_CY,GAP = P["EYE_W"],P["ECY"],P["EYE_CY"],P["EYE_GAP"]
-    for cx,left in ((160-(W//2+GAP//2),True),(160+(W//2+GAP//2),False)):
-        img.paste(eye_sprite(P,left,lid,inten,hearts,bg,sclera,ink),(cx-W//2,EYE_CY-ECY))
+    ECY,EYE_CY,GAP,BW = P["ECY"],P["EYE_CY"],P["EYE_GAP"],P["BODY_W"]
+    # Place by where the eye BODY lands; the sprites then overlap in their
+    # empty inner margins, which is harmless because both are background there.
+    for bcx,left in ((160-(BW//2+GAP//2),True),(160+(BW//2+GAP//2),False)):
+        x = bcx - BW//2 - body_start(P,left)
+        img.paste(eye_sprite(P,left,lid,inten,hearts,bg,sclera,ink),(x,EYE_CY-ECY))
     ImageDraw.Draw(img).text((6,156),label,fill=muted)
     return img
 
@@ -168,9 +181,12 @@ if len(sys.argv)>1:
     for r,(t,n,l,i,h) in enumerate(rows):
         out.paste(panel(P,t,l,i,h,f"{key}  -  {t} / {n}"),(0,168*r))
 else:
-    show=[(n,o) for n,o in VARIANTS.items() if n[0] in "GHIJ"]
-    out=Image.new("RGB",(320,168*len(show)))
-    for r,(name,over) in enumerate(show):
-        out.paste(panel(params(over),"light",1.0,0.0,False,name),(0,168*r))
+    # Every variant, two per row, so shapes can be compared at a glance.
+    show=list(VARIANTS.items())
+    cols=2; rowsN=(len(show)+cols-1)//cols
+    out=Image.new("RGB",(320*cols,168*rowsN),(40,38,48))
+    for i,(name,over) in enumerate(show):
+        out.paste(panel(params(over),"light",1.0,0.0,False,name),
+                  (320*(i%cols),168*(i//cols)))
 out.resize((640,out.height*2),Image.NEAREST).save("_preview.png")
 print("wrote _preview.png")
