@@ -20,6 +20,8 @@ declare module 'vue' {
     DirectorPanel: typeof import('./src/components/DirectorPanel.vue')['default']
     EroScriptsPanel: typeof import('./src/components/EroScriptsPanel.vue')['default']
     FunscriptTimeline: typeof import('./src/components/FunscriptTimeline.vue')['default']
+    HypnoOverlay: typeof import('./src/components/HypnoOverlay.vue')['default']
+    HypnoPanel: typeof import('./src/components/HypnoPanel.vue')['default']
     LoopControls: typeof import('./src/components/LoopControls.vue')['default']
     MediaWall: typeof import('./src/components/MediaWall.vue')['default']
     MediaWallItem: typeof import('./src/components/MediaWallItem.vue')['default']

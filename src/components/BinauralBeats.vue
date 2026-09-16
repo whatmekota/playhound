@@ -2,7 +2,6 @@
 import type { NoiseType, SessionPhase } from '~/stores/audio'
 import { useLocalStorage } from '@vueuse/core'
 import { useScriptPulse } from '~/composables/useScriptPulse'
-import { useVideoBeat } from '~/composables/useVideoBeat'
 import { useAudioStore } from '~/stores/audio'
 import { useScriptStore } from '~/stores/scriptStore'
 import CollapsibleSection from './CollapsibleSection.vue'
@@ -35,10 +34,7 @@ const {
   edgeCycles,
   scriptDrive,
   scriptDriveIntensity,
-  musicDrive,
 } = useAudioStore()
-
-const videoBeat = useVideoBeat()
 
 const openBeat = useLocalStorage('ph-sec-beat', false)
 const openLayers = useLocalStorage('ph-sec-layers', false)
@@ -713,49 +709,6 @@ const beatPulsePeriod = computed(() => {
         :summary="sessionSummary"
         :active="sessionActive"
       >
-        <!-- Follow the music in the video -->
-        <div class="p-3 panel space-y-2.5">
-          <div class="flex items-center justify-between">
-            <p class="label">
-              Follow the music
-            </p>
-            <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-              <input v-model="musicDrive" type="checkbox">
-              On
-            </label>
-          </div>
-          <p class="hint">
-            Takes the tempo from the video's own soundtrack, so the pulse, the
-            device and the slideshow land on the track's beat. Meant for PMVs.
-          </p>
-
-          <p v-if="musicDrive && scriptDrive" class="hint text-amber-400/80">
-            A script is driving, and it wins — turn "Follow the script" off to use
-            the music instead.
-          </p>
-
-          <div
-            v-else-if="musicDrive"
-            class="text-[11px] font-mono flex gap-2 items-center"
-          >
-            <span
-              class="rounded-full shrink-0 h-1.5 w-1.5"
-              :class="videoBeat.locked.value ? 'bg-teal-400' : 'bg-fg/25'"
-            />
-            <span :class="videoBeat.locked.value ? 'text-teal-400' : 'text-fg-faint'">
-              {{ videoBeat.locked.value ? 'locked' : 'listening' }}
-            </span>
-            <template v-if="videoBeat.bpm.value">
-              <span class="text-fg-faint">·</span>
-              <span class="text-fg-muted">{{ videoBeat.bpm.value }} bpm</span>
-            </template>
-          </div>
-
-          <p v-if="musicDrive && !videoBeat.available.value" class="hint text-red-400">
-            The video's audio could not be analysed in this browser.
-          </p>
-        </div>
-
         <!-- Session pulse -->
         <div class="p-3 panel space-y-2.5">
           <div class="flex items-center justify-between">

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { useVideoBeat } from '~/composables/useVideoBeat'
 import { synthTargets } from '~/lib/axisSynth'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -14,6 +15,7 @@ const device = useDeviceStore()
 const scriptStore = useScriptStore()
 const { shouldRun, funscriptBusy } = useMotionEngine()
 const pad = useGamepadStatus()
+const videoBeat = useVideoBeat()
 
 const SYNTH_AXES = [
   { key: 'synthTwist', label: 'Twist', hint: 'R0 — turns slowly and continuously' },
@@ -147,6 +149,39 @@ const sourceHint = computed(() =>
           <span v-if="motion.source === 'beat'">/{{ motion.beatDivisor }}</span>
           <span v-else>{{ audio.phase.value }}</span>
         </div>
+      </section>
+
+      <section v-if="motion.source === 'music'" class="space-y-2">
+        <p class="label">
+          Music
+        </p>
+        <p class="hint">
+          Takes the tempo from the video's own soundtrack. Needs a few bars to
+          settle on a beat, so give it a moment after the track starts.
+        </p>
+
+        <p v-if="audio.scriptDrive.value" class="hint text-amber-400/80">
+          "Follow the script" is on and takes priority — turn it off to use the
+          music.
+        </p>
+
+        <div v-else class="text-[11px] font-mono flex gap-2 items-center">
+          <span
+            class="rounded-full shrink-0 h-1.5 w-1.5"
+            :class="videoBeat.locked.value ? 'bg-teal-400' : 'bg-fg/25'"
+          />
+          <span :class="videoBeat.locked.value ? 'text-teal-400' : 'text-fg-faint'">
+            {{ videoBeat.locked.value ? 'locked' : 'listening' }}
+          </span>
+          <template v-if="videoBeat.bpm.value">
+            <span class="text-fg-faint">·</span>
+            <span class="text-fg-muted">{{ videoBeat.bpm.value }} bpm</span>
+          </template>
+        </div>
+
+        <p v-if="!videoBeat.available.value" class="hint text-red-400">
+          The video's audio could not be analysed in this browser.
+        </p>
       </section>
 
       <section v-if="motion.source === 'manual'" class="space-y-2.5">

@@ -15,6 +15,7 @@ import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { useTCode } from './useTCode'
+import { getBeatClock } from './useVideoBeat'
 
 // ─── Singleton loop state ─────────────────────────────────────────────────────
 // One engine drives the device regardless of how many panels are mounted.
@@ -62,6 +63,10 @@ export function useMotionEngine() {
         return audio.isPlaying.value
       case 'pulse':
         return audio.isPlaying.value && getPulseClock() !== null
+      case 'music':
+        // Needs a tempo, and the track has to be running for one to mean
+        // anything. Deliberately does not require the binaural engine.
+        return player.isPlaying && getBeatClock(player.currentTime * 1000) !== null
       default:
         return false
     }
@@ -81,6 +86,11 @@ export function useMotionEngine() {
       const divisor = pickBeatDivisor(beat, motion.beatBandLo, motion.beatBandHi)
       motion.beatDivisor = divisor
       return (beat * 60) / divisor
+    }
+
+    if (motion.source === 'music') {
+      const beat = getBeatClock(player.currentTime * 1000)
+      return beat ? beat.rateHz * 60 : 0
     }
 
     if (motion.source === 'pulse') {
@@ -120,7 +130,11 @@ export function useMotionEngine() {
     // When locked to the pulse, read the audio clock's phase rather than
     // integrating our own — that keeps the stroke genuinely in step with what
     // is being heard instead of merely at the same tempo.
-    const locked = motion.source === 'pulse' ? getPulseClock() : null
+    const locked = motion.source === 'pulse'
+      ? getPulseClock()
+      : motion.source === 'music'
+        ? getBeatClock(player.currentTime * 1000)
+        : null
     if (locked)
       phase = locked.phase * Math.PI * 2
     else

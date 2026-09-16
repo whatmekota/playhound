@@ -8,6 +8,7 @@ import {
 } from '~/lib/beatDetect'
 import { phaseError } from '~/lib/funscriptAnalysis'
 import { useAudioStore } from '~/stores/audio'
+import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useBinauralBeats } from './useBinauralBeats'
 
@@ -27,6 +28,21 @@ let raf: number | null = null
 const bpm = ref(0)
 const locked = ref(false)
 const available = ref(true)
+// Published so the motion engine can lock to the beat without the binaural
+// engine running — the pulse clock lives inside that graph, and requiring it
+// meant "follow the music" did nothing unless a tone was playing.
+const beatPeriodMs = ref(0)
+const beatLastOnsetMs = ref(0)
+
+/** Where we are in the beat, extrapolated between onsets. Null when unknown. */
+export function getBeatClock(nowMs: number): { phase: number, rateHz: number } | null {
+  if (beatPeriodMs.value <= 0)
+    return null
+  return {
+    phase: beatPhaseAt(beatLastOnsetMs.value, beatPeriodMs.value, nowMs),
+    rateHz: 1000 / beatPeriodMs.value,
+  }
+}
 
 /**
  * Drive the session pulse from the music in the video.
@@ -42,6 +58,7 @@ const available = ref(true)
 export function useVideoBeat() {
   const audio = useAudioStore()
   const player = usePlayerStore()
+  const motion = useMotionStore()
   const { setPulse, getPulseClock } = useBinauralBeats()
 
   const detector = createOnsetDetector()
@@ -98,6 +115,8 @@ export function useVideoBeat() {
     onsets = []
     periodMs = 0
     lastOnsetMs = 0
+    beatPeriodMs.value = 0
+    beatLastOnsetMs.value = 0
     bpm.value = 0
     locked.value = false
   }
@@ -122,6 +141,7 @@ export function useVideoBeat() {
       const flux = spectralFlux(prevSpectrum, bins)
       if (detector.push(flux, tMs)) {
         lastOnsetMs = tMs
+        beatLastOnsetMs.value = tMs
         onsets.push(tMs)
         if (onsets.length > HISTORY)
           onsets.shift()
@@ -129,6 +149,7 @@ export function useVideoBeat() {
         const p = estimatePeriod(onsets)
         if (p) {
           periodMs = p
+          beatPeriodMs.value = p
           bpm.value = Math.round(periodToBpm(p))
         }
       }
@@ -175,8 +196,17 @@ export function useVideoBeat() {
   // Re-learn the tempo when the track changes.
   watch(() => player.videoPath, reset)
 
+  // Choosing the Music motion source implies wanting the analysis; leaving it
+  // to a separate switch elsewhere was how this came to look broken.
+  watch(() => motion.source, (s) => {
+    if (s === 'music')
+      audio.musicDrive.value = true
+  }, { immediate: true })
+
   watch(
-    () => audio.musicDrive.value && audio.isPlaying.value && player.isPlaying && !audio.scriptDrive.value,
+    // Detection only needs the video playing. Steering the *pulse* still
+    // requires the audio engine, but the motion source does not.
+    () => audio.musicDrive.value && player.isPlaying && !audio.scriptDrive.value,
     (on) => {
       if (!on) {
         stop()
@@ -188,5 +218,5 @@ export function useVideoBeat() {
     },
   )
 
-  return { bpm, locked, available, start, stop }
+  return { bpm, locked, available, beatPeriodMs, start, stop }
 }

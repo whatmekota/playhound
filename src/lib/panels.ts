@@ -8,7 +8,7 @@
 export type PanelId
   = | 'library' | 'playlists' | 'director' | 'organizer'
     | 'scripts' | 'bookmarks' | 'eroscripts'
-    | 'binaural' | 'wall' | 'slideshow'
+    | 'binaural' | 'wall' | 'slideshow' | 'hypno'
     | 'device' | 'motion' | 'emulator' | 'remote'
     | 'stats' | 'backup'
 
@@ -68,6 +68,7 @@ export const PANEL_GROUPS: PanelGroup[] = [
     label: 'Session',
     panels: [
       { id: 'binaural', label: 'Binaural', icon: 'i-carbon-headphones', accent: 'text-teal-400', hint: 'Binaural tone, noise and session phases' },
+      { id: 'hypno', label: 'Hypno', icon: 'i-carbon-circle-dash', accent: 'text-teal-400', hint: 'Spiral, words and breathing ring over the video' },
       { id: 'wall', label: 'Media Wall', surface: 'main', icon: 'i-carbon-grid', accent: 'text-teal-400', hint: 'Free-placed images, video and YouTube' },
       { id: 'slideshow', label: 'Slideshow', surface: 'main', icon: 'i-carbon-play-outline', accent: 'text-teal-400', hint: 'Beat-synced slideshow' },
     ],

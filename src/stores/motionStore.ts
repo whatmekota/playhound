@@ -9,13 +9,14 @@ import { computed, ref } from 'vue'
  * - `beat`      — generated, phase-locked to the binaural beat
  * - `manual`    — generated, driven directly by the sliders below
  */
-export type MotionSourceId = 'funscript' | 'session' | 'beat' | 'pulse' | 'manual'
+export type MotionSourceId = 'funscript' | 'session' | 'beat' | 'pulse' | 'music' | 'manual'
 
 export const MOTION_SOURCES: { id: MotionSourceId, label: string, hint: string }[] = [
   { id: 'funscript', label: 'Script', hint: 'Follow the loaded funscript' },
   { id: 'session', label: 'Session', hint: 'Generated from session phase and intensity' },
   { id: 'beat', label: 'Beat', hint: 'Generated, locked to the binaural beat' },
   { id: 'pulse', label: 'Pulse', hint: 'Locked in phase to the audible session pulse' },
+  { id: 'music', label: 'Music', hint: 'Locked to the beat of the video soundtrack' },
   { id: 'manual', label: 'Manual', hint: 'Generated, driven by the controls here' },
 ]
 

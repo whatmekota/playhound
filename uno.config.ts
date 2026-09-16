@@ -17,6 +17,11 @@ export default defineConfig({
   // stays the single source of truth.
   safelist: ALL_PANELS.flatMap(p => [p.icon, p.accent]),
 
+  // The safelist is computed when this config is evaluated, so editing the
+  // registry alone left a stale list in the running dev server and a new
+  // panel's icon simply did not exist until a restart.
+  configDeps: ['src/lib/panels.ts'],
+
   theme: {
     colors: {
       // Bound to the CSS custom properties in src/styles/main.css, so every

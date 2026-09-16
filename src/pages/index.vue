@@ -5,6 +5,7 @@ import type { ScriptMatch, VideoEntry } from '~/stores/libraryStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, onMounted, ref, watch } from 'vue'
 import FunscriptTimeline from '~/components/FunscriptTimeline.vue'
+import HypnoOverlay from '~/components/HypnoOverlay.vue'
 import LoopControls from '~/components/LoopControls.vue'
 import OsrEmulator from '~/components/OsrEmulator.vue'
 import PanelHost from '~/components/PanelHost.vue'
@@ -33,6 +34,7 @@ import { findPanel, isMainSurface, isOverlaySurface } from '~/lib/panels'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useDeviceStore } from '~/stores/deviceStore'
+import { useHypnoStore } from '~/stores/hypnoStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -52,6 +54,7 @@ const statsStore = useStatsStore()
 const bookmarkStore = useBookmarkStore()
 const motionStore = useMotionStore()
 const safety = useSafetyStore()
+const hypno = useHypnoStore()
 const director = useAutoDirector()
 const showHeatmap = useLocalStorage('ph-timeline-heatmap', true)
 const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
@@ -649,6 +652,8 @@ function onGlobalKeyDown(e: KeyboardEvent) {
             @pin="togglePin"
             @close="closePanel"
           />
+
+          <HypnoOverlay v-if="hypno.enabled" />
         </div>
 
         <UpNextStrip v-if="!mainPanel" @play="onVideoSelected" />

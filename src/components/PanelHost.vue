@@ -8,6 +8,7 @@ import BookmarkPanel from './BookmarkPanel.vue'
 import DevicePanel from './DevicePanel.vue'
 import DirectorPanel from './DirectorPanel.vue'
 import EroScriptsPanel from './EroScriptsPanel.vue'
+import HypnoPanel from './HypnoPanel.vue'
 import MediaWall from './MediaWall.vue'
 import MotionPanel from './MotionPanel.vue'
 import OrganizerPanel from './OrganizerPanel.vue'
@@ -75,6 +76,7 @@ const canPin = computed(() => !isMainSurface(props.id))
       <BookmarkPanel v-else-if="id === 'bookmarks'" @seek="t => emit('seek', t)" />
       <EroScriptsPanel v-else-if="id === 'eroscripts'" />
       <BinauralBeats v-else-if="id === 'binaural'" />
+      <HypnoPanel v-else-if="id === 'hypno'" />
       <MediaWall v-else-if="id === 'wall'" />
       <SlideshowView v-else-if="id === 'slideshow'" />
       <DevicePanel v-else-if="id === 'device'" />
