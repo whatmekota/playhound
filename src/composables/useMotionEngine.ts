@@ -66,7 +66,7 @@ export function useMotionEngine() {
       case 'music':
         // Needs a tempo, and the track has to be running for one to mean
         // anything. Deliberately does not require the binaural engine.
-        return player.isPlaying && getBeatClock(player.currentTime * 1000) !== null
+        return player.isPlaying && getBeatClock() !== null
       default:
         return false
     }
@@ -89,7 +89,7 @@ export function useMotionEngine() {
     }
 
     if (motion.source === 'music') {
-      const beat = getBeatClock(player.currentTime * 1000)
+      const beat = getBeatClock()
       return beat ? beat.rateHz * 60 : 0
     }
 
@@ -133,7 +133,7 @@ export function useMotionEngine() {
     const locked = motion.source === 'pulse'
       ? getPulseClock()
       : motion.source === 'music'
-        ? getBeatClock(player.currentTime * 1000)
+        ? getBeatClock()
         : null
     if (locked)
       phase = locked.phase * Math.PI * 2

@@ -7,12 +7,14 @@ import { synthTargets } from '~/lib/axisSynth'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
+import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 
 const motion = useMotionStore()
 const audio = useAudioStore()
 const device = useDeviceStore()
 const scriptStore = useScriptStore()
+const player = usePlayerStore()
 const { shouldRun, funscriptBusy } = useMotionEngine()
 const pad = useGamepadStatus()
 const videoBeat = useVideoBeat()
@@ -178,6 +180,22 @@ const sourceHint = computed(() =>
             <span class="text-fg-muted">{{ videoBeat.bpm.value }} bpm</span>
           </template>
         </div>
+
+        <dl class="text-[10px] text-fg-faint gap-x-2 gap-y-0.5 grid grid-cols-2">
+          <dt>Audio reaching it</dt>
+          <dd :class="videoBeat.hasSignal.value ? 'text-emerald-400' : 'text-amber-400'">
+            {{ videoBeat.hasSignal.value ? 'yes' : 'no' }}
+          </dd>
+          <dt>Beats found</dt>
+          <dd class="text-fg-muted font-mono">
+            {{ videoBeat.onsetCount.value }}
+          </dd>
+        </dl>
+
+        <p v-if="!videoBeat.hasSignal.value && (player.isMuted || player.volume === 0)" class="hint text-amber-400/80">
+          The player is muted, so the analyser only hears silence. Unmute it, or
+          drop the volume rather than muting.
+        </p>
 
         <p v-if="!videoBeat.available.value" class="hint text-red-400">
           The video's audio could not be analysed in this browser.

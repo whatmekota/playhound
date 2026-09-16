@@ -12,6 +12,8 @@ export interface ScriptAnalysis {
   meanSpeed: number
   /** Mean stroke rate across the whole script. */
   meanSpm: number
+  /** Highest stroke rate, for scaling a curve without rescanning each frame. */
+  peakSpm: number
   durationMs: number
 }
 
@@ -38,11 +40,14 @@ export function analyseActions(
   const envelope = buildEnvelope(actions)
 
   let peakSpeed = 0
+  let peakSpm = 0
   let speedSum = 0
   let spmSum = 0
   for (const s of envelope) {
     if (s.speed > peakSpeed)
       peakSpeed = s.speed
+    if (s.spm > peakSpm)
+      peakSpm = s.spm
     speedSum += s.speed
     spmSum += s.spm
   }
@@ -53,6 +58,7 @@ export function analyseActions(
     peakSpeed,
     meanSpeed: envelope.length ? speedSum / envelope.length : 0,
     meanSpm: envelope.length ? spmSum / envelope.length : 0,
+    peakSpm,
     durationMs: actions.length ? actions[actions.length - 1].at : 0,
   }
 

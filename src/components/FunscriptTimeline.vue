@@ -82,7 +82,7 @@ function drawEnvelope(ctx: CanvasRenderingContext2D, W: number, H: number, durat
   const durMs = duration * 1000
   const bandTop = H * (1 - HEAT_BAND)
   const bandH = H - bandTop
-  const maxSpm = Math.max(30, ...a.envelope.map(s => s.spm))
+  const maxSpm = Math.max(30, a.peakSpm)
 
   ctx.beginPath()
   ctx.strokeStyle = 'rgba(255,255,255,0.75)'
@@ -104,6 +104,93 @@ function drawEnvelope(ctx: CanvasRenderingContext2D, W: number, H: number, durat
   ctx.stroke()
 }
 
+/**
+ * The script itself.
+ *
+ * Iterates every action, which is tens of thousands of points on a dense
+ * script, so this belongs in the cached layer rather than in each frame.
+ */
+function drawWaveform(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number, hovering: boolean) {
+  const primary = scriptStore.primaryScript
+  if (!primary || primary.parsed.actions.length === 0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'
+    ctx.fillRect(0, H / 2 - 2, W, 4)
+    return
+  }
+
+  const actions = primary.parsed.actions
+  // Keep clear of the heatmap band so the two do not overlap.
+  const waveH = showHeatmap.value ? H * (1 - HEAT_BAND) - 2 : H
+
+  ctx.save()
+  // A dark outline under the stroke keeps it legible over the busiest
+  // stretches of script, where the line is dense enough to read as a fill.
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'
+  ctx.shadowBlur = 2
+  ctx.beginPath()
+  ctx.strokeStyle = hovering ? 'rgba(240, 171, 252, 0.95)' : 'rgba(232, 121, 249, 0.8)'
+  ctx.lineWidth = 1.5
+  ctx.lineJoin = 'round'
+
+  for (let i = 0; i < actions.length - 1; i++) {
+    const x0 = (actions[i].at / (duration * 1000)) * W
+    const y0 = waveH - actions[i].pos * waveH
+    const x1 = (actions[i + 1].at / (duration * 1000)) * W
+    const y1 = waveH - actions[i + 1].pos * waveH
+
+    if (i === 0)
+      ctx.moveTo(x0, y0)
+    ctx.lineTo(x1, y1)
+  }
+  ctx.stroke()
+  ctx.restore()
+}
+
+// The heatmap, the envelope curve and the script itself depend only on the
+// script and the canvas size, but drawTimeline runs on every currentTime
+// change — sixty times a second during playback. Sampling the envelope and
+// redrawing every action per frame made long scripts stutter, so they are
+// rendered once and blitted after.
+let staticLayer: HTMLCanvasElement | null = null
+let staticKey = ''
+
+function ensureStaticLayer(W: number, H: number, duration: number) {
+  const a = analysis.value
+  const key = [
+    showHeatmap.value ? 1 : 0,
+    W,
+    H,
+    Math.round(duration),
+    a ? a.envelope.length : 0,
+    a ? Math.round(a.peakSpeed * 1000) : 0,
+    scriptStore.primaryScript?.filename ?? '',
+    scriptStore.primaryScript?.parsed.actions.length ?? 0,
+    scriptStore.primaryScript?.offsetMs ?? 0,
+    isHovering.value ? 1 : 0,
+  ].join(':')
+
+  if (staticLayer && staticKey === key)
+    return staticLayer
+
+  const c = staticLayer ?? document.createElement('canvas')
+  c.width = W
+  c.height = H
+  const ctx = c.getContext('2d')
+  if (!ctx)
+    return null
+
+  ctx.clearRect(0, 0, W, H)
+  if (showHeatmap.value) {
+    drawHeatmap(ctx, W, H, duration)
+    drawEnvelope(ctx, W, H, duration)
+  }
+  drawWaveform(ctx, W, H, duration, isHovering.value)
+
+  staticLayer = c
+  staticKey = key
+  return c
+}
+
 function drawTimeline() {
   const canvas = canvasEl.value
   if (!canvas)
@@ -123,47 +210,12 @@ function drawTimeline() {
     return
   }
 
-  const primary = scriptStore.primaryScript
+  // ── Speed heatmap and session shape (cached) ──
+  const layer = ensureStaticLayer(W, H, duration)
+  if (layer)
+    ctx.drawImage(layer, 0, 0)
 
-  // ── Speed heatmap and session shape ──
-  if (showHeatmap.value) {
-    drawHeatmap(ctx, W, H, duration)
-    drawEnvelope(ctx, W, H, duration)
-  }
-
-  // ── Draw funscript waveform ──
-  if (primary && primary.parsed.actions.length > 0) {
-    const actions = primary.parsed.actions
-    // Keep clear of the heatmap band so the two do not overlap.
-    const waveH = showHeatmap.value ? H * (1 - HEAT_BAND) - 2 : H
-
-    ctx.save()
-    // A dark outline under the stroke keeps it legible over the busiest
-    // stretches of script, where the line is dense enough to read as a fill.
-    ctx.shadowColor = 'rgba(0,0,0,0.9)'
-    ctx.shadowBlur = 2
-    ctx.beginPath()
-    ctx.strokeStyle = isHovering.value ? 'rgba(240, 171, 252, 0.95)' : 'rgba(232, 121, 249, 0.8)'
-    ctx.lineWidth = 1.5
-    ctx.lineJoin = 'round'
-
-    for (let i = 0; i < actions.length - 1; i++) {
-      const x0 = (actions[i].at / (duration * 1000)) * W
-      const y0 = waveH - actions[i].pos * waveH
-      const x1 = (actions[i + 1].at / (duration * 1000)) * W
-      const y1 = waveH - actions[i + 1].pos * waveH
-
-      if (i === 0)
-        ctx.moveTo(x0, y0)
-      ctx.lineTo(x1, y1)
-    }
-    ctx.stroke()
-    ctx.restore()
-  }
-  else {
-    ctx.fillStyle = 'rgba(255,255,255,0.08)'
-    ctx.fillRect(0, H / 2 - 2, W, 4)
-  }
+  // (waveform is part of the cached layer)
 
   // ── Draw loop region ──
   if (playerStore.loopStart !== null && playerStore.loopEnd !== null) {

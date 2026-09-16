@@ -25,6 +25,16 @@ let sourceEl: HTMLVideoElement | null = null
 let analyser: AnalyserNode | null = null
 let raf: number | null = null
 
+// Loop state lives here, not per call: the shell and the Motion panel both
+// construct this, and a second copy of the detector would silently observe
+// nothing while the first one ran.
+const detector = createOnsetDetector()
+let prevSpectrum: Float32Array<ArrayBuffer> | null = null
+let spectrum: Float32Array<ArrayBuffer> | null = null
+let onsets: number[] = []
+let periodMs = 0
+let lastOnsetMs = 0
+
 const bpm = ref(0)
 const locked = ref(false)
 const available = ref(true)
@@ -33,13 +43,23 @@ const available = ref(true)
 // meant "follow the music" did nothing unless a tone was playing.
 const beatPeriodMs = ref(0)
 const beatLastOnsetMs = ref(0)
+/** Onsets seen since the track started — zero means no audio is arriving. */
+const onsetCount = ref(0)
+/** Whether any signal at all is reaching the analyser. */
+const hasSignal = ref(false)
 
-/** Where we are in the beat, extrapolated between onsets. Null when unknown. */
-export function getBeatClock(nowMs: number): { phase: number, rateHz: number } | null {
+/**
+ * Where we are in the beat, extrapolated between onsets. Null when unknown.
+ *
+ * Timed off performance.now() rather than the video's currentTime: that only
+ * updates on timeupdate, roughly four times a second, which quantises every
+ * onset to ~250ms and makes the tempo estimate impossible to settle.
+ */
+export function getBeatClock(): { phase: number, rateHz: number } | null {
   if (beatPeriodMs.value <= 0)
     return null
   return {
-    phase: beatPhaseAt(beatLastOnsetMs.value, beatPeriodMs.value, nowMs),
+    phase: beatPhaseAt(beatLastOnsetMs.value, beatPeriodMs.value, performance.now()),
     rateHz: 1000 / beatPeriodMs.value,
   }
 }
@@ -60,12 +80,6 @@ export function useVideoBeat() {
   const player = usePlayerStore()
   const motion = useMotionStore()
   const { setPulse, getPulseClock } = useBinauralBeats()
-
-  const detector = createOnsetDetector()
-  let prevSpectrum: Float32Array | null = null
-  let onsets: number[] = []
-  let periodMs = 0
-  let lastOnsetMs = 0
 
   /**
    * Route the video element through an analyser.
@@ -89,7 +103,9 @@ export function useVideoBeat() {
       const source = audioCtx.createMediaElementSource(el)
       const node = audioCtx.createAnalyser()
       node.fftSize = 1024
-      node.smoothingTimeConstant = 0.6
+      // Onsets *are* the transients, so no temporal smoothing: averaging
+      // successive spectra flattens the very rises the detector looks for.
+      node.smoothingTimeConstant = 0
 
       source.connect(node)
       // Straight through as well, so the video is still audible.
@@ -119,6 +135,8 @@ export function useVideoBeat() {
     beatLastOnsetMs.value = 0
     bpm.value = 0
     locked.value = false
+    onsetCount.value = 0
+    hasSignal.value = false
   }
 
   function tick() {
@@ -127,7 +145,9 @@ export function useVideoBeat() {
       return
     }
 
-    const bins = new Float32Array(analyser.frequencyBinCount)
+    if (!spectrum || spectrum.length !== analyser.frequencyBinCount)
+      spectrum = new Float32Array(analyser.frequencyBinCount)
+    const bins = spectrum
     analyser.getFloatFrequencyData(bins)
     // Silence reads as -Infinity; treat it as a floor so flux stays finite.
     for (let i = 0; i < bins.length; i++) {
@@ -135,11 +155,17 @@ export function useVideoBeat() {
         bins[i] = -140
     }
 
-    const tMs = player.currentTime * 1000
+    // High-resolution, monotonic, and advancing every frame.
+    const tMs = performance.now()
 
     if (prevSpectrum) {
       const flux = spectralFlux(prevSpectrum, bins)
+      // Silence sits at the floor across every bin.
+      if (!hasSignal.value && bins.some(v => v > -139))
+        hasSignal.value = true
+
       if (detector.push(flux, tMs)) {
+        onsetCount.value++
         lastOnsetMs = tMs
         beatLastOnsetMs.value = tMs
         onsets.push(tMs)
@@ -154,7 +180,10 @@ export function useVideoBeat() {
         }
       }
     }
-    prevSpectrum = bins
+    // bins is reused each frame, so keep a copy to diff against.
+    if (!prevSpectrum || prevSpectrum.length !== bins.length)
+      prevSpectrum = new Float32Array(bins.length)
+    prevSpectrum.set(bins)
 
     // ── Steer the pulse onto the beat ────────────────────────────────────
     const clock = getPulseClock()
@@ -218,5 +247,5 @@ export function useVideoBeat() {
     },
   )
 
-  return { bpm, locked, available, beatPeriodMs, start, stop }
+  return { bpm, locked, available, beatPeriodMs, onsetCount, hasSignal, start, stop }
 }
