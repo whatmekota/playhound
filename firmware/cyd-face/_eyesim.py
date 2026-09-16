@@ -22,7 +22,8 @@ BASE = dict(
     LASH=20.0, LASH_BASE=6, FLICK=36, FLICK_RISE=0.42,
     BROW=True, BROW_GAP=18, BROW_T=9.0, BROW_ARC=1.0, BROW_TILT=10,
     UNDER=True, LOWER_T=2,
-    IRIS_S=0.46, IRIS_DY=0,
+    IRIS_S=0.46, IRIS_DY=0, IRIS_FIX=None, HILITE=(-13,-13,8),
+    ANG=0.60,
 )
 
 # Nothing is ever deleted from here: every shape that has been previewed stays
@@ -34,25 +35,25 @@ VARIANTS = {
                                  UP_APEX=0.36, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=34, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
     "B  wing, sharper":     dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=42, LID_LO=18, IRIS_R=29, SLANT=0.17,
                                  UP_APEX=0.32, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=40, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
     "C  wing, rounder":     dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=51, LID_LO=29, IRIS_R=29, SLANT=0.07,
                                  UP_APEX=0.43, UP_P=0.78, LO_APEX=0.38, LO_P=0.95,
                                  LASH=16.0, LASH_BASE=5, FLICK=26, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
     "F  wing, tareme":      dict(BODY_W=108, MARGIN_OUT=40, ECY=94, EYE_CY=98, EYE_GAP=20,
                                  LID_UP=47, LID_LO=27, IRIS_R=29, SLANT=-0.06,
                                  UP_APEX=0.52, UP_P=0.78, LO_APEX=0.52, LO_P=0.95,
                                  LASH=13.0, LASH_BASE=5, FLICK=20, FLICK_RISE=0.75,
                                  BROW_GAP=16, BROW_T=7.0, BROW_ARC=1.0, BROW_TILT=14,
-                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5),
+                                 UNDER=False, LOWER_T=3, IRIS_S=0.44, IRIS_DY=-5, ANG=0.0),
 
     # -- flat slot, from the heart sheet ----------------------------------
     "G  flat slot":          {},
@@ -61,8 +62,23 @@ VARIANTS = {
     "I  sharp, small iris":  dict(LID_UP=35, LID_LO=21, UP_APEX=0.34, UP_P=0.52,
                                   SLANT=0.20, IRIS_R=25, FLICK=40, FLICK_RISE=0.55,
                                   LASH=17.0, BROW_GAP=11, BROW_T=5.0),
+    # The crimson reference: almond rather than slot, a flat red iris with one
+    # small high highlight, a hook that turns DOWN past the outer corner
+    # (negative rise), and a thin sparse brow set well back.
+    "K  crimson":            dict(LID_UP=36, LID_LO=26, UP_APEX=0.40, UP_P=0.62,
+                                  LO_APEX=0.46, LO_P=0.85, SLANT=0.10,
+                                  IRIS_R=30, IRIS_S=0.47, IRIS_DY=-1,
+                                  IRIS_FIX=((122,6,10),(224,26,28)),
+                                  HILITE=(-2,-15,6),
+                                  LASH=21.0, LASH_BASE=6, FLICK=34, FLICK_RISE=-0.30,
+                                  BROW_GAP=26, BROW_T=2.0, BROW_TILT=6,
+                                  UNDER=True, LOWER_T=2, ANG=0.70),
+
     "J  extreme lash mass":  dict(LID_UP=24, LID_LO=17, LASH=34.0, LASH_BASE=10,
                                   FLICK=40, FLICK_RISE=0.22, IRIS_R=34, BROW_GAP=13),
+    "L  fully angular":      dict(ANG=1.0, LID_UP=34, LID_LO=22, UP_APEX=0.38,
+                                  SLANT=0.16, LASH=22.0, FLICK=40, FLICK_RISE=0.35,
+                                  IRIS_R=28, BROW_T=5.0),
 }
 
 THEMES = {"light": ((240,238,246),(255,255,255),(10,8,16),(96,88,112)),
@@ -71,6 +87,21 @@ THEMES = {"light": ((240,238,246),(255,255,255),(10,8,16),(96,88,112)),
 def bell(s, a, p):
     if s <= 0.0 or s >= 1.0: return 0.0
     return math.sin(math.pi * (s ** (math.log(0.5)/math.log(a)))) ** p
+
+def tent(s, a):
+    """Piecewise-linear peak at `a`: straight edges, hard apex."""
+    if s <= 0.0 or s >= 1.0: return 0.0
+    return s/a if s < a else (1.0-s)/(1.0-a)
+
+def lidcurve(s, a, p, ang):
+    """Blend the round bell toward the angular tent.
+
+    sin() is round by construction, which is what made every early shape look
+    oval no matter how the apex moved. `ang` is the dial that actually
+    straightens the lid edges."""
+    if ang <= 0.0: return bell(s, a, p)
+    if ang >= 1.0: return tent(s, a)
+    return (1.0-ang)*bell(s, a, p) + ang*tent(s, a)
 
 def sprite_w(P):
     return P["MARGIN_IN"] + P["BODY_W"] + P["MARGIN_OUT"]
@@ -91,8 +122,9 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
     def S(x):
         u=(x-M)/(BW-1); return (1.0-u) if left else u
     def sl(x): return int(-P["SLANT"]*(x-bcx)*outer)
-    def up(s): return bell(s, P["UP_APEX"], P["UP_P"])
-    def lo(s): return bell(s, P["LO_APEX"], P["LO_P"])
+    A=P["ANG"]
+    def up(s): return lidcurve(s, P["UP_APEX"], P["UP_P"], A)
+    def lo(s): return lidcurve(s, P["LO_APEX"], P["LO_P"], A)
     def bodyx(s):
         u=(1.0-s) if left else s; return M+int(u*(BW-1))
     def edges(x):
@@ -100,7 +132,10 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
         return s,(ECY+v-int(upOpen*up(s))),(ECY+v+int(loOpen*lo(s)))
     def lash_t(x):
         s=S(x); u=(x-M)/(BW-1)
-        return P["LASH_BASE"]+int(P["LASH"]*(math.sin(math.pi*u)**0.45)*(0.30+0.70*s))
+        roundp = math.sin(math.pi*u)**0.45
+        angp = min(u, 1.0-u)*2.0
+        prof = (1.0-A)*roundp + A*angp
+        return P["LASH_BASE"]+int(P["LASH"]*prof*(0.30+0.70*s))
 
     for x in range(M, M+BW):
         _,yT,yB = edges(x)
@@ -110,8 +145,11 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
         R=P["IRIS_R"]; cx,cy = bodyx(P["IRIS_S"]), ECY+P["IRIS_DY"]
         for dy in range(-R,R+1):
             f=dy/R; hw=int(R*math.sqrt(max(0,1-f*f))); k=(dy+R)/(2*R)
-            t=(10,34,78) if inten<0.5 else (74,4,48)
-            b=(96,190,232) if inten<0.5 else (255,86,156)
+            if P["IRIS_FIX"]:
+                t,b = P["IRIS_FIX"]
+            else:
+                t=(10,34,78) if inten<0.5 else (74,4,48)
+                b=(96,190,232) if inten<0.5 else (255,86,156)
             d.line([(cx-hw,cy+dy),(cx+hw,cy+dy)],fill=tuple(int(t[i]+(b[i]-t[i])*k) for i in range(3)))
         if hearts:
             r=int(R*0.66); d.ellipse([cx-r,cy-r,cx+r,cy+r],fill=(14,8,26))
@@ -122,7 +160,8 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
         else:
             rx,ry=int(R*0.34),int(R*0.56)
             d.ellipse([cx-rx,cy-ry,cx+rx,cy+ry],fill=(14,8,26))
-            d.ellipse([cx-13-8,cy-13-8,cx-13+8,cy-13+8],fill=(255,255,255))
+            hx,hy,hr = P["HILITE"]
+            d.ellipse([cx+hx-hr,cy+hy-hr,cx+hx+hr,cy+hy+hr],fill=(255,255,255))
 
     for x in range(M, M+BW):
         s,yT,yB = edges(x); u=(x-M)/(BW-1)
@@ -188,5 +227,5 @@ else:
     for i,(name,over) in enumerate(show):
         out.paste(panel(params(over),"light",1.0,0.0,False,name),
                   (320*(i%cols),168*(i//cols)))
-out.resize((640,out.height*2),Image.NEAREST).save("_preview.png")
+out.resize((out.width*2,out.height*2),Image.NEAREST).save("_preview.png")
 print("wrote _preview.png")
