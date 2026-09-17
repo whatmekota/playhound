@@ -481,7 +481,7 @@ def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label, bangsP=No
     # After the eyes: the eye sprite's empty top rows would paint over the
     # fringe, and hair hangs in front of the forehead in any case.
     if bangsP:
-        draw_bangs(img, bangsP, ink)
+        draw_bangs(img, bangsP, ink, bg)
     nose_dash(img, 160, 154, ink)
     m = mouth_sprite(mouthP, amount, bg, ink, sclera)
     # 170 is just inside the control bar's strip, which is empty whenever the
@@ -501,43 +501,53 @@ def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label, bangsP=No
 # ===========================================================================
 
 BANGS_BASE = dict(
-    BASE=40,        # where the fringe sits before any strand shape
-    N=5, DEPTH=16,  # strand count and how far their points hang
-    JAG=0.0,        # per-strand length variation, 0 = all equal
-    PART=0.0,       # centre parting: lifts the fringe over the middle
-    SIDE=34,        # extra length for the locks at the temples
-    SIDE_AT=0.62,   # where those locks start, as a fraction of half-width
-    LINE_T=3,
-    HAIR=(150, 26, 58),
+    BASE=34,        # where the fringe starts before any lock hangs from it
+    SEAM=True,      # thin gaps between locks, so it reads as strands
+    HAIR=None,      # None = the same ink as the lashes
 )
 
+# Each lock is (centre, half width, length), and the fringe is their UNION.
+# A single per-column sawtooth reads as a cartoon crown; overlapping tapered
+# locks sweeping out from a parting is what actual bangs are.
 BANGS = {
-    "4 bob":    dict(N=5, DEPTH=16, JAG=0.18, PART=0.45, SIDE=34),
-    "5 wolf":   dict(N=9, DEPTH=25, JAG=0.60, PART=0.22, SIDE=46, BASE=34),
-    "6 blunt":  dict(N=4, DEPTH=6,  JAG=0.05, PART=0.0,  SIDE=58, SIDE_AT=0.70, BASE=46),
+    "4 bob":   dict(BASE=30, LOCKS=[(0.50,0.15,30),(0.34,0.16,42),(0.66,0.16,42),
+                                    (0.20,0.14,54),(0.80,0.14,54),
+                                    (0.02,0.10,96),(0.98,0.10,96)]),
+    "5 wolf":  dict(BASE=26, LOCKS=[(0.50,0.12,26),(0.38,0.12,46),(0.62,0.13,38),
+                                    (0.26,0.13,62),(0.74,0.12,52),
+                                    (0.12,0.13,84),(0.88,0.13,92),
+                                    (0.01,0.09,112),(0.99,0.09,104)]),
+    "6 blunt": dict(BASE=52, LOCKS=[(0.50,0.46,10),(0.30,0.20,14),(0.70,0.20,14),
+                                    (0.03,0.11,130),(0.97,0.11,130)]),
 }
 
 def bang_edge(u, P):
-    t = u * P["N"]
-    i = int(t)
-    frac = t - i
-    point = 1.0 - abs(frac*2.0 - 1.0)          # 1 at a strand's centre
-    # Deterministic per-strand variation, so "uneven" is repeatable.
-    var = 1.0 + P["JAG"] * (((i*37) % 7)/3.0 - 1.0)
-    y = P["BASE"] + P["DEPTH"] * point * var
-    y -= P["PART"] * P["DEPTH"] * max(0.0, 1.0 - abs(u-0.5)/0.18)
-    edge = max(0.0, (abs(u-0.5)*2.0 - P["SIDE_AT"]) / (1.0 - P["SIDE_AT"]))
-    y += P["SIDE"] * edge**1.3
+    y = P["BASE"]
+    for c, w, ln in P["LOCKS"]:
+        d = abs(u - c) / w
+        if d < 1.0:
+            y = max(y, P["BASE"] + ln * (1.0 - d*d))
     return y
 
-def draw_bangs(img, P, ink):
+def draw_bangs(img, P, ink, bg):
     d = ImageDraw.Draw(img)
     W = img.width
+    hair = P["HAIR"] or ink
     for x in range(W):
         u = x/(W-1)
-        y = int(bang_edge(u, P))
-        d.line([(x, 0), (x, y)], fill=P["HAIR"])
-        d.line([(x, y-P["LINE_T"]+1), (x, y)], fill=ink)
+        d.line([(x, 0), (x, int(bang_edge(u, P)))], fill=hair)
+
+    # Strand seams run DOWN from the crown to the hairline, the way a parting
+    # does. Tracing each lock's outline instead scallops the edge like lace.
+    if P["SEAM"]:
+        for c, w, ln in P["LOCKS"]:
+            for side in (-1, 1):
+                uu = c + side*w*0.94
+                if not 0.0 <= uu <= 1.0:
+                    continue
+                x = int(uu*(W-1))
+                d.line([(x, 0), (x, int(bang_edge(uu, P))-1)], fill=bg)
+
 
 if len(sys.argv)>1 and sys.argv[1]=="bangs":
     eyeP=params(VARIANTS["M  minimal, big pupil"]); eyeP["EYE_CY"]=118
