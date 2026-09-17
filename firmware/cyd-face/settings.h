@@ -36,8 +36,18 @@ enum Theme : uint8_t {
   THEME_COUNT,
 };
 
+// Eyes-only is the close crop that shows every detail; full adds a nose and a
+// mouth in the strip the control bar occupies, which is empty while it is
+// hidden - i.e. nearly always.
+enum FaceLayout : uint8_t {
+  FACE_FULL,
+  FACE_EYES,
+  FACE_LAYOUT_COUNT,
+};
+
 struct Settings {
   uint8_t mode   = MODE_AUTO;
+  uint8_t layout = FACE_FULL;
   uint8_t hearts = HEART_AUTO;
   uint8_t theme  = THEME_LIGHT;
   uint8_t bright = 1;          // 0 dim, 1 mid, 2 full

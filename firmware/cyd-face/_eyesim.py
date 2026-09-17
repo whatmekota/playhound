@@ -360,7 +360,11 @@ MOUTH_BASE = dict(
     BOW=4, BOW_W=0.13,          # the cupid's bow notch at the top centre
     ARCH_P=0.85,                # how full the opening is across the width
     LINE_T=3,                   # closed-mouth lip thickness
-    FANGS=0, FANG_LEN=7,        # upper fangs; lower ones are half as long
+    FANGS=0, FANG_LEN=7,        # evenly spaced upper fangs, only while open
+    # A single snaggletooth, drawn whether the mouth is open or shut - hanging
+    # over the lip is the entire point of one. Outlined, or it vanishes against
+    # a light background.
+    FANG_ONE=None, FANG_ONE_LEN=9, FANG_ONE_W=5,
     FILL=None,                  # interior; defaults to ink
     TONGUE=False, TONGUE_AT=0.45,
     INK=None, TONGUE_RGB=(226,96,120),
@@ -372,7 +376,12 @@ MOUTHS = {
     "simple":  dict(FILL=(72,26,34)),
     "open":    dict(TONGUE=True, FILL=(72,26,34)),
     "fangs":   dict(FANGS=3, TONGUE=True, SMILE=8, LO_H=21),
-    "cat":     dict(SMILE=-1, BOW=6, BOW_W=0.22, UP_H=7, LO_H=9, FILL=(72,26,34)),
+    # Centre raised (negative BOW) with the corners dropped: the omega shape.
+    # UP_H=0 pins the upper lip: the omega stays put and the mouth opens
+    # downward from it. Letting it rise too makes an opening mouth read as a
+    # mound growing out of the face.
+    "cat":     dict(SMILE=-3, BOW=-7, BOW_W=0.26, UP_H=0, LO_H=17,
+                    FILL=(72,26,34), FANG_ONE=0.76),
 }
 
 def _arch(u, p):
@@ -435,6 +444,25 @@ def mouth_sprite(P, amount, bg, ink, sclera):
     for x in range(MW):
         yT, _ = edges(x)
         d.line([(x, int(yT)-P["LINE_T"]+1), (x, int(yT))], fill=ink)
+
+    if P["FANG_ONE"] is not None:
+        fx = int(P["FANG_ONE"]*(MW-1))
+        top = edges(fx)[0]
+        w, ln = P["FANG_ONE_W"], P["FANG_ONE_LEN"]
+        # Rotate to the lip. Hanging straight down leaves the fang leaning away
+        # from a lip that is sloping underneath it; its base should lie along
+        # the lip and its tip along the lip's normal.
+        step = 3
+        a = edges(max(0, fx-step))[0]
+        b = edges(min(MW-1, fx+step))[0]
+        m = (b-a) / (2.0*step)
+        norm = math.hypot(1.0, m)
+        ux, uy = 1.0/norm, m/norm          # along the lip
+        nx, ny = -m/norm, 1.0/norm         # its normal, pointing down
+        def pt(along, down, shrink=0.0):
+            return (fx + along*ux + down*nx, top + along*uy + down*ny - shrink)
+        d.polygon([pt(-w, -1), pt(w, -1), pt(0, ln)], fill=ink)
+        d.polygon([pt(-w+2, 0), pt(w-2, 0), pt(0, ln-3)], fill=sclera)
     return img
 
 def nose_dash(img, cx, cy, ink):

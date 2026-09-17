@@ -23,3 +23,11 @@ void faceInvalidate();
 
 /** The face's background, so the control bar clears to the same colour. */
 uint16_t faceBackground();
+
+/**
+ * Whether the mouth may draw.
+ *
+ * It lives in the strip the control bar occupies, so it yields whenever the
+ * bar is up rather than the two fighting over those rows.
+ */
+void faceShowMouth(bool on);

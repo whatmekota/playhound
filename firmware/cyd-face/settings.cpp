@@ -13,19 +13,20 @@ static bool visible = false;
 // ── Menu layout ─────────────────────────────────────────────────────────────
 static const int ROW_X   = 14;
 static const int ROW_W   = 292;
-static const int ROW_H   = 34;
-static const int ROW_0   = 30;
-static const int ROW_GAP = 38;
-static const int ROWS    = 5;
-static const int DONE_Y  = 222;
+static const int ROW_H   = 30;
+static const int ROW_0   = 26;
+static const int ROW_GAP = 33;
+static const int ROWS    = 6;
+static const int DONE_Y  = 226;
 
 static const char *MODE_NAMES[MODE_COUNT]   = { "auto", "idle", "tease", "heart", "demo" };
 static const char *HEART_NAMES[HEART_COUNT] = { "auto", "always", "never" };
 static const char *THEME_NAMES[THEME_COUNT] = { "light", "dark" };
+static const char *LAYOUT_NAMES[FACE_LAYOUT_COUNT] = { "full", "eyes" };
 static const char *BRIGHT_NAMES[3]          = { "dim", "mid", "full" };
 static const uint8_t BRIGHT_DUTY[3]         = { 55, 130, 235 };
 
-static const char *ROW_LABEL[ROWS] = { "mode", "hearts", "theme", "bright", "wifi" };
+static const char *ROW_LABEL[ROWS] = { "mode", "face", "hearts", "theme", "bright", "wifi" };
 
 // ── Theme ───────────────────────────────────────────────────────────────────
 static uint16_t T_BG, T_SCLERA, T_INK, T_PANEL, T_MUTED, T_ACCENT;
@@ -61,9 +62,10 @@ uint16_t themeAccent() { return T_ACCENT; }
 static const char *rowValue(int i) {
   switch (i) {
     case 0: return MODE_NAMES[settings.mode];
-    case 1: return HEART_NAMES[settings.hearts];
-    case 2: return THEME_NAMES[settings.theme];
-    case 3: return BRIGHT_NAMES[settings.bright];
+    case 1: return LAYOUT_NAMES[settings.layout];
+    case 2: return HEART_NAMES[settings.hearts];
+    case 3: return THEME_NAMES[settings.theme];
+    case 4: return BRIGHT_NAMES[settings.bright];
     default: return settings.wifi ? "on" : "off";
   }
 }
@@ -72,6 +74,7 @@ void settingsBegin() {
   prefs.begin("phface", false);
   settings.mode   = prefs.getUChar("mode", MODE_AUTO);
   settings.hearts = prefs.getUChar("hearts", HEART_AUTO);
+  settings.layout = prefs.getUChar("layout", FACE_FULL);
   settings.theme  = prefs.getUChar("theme", THEME_LIGHT);
   settings.bright = prefs.getUChar("bright", 1);
   settings.wifi   = prefs.getBool("wifi", true);
@@ -82,6 +85,8 @@ void settingsBegin() {
     settings.mode = MODE_AUTO;
   if (settings.hearts >= HEART_COUNT)
     settings.hearts = HEART_AUTO;
+  if (settings.layout >= FACE_LAYOUT_COUNT)
+    settings.layout = FACE_FULL;
   if (settings.theme >= THEME_COUNT)
     settings.theme = THEME_LIGHT;
   if (settings.bright > 2)
@@ -93,6 +98,7 @@ void settingsBegin() {
 void settingsSave() {
   prefs.putUChar("mode", settings.mode);
   prefs.putUChar("hearts", settings.hearts);
+  prefs.putUChar("layout", settings.layout);
   prefs.putUChar("theme", settings.theme);
   prefs.putUChar("bright", settings.bright);
   prefs.putBool("wifi", settings.wifi);
@@ -166,13 +172,14 @@ void settingsMenuTap(int x, int y) {
 
     switch (i) {
       case 0: settings.mode   = (settings.mode + 1) % MODE_COUNT; break;
-      case 1: settings.hearts = (settings.hearts + 1) % HEART_COUNT; break;
-      case 2:
+      case 1: settings.layout = (settings.layout + 1) % FACE_LAYOUT_COUNT; break;
+      case 2: settings.hearts = (settings.hearts + 1) % HEART_COUNT; break;
+      case 3:
         settings.theme = (settings.theme + 1) % THEME_COUNT;
         applyTheme();
         drawAll();          // every colour on screen just changed
         return;
-      case 3: settings.bright = (settings.bright + 1) % 3; break;
+      case 4: settings.bright = (settings.bright + 1) % 3; break;
       default: settings.wifi  = !settings.wifi; break;
     }
     drawRow(i);

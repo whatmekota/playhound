@@ -72,6 +72,8 @@ void loop() {
   netLoop();
 
   const bool barUp = uiTick();
+  // The mouth lives in the bar's rows, so it stands down while the bar is up.
+  faceShowMouth(!barUp);
   if (!uiMenuOpen())
     faceTick();
 

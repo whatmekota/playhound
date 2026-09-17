@@ -21,10 +21,16 @@ static const int BODY_W    = 100;
 static const int MARGIN_IN = 20;
 static const int MARGIN_OUT= 40;
 static const int EYE_W     = MARGIN_IN + BODY_W + MARGIN_OUT;   // 160
-static const int EYE_H     = 138;
-static const int ECY       = 98;    // eye centre inside the sprite
-static const int EYE_CY    = 101;   // eye centre on screen
+// The artwork only ever occupies 43px above the eye centre and 25px below, so
+// the old 138-row sprite was more than half empty. 80 rows fits it with room
+// for the bob and frees both RAM and the layout below the eyes.
+static const int EYE_H     = 80;
+static const int ECY       = 50;    // eye centre inside the sprite
 static const int EYE_GAP   = 38;
+
+// Eyes sit lower when there is a mouth under them.
+static const int EYE_CY_EYES = 95;
+static const int EYE_CY_FULL = 118;
 
 // -- Shape -------------------------------------------------------------------
 static const int   LID_UP     = 34;
@@ -56,8 +62,42 @@ static const int   NOTCH_R    = 5;
 static const int STATUS_Y = 145;
 static const int TITLE_Y  = 156;
 
+// -- Mouth -------------------------------------------------------------------
+// Cat mouth: the omega lip stays put and the opening grows downward from it.
+// Letting the upper lip rise too makes an opening mouth read as a mound.
+static const int   MOUTH_W   = 78;
+static const int   MOUTH_H   = 52;
+static const int   MOUTH_X   = 160 - MOUTH_W / 2;
+static const int   MOUTH_Y   = 170;   // inside the control bar's strip
+static const int   MOUTH_LO  = 17;    // how far it opens
+static const int   MOUTH_SMILE = -3;  // corners below the centre
+static const int   MOUTH_BOW = -7;    // negative raises the centre: the omega
+static const float MOUTH_BOW_W = 0.26f;
+static const float MOUTH_ARCH_P = 0.85f;
+static const int   MOUTH_LINE_T = 3;
+static const float FANG_AT   = 0.76f; // one snaggletooth, right of centre
+static const int   FANG_LEN  = 9;
+static const int   FANG_W    = 5;
+static const Rgb   MOUTH_FILL { 72, 26, 34 };
+
+static const int NOSE_Y = 158;
+
 static TFT_eSPI *gfx = nullptr;
 static TFT_eSprite *eye = nullptr;
+static TFT_eSprite *mouth = nullptr;
+
+// The mouth shares its rows with the control bar, so it yields while the bar
+// is up rather than the two fighting over them.
+static bool mouthAllowed = true;
+static float mouthOpen = 0.0f;
+
+static bool fullFace() {
+  return settings.layout == FACE_FULL;
+}
+
+static int eyeCy() {
+  return fullFace() ? EYE_CY_FULL : EYE_CY_EYES;
+}
 
 // Lid edges for the current eye, so the two passes over the columns do not
 // each pay for the transcendentals.
@@ -365,7 +405,87 @@ static void drawEye(int bodyCx, bool leftSide) {
     }
   }
 
-  eye->pushSprite(bodyCx - BODY_W / 2 - start, EYE_CY - ECY + (int)bob);
+  eye->pushSprite(bodyCx - BODY_W / 2 - start, eyeCy() - ECY + (int)bob);
+}
+
+
+// ---------------------------------------------------------------------------
+// Mouth
+//
+// Built like the eyes: an upper and a lower edge per column meeting at the
+// corners, with `open` scaling their separation, so a shut mouth is those two
+// edges collapsing onto one line rather than a second shape to cross-fade to.
+// ---------------------------------------------------------------------------
+static float mouthBase(float u) {
+  // Corners ride below the centre; MOUTH_SMILE is negative for this shape.
+  return MOUTH_H * 0.5f - MOUTH_SMILE * powf(fabsf(u - 0.5f) * 2.0f, 1.5f);
+}
+
+static float mouthBow(float u) {
+  // A notch at the centre of the upper lip. Negative raises it into an omega.
+  const float t = fabsf(u - 0.5f) / MOUTH_BOW_W;
+  return MOUTH_BOW * fmaxf(0.0f, 1.0f - t);
+}
+
+static float mouthTop(float u) {
+  return mouthBase(u) + mouthBow(u);
+}
+
+static float mouthBottom(float u, float amount) {
+  if (u <= 0.0f || u >= 1.0f)
+    return mouthTop(u);
+  const float arch = powf(sinf(PI * u), MOUTH_ARCH_P);
+  return mouthTop(u) + amount * MOUTH_LO * arch;
+}
+
+static void drawMouth(float amount) {
+  const uint16_t BG = themeBg();
+  const uint16_t INK = themeInk();
+  const uint16_t SCLERA = themeSclera();
+  const uint16_t FILL = rgb(MOUTH_FILL);
+
+  amount = clampf(amount, 0.0f, 1.0f);
+  mouth->fillSprite(BG);
+
+  for (int x = 0; x < MOUTH_W; x++) {
+    const float u = (float)x / (MOUTH_W - 1);
+    const int yT = (int)mouthTop(u);
+    const int yB = (int)mouthBottom(u, amount);
+    if (yB - yT >= 1)
+      mouth->drawFastVLine(x, yT, yB - yT, FILL);
+    mouth->drawFastVLine(x, yT - MOUTH_LINE_T + 1, MOUTH_LINE_T, INK);
+  }
+
+  // One snaggletooth, rotated onto the lip. Hanging it straight down leaves it
+  // leaning away from a lip that is sloping underneath it, so its base lies
+  // along the lip and its tip along the lip's normal.
+  const int fx = (int)(FANG_AT * (MOUTH_W - 1));
+  const float top = mouthTop((float)fx / (MOUTH_W - 1));
+  const int step = 3;
+  const float a = mouthTop((float)(fx - step) / (MOUTH_W - 1));
+  const float b = mouthTop((float)(fx + step) / (MOUTH_W - 1));
+  const float m = (b - a) / (2.0f * step);
+  const float norm = sqrtf(1.0f + m * m);
+  const float ux = 1.0f / norm, uy = m / norm;      // along the lip
+  const float nx = -m / norm, ny = 1.0f / norm;     // its normal, pointing down
+
+  auto px = [&](float along, float down) { return (int)(fx + along * ux + down * nx); };
+  auto py = [&](float along, float down) { return (int)(top + along * uy + down * ny); };
+
+  mouth->fillTriangle(px(-FANG_W, -1), py(-FANG_W, -1),
+                      px(FANG_W, -1), py(FANG_W, -1),
+                      px(0, FANG_LEN), py(0, FANG_LEN), INK);
+  mouth->fillTriangle(px(-FANG_W + 2, 0), py(-FANG_W + 2, 0),
+                      px(FANG_W - 2, 0), py(FANG_W - 2, 0),
+                      px(0, FANG_LEN - 3), py(0, FANG_LEN - 3), SCLERA);
+
+  mouth->pushSprite(MOUTH_X, MOUTH_Y);
+}
+
+/** Anime nose: a dash. Two pixels of angle is the whole thing. */
+static void drawNose() {
+  gfx->drawLine(155, NOSE_Y, 161, NOSE_Y + 3, themeInk());
+  gfx->drawLine(155, NOSE_Y + 1, 161, NOSE_Y + 4, themeInk());
 }
 
 /** One line of text below the eyes: what it is connected to and doing. */
@@ -403,7 +523,7 @@ static void drawStatus() {
 /** What is loaded, elided in the middle so both ends stay readable. */
 static void drawTitle() {
   char line[64];
-  if (!in.showText || phState.panicked || !phState.hostSeen)
+  if (!in.showText || fullFace() || phState.panicked || !phState.hostSeen)
     line[0] = '\0';
   else
     snprintf(line, sizeof(line), "%s", phState.title);
@@ -445,7 +565,11 @@ void faceBegin(TFT_eSPI *tft) {
   eye->setColorDepth(16);
   eye->createSprite(EYE_W, EYE_H);
 
-  if (!eye->created())
+  mouth = new TFT_eSprite(tft);
+  mouth->setColorDepth(16);
+  mouth->createSprite(MOUTH_W, MOUTH_H);
+
+  if (!eye->created() || !mouth->created())
     Serial.println(F("[face] sprite allocation failed"));
 
   nextBlinkAt = millis() + 1200;
@@ -455,6 +579,10 @@ void faceBegin(TFT_eSPI *tft) {
 void faceInvalidate() {
   lastStatus[0] = '\0';
   lastTitle[0] = '\0';
+}
+
+void faceShowMouth(bool on) {
+  mouthAllowed = on;
 }
 
 void faceTick() {
@@ -511,9 +639,27 @@ void faceTick() {
     bob = approach(bob, 0.0f, 12.0f, dt);
   }
 
+  // -- Mouth ---------------------------------------------------------------
+  // The mouth carries the rhythm the bob used to: it opens on the stroke
+  // phase, scaled by intensity, and shuts when nothing is moving.
+  if (in.moving && !in.panicked) {
+    const float ph = bobPhase - floorf(bobPhase);
+    const float swing = 0.35f + 0.65f * t;
+    mouthOpen = (0.5f - 0.5f * cosf(ph * TWO_PI)) * swing;
+  }
+  else {
+    mouthOpen = approach(mouthOpen, 0.0f, 3.0f, dt);
+  }
+
   drawStatus();
   drawTitle();
 
   drawEye(160 - (BODY_W / 2 + EYE_GAP / 2), true);
   drawEye(160 + (BODY_W / 2 + EYE_GAP / 2), false);
+
+  if (fullFace()) {
+    drawNose();
+    if (mouthAllowed && mouth != nullptr && mouth->created())
+      drawMouth(mouthOpen);
+  }
 }
