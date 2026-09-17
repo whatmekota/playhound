@@ -342,6 +342,140 @@ def panel(P, theme, lid, inten, hearts, label):
 def params(over):
     P=dict(BASE); P.update(over); return P
 
+
+# ===========================================================================
+# Mouth
+#
+# Same construction as the eyes: an upper and a lower edge evaluated per
+# column, meeting at the corners. `open` scales their separation, so a closed
+# mouth is the two edges collapsing onto one line rather than a second shape.
+# ===========================================================================
+
+MOUTH_BASE = dict(
+    # Narrower than one eye. A mouth as wide as the eyes reads as a muzzle;
+    # anime keeps it inside the gap between the pupils.
+    MW=78, MH=52,               # sprite
+    UP_H=13, LO_H=18,           # half-heights at full open
+    SMILE=5,                    # corner lift in px; negative frowns
+    BOW=4, BOW_W=0.13,          # the cupid's bow notch at the top centre
+    ARCH_P=0.85,                # how full the opening is across the width
+    LINE_T=3,                   # closed-mouth lip thickness
+    FANGS=0, FANG_LEN=7,        # upper fangs; lower ones are half as long
+    FILL=None,                  # interior; defaults to ink
+    TONGUE=False, TONGUE_AT=0.45,
+    INK=None, TONGUE_RGB=(226,96,120),
+)
+
+MOUTHS = {
+    # A solid black opening reads as a hole; the painted references outline in
+    # dark and fill lighter, so anything without fangs gets a maroon interior.
+    "simple":  dict(FILL=(72,26,34)),
+    "open":    dict(TONGUE=True, FILL=(72,26,34)),
+    "fangs":   dict(FANGS=3, TONGUE=True, SMILE=8, LO_H=21),
+    "cat":     dict(SMILE=-1, BOW=6, BOW_W=0.22, UP_H=7, LO_H=9, FILL=(72,26,34)),
+}
+
+def _arch(u, p):
+    if u <= 0.0 or u >= 1.0: return 0.0
+    return math.sin(math.pi*u)**p
+
+def mouth_sprite(P, amount, bg, ink, sclera):
+    """amount 0 = closed line, 1 = wide open."""
+    MW, MH = P["MW"], P["MH"]
+    img = Image.new("RGB", (MW, MH), bg); d = ImageDraw.Draw(img)
+    cy = MH//2
+    amount = max(0.0, min(1.0, amount))
+
+    def base(u):
+        # Corners ride above the centre for a smile, below it for a frown.
+        return cy - P["SMILE"] * (abs(u-0.5)*2.0)**1.5
+
+    def bow(u):
+        # A small notch pushing the upper lip DOWN at the centre.
+        t = abs(u-0.5)/P["BOW_W"]
+        return P["BOW"] * max(0.0, 1.0-t)
+
+    def edges(x):
+        u = x/(MW-1); b = base(u); a = _arch(u, P["ARCH_P"])
+        return (b - amount*P["UP_H"]*a + bow(u),
+                b + amount*P["LO_H"]*a)
+
+    # Interior.
+    fill = P["FILL"] or ink
+    for x in range(MW):
+        yT, yB = edges(x)
+        if yB - yT >= 1:
+            d.line([(x, int(yT)), (x, int(yB))], fill=fill)
+
+    # Tongue: sits in the bottom of the opening, never touching the lip line.
+    if P["TONGUE"] and amount > P["TONGUE_AT"]:
+        for x in range(MW):
+            yT, yB = edges(x)
+            if yB - yT < 8: continue
+            top = yB - (yB-yT)*0.42
+            if yB-2 > top:
+                d.line([(x, int(top)), (x, int(yB)-2)], fill=P["TONGUE_RGB"])
+
+    # Fangs hang from the upper edge; the lower ones point back up at half
+    # length, which is what reads as a fanged mouth rather than a saw.
+    if P["FANGS"] and amount > 0.2:
+        n = P["FANGS"]
+        for i in range(n):
+            u = (i+0.5)/n
+            x = int(u*(MW-1)); yT, yB = edges(x)
+            ln = min(P["FANG_LEN"], (yB-yT)*0.55)
+            d.polygon([(x-5, yT-1), (x+5, yT-1), (x, yT+ln)], fill=sclera)
+        for i in range(n-1):
+            u = (i+1.0)/n
+            x = int(u*(MW-1)); yT, yB = edges(x)
+            ln = min(P["FANG_LEN"]*0.5, (yB-yT)*0.35)
+            d.polygon([(x-4, yB+1), (x+4, yB+1), (x, yB-ln)], fill=sclera)
+
+    # The lip line, always: it is the whole mouth when closed.
+    for x in range(MW):
+        yT, _ = edges(x)
+        d.line([(x, int(yT)-P["LINE_T"]+1), (x, int(yT))], fill=ink)
+    return img
+
+def nose_dash(img, cx, cy, ink):
+    """Anime nose: a dash. Two pixels of angle is the whole thing."""
+    d = ImageDraw.Draw(img)
+    d.line([(cx-5, cy), (cx+1, cy+3)], fill=ink, width=2)
+
+def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label):
+    bg, sclera, ink, muted = THEMES[theme]
+    img = Image.new("RGB", (320, 240), bg)
+    ECY, EYE_CY, GAP, BW = eyeP["ECY"], eyeP["EYE_CY"], eyeP["EYE_GAP"], eyeP["BODY_W"]
+    for bcx, left in ((160-(BW//2+GAP//2), True), (160+(BW//2+GAP//2), False)):
+        x = bcx - BW//2 - body_start(eyeP, left)
+        img.paste(eye_sprite(eyeP, left, lid, inten, hearts, bg, sclera, ink),
+                  (x, EYE_CY-ECY))
+    nose_dash(img, 160, 154, ink)
+    m = mouth_sprite(mouthP, amount, bg, ink, sclera)
+    # 170 is just inside the control bar's strip, which is empty whenever the
+    # bar is hidden - which is nearly always.
+    img.paste(m, (160-mouthP["MW"]//2, 170))
+    ImageDraw.Draw(img).text((6, 228), label, fill=muted)
+    return img
+
+if len(sys.argv)>1 and sys.argv[1]=="face":
+    eyeP=params(VARIANTS["M  minimal, big pupil"])
+    eyeP["EYE_CY"] = 116          # drop the eyes to close the gap to the mouth
+    shots=[]
+    for name in ("simple","open","fangs","cat"):
+        mp=dict(MOUTH_BASE); mp.update(MOUTHS[name])
+        shots.append((f"{name}  idle", mp, 1.0, 0.0, False, 0.0))
+        shots.append((f"{name}  mid",  mp, 1.0, 0.5, False, 0.55))
+        shots.append((f"{name}  peak", mp, 1.0, 0.9, True,  1.0))
+    cols=3
+    out=Image.new("RGB",(320*cols,240*((len(shots)+cols-1)//cols)))
+    for i,(lbl,mp,lid,inten,h,amt) in enumerate(shots):
+        out.paste(face_panel(eyeP,mp,"light",lid,inten,h,amt,lbl),
+                  (320*(i%cols),240*(i//cols)))
+    out.save("_preview.png")
+    print("wrote _preview.png", out.size)
+    sys.exit(0)
+
 if len(sys.argv)>1:
     key=[k for k in VARIANTS if k.startswith(sys.argv[1])][0]
     P=params(VARIANTS[key])
