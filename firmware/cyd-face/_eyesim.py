@@ -470,7 +470,7 @@ def nose_dash(img, cx, cy, ink):
     d = ImageDraw.Draw(img)
     d.line([(cx-5, cy), (cx+1, cy+3)], fill=ink, width=2)
 
-def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label):
+def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label, bangsP=None):
     bg, sclera, ink, muted = THEMES[theme]
     img = Image.new("RGB", (320, 240), bg)
     ECY, EYE_CY, GAP, BW = eyeP["ECY"], eyeP["EYE_CY"], eyeP["EYE_GAP"], eyeP["BODY_W"]
@@ -478,6 +478,10 @@ def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label):
         x = bcx - BW//2 - body_start(eyeP, left)
         img.paste(eye_sprite(eyeP, left, lid, inten, hearts, bg, sclera, ink),
                   (x, EYE_CY-ECY))
+    # After the eyes: the eye sprite's empty top rows would paint over the
+    # fringe, and hair hangs in front of the forehead in any case.
+    if bangsP:
+        draw_bangs(img, bangsP, ink)
     nose_dash(img, 160, 154, ink)
     m = mouth_sprite(mouthP, amount, bg, ink, sclera)
     # 170 is just inside the control bar's strip, which is empty whenever the
@@ -485,6 +489,67 @@ def face_panel(eyeP, mouthP, theme, lid, inten, hearts, amount, label):
     img.paste(m, (160-mouthP["MW"]//2, 170))
     ImageDraw.Draw(img).text((6, 228), label, fill=muted)
     return img
+
+
+# ===========================================================================
+# Bangs
+#
+# Just the fringe, not a head of hair: a mass filled from the top of the panel
+# down to a per-column edge. The style is entirely in that edge - how many
+# strands, how deep they hang, how uneven they are, and how far the locks at
+# the sides come down past the rest.
+# ===========================================================================
+
+BANGS_BASE = dict(
+    BASE=40,        # where the fringe sits before any strand shape
+    N=5, DEPTH=16,  # strand count and how far their points hang
+    JAG=0.0,        # per-strand length variation, 0 = all equal
+    PART=0.0,       # centre parting: lifts the fringe over the middle
+    SIDE=34,        # extra length for the locks at the temples
+    SIDE_AT=0.62,   # where those locks start, as a fraction of half-width
+    LINE_T=3,
+    HAIR=(150, 26, 58),
+)
+
+BANGS = {
+    "4 bob":    dict(N=5, DEPTH=16, JAG=0.18, PART=0.45, SIDE=34),
+    "5 wolf":   dict(N=9, DEPTH=25, JAG=0.60, PART=0.22, SIDE=46, BASE=34),
+    "6 blunt":  dict(N=4, DEPTH=6,  JAG=0.05, PART=0.0,  SIDE=58, SIDE_AT=0.70, BASE=46),
+}
+
+def bang_edge(u, P):
+    t = u * P["N"]
+    i = int(t)
+    frac = t - i
+    point = 1.0 - abs(frac*2.0 - 1.0)          # 1 at a strand's centre
+    # Deterministic per-strand variation, so "uneven" is repeatable.
+    var = 1.0 + P["JAG"] * (((i*37) % 7)/3.0 - 1.0)
+    y = P["BASE"] + P["DEPTH"] * point * var
+    y -= P["PART"] * P["DEPTH"] * max(0.0, 1.0 - abs(u-0.5)/0.18)
+    edge = max(0.0, (abs(u-0.5)*2.0 - P["SIDE_AT"]) / (1.0 - P["SIDE_AT"]))
+    y += P["SIDE"] * edge**1.3
+    return y
+
+def draw_bangs(img, P, ink):
+    d = ImageDraw.Draw(img)
+    W = img.width
+    for x in range(W):
+        u = x/(W-1)
+        y = int(bang_edge(u, P))
+        d.line([(x, 0), (x, y)], fill=P["HAIR"])
+        d.line([(x, y-P["LINE_T"]+1), (x, y)], fill=ink)
+
+if len(sys.argv)>1 and sys.argv[1]=="bangs":
+    eyeP=params(VARIANTS["M  minimal, big pupil"]); eyeP["EYE_CY"]=118
+    mp=dict(MOUTH_BASE); mp.update(MOUTHS["cat"])
+    names=list(BANGS)
+    out=Image.new("RGB",(320*len(names),240*2))
+    for i,n in enumerate(names):
+        bp=dict(BANGS_BASE); bp.update(BANGS[n])
+        out.paste(face_panel(eyeP,mp,"light",1.0,0.0,False,0.0,n,bp),(320*i,0))
+        out.paste(face_panel(eyeP,mp,"dark", 1.0,0.85,True,0.9,n,bp),(320*i,240))
+    out.save("_preview.png"); print("wrote _preview.png", out.size)
+    sys.exit(0)
 
 if len(sys.argv)>1 and sys.argv[1]=="face":
     eyeP=params(VARIANTS["M  minimal, big pupil"])

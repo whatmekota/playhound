@@ -80,7 +80,13 @@ static const int   FANG_LEN  = 9;
 static const int   FANG_W    = 5;
 static const Rgb   MOUTH_FILL { 72, 26, 34 };
 
-static const int NOSE_Y = 158;
+static const int NOSE_Y = 156;
+
+// The mouth is tied to the stroke rate but deliberately slower than it. At
+// 120spm the stroke phase is 2Hz, and a mouth flapping twice a second reads as
+// chewing rather than breathing.
+static const float MOUTH_RATE   = 0.34f;   // fraction of the stroke rate
+static const float MOUTH_MAX_HZ = 0.9f;    // and never faster than this
 
 static TFT_eSPI *gfx = nullptr;
 static TFT_eSprite *eye = nullptr;
@@ -90,6 +96,7 @@ static TFT_eSprite *mouth = nullptr;
 // is up rather than the two fighting over them.
 static bool mouthAllowed = true;
 static float mouthOpen = 0.0f;
+static float mouthPhase = 0.0f;
 
 static bool fullFace() {
   return settings.layout == FACE_FULL;
@@ -482,10 +489,11 @@ static void drawMouth(float amount) {
   mouth->pushSprite(MOUTH_X, MOUTH_Y);
 }
 
-/** Anime nose: a dash. Two pixels of angle is the whole thing. */
+/** Anime nose: a short stroke, leaning steeply rather than lying flat. */
 static void drawNose() {
-  gfx->drawLine(155, NOSE_Y, 161, NOSE_Y + 3, themeInk());
-  gfx->drawLine(155, NOSE_Y + 1, 161, NOSE_Y + 4, themeInk());
+  const uint16_t INK = themeInk();
+  gfx->drawLine(157, NOSE_Y, 161, NOSE_Y + 7, INK);
+  gfx->drawLine(158, NOSE_Y, 162, NOSE_Y + 7, INK);
 }
 
 /** One line of text below the eyes: what it is connected to and doing. */
@@ -643,9 +651,14 @@ void faceTick() {
   // The mouth carries the rhythm the bob used to: it opens on the stroke
   // phase, scaled by intensity, and shuts when nothing is moving.
   if (in.moving && !in.panicked) {
-    const float ph = bobPhase - floorf(bobPhase);
+    float hz = (in.spm / 60.0f) * MOUTH_RATE;
+    if (hz > MOUTH_MAX_HZ)
+      hz = MOUTH_MAX_HZ;
+    mouthPhase += hz * dt;
+    if (mouthPhase > 1.0f)
+      mouthPhase -= 1.0f;
     const float swing = 0.35f + 0.65f * t;
-    mouthOpen = (0.5f - 0.5f * cosf(ph * TWO_PI)) * swing;
+    mouthOpen = (0.5f - 0.5f * cosf(mouthPhase * TWO_PI)) * swing;
   }
   else {
     mouthOpen = approach(mouthOpen, 0.0f, 3.0f, dt);
