@@ -155,7 +155,9 @@ THEMES = {"light": ((240,238,246),(255,255,255),(10,8,16),(96,88,112)),
 
 def bell(s, a, p):
     if s <= 0.0 or s >= 1.0: return 0.0
-    return math.sin(math.pi * (s ** (math.log(0.5)/math.log(a)))) ** p
+    # max(0,...) mirrors the guard face.cpp needs: in float, sin() of pi lands
+    # just below zero and a fractional power of it is NaN.
+    return max(0.0, math.sin(math.pi * (s ** (math.log(0.5)/math.log(a))))) ** p
 
 def tent(s, a):
     """Piecewise-linear peak at `a`: straight edges, hard apex."""
@@ -233,7 +235,10 @@ def eye_sprite(P, left, lid, inten, hearts, bg, sclera, ink):
         return s,(ECY+v-int(upOpen*up(s))),(ECY+v+int(loOpen*lo(s)))
     def lash_t(x):
         s=S(x); u=(x-M)/(BW-1)
-        roundp = math.sin(math.pi*u)**0.45
+        # Guarded to match face.cpp: sinf(PI) is slightly NEGATIVE in float,
+        # where Python's sin(pi) is slightly positive. Unguarded, the firmware
+        # hits NaN here and the simulator does not.
+        roundp = max(0.0, math.sin(math.pi*u))**0.45
         angp = min(u, 1.0-u)*2.0
         prof = (1.0-A)*roundp + A*angp
         return P["LASH_BASE"]+int(P["LASH"]*prof*(0.30+0.70*s))

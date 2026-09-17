@@ -167,7 +167,12 @@ static bool heartsOn() {
 static float bell(float s, float a, float p) {
   if (s <= 0.0f || s >= 1.0f)
     return 0.0f;
-  return powf(sinf(PI * powf(s, logf(0.5f) / logf(a))), p);
+  // Same NaN trap as the lash profile: if powf() rounds to exactly 1.0f the
+  // sine lands just below zero and powf() of it is NaN. It cannot happen at
+  // the current BODY_W, but it is one column away from happening at a larger
+  // one, and a NaN here paints a full-height line.
+  const float w = sinf(PI * powf(s, logf(0.5f) / logf(a)));
+  return w > 0.0f ? powf(w, p) : 0.0f;
 }
 
 /** Piecewise-linear peak at `a`: straight edges, hard apex. */
@@ -302,7 +307,12 @@ static void drawEye(int bodyCx, bool leftSide) {
     if (yB < EYE_H)
       eye->drawFastVLine(x, yB, EYE_H - yB, BG);
 
-    const float roundP = powf(sinf(PI * u), 0.45f);
+    // sinf(PI) is about -8.7e-8 in float rather than 0, and powf() of a
+    // negative base with a fractional exponent is NaN. That made `thick`
+    // garbage on the last column of every eye and painted a full-height line
+    // down it. Python's sin(pi) is positive, so the simulator never showed it.
+    const float arch = sinf(PI * u);
+    const float roundP = powf(arch > 0.0f ? arch : 0.0f, 0.45f);
     const float angP = (u < 1.0f - u ? u : 1.0f - u) * 2.0f;
     const float prof = (1.0f - ANG) * roundP + ANG * angP;
     const int thick = LASH_BASE + (int)(LASH * prof * (0.30f + 0.70f * s));
