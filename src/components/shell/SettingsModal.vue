@@ -10,6 +10,7 @@ import UiModal from '~/components/ui/UiModal.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { toast } from '~/composables/useToast'
+import { LOGOS } from '~/lib/logos'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
@@ -233,6 +234,31 @@ function openBackup() {
                     </span>
                   </span>
                 </button>
+              </div>
+
+              <!-- Logo: also swaps the favicon, so the browser tab follows. -->
+              <div class="flex flex-col gap-2">
+                <div class="flex gap-2 items-baseline">
+                  <span class="text-[13px] text-fg font-medium">Logo</span>
+                  <span class="hint">Shown in the sidebar, on the splash and as the tab icon</span>
+                </div>
+                <div class="gap-2 grid grid-cols-4" role="radiogroup" aria-label="Logo">
+                  <button
+                    v-for="l in LOGOS"
+                    :key="l.id"
+                    v-tip="l.note"
+                    type="button"
+                    role="radio"
+                    :aria-checked="theme.logo === l.id"
+                    :aria-label="l.label"
+                    class="group p-2 focusable rounded-[var(--radius-lg)] flex flex-col gap-1.5 transition-[box-shadow,transform] duration-200 items-center hover:-translate-y-0.5"
+                    :class="theme.logo === l.id ? 'ring-2 ring-accent shadow-[var(--shadow-md)] bg-accent-soft' : 'ring-1 ring-edge-strong hover:ring-fg/25'"
+                    @click="theme.setLogo(l.id)"
+                  >
+                    <BrandMark :logo="l.id" :size="52" class="transition-transform duration-300 ease-[var(--ease-spring)] group-hover:scale-105" />
+                    <span class="text-[12px] font-medium" :class="theme.logo === l.id ? 'text-fg' : 'text-fg-muted'">{{ l.label }}</span>
+                  </button>
+                </div>
               </div>
 
               <div class="px-4 py-3 card">

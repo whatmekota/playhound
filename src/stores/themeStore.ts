@@ -1,5 +1,7 @@
+import type { LogoId } from '~/lib/logos'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { DEFAULT_LOGO, isLogoId, logoUrl } from '~/lib/logos'
 import { KEYS } from '~/lib/persist'
 
 export type ThemeId = 'dark' | 'light' | 'catppuccin' | 'dracula'
@@ -40,5 +42,20 @@ export const useThemeStore = defineStore('theme', () => {
 
   watch(current, apply)
 
-  return { current, apply, THEMES }
+  // ── Logo ────────────────────────────────────────────────────────────────
+  // Stored raw (not JSON) so index.html can read it before first paint and
+  // point the favicon at the right file without a flash of the default.
+  const stored = localStorage.getItem(KEYS.logo.key)
+  const logo = ref<LogoId>(isLogoId(stored) ? stored : DEFAULT_LOGO)
+
+  function setLogo(id: LogoId) {
+    logo.value = id
+    localStorage.setItem(KEYS.logo.key, id)
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (link)
+      link.href = logoUrl(id)
+  }
+  setLogo(logo.value)
+
+  return { current, apply, THEMES, logo, setLogo }
 })

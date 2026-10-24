@@ -26,6 +26,8 @@ let tipEl: HTMLDivElement | null = null
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let warmUntil = 0
 let current: HTMLElement | null = null
+/** The element a delayed show is waiting for. */
+let pending: HTMLElement | null = null
 
 const store = new WeakMap<HTMLElement, TipOptions>()
 
@@ -96,7 +98,9 @@ function place(target: HTMLElement, opts: TipOptions) {
 
 function show(target: HTMLElement) {
   const opts = store.get(target)
-  if (!opts?.text)
+  // The element may have gone between scheduling and showing (a dialog
+  // closed under the pointer); a detached rect would pin the tip at 0,0.
+  if (!opts?.text || !target.isConnected)
     return
   current = target
   place(target, opts)
@@ -107,17 +111,20 @@ function hide() {
   if (showTimer)
     clearTimeout(showTimer)
   showTimer = null
+  pending = null
   if (current)
     warmUntil = Date.now() + WARM_MS
   current = null
   tipEl?.classList.remove('on')
 }
 
-function onEnter(this: HTMLElement) {
+function onEnter(e: Event) {
+  const el = e.currentTarget as HTMLElement
   if (showTimer)
     clearTimeout(showTimer)
+  pending = el
   const delay = Date.now() < warmUntil ? 0 : SHOW_DELAY
-  showTimer = setTimeout(() => show(this), delay)
+  showTimer = setTimeout(() => show(el), delay)
 }
 
 function bind(el: HTMLElement, value: TipValue) {
@@ -144,7 +151,8 @@ export const vTip: Directive<HTMLElement, TipValue> = {
     bind(el, value)
   },
   beforeUnmount(el) {
-    if (current === el)
+    // Also cancel a show still waiting on its delay for this element.
+    if (current === el || pending === el)
       hide()
     el.removeEventListener('pointerenter', onEnter)
     el.removeEventListener('pointerleave', hide)

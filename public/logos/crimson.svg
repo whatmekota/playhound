@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 7a in Crimson — red like the reference eyes -->
+  <defs><linearGradient id="t" x1="6" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fca5a5"/><stop offset=".45" stop-color="#e11d48"/><stop offset="1" stop-color="#881337"/></linearGradient><clipPath id="c"><rect x="2" y="2" width="60" height="60" rx="15"/></clipPath></defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#t)"/>
+  <g clip-path="url(#c)">
+    <path d="M47 6 L60 8.5 L53.5 15.5 Z" fill="#2a0710"/>
+    <path d="M7 19 C14 31 27 43 43.5 48 L47 48 L54.5 22 C45 21.6 36.5 23.5 28.4 26.2 C20.4 25.6 13 22.8 7 19Z" fill="#2a0710"/>
+    <path d="M15.5 30.6 C25.5 28.6 37 32.6 44.6 41.6 L46 48.2 C35.6 47 25.4 40.6 15.5 30.6Z" fill="#fb923c"/>
+    <path d="M29.6 42.2 L33.4 35.4 L35 45.4 Z" fill="#fff"/>
+    <path d="M64 13 C57.6 25 52.6 38 46.4 50.4 C42 58.6 35 62.6 27 64 H64Z" fill="#4c0519" opacity=".5"/>
+    <path d="M26.4 25.6 C35 22.6 45 20.2 54.4 19 L58.4 21.4 C57.2 23 56.2 24.8 55.4 26.6 C54.6 30.6 54.2 34 54 37.6 C52.2 34 51 30.2 50.4 26.2 C43.6 27 36.6 28.6 30.4 31 Z" fill="#fff"/>
+    <path d="M45.8 48.4 C49.2 46 51.4 42.8 52.4 39 C53.4 43.4 52.6 46.6 51 48.8 Z" fill="#fff"/>
+  </g>
+</svg>
