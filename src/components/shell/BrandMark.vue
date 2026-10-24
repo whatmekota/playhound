@@ -6,8 +6,8 @@ import { useThemeStore } from '~/stores/themeStore'
 
 /**
  * The playhound mark: a sly flat grin with one fang, in whichever colouring
- * is picked in Settings → Appearance (`logo` forces a specific one, for the
- * picker itself).
+ * is picked in Settings → Appearance, optionally with its tongue out (`logo`
+ * and `tongue` force a specific one, for the picker itself).
  *
  * Drawn as an <img> of the file in public/logos/ rather than inline SVG: each
  * logo defines its own gradient and clip ids, and several marks on one page
@@ -16,10 +16,10 @@ import { useThemeStore } from '~/stores/themeStore'
  * `animated` springs it in with a little snap of the jaw, for the splash and
  * other first impressions.
  */
-const props = withDefaults(defineProps<{ size?: number, animated?: boolean, logo?: LogoId }>(), { size: 28 })
+const props = withDefaults(defineProps<{ size?: number, animated?: boolean, logo?: LogoId, tongue?: boolean }>(), { size: 28, tongue: undefined })
 
 const theme = useThemeStore()
-const src = computed(() => logoUrl(props.logo ?? theme.logo))
+const src = computed(() => logoUrl(props.logo ?? theme.logo, props.tongue ?? theme.logoTongue))
 </script>
 
 <template>

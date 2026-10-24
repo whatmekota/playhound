@@ -47,15 +47,26 @@ export const useThemeStore = defineStore('theme', () => {
   // point the favicon at the right file without a flash of the default.
   const stored = localStorage.getItem(KEYS.logo.key)
   const logo = ref<LogoId>(isLogoId(stored) ? stored : DEFAULT_LOGO)
+  const logoTongue = ref(localStorage.getItem(KEYS.logoTongue.key) === '1')
+
+  function syncFavicon() {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (link)
+      link.href = logoUrl(logo.value, logoTongue.value)
+  }
 
   function setLogo(id: LogoId) {
     logo.value = id
     localStorage.setItem(KEYS.logo.key, id)
-    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
-    if (link)
-      link.href = logoUrl(id)
+    syncFavicon()
   }
-  setLogo(logo.value)
 
-  return { current, apply, THEMES, logo, setLogo }
+  function setLogoTongue(on: boolean) {
+    logoTongue.value = on
+    localStorage.setItem(KEYS.logoTongue.key, on ? '1' : '0')
+    syncFavicon()
+  }
+  syncFavicon()
+
+  return { current, apply, THEMES, logo, setLogo, logoTongue, setLogoTongue }
 })

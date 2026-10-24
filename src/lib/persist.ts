@@ -51,6 +51,7 @@ export const KEYS = {
   // ── Settings ───────────────────────────────────────────────────────────
   theme: def('ph:theme', 'setting', 'Theme'),
   logo: def('ph:ui.logo', 'setting', 'Logo'),
+  logoTongue: def('ph:ui.logoTongue', 'setting', 'Logo with the tongue out'),
   playerPrefs: def('ph:player.prefs', 'setting', 'Volume, mute and speed'),
   queuePrefs: def('ph:queue.prefs', 'setting', 'Shuffle and repeat'),
   deviceConfig: def('ph:device.config', 'setting', 'Device axes and presets'),

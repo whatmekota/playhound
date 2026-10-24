@@ -31,6 +31,7 @@ export function isLogoId(v: unknown): v is LogoId {
   return typeof v === 'string' && LOGOS.some(l => l.id === v)
 }
 
-export function logoUrl(id: LogoId): string {
-  return `${import.meta.env.BASE_URL}logos/${id}.svg`
+/** Each colouring also comes with the tongue out (`<id>-tongue.svg`). */
+export function logoUrl(id: LogoId, tongue = false): string {
+  return `${import.meta.env.BASE_URL}logos/${id}${tongue ? '-tongue' : ''}.svg`
 }

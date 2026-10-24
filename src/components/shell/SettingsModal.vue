@@ -255,9 +255,17 @@ function openBackup() {
                     :class="theme.logo === l.id ? 'ring-2 ring-accent shadow-[var(--shadow-md)] bg-accent-soft' : 'ring-1 ring-edge-strong hover:ring-fg/25'"
                     @click="theme.setLogo(l.id)"
                   >
-                    <BrandMark :logo="l.id" :size="52" class="transition-transform duration-300 ease-[var(--ease-spring)] group-hover:scale-105" />
+                    <BrandMark :logo="l.id" :tongue="theme.logoTongue" :size="52" class="transition-transform duration-300 ease-[var(--ease-spring)] group-hover:scale-105" />
                     <span class="text-[12px] font-medium" :class="theme.logo === l.id ? 'text-fg' : 'text-fg-muted'">{{ l.label }}</span>
                   </button>
+                </div>
+                <div class="mt-1 px-4 py-3 card">
+                  <UiSwitch
+                    :model-value="theme.logoTongue"
+                    label="Tongue out"
+                    hint="The same grin, with the tongue hanging out"
+                    @update:model-value="theme.setLogoTongue"
+                  />
                 </div>
               </div>
 
