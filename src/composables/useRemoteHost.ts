@@ -5,6 +5,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { remoteEnabled } from '~/stores/remoteStore'
 import { useSafetyStore } from '~/stores/safetyStore'
+import { useFaceLink } from './useFaceLink'
 import { remoteRoom, useRemoteLink } from './useRemoteLink'
 import { useRemoteStatus } from './useRemoteStatus'
 
@@ -65,11 +66,14 @@ export function useRemoteHost(actions: {
     pushState()
   }
 
+  const status = useRemoteStatus()
+
   const link = useRemoteLink('host', () => remoteRoom.value, (msg) => {
     if (msg?.type === 'cmd' && msg.action)
       apply(msg.action as RemoteAction)
     if (msg?.type === 'hello')
       pushState()
+    status.emit(msg)
   })
 
   function pushState() {
@@ -88,7 +92,7 @@ export function useRemoteHost(actions: {
 
   // Mirror into the shared status so panels can show it without opening a
   // second connection.
-  const status = useRemoteStatus()
+  status.send.value = link.send
   watch(link.connected, v => (status.connected.value = v), { immediate: true })
   watch(link.peers, v => (status.peers.value = v), { deep: true, immediate: true })
 
@@ -140,6 +144,9 @@ export function useRemoteHost(actions: {
       pushState()
     },
   )
+
+  // The CYD face rides this same socket; it stays quiet until switched on.
+  useFaceLink()
 
   return { connected: link.connected, peers: link.peers, room: remoteRoom }
 }

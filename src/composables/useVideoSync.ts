@@ -1,13 +1,36 @@
+import type { Ref } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import { onUnmounted, ref } from 'vue'
 import { advanceTwistPhase, estimateVelocity, synthAxes, synthTargets } from '~/lib/axisSynth'
 import { interpolatePosition, nextActionAt } from '~/lib/funscriptParser'
+import { clampLatency } from '~/lib/latency'
+import { KEYS } from '~/lib/persist'
 import { calcInterval } from '~/lib/tcodeEncoder'
 import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useTCode } from './useTCode'
 
+let latency: Ref<number> | null = null
+
+/**
+ * Global device latency in ms, on top of every script's own offset and with
+ * the same sign: positive reads the script that much further ahead, for a
+ * device that arrives late. It is wall-clock time, so it is scaled by the
+ * playback rate before being added to video time.
+ *
+ * Only the device path uses it. The script pulse (useScriptPulse) stays on
+ * script offset alone: the audio has no device lag to make up, and with the
+ * device compensated, the strokes are felt at video time + offset — exactly
+ * where the pulse already sits.
+ */
+export function useDeviceLatency(): Ref<number> {
+  latency ??= useLocalStorage<number>(KEYS.deviceLatency.key, 0)
+  return latency
+}
+
 export function useVideoSync() {
   const scriptStore = useScriptStore()
+  const latencyMs = useDeviceLatency()
   const motion = useMotionStore()
   const { sendPosition, homeAllAxes } = useTCode()
 
@@ -61,6 +84,11 @@ export function useVideoSync() {
     }
   }
 
+  /** Device latency in video milliseconds at this playback rate. */
+  function leadMs(speed: number) {
+    return clampLatency(latencyMs.value) * (speed || 1)
+  }
+
   function attach(el: HTMLVideoElement) {
     videoEl = el
   }
@@ -96,13 +124,14 @@ export function useVideoSync() {
     let strokePos: number | null = null
     let strokeInterval = 100
 
+    const lead = leadMs(speed)
     for (const script of scriptStore.activeScripts) {
       const { channel, parsed, offsetMs } = script
       const { actions } = parsed
       if (actions.length === 0)
         continue
 
-      const adjustedMs = timeMs + (offsetMs ?? 0)
+      const adjustedMs = timeMs + (offsetMs ?? 0) + lead
       const pos = interpolatePosition(actions, adjustedMs)
       const nextAt = nextActionAt(actions, adjustedMs)
       const interval = calcInterval(nextAt, adjustedMs, speed)
@@ -128,9 +157,10 @@ export function useVideoSync() {
       return
     const timeMs = videoEl.currentTime * 1000
     const speed = videoEl.playbackRate
+    const lead = leadMs(speed)
     for (const script of scriptStore.activeScripts) {
       const { channel, parsed, offsetMs } = script
-      const adjustedMs = timeMs + (offsetMs ?? 0)
+      const adjustedMs = timeMs + (offsetMs ?? 0) + lead
       const pos = interpolatePosition(parsed.actions, adjustedMs)
       const nextAt = nextActionAt(parsed.actions, adjustedMs)
       const interval = calcInterval(nextAt, adjustedMs, speed)

@@ -10,13 +10,16 @@ import type { AxisConfig, DevicePreset } from '~/stores/deviceStore'
 import { useLocalStorage } from '@vueuse/core'
 import { OutputType } from 'buttplug'
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import LatencyCalibrateModal from '~/components/device/LatencyCalibrateModal.vue'
 import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
 import { useButtplug } from '~/composables/useButtplug'
 import { useSerialPort } from '~/composables/useSerialPort'
 import { useSettings } from '~/composables/useSettings'
 import { axisOutput, useTCode } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
+import { useDeviceLatency } from '~/composables/useVideoSync'
 import { webSerial } from '~/lib/browserApi'
+import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
 import { serialLog } from '~/lib/serialLog'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -285,6 +288,23 @@ onMounted(startFrames)
 onActivated(startFrames)
 onDeactivated(stopFrames)
 onBeforeUnmount(stopFrames)
+
+// ─── Latency ──────────────────────────────────────────────────────────────────
+// Rarely needed, so it sits closed and only says what it is set to.
+const latency = useDeviceLatency()
+const latencyOpen = ref(false)
+const calibrating = ref(false)
+const LATENCY_STEP = 10
+const latencySummary = computed(() => (latency.value ? `${latency.value > 0 ? '+' : '−'}${Math.abs(latency.value)} ms` : 'Off'))
+
+function setLatency(v: number) {
+  latency.value = clampLatency(v)
+}
+function onLatencyInput(e: Event) {
+  const el = e.target as HTMLInputElement
+  setLatency(Number.parseInt(el.value, 10) || 0)
+  el.value = String(latency.value)
+}
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 const presetsOpen = ref(false)
@@ -717,6 +737,66 @@ const logOpen = ref(false)
         </div>
       </div>
     </UiSection>
+
+    <!-- ─── Latency ───────────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="latencyOpen"
+      title="Latency"
+      icon="i-carbon-time"
+      collapsible
+      :summary="latencySummary"
+    >
+      <div class="flex gap-2 items-center">
+        <div class="flex flex-1 flex-col min-w-0">
+          <span class="text-[12.5px] text-fg">Device latency</span>
+          <span class="hint">Added to every script's own offset</span>
+        </div>
+        <div class="well flex shrink-0 items-center">
+          <button
+            type="button"
+            class="text-fg-muted focusable rounded-[var(--radius-sm)] center h-7 w-6 pressable hover:text-fg hover:bg-fg/8"
+            aria-label="Less latency"
+            @click="setLatency(latency - LATENCY_STEP)"
+          >
+            <span class="i-carbon-subtract text-[13px]" />
+          </button>
+          <input
+            type="number"
+            :step="LATENCY_STEP"
+            :min="-LATENCY_LIMIT_MS"
+            :max="LATENCY_LIMIT_MS"
+            :value="latency"
+            class="text-[12px] text-fg num text-center outline-none bg-transparent h-7 w-14"
+            aria-label="Device latency in milliseconds"
+            @change="onLatencyInput"
+          >
+          <button
+            type="button"
+            class="text-fg-muted focusable rounded-[var(--radius-sm)] center h-7 w-6 pressable hover:text-fg hover:bg-fg/8"
+            aria-label="More latency"
+            @click="setLatency(latency + LATENCY_STEP)"
+          >
+            <span class="i-carbon-add text-[13px]" />
+          </button>
+        </div>
+        <span class="text-[11.5px] text-fg-faint">ms</span>
+      </div>
+
+      <div class="flex gap-1.5 items-center">
+        <UiButton size="xs" icon="i-carbon-touch-1" @click="calibrating = true">
+          Calibrate…
+        </UiButton>
+        <UiButton size="xs" variant="ghost" icon="i-carbon-reset" class="ml-auto" :disabled="!latency" @click="setLatency(0)">
+          Reset
+        </UiButton>
+      </div>
+
+      <p class="hint">
+        Positive sends commands earlier, for a device that arrives late. Leave it at 0 unless strokes feel behind the video on every script.
+      </p>
+    </UiSection>
+
+    <LatencyCalibrateModal v-model:open="calibrating" />
 
     <!-- ─── Presets ───────────────────────────────────────────────────────── -->
     <UiSection v-model:open="presetsOpen" title="Presets" icon="i-carbon-settings-adjust" collapsible :summary="activePresetName">
