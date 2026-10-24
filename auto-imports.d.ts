@@ -14,6 +14,7 @@ declare global {
   const RC_PORT: typeof import('./src/composables/useRemoteLink').RC_PORT
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
+  const analyseSoundtrack: typeof import('./src/composables/useSoundtrack').analyseSoundtrack
   const analysisKey: typeof import('./src/composables/useScriptAnalysis').analysisKey
   const arrangeGrid: typeof import('./src/composables/wallGeometry').arrangeGrid
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
@@ -47,6 +48,7 @@ declare global {
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
   const extendRef: typeof import('@vueuse/core').extendRef
+  const getAnalysedGrid: typeof import('./src/composables/useSoundtrack').getAnalysedGrid
   const getBeatClock: typeof import('./src/composables/useVideoBeat').getBeatClock
   const getBeatGrid: typeof import('./src/composables/useVideoBeat').getBeatGrid
   const getCurrentInstance: typeof import('vue').getCurrentInstance
@@ -57,6 +59,7 @@ declare global {
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
   const inject: typeof import('vue').inject
   const injectLocal: typeof import('@vueuse/core').injectLocal
+  const isAnalysedGridReady: typeof import('./src/composables/useSoundtrack').isAnalysedGridReady
   const isBeatReady: typeof import('./src/composables/useVideoBeat').isBeatReady
   const isDark: typeof import('./src/composables/dark').isDark
   const isDefined: typeof import('@vueuse/core').isDefined
@@ -295,6 +298,7 @@ declare global {
   const useSlots: typeof import('vue').useSlots
   const useSmoothPlayhead: typeof import('./src/composables/useSmoothPlayhead').useSmoothPlayhead
   const useSorted: typeof import('@vueuse/core').useSorted
+  const useSoundtrack: typeof import('./src/composables/useSoundtrack').useSoundtrack
   const useSpeechRecognition: typeof import('@vueuse/core').useSpeechRecognition
   const useSpeechSynthesis: typeof import('@vueuse/core').useSpeechSynthesis
   const useStepper: typeof import('@vueuse/core').useStepper
@@ -387,6 +391,9 @@ declare global {
   export type { AdvanceMode } from './src/composables/useSlideshowEngine'
   import('./src/composables/useSlideshowEngine')
   // @ts-ignore
+  export type { SoundtrackStatus, SoundtrackState } from './src/composables/useSoundtrack'
+  import('./src/composables/useSoundtrack')
+  // @ts-ignore
   export type { ToastKind, Toast, ToastOptions } from './src/composables/useToast'
   import('./src/composables/useToast')
   // @ts-ignore
@@ -407,6 +414,7 @@ declare module 'vue' {
     readonly RC_PORT: UnwrapRef<typeof import('./src/composables/useRemoteLink')['RC_PORT']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
+    readonly analyseSoundtrack: UnwrapRef<typeof import('./src/composables/useSoundtrack')['analyseSoundtrack']>
     readonly analysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analysisKey']>
     readonly arrangeGrid: UnwrapRef<typeof import('./src/composables/wallGeometry')['arrangeGrid']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
@@ -440,6 +448,7 @@ declare module 'vue' {
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly getAnalysedGrid: UnwrapRef<typeof import('./src/composables/useSoundtrack')['getAnalysedGrid']>
     readonly getBeatClock: UnwrapRef<typeof import('./src/composables/useVideoBeat')['getBeatClock']>
     readonly getBeatGrid: UnwrapRef<typeof import('./src/composables/useVideoBeat')['getBeatGrid']>
     readonly getCurrentInstance: UnwrapRef<typeof import('vue')['getCurrentInstance']>
@@ -450,6 +459,7 @@ declare module 'vue' {
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
+    readonly isAnalysedGridReady: UnwrapRef<typeof import('./src/composables/useSoundtrack')['isAnalysedGridReady']>
     readonly isBeatReady: UnwrapRef<typeof import('./src/composables/useVideoBeat')['isBeatReady']>
     readonly isDark: UnwrapRef<typeof import('./src/composables/dark')['isDark']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
@@ -688,6 +698,7 @@ declare module 'vue' {
     readonly useSlots: UnwrapRef<typeof import('vue')['useSlots']>
     readonly useSmoothPlayhead: UnwrapRef<typeof import('./src/composables/useSmoothPlayhead')['useSmoothPlayhead']>
     readonly useSorted: UnwrapRef<typeof import('@vueuse/core')['useSorted']>
+    readonly useSoundtrack: UnwrapRef<typeof import('./src/composables/useSoundtrack')['useSoundtrack']>
     readonly useSpeechRecognition: UnwrapRef<typeof import('@vueuse/core')['useSpeechRecognition']>
     readonly useSpeechSynthesis: UnwrapRef<typeof import('@vueuse/core')['useSpeechSynthesis']>
     readonly useStepper: UnwrapRef<typeof import('@vueuse/core')['useStepper']>

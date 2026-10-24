@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { MotionSourceId, StrokeShape } from '~/stores/motionStore'
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
+import MusicScriptCard from '~/components/player/MusicScriptCard.vue'
 import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput } from '~/composables/useTCode'
 import { useVideoBeat } from '~/composables/useVideoBeat'
 import { synthTargets } from '~/lib/axisSynth'
@@ -22,6 +24,7 @@ const ui = useUiStore()
 const { shouldRun, sourceLive, funscriptBusy } = useMotionEngine()
 const pad = useGamepadStatus()
 const videoBeat = useVideoBeat()
+const { analysis: soundtrackAnalysis } = useSoundtrack()
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
@@ -260,8 +263,9 @@ const CEILING_WARN = 180
 const sessionCapped = computed(() => motion.sessionMaxSpm > motion.maxSpm)
 const beatCapped = computed(() => motion.beatBandHi > motion.maxSpm)
 
-/** Music source: the grid counts as locked once most recent hits land on it. */
-const beatLocked = computed(() => videoBeat.confidence.value >= 0.6)
+/** Music source: the grid counts as locked once most recent hits land on it, or when it comes from an analysis. */
+const beatAnalysed = computed(() => (soundtrackAnalysis.value?.beats.length ?? 0) >= 2)
+const beatLocked = computed(() => beatAnalysed.value || videoBeat.confidence.value >= 0.6)
 
 /** How the music source is stroking relative to the beat, in words. */
 const subdivisionLabel = computed(() => ({
@@ -477,7 +481,7 @@ const PAD_MAP = [
       <!-- Music -->
       <UiSection v-else-if="motion.source === 'music'" key="music" title="Music" icon="i-carbon-music">
         <p class="hint">
-          Strokes on the beat of the video's soundtrack, at whichever subdivision of the tempo fits your band, and deeper when the music gets louder. Needs a few bars to settle after the track starts.
+          Strokes on the beat of the video's soundtrack, at whichever subdivision of the tempo fits your band, and deeper when the music gets louder. Listening live needs a few bars to settle; an unscripted video's whole soundtrack is analysed in the background, and from then on the beat is there from the first second.
         </p>
 
         <div v-if="audio.scriptDrive.value" class="text-[12px] text-warn px-2.5 py-2 rounded-[var(--radius-md)] bg-warn/10 flex gap-2 ring-1 ring-warn/20">
@@ -486,11 +490,14 @@ const PAD_MAP = [
         </div>
 
         <template v-else>
-          <div class="gap-2 grid grid-cols-3">
-            <div v-tip="'How many recent hits landed on the beat grid'" class="px-2.5 py-2 well flex flex-col gap-0.5">
+          <MusicScriptCard :make="false" :options="false" />
+          <!-- Live listening diagnostics: idle once the whole soundtrack is
+               analysed, so showing them then would only contradict the card. -->
+          <div v-if="!beatAnalysed" class="gap-2 grid grid-cols-3">
+            <div v-tip="beatAnalysed ? 'How clearly the analysed beats stand out' : 'How many recent hits landed on the beat grid'" class="px-2.5 py-2 well flex flex-col gap-0.5">
               <span class="text-[12.5px] font-medium flex gap-1.5 items-center" :class="beatLocked ? 'text-ok' : 'text-fg-muted'">
                 <span class="rounded-full bg-current h-1.5 w-1.5" :class="beatLocked ? 'animate-pulse-dot' : ''" />
-                {{ beatLocked ? 'Locked' : 'Listening' }}
+                {{ beatAnalysed ? 'Analysed' : beatLocked ? 'Locked' : 'Listening' }}
               </span>
               <span class="eyebrow">Beat · {{ pct(videoBeat.confidence.value) }}</span>
             </div>
@@ -508,18 +515,25 @@ const PAD_MAP = [
           <div class="flex flex-col gap-1">
             <div class="flex justify-between">
               <span class="label">Loudness</span>
-              <span class="text-[11.5px] text-fg-muted num">{{ pct(videoBeat.energy.value) }}</span>
+              <span class="text-[11.5px] text-fg-muted num">{{ pct(motion.musicEnergy) }}</span>
             </div>
-            <UiProgress :value="videoBeat.energy.value" tone="accent" />
+            <UiProgress :value="motion.musicEnergy" tone="accent" />
           </div>
           <UiSlider v-model="motion.beatBandLo" label="Slowest" unit=" spm" :min="10" :max="300" :step="1" :reset="35" />
           <UiSlider v-model="motion.beatBandHi" label="Fastest" unit=" spm" :min="10" :max="300" :step="1" :reset="140" hint="The stroke rate stays inside this band: a fast track strokes every second beat or bar, a slow one can double up." />
-          <p v-if="!videoBeat.hasSignal.value && (player.isMuted || player.volume === 0)" class="hint text-warn">
+          <p v-if="!beatAnalysed && !videoBeat.hasSignal.value && (player.isMuted || player.volume === 0)" class="hint text-warn">
             The player is muted, so the analyser only hears silence. Turn the volume down rather than muting.
           </p>
           <p v-if="!videoBeat.available.value" class="hint text-danger">
             This browser could not analyse the video's audio.
           </p>
+          <div class="pt-1 border-t border-edge flex flex-col gap-3">
+            <span class="eyebrow pt-2">Script from the music</span>
+            <p class="hint -mt-1">
+              Writes a real funscript from the analysed soundtrack, using the band, ceiling, depth and centre set here, and plays it like any other script.
+            </p>
+            <MusicScriptCard :status="false" />
+          </div>
         </template>
       </UiSection>
     </Transition>

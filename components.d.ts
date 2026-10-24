@@ -40,6 +40,7 @@ declare module 'vue' {
     MediaWallItem: typeof import('./src/components/views/MediaWallItem.vue')['default']
     MediaWallView: typeof import('./src/components/views/MediaWallView.vue')['default']
     MotionInspector: typeof import('./src/components/inspectors/MotionInspector.vue')['default']
+    MusicScriptCard: typeof import('./src/components/player/MusicScriptCard.vue')['default']
     NewPlaylistModal: typeof import('./src/components/library/NewPlaylistModal.vue')['default']
     NowPlayingBar: typeof import('./src/components/player/NowPlayingBar.vue')['default']
     OrganizerView: typeof import('./src/components/views/OrganizerView.vue')['default']

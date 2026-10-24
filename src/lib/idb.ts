@@ -5,12 +5,13 @@
  *   "meta"      — key: string,   value: any
  *   "vidmeta"   — key: filename, value: VideoMeta (user editable overrides)
  *   "previews"  — key: name|size|mtime, value: PreviewRecord (scrub sprite sheets; a cache)
+ *   "soundtracks" — key: name|size|mtime, value: SoundtrackRecord (beat analyses; a cache)
  */
 
 // Storage identifier, not a brand string. Renaming it would orphan every
 // user's playlists, video metadata and saved directory handles.
 const DB_NAME = 'mwhoplayer'
-const DB_VERSION = 5
+const DB_VERSION = 6
 let db: IDBDatabase | null = null
 
 function openDB(): Promise<IDBDatabase> {
@@ -35,6 +36,9 @@ function openDB(): Promise<IDBDatabase> {
       // v5: scrub preview strips.
       if (!d.objectStoreNames.contains('previews'))
         d.createObjectStore('previews')
+      // v6: whole-track soundtrack analyses.
+      if (!d.objectStoreNames.contains('soundtracks'))
+        d.createObjectStore('soundtracks')
     }
     req.onsuccess = () => {
       db = req.result
@@ -268,4 +272,24 @@ export const previewDb = {
       tr.onerror = () => reject(tr.error)
     })
   },
+}
+
+/** A cached soundtrack analysis (see lib/beatTrack). */
+export interface SoundtrackRecord {
+  /** Analysis version it was made with; others are ignored and redone. */
+  v: number
+  /** The analysis itself, as plain arrays. */
+  analysis: unknown
+  /** When it was made (ms epoch). */
+  at: number
+}
+
+/**
+ * Soundtrack analyses. Slow to make (the whole audio track has to be
+ * decoded) but small and always reproducible from the video, so a cache
+ * rather than something to back up.
+ */
+export const soundtrackDb = {
+  get: (key: string) => idbGet<SoundtrackRecord>('soundtracks', key),
+  set: (key: string, value: SoundtrackRecord) => idbSet('soundtracks', key, value),
 }

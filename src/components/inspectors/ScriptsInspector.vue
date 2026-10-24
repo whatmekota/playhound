@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { ScriptFile } from '~/stores/scriptStore'
 import { computed, ref, toRaw } from 'vue'
+import MusicScriptCard from '~/components/player/MusicScriptCard.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { analyseActions, analysisKey } from '~/composables/useScriptAnalysis'
+import { useSoundtrack } from '~/composables/useSoundtrack'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 import { openScriptFiles } from '~/lib/browserApi'
 import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
@@ -15,6 +17,7 @@ const scripts = useScriptStore()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
 const { loadScriptFiles, loading, error } = useFunscript()
+const { canAnalyse: canMakeFromMusic, generatedLoaded } = useSoundtrack()
 
 const OFFSET_LIMIT = 9999
 const SPARK_BINS = 120
@@ -202,7 +205,10 @@ const tuning = ref<string | null>(null)
           </span>
           <span v-if="videoName" v-tip="videoName" class="hint truncate">{{ videoName }}</span>
         </div>
-        <UiBadge v-if="scripts.hasScripts" :tone="scripts.autoDetected ? 'accent' : 'neutral'" size="xs" :icon="scripts.autoDetected ? 'i-carbon-flash' : 'i-carbon-document'">
+        <UiBadge v-if="generatedLoaded" v-tip="'Made from the soundtrack, not scripted by hand'" tone="info" size="xs" icon="i-carbon-music">
+          Generated
+        </UiBadge>
+        <UiBadge v-else-if="scripts.hasScripts" :tone="scripts.autoDetected ? 'accent' : 'neutral'" size="xs" :icon="scripts.autoDetected ? 'i-carbon-flash' : 'i-carbon-document'">
           {{ scripts.autoDetected ? 'Auto' : 'Manual' }}
         </UiBadge>
         <UiIconButton
@@ -223,18 +229,29 @@ const tuning = ref<string | null>(null)
       </p>
     </template>
 
-    <UiEmpty
-      v-if="!scripts.hasScripts"
-      icon="i-carbon-chart-line"
-      title="No scripts loaded"
-      :description="player.videoUrl
-        ? 'Nothing matched this video. Load .funscript files by hand — one per axis, or a merged multi-axis file.'
-        : 'Play a video from the library and its scripts are picked up automatically.'"
-    >
-      <UiButton variant="primary" icon="i-carbon-document-add" :loading="loading" @click="loadManually">
-        Load scripts
-      </UiButton>
-    </UiEmpty>
+    <template v-if="!scripts.hasScripts">
+      <UiEmpty
+        icon="i-carbon-chart-line"
+        title="No scripts loaded"
+        :description="player.videoUrl
+          ? 'Nothing matched this video. Load .funscript files by hand — one per axis, or a merged multi-axis file.'
+          : 'Play a video from the library and its scripts are picked up automatically.'"
+      >
+        <UiButton variant="primary" icon="i-carbon-document-add" :loading="loading" @click="loadManually">
+          Load scripts
+        </UiButton>
+      </UiEmpty>
+      <section v-if="player.videoUrl && canMakeFromMusic" class="p-3 card flex flex-col gap-2.5 animate-fade-in">
+        <div class="flex gap-2 items-center">
+          <span class="i-carbon-music text-[14px] text-accent-300" />
+          <span class="text-[13px] text-fg font-medium">No script? Use the music</span>
+        </div>
+        <p class="hint -mt-1">
+          Analyses the soundtrack and writes a stroke on the beat, deeper when it gets louder, within your motion speed limits. It is labelled as generated and you can save it.
+        </p>
+        <MusicScriptCard :status="false" :options="false" />
+      </section>
+    </template>
 
     <TransitionGroup v-else name="t-list" tag="div" class="flex flex-col gap-2 relative">
       <section
@@ -358,6 +375,9 @@ const tuning = ref<string | null>(null)
         </div>
       </section>
     </TransitionGroup>
+
+    <!-- A script made from the music: save it to keep it -->
+    <MusicScriptCard v-if="generatedLoaded" :status="false" :options="false" class="animate-fade-in" />
 
     <!-- Whole-video sync -->
     <UiSection

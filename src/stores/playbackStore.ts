@@ -49,6 +49,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   const controls = shallowRef<PlayerControls | null>(null)
   /** The library entry for what is loaded, when it came from the library. */
   const currentEntry = shallowRef<VideoEntry | null>(null)
+  /** The file that is playing, library or not; null for a stream. */
+  const currentFile = shallowRef<File | null>(null)
   /** True while a file is being opened and its scripts parsed. */
   const loading = ref(false)
   /** Bumped on every track change, for transitions and now-playing cards. */
@@ -80,6 +82,7 @@ export const usePlaybackStore = defineStore('playback', () => {
       const url = URL.createObjectURL(file)
       player.setVideo(file.name, url)
       player.clearLoop()
+      currentFile.value = file
       const libEntry = library.videos.find(v => v.file === file) ?? null
       currentEntry.value = libEntry
       trackSeq.value++
@@ -196,6 +199,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     player.setVideo(name, url)
     player.clearLoop()
     currentEntry.value = null
+    currentFile.value = null
     trackSeq.value++
     for (const s of scripts.scripts) {
       if (s.enabled && device.axisConfigs[s.channel])
@@ -356,6 +360,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   return {
     controls,
     currentEntry,
+    currentFile,
     loading,
     trackSeq,
     scriptMetadata,

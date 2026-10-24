@@ -11,6 +11,7 @@ import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useBinauralBeats } from './useBinauralBeats'
+import { getAnalysedGrid, isAnalysedGridReady, useSoundtrack } from './useSoundtrack'
 
 /** Proportional gain steering the pulse onto the beat. */
 const PHASE_GAIN = 0.3
@@ -63,6 +64,35 @@ const energy = ref(0)
 /** Share of recent onsets on the beat grid, 0–1 (published ~10 Hz). */
 const confidence = ref(0)
 
+// ─── The analysed grid ────────────────────────────────────────────────────────
+// When the whole soundtrack has been analysed, the beat comes from that
+// instead: no settling, no drift, and it survives seeks. It is read against
+// the <video> element's own clock, every frame — playerStore.currentTime only
+// moves on timeupdate, a few times a second.
+
+let videoEl: HTMLVideoElement | null = null
+/** The playing video's URL, so the right <video> is found (previews use others). */
+let videoSrc = ''
+
+function playingVideo(): HTMLVideoElement | null {
+  if (videoEl?.isConnected && (!videoSrc || videoEl.src === videoSrc))
+    return videoEl
+  const all = Array.from(document.querySelectorAll('video'))
+  videoEl = all.find(v => v.src === videoSrc) ?? all[0] ?? null
+  return videoEl
+}
+
+/** The analysed grid at the video's current position, tempo in real time. */
+function analysedReading() {
+  const g = getAnalysedGrid()
+  const el = g && playingVideo()
+  if (!g || !el)
+    return null
+  const r = g.at(el.currentTime)
+  // At 1.5× speed the beat comes 1.5× as often.
+  return { ...r, bpm: r.bpm * (el.playbackRate || 1) }
+}
+
 /**
  * Where we are in the beat, extrapolated between onsets. Null when unknown.
  *
@@ -71,6 +101,9 @@ const confidence = ref(0)
  * onset to ~250ms and makes the tempo estimate impossible to settle.
  */
 export function getBeatClock(): { phase: number, rateHz: number } | null {
+  const r = analysedReading()
+  if (r)
+    return { phase: r.beats - Math.floor(r.beats), rateHz: r.bpm / 60 }
   if (!grid.ready)
     return null
   const beats = grid.beatsAt(performance.now())
@@ -80,17 +113,23 @@ export function getBeatClock(): { phase: number, rateHz: number } | null {
   }
 }
 
+/** Reactive: true once the soundtrack has given up a tempo and a downbeat. */
+export function isBeatReady(): boolean {
+  return isAnalysedGridReady() || beatReady.value
+}
+
 /**
  * The beat grid as the motion engine needs it: where we are in beats (a
  * continuous count, so bars and subdivisions can be derived), the tempo, how
  * sure the grid is, and how loud the music is. Null until a tempo is known.
+ *
+ * From the whole-track analysis when there is one — its count puts bar lines
+ * on the analysed downbeats — and from live listening otherwise.
  */
-/** Reactive: true once the soundtrack has given up a tempo and a downbeat. */
-export function isBeatReady(): boolean {
-  return beatReady.value
-}
-
 export function getBeatGrid(): { beats: number, bpm: number, confidence: number, energy: number } | null {
+  const r = analysedReading()
+  if (r)
+    return { beats: r.beats, bpm: r.bpm, confidence: r.confidence, energy: r.energy }
   if (!grid.ready)
     return null
   return {
@@ -117,6 +156,8 @@ export function useVideoBeat() {
   const player = usePlayerStore()
   const motion = useMotionStore()
   const { setPulse, getPulseClock } = useBinauralBeats()
+  // Installs the soundtrack analysis wiring (once); the grid above reads it.
+  useSoundtrack()
 
   /**
    * Route the video element through an analyser.
@@ -207,10 +248,15 @@ export function useVideoBeat() {
       sum += bins[i]
     loudness.push(sum / (upto || 1), lastFrameMs ? (tMs - lastFrameMs) / 1000 : 0)
     lastFrameMs = tMs
+    const analysed = analysedReading()
     if (tMs - lastPublishMs > 100) {
       lastPublishMs = tMs
-      energy.value = loudness.energy
-      confidence.value = grid.confidence()
+      energy.value = analysed ? analysed.energy : loudness.energy
+      confidence.value = analysed ? analysed.confidence : grid.confidence()
+      if (analysed) {
+        bpm.value = Math.round(analysed.bpm)
+        beatPeriodMs.value = 60000 / analysed.bpm
+      }
     }
 
     if (prevSpectrum) {
@@ -229,8 +275,10 @@ export function useVideoBeat() {
         if (p) {
           grid.setPeriod(p)
           periodMs = grid.periodMs
-          beatPeriodMs.value = periodMs
-          bpm.value = Math.round(periodToBpm(periodMs))
+          if (!analysed) {
+            beatPeriodMs.value = periodMs
+            bpm.value = Math.round(periodToBpm(periodMs))
+          }
         }
         grid.onset(tMs)
         beatReady.value = grid.ready
@@ -243,12 +291,12 @@ export function useVideoBeat() {
 
     // ── Steer the pulse onto the beat ────────────────────────────────────
     const clock = getPulseClock()
-    if (grid.ready && clock) {
-      const beats = grid.beatsAt(tMs)
-      const target = beats - Math.floor(beats)
+    const beat = getBeatGrid()
+    if (beat && clock) {
+      const target = beat.beats - Math.floor(beat.beats)
       const err = phaseError(clock.phase, target)
       const bend = Math.max(-MAX_BEND, Math.min(MAX_BEND, err * PHASE_GAIN))
-      const rateHz = 1000 / periodMs
+      const rateHz = beat.bpm / 60
       setPulse(
         rateHz * (1 + bend),
         audio.pulseEnabled.value ? audio.pulseDepth.value : 0,
@@ -281,6 +329,10 @@ export function useVideoBeat() {
 
   // Re-learn the tempo when the track changes.
   watch(() => player.videoPath, reset)
+  watch(() => player.videoUrl, (url) => {
+    videoSrc = url ?? ''
+    videoEl = null
+  }, { immediate: true })
 
   // Choosing the Music motion source implies wanting the analysis; leaving it
   // to a separate switch elsewhere was how this came to look broken.
