@@ -5,8 +5,12 @@ import BinauralInspector from '~/components/inspectors/BinauralInspector.vue'
 import BookmarksInspector from '~/components/inspectors/BookmarksInspector.vue'
 import DeviceInspector from '~/components/inspectors/DeviceInspector.vue'
 import DirectorInspector from '~/components/inspectors/DirectorInspector.vue'
+import FaceInspector from '~/components/inspectors/FaceInspector.vue'
 import HypnoInspector from '~/components/inspectors/HypnoInspector.vue'
+import LibraryInspector from '~/components/inspectors/LibraryInspector.vue'
 import MotionInspector from '~/components/inspectors/MotionInspector.vue'
+import PlaylistsInspector from '~/components/inspectors/PlaylistsInspector.vue'
+import ProgrammeInspector from '~/components/inspectors/ProgrammeInspector.vue'
 import QueueInspector from '~/components/inspectors/QueueInspector.vue'
 import RemoteInspector from '~/components/inspectors/RemoteInspector.vue'
 import ScriptsInspector from '~/components/inspectors/ScriptsInspector.vue'
@@ -35,14 +39,18 @@ export const VIEW_COMPONENTS: Record<Exclude<ViewId, 'player'>, Component> = {
 }
 
 export const INSPECTOR_COMPONENTS: Record<InspectorId, Component> = {
-  queue: QueueInspector,
-  scripts: ScriptsInspector,
-  bookmarks: BookmarksInspector,
-  device: DeviceInspector,
-  motion: MotionInspector,
-  remote: RemoteInspector,
-  binaural: BinauralInspector,
-  hypno: HypnoInspector,
-  director: DirectorInspector,
-  backup: BackupInspector,
+  'library-panel': LibraryInspector,
+  'playlists-panel': PlaylistsInspector,
+  'programme': ProgrammeInspector,
+  'face': FaceInspector,
+  'queue': QueueInspector,
+  'scripts': ScriptsInspector,
+  'bookmarks': BookmarksInspector,
+  'device': DeviceInspector,
+  'motion': MotionInspector,
+  'remote': RemoteInspector,
+  'binaural': BinauralInspector,
+  'hypno': HypnoInspector,
+  'director': DirectorInspector,
+  'backup': BackupInspector,
 }

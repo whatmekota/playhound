@@ -20,9 +20,10 @@ export type ViewId
     | 'eroscripts' | 'organizer' | 'stats'
 
 export type InspectorId
-  = | 'queue' | 'scripts' | 'bookmarks'
+  = | 'library-panel' | 'playlists-panel'
+    | 'queue' | 'scripts' | 'bookmarks'
     | 'device' | 'motion' | 'remote'
-    | 'binaural' | 'hypno' | 'director'
+    | 'binaural' | 'hypno' | 'director' | 'programme' | 'face'
     | 'backup'
 
 export type FloatingId = 'emulator'
@@ -82,6 +83,16 @@ export const VIEW_GROUPS: ViewGroup<ViewId>[] = [
 /** Right rail: tool panels in the inspector drawer. */
 export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
   {
+    // The same library and playlists as the views on the left, sized for the
+    // drawer, so you can pick the next thing without leaving the video.
+    id: 'browse',
+    label: 'Browse',
+    items: [
+      { id: 'library-panel', kind: 'inspector', label: 'Library', icon: 'i-carbon-video-chat', hint: 'Browse the library beside the video', kbd: 'L' },
+      { id: 'playlists-panel', kind: 'inspector', label: 'Playlists', icon: 'i-carbon-list', hint: 'Browse playlists beside the video' },
+    ],
+  },
+  {
     id: 'playback',
     label: 'Playback',
     items: [
@@ -98,6 +109,7 @@ export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
       { id: 'motion', kind: 'inspector', label: 'Motion', icon: 'i-carbon-wave-height', hint: 'What drives the device: script, session, beat or manual' },
       { id: 'emulator', kind: 'floating', label: 'Emulator', icon: 'i-carbon-cube', hint: 'Floating OSR preview over any view' },
       { id: 'remote', kind: 'inspector', label: 'Remote', icon: 'i-carbon-mobile', hint: 'Control playback from your phone' },
+      { id: 'face', kind: 'inspector', label: 'Face', icon: 'i-carbon-face-wink', hint: 'The CYD face: what it shows and how it reacts' },
     ],
   },
   {
@@ -107,6 +119,7 @@ export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
       { id: 'binaural', kind: 'inspector', label: 'Binaural', icon: 'i-carbon-headphones', hint: 'Binaural tone, noise and session phases' },
       { id: 'hypno', kind: 'inspector', label: 'Hypno', icon: 'i-carbon-circle-dash', hint: 'Spiral, words and breathing ring over the video' },
       { id: 'director', kind: 'inspector', label: 'Director', icon: 'i-carbon-machine-learning-model', hint: 'Picks what plays next to match the session' },
+      { id: 'programme', kind: 'inspector', label: 'Programme', icon: 'i-carbon-roadmap', hint: 'A planned session: phases, videos, sound and motion following one arc' },
     ],
   },
   {

@@ -10,7 +10,7 @@
 export type ShellAction
   = | 'bookmark' | 'star' | 'next' | 'prev' | 'random' | 'panic' | 'help'
     | 'view-player' | 'view-library' | 'view-playlists'
-    | 'queue' | 'device' | 'shuffle' | 'repeat' | 'palette'
+    | 'queue' | 'library-panel' | 'device' | 'shuffle' | 'repeat' | 'palette'
 
 export interface Hotkey {
   /** How the key is written in the cheat sheet. */
@@ -50,6 +50,7 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: '2', label: 'Library', owner: 'shell', code: 'Digit2', action: 'view-library' },
       { keys: '3', label: 'Playlists', owner: 'shell', code: 'Digit3', action: 'view-playlists' },
       { keys: 'Q', label: 'Queue', owner: 'shell', code: 'KeyQ', action: 'queue' },
+      { keys: 'L', label: 'Library beside the video', owner: 'shell', code: 'KeyL', action: 'library-panel' },
       { keys: 'D', label: 'Device', owner: 'shell', code: 'KeyD', action: 'device' },
     ],
   },

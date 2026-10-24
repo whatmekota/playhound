@@ -275,6 +275,7 @@ function runShellAction(action: ShellAction) {
     case 'view-library': ui.openView('library'); break
     case 'view-playlists': ui.openView('playlists'); break
     case 'queue': ui.toggleInspector('queue'); break
+    case 'library-panel': ui.toggleInspector('library-panel'); break
     case 'device': ui.toggleInspector('device'); break
     case 'palette': ui.paletteOpen = !ui.paletteOpen; break
   }
