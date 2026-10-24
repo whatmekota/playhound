@@ -17,7 +17,7 @@ export interface WallItem {
 }
 
 const sessionItems = reactive<WallItem[]>([])
-const persistedItems = useLocalStorage<WallItem[]>('ph-wall-items', [])
+const persistedItems = useLocalStorage<WallItem[]>('ph:wall.items', [])
 const items = computed<WallItem[]>(() => [...persistedItems.value, ...sessionItems])
 // Seeded past anything restored from storage, or a new tile would land behind
 // the saved YouTube ones after a reload.

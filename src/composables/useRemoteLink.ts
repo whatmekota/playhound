@@ -27,7 +27,7 @@ export const RC_PORT = 7072
  * the room, the phone is given it in the pairing URL, and the relay only ever
  * matches peers that already know it.
  */
-export const remoteRoom = useLocalStorage('ph-remote-room', () =>
+export const remoteRoom = useLocalStorage('ph:remote.room', () =>
   Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 8)).join(''))
 
 export function remoteUrl(room: string): string {

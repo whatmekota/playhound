@@ -26,6 +26,7 @@ import { toast } from '~/composables/useToast'
 import { useVideoBeat } from '~/composables/useVideoBeat'
 import { openVideoFile, storage } from '~/lib/browserApi'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
+import { KEYS } from '~/lib/persist'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useHypnoStore } from '~/stores/hypnoStore'
@@ -79,13 +80,11 @@ useRemoteHost(transport)
 const motion = useMotionStore()
 useSettings().load()
 {
-  // The old shell kept motion inside its 'uiState' blob; read that once so an
-  // existing setup survives the move to its own key.
-  const saved = storage.get<unknown>('motion') ?? storage.get<{ motion?: unknown }>('uiState')?.motion
+  const saved = storage.get<unknown>(KEYS.motionConfig.key)
   if (saved)
     motion.deserialize(saved)
 }
-watch(() => motion.serialize(), v => storage.set('motion', v), { deep: true })
+watch(() => motion.serialize(), v => storage.set(KEYS.motionConfig.key, v), { deep: true })
 
 onMounted(() => {
   // Bring the last folder back at startup, whichever view is open.

@@ -1,5 +1,6 @@
 import type { BackupStore } from './idb'
 import { BACKUP_STORES, exportStore, importStore } from './idb'
+import { isOwnKey, runMigrations, SCHEMA_VERSION, storedSchema } from './persist'
 
 /**
  * Backup and restore of everything the app keeps in the browser.
@@ -13,12 +14,7 @@ import { BACKUP_STORES, exportStore, importStore } from './idb'
 
 export const BACKUP_VERSION = 1
 
-/**
- * localStorage keys belonging to this app. The `mwhoplayer:` prefix is the
- * pre-merge name, kept so existing data survives; see the notes on those keys.
- */
-const KEY_PREFIXES = ['mwhoplayer:', 'ph-', 'bp:', 'es:']
-const EXACT_KEYS = ['theme', 'uiState', 'deviceConfig']
+const KEYS_SCHEMA = 'ph:schema'
 
 export interface Backup {
   _app: 'playhound'
@@ -29,8 +25,13 @@ export interface Backup {
   idb: Partial<Record<BackupStore, [string, unknown][]>>
 }
 
+/**
+ * localStorage keys belonging to this app: everything listed in ./persist.ts,
+ * plus the legacy names an older backup file may still carry (they are
+ * migrated straight after a restore).
+ */
 export function isOurKey(key: string): boolean {
-  return EXACT_KEYS.includes(key) || KEY_PREFIXES.some(p => key.startsWith(p))
+  return isOwnKey(key)
 }
 
 /** Everything in localStorage that belongs to this app. */
@@ -105,6 +106,15 @@ export async function restoreBackup(
     }
     localStorage.setItem(key, value)
     localKeys++
+  }
+  // A backup from before the storage layout changed carries old key names;
+  // bring them forward exactly as a normal start would.
+  if (backup.local && !(KEYS_SCHEMA in backup.local)) {
+    localStorage.removeItem(KEYS_SCHEMA)
+    runMigrations(localStorage, storedSchema(localStorage))
+  }
+  else if (storedSchema(localStorage) < SCHEMA_VERSION) {
+    runMigrations(localStorage)
   }
 
   let idbRecords = 0

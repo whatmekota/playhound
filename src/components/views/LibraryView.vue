@@ -47,10 +47,10 @@ type SortKey = 'name' | 'size' | 'date' | 'duration'
 type FilterKey = 'scripted' | 'multi' | 'starred' | 'unscripted'
 
 // Legacy key kept so the saved sort survives the rename.
-const sort = useLocalStorage<{ key: SortKey, asc: boolean }>('mwhoplayer:librarySort', { key: 'name', asc: true }, { mergeDefaults: true })
-const viewMode = useLocalStorage<'grid' | 'list'>('ph-library-view', 'grid')
+const sort = useLocalStorage<{ key: SortKey, asc: boolean }>('ph:library.sort', { key: 'name', asc: true }, { mergeDefaults: true })
+const viewMode = useLocalStorage<'grid' | 'list'>('ph:library.view', 'grid')
 /** Minimum card width in px; the grid fits as many columns as that allows. */
-const cardSize = useLocalStorage('ph-library-card', 220)
+const cardSize = useLocalStorage('ph:library.cardSize', 220)
 
 const SORT_LABELS: Record<SortKey, string> = { name: 'Name', size: 'Size', date: 'Date modified', duration: 'Duration' }
 

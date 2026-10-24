@@ -32,9 +32,9 @@ export interface QueueItem {
 }
 
 // Legacy storage key kept so existing data survives the rename.
-const LS_KEY = 'mwhoplayer:queue'
+const LS_KEY = 'ph:queue.prefs'
 /** Names only; the files themselves have to come back from the library. */
-const LS_SESSION = 'ph-queue-session'
+const LS_SESSION = 'ph:queue.session'
 
 function loadPrefs() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') }

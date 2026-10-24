@@ -57,7 +57,7 @@ onBeforeUnmount(() => {
 
 // ─── Transport ────────────────────────────────────────────────────────────────
 type Transport = 'serial' | 'buttplug'
-const transport = useLocalStorage<Transport>('ph-device-transport', 'serial')
+const transport = useLocalStorage<Transport>('ph:device.transport', 'serial')
 onMounted(() => {
   // Land on whichever link is actually up.
   if (bp.connected.value && !device.connected)

@@ -7,4 +7,4 @@ import { useLocalStorage } from '@vueuse/core'
  * auto-imports, and the scanner mis-reads a default argument in an exported
  * `useLocalStorage` call as an export name of its own.
  */
-export const remoteEnabled = useLocalStorage('ph-remote-enabled', false)
+export const remoteEnabled = useLocalStorage('ph:remote.enabled', false)

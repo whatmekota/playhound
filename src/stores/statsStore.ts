@@ -14,8 +14,8 @@ export interface VideoStat {
   lastPlayedAt: number
 }
 
-const STORAGE_KEY = 'mwhoplayer:stats'
-const DAILY_KEY = 'mwhoplayer:stats-daily'
+const STORAGE_KEY = 'ph:stats'
+const DAILY_KEY = 'ph:stats.daily'
 
 /** Watch time and plays for one local calendar day, keyed `YYYY-MM-DD`. */
 export interface DayStat {

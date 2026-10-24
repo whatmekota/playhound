@@ -28,7 +28,7 @@ const safety = useSafetyStore()
 const library = useLibraryStore()
 
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
-const splash = useLocalStorage('ph-splash', true)
+const splash = useLocalStorage('ph:ui.splash', true)
 
 type SectionId = 'appearance' | 'startup' | 'safety' | 'library' | 'keyboard' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [

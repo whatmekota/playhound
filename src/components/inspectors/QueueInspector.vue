@@ -71,7 +71,7 @@ function clearHistory() {
 }
 
 // ─── History ──────────────────────────────────────────────────────────────────
-const historyOpen = useLocalStorage('ph-queue-history-open', false)
+const historyOpen = useLocalStorage('ph:ui.queue.historyOpen', false)
 /** Most recent first, like every player's history. */
 const historyItems = computed(() => queue.history.slice().reverse())
 

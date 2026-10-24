@@ -104,7 +104,7 @@ function lsSet(key: string, value: string | null) {
 }
 
 // ─── Session cookie ───────────────────────────────────────────────────────────
-const COOKIE_KEY = 'es:cookie'
+const COOKIE_KEY = 'ph:eroscripts.cookie'
 const sessionCookie = ref(lsGet(COOKIE_KEY) ?? '')
 const cookieOpen = ref(false)
 const cookieDraft = ref('')
@@ -172,8 +172,8 @@ async function copyCommand() {
 }
 
 // ─── View mode ────────────────────────────────────────────────────────────────
-const viewMode = ref<'grid' | 'list'>(lsGet('es:view') === 'list' ? 'list' : 'grid')
-watch(viewMode, v => lsSet('es:view', v))
+const viewMode = ref<'grid' | 'list'>(lsGet('ph:ui.eroscripts.view') === 'list' ? 'list' : 'grid')
+watch(viewMode, v => lsSet('ph:ui.eroscripts.view', v))
 
 // ─── Browse ───────────────────────────────────────────────────────────────────
 const loading = ref(false)

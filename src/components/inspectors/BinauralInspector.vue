@@ -138,12 +138,12 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 
 // ─── Section state ──────────────────────────────────────────────────────────
 
-const openTone = useLocalStorage('ph-bin-open-tone', true)
-const openScript = useLocalStorage('ph-bin-open-script', false)
-const openLayers = useLocalStorage('ph-bin-open-layers', false)
-const openPulse = useLocalStorage('ph-bin-open-pulse', false)
-const openSession = useLocalStorage('ph-bin-open-session', false)
-const openBreath = useLocalStorage('ph-bin-open-breath', false)
+const openTone = useLocalStorage('ph:ui.binaural.toneOpen', true)
+const openScript = useLocalStorage('ph:ui.binaural.scriptOpen', false)
+const openLayers = useLocalStorage('ph:ui.binaural.layersOpen', false)
+const openPulse = useLocalStorage('ph:ui.binaural.pulseOpen', false)
+const openSession = useLocalStorage('ph:ui.binaural.sessionOpen', false)
+const openBreath = useLocalStorage('ph:ui.binaural.breathOpen', false)
 
 // ─── Preset morphing ────────────────────────────────────────────────────────
 

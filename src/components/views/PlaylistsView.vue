@@ -45,7 +45,7 @@ const renameEl = ref<HTMLInputElement | null>(null)
 
 // ─── Selection ────────────────────────────────────────────────────────────────
 interface Sel { kind: 'list' | 'smart', id: string }
-const sel = useLocalStorage<Sel>('ph-playlists-selected', { kind: 'list', id: 'favorites' })
+const sel = useLocalStorage<Sel>('ph:ui.playlists.selected', { kind: 'list', id: 'favorites' })
 
 const activeList = computed<Playlist | null>(() =>
   sel.value.kind === 'list' ? plStore.playlists.find(p => p.id === sel.value.id) ?? null : null)

@@ -47,7 +47,7 @@ const audio = useAudioStore()
 const director = useAutoDirector()
 const binaural = useBinauralBeats()
 
-const heatmap = useLocalStorage('ph-timeline-heatmap', true)
+const heatmap = useLocalStorage('ph:ui.timeline.heatmap', true)
 
 const hasTrack = computed(() => !!player.videoUrl)
 const title = computed(() => {

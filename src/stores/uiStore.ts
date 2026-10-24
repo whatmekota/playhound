@@ -11,7 +11,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { findView } from '~/lib/views'
 
-const LS_KEY = 'ph-ui-v2'
+const LS_KEY = 'ph:ui.shell'
 
 interface Persisted {
   view?: ViewId

@@ -32,8 +32,8 @@ const connected = ref(false)
 const scanning = ref(false)
 const devices = ref<ButtplugClientDevice[]>([])
 const error = ref<string | null>(null)
-const serverUrl = ref(localStorage.getItem('bp:url') ?? 'ws://localhost:12345')
-const enabled = ref(localStorage.getItem('bp:enabled') === 'true')
+const serverUrl = ref(localStorage.getItem('ph:buttplug.url') ?? 'ws://localhost:12345')
+const enabled = ref(localStorage.getItem('ph:buttplug.enabled') === 'true')
 
 export function useButtplug() {
   const deviceStore = useDeviceStore()
@@ -61,7 +61,7 @@ export function useButtplug() {
       await client.connect(connector)
       connected.value = true
       serverUrl.value = url
-      localStorage.setItem('bp:url', url)
+      localStorage.setItem('ph:buttplug.url', url)
       // client.devices is a Map<number, ButtplugClientDevice>
       devices.value = [...(client.devices as unknown as Map<number, ButtplugClientDevice>).values()]
     }
@@ -145,7 +145,7 @@ export function useButtplug() {
 
   function setEnabled(val: boolean) {
     enabled.value = val
-    localStorage.setItem('bp:enabled', val ? 'true' : 'false')
+    localStorage.setItem('ph:buttplug.enabled', val ? 'true' : 'false')
   }
 
   const deviceCount = computed(() => devices.value.length)

@@ -7,10 +7,10 @@ export type SessionPhase = 'idle' | 'entry' | 'build' | 'peak' | 'descent'
 export type NoiseType = 'brown' | 'pink' | 'white'
 export type BeatMode = 'binaural' | 'monaural' | 'isochronic'
 
-const baseFrequency = useLocalStorage('ph-base-freq', 300)
-const beatDelta = useLocalStorage('ph-beat-delta', 6)
-const volume = useLocalStorage('ph-volume', 0.4)
-const waveType = useLocalStorage<OscillatorType>('ph-wave-type', 'sine')
+const baseFrequency = useLocalStorage('ph:audio.baseFreq', 300)
+const beatDelta = useLocalStorage('ph:audio.beatDelta', 6)
+const volume = useLocalStorage('ph:audio.volume', 0.4)
+const waveType = useLocalStorage<OscillatorType>('ph:audio.waveType', 'sine')
 const isPlaying = ref(false)
 const currentPreset = ref('')
 
@@ -34,41 +34,41 @@ const beatDriftEnabled = ref(false)
  * amplitude-modulated (isochronic) stimuli drive a markedly stronger cortical
  * response, with monaural in between.
  */
-const beatMode = useLocalStorage<BeatMode>('ph-beat-mode', 'binaural')
+const beatMode = useLocalStorage<BeatMode>('ph:audio.beatMode', 'binaural')
 
 /**
  * Session pulse — the slow swell that the device stroke, the slideshow and the
  * visuals all lock to. Stored in cycles per minute because that is how the
  * stroke rate reads elsewhere.
  */
-const pulseEnabled = useLocalStorage('ph-pulse-enabled', false)
-const pulseCpm = useLocalStorage('ph-pulse-cpm', 50)
-const pulseDepth = useLocalStorage('ph-pulse-depth', 0.45)
+const pulseEnabled = useLocalStorage('ph:audio.pulseEnabled', false)
+const pulseCpm = useLocalStorage('ph:audio.pulseCpm', 50)
+const pulseDepth = useLocalStorage('ph:audio.pulseDepth', 0.45)
 /** Pulse follows session intensity rather than sitting at a fixed tempo. */
-const pulseFollowsSession = useLocalStorage('ph-pulse-follow', true)
+const pulseFollowsSession = useLocalStorage('ph:audio.pulseFollow', true)
 
 /**
  * Derive the beat from the funscript being watched instead of a fixed tempo:
  * the pulse locks to the script's stroke phase and its speed feeds intensity.
  */
-const scriptDrive = useLocalStorage('ph-script-drive', false)
-const scriptDriveIntensity = useLocalStorage('ph-script-drive-intensity', true)
+const scriptDrive = useLocalStorage('ph:audio.scriptDrive', false)
+const scriptDriveIntensity = useLocalStorage('ph:audio.scriptDriveIntensity', true)
 
 /**
  * Take the tempo from the music in the video rather than a fixed rate.
  * Yields to a funscript, which describes what should happen far better than
  * a drum hit does.
  */
-const musicDrive = useLocalStorage('ph-music-drive', false)
+const musicDrive = useLocalStorage('ph:audio.musicDrive', false)
 
 /** Session shape: one smooth rise and fall, or repeated build-hold-retreat. */
-const sessionArc = useLocalStorage<'smooth' | 'edged'>('ph-session-arc', 'smooth')
-const edgeCycles = useLocalStorage('ph-edge-cycles', 3)
+const sessionArc = useLocalStorage<'smooth' | 'edged'>('ph:audio.sessionArc', 'smooth')
+const edgeCycles = useLocalStorage('ph:audio.edgeCycles', 3)
 
 // Breath pacing: ~6 per minute with a longer exhale
-const breathEnabled = useLocalStorage('ph-breath-enabled', false)
-const breathPeriod = useLocalStorage('ph-breath-period', 10)
-const breathInhaleRatio = useLocalStorage('ph-breath-inhale', 0.4)
+const breathEnabled = useLocalStorage('ph:audio.breathEnabled', false)
+const breathPeriod = useLocalStorage('ph:audio.breathPeriod', 10)
+const breathInhaleRatio = useLocalStorage('ph:audio.breathInhale', 0.4)
 
 export function useAudioStore() {
   return {

@@ -44,7 +44,7 @@ const ALL_TRANSITIONS: TransitionName[] = ['fade', 'slide', 'zoom', 'flip', 'blu
 
 const items = reactive<SlideshowItem[]>([])
 const overlays = reactive<SlideshowOverlay[]>([])
-const settings = useLocalStorage<SlideshowSettings>('ph-ss-settings', {
+const settings = useLocalStorage<SlideshowSettings>('ph:slideshow.settings', {
   delay: 5,
   transition: 'fade',
   loop: true,

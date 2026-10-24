@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 
 // Legacy storage key kept so existing data survives the rename.
-const LS_KEY = 'mwhoplayer:player'
+const LS_KEY = 'ph:player.prefs'
 function load() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) ?? '{}') }
   catch { return {} }

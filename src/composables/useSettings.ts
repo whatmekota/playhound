@@ -9,11 +9,11 @@ export function useSettings() {
   const deviceStore = useDeviceStore()
 
   function save() {
-    storage.set('deviceConfig', deviceStore.serialize())
+    storage.set('ph:device.config', deviceStore.serialize())
   }
 
   function load() {
-    const data = storage.get('deviceConfig')
+    const data = storage.get('ph:device.config')
     deviceStore.deserialize(data)
   }
 

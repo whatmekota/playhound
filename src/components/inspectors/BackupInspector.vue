@@ -14,11 +14,11 @@ const origin = typeof location === 'undefined' ? '' : location.origin
 
 /** Named entries the player keeps, so a missing one is obvious at a glance. */
 const EXPECTED: { key: string, label: string, icon: string }[] = [
-  { key: 'mwhoplayer:playlists', label: 'Playlists', icon: 'i-carbon-list' },
-  { key: 'mwhoplayer:stats', label: 'Stats', icon: 'i-carbon-chart-bar' },
-  { key: 'mwhoplayer:bookmarks', label: 'Bookmarks', icon: 'i-carbon-bookmark' },
-  { key: 'mwhoplayer:starred', label: 'Starred', icon: 'i-carbon-star' },
-  { key: 'deviceConfig', label: 'Device settings', icon: 'i-carbon-plug' },
+  { key: 'ph:playlists', label: 'Playlists', icon: 'i-carbon-list' },
+  { key: 'ph:stats', label: 'Stats', icon: 'i-carbon-chart-bar' },
+  { key: 'ph:bookmarks', label: 'Bookmarks', icon: 'i-carbon-bookmark' },
+  { key: 'ph:library.starred', label: 'Starred', icon: 'i-carbon-star' },
+  { key: 'ph:device.config', label: 'Device settings', icon: 'i-carbon-plug' },
 ]
 
 const IDB_LABEL: Record<string, string> = {

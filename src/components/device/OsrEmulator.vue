@@ -25,7 +25,7 @@ const EDGE = 8
 
 const ui = useUiStore()
 const saved = useLocalStorage<Saved>(
-  'ph-emulator',
+  'ph:emulator',
   { model: 'OSR2', x: -1, y: -1, w: DEFAULT_W, h: DEFAULT_H },
   { mergeDefaults: true },
 )

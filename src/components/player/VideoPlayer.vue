@@ -52,7 +52,7 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const hasVideo = computed(() => !!player.videoUrl)
 /** Fullscreen always gets the full chrome, even if it was entered from the mini player. */
 const isMini = computed(() => !!props.mini && !player.isFullscreen)
-const heatmap = useLocalStorage('ph-timeline-heatmap', true)
+const heatmap = useLocalStorage('ph:ui.timeline.heatmap', true)
 /** The end-of-video card, while it counts down. */
 const upNext = ref<{ entry: VideoEntry, directed: boolean, key: number } | null>(null)
 /** In-player menu open in fullscreen (popovers cannot show there). */
@@ -542,7 +542,7 @@ watch(() => playback.trackSeq, () => {
 const RING = 2 * Math.PI * 21
 
 // ─── Fullscreen extras ───────────────────────────────────────────────────────
-const sheetOpen = useLocalStorage('ph-fs-upnext', false)
+const sheetOpen = useLocalStorage('ph:ui.player.fsUpNext', false)
 const FS_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const upcoming = computed(() => queue.upcoming.slice(0, 60))

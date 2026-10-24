@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { KEYS } from '~/lib/persist'
 
 export type ThemeId = 'dark' | 'light' | 'catppuccin' | 'dracula'
 
@@ -16,12 +17,12 @@ export const THEMES: Theme[] = [
 ]
 
 export const useThemeStore = defineStore('theme', () => {
-  const current = ref<ThemeId>((localStorage.getItem('theme') as ThemeId) ?? 'dark')
+  const current = ref<ThemeId>((localStorage.getItem(KEYS.theme.key) as ThemeId) ?? 'dark')
 
   function apply(id: ThemeId) {
     current.value = id
     document.documentElement.setAttribute('data-theme', id)
-    localStorage.setItem('theme', id)
+    localStorage.setItem(KEYS.theme.key, id)
     // Keep the browser chrome (title bar on installed apps, mobile toolbar) and
     // the pre-paint background from index.html in step with the theme.
     try {

@@ -15,7 +15,7 @@
       ;(function () {
         var BG = { dark: '#08080a', light: '#f3f3f6', catppuccin: '#181825', dracula: '#1f2029' }
         try {
-          var t = localStorage.getItem('theme') || 'dark'
+          var t = localStorage.getItem('ph:theme') || localStorage.getItem('theme') || 'dark'
           if (!BG[t]) t = 'dark'
           var root = document.documentElement
           root.setAttribute('data-theme', t)

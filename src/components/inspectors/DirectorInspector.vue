@@ -26,8 +26,8 @@ const playback = usePlaybackStore()
 const ui = useUiStore()
 const { intensity, sessionActive, phase } = useAudioStore()
 
-const openHow = useLocalStorage('ph-director-open-how', true)
-const openCoverage = useLocalStorage('ph-director-open-coverage', true)
+const openHow = useLocalStorage('ph:ui.director.howOpen', true)
+const openCoverage = useLocalStorage('ph:ui.director.coverageOpen', true)
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 

@@ -20,7 +20,7 @@ const MAX_MS = 2200
 
 const library = useLibraryStore()
 // Shared with the settings modal; VueUse keeps same-key refs in sync.
-const enabled = useLocalStorage('ph-splash', true)
+const enabled = useLocalStorage('ph:ui.splash', true)
 
 function flag(fn: () => boolean) {
   try { return fn() }

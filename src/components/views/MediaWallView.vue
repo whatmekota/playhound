@@ -38,8 +38,8 @@ const sheetOpen = ref(false)
 const overToolbar = ref(false)
 const menu = ref<{ x: number, y: number, items: MenuItem[] } | null>(null)
 
-const snapping = useLocalStorage('ph-wall-snap', true)
-const showGrid = useLocalStorage('ph-wall-grid', true)
+const snapping = useLocalStorage('ph:wall.snap', true)
+const showGrid = useLocalStorage('ph:wall.grid', true)
 
 /** Top of the stack first, the way a layers list reads. */
 const layers = computed(() => [...items.value].sort((a, b) => b.zIndex - a.zIndex))

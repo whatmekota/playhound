@@ -32,10 +32,10 @@ const DEFAULT = {
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
-const openSpiral = useLocalStorage('ph-hypno-open-spiral', true)
-const openWords = useLocalStorage('ph-hypno-open-words', false)
-const openRing = useLocalStorage('ph-hypno-open-ring', false)
-const openFrame = useLocalStorage('ph-hypno-open-frame', false)
+const openSpiral = useLocalStorage('ph:ui.hypno.spiralOpen', true)
+const openWords = useLocalStorage('ph:ui.hypno.wordsOpen', false)
+const openRing = useLocalStorage('ph:ui.hypno.ringOpen', false)
+const openFrame = useLocalStorage('ph:ui.hypno.frameOpen', false)
 
 const direction = computed({
   get: () => (hypno.spiralReverse ? 'ccw' : 'cw'),

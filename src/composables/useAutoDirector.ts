@@ -16,7 +16,7 @@ const SHORTLIST = 5
 const SWEEP_CONCURRENCY = 3
 
 // Shared so the toggle and the sweep progress read the same state everywhere.
-const enabled = useLocalStorage('ph-director-enabled', false)
+const enabled = useLocalStorage('ph:director.enabled', false)
 const sweeping = ref(false)
 const sweepDone = ref(0)
 const sweepTotal = ref(0)

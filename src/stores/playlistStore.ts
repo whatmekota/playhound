@@ -44,9 +44,9 @@ export function evaluateSmartPlaylist(pl: SmartPlaylist, videos: VideoEntry[]): 
   }))
 }
 
-const STORAGE_KEY = 'mwhoplayer:playlists'
+const STORAGE_KEY = 'ph:playlists'
 // Legacy storage key kept so existing data survives the rename.
-const SMART_KEY = 'mwhoplayer:smartplaylists'
+const SMART_KEY = 'ph:playlists.smart'
 
 function loadFromStorage(): Playlist[] {
   try {

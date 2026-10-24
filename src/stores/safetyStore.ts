@@ -15,10 +15,10 @@ export const useSafetyStore = defineStore('safety', () => {
   const panicked = ref(false)
 
   /** Also panic when the window loses focus. Off by default; some people want it. */
-  const panicOnBlur = useLocalStorage('ph-panic-on-blur', false)
+  const panicOnBlur = useLocalStorage('ph:safety.panicOnBlur', false)
 
   /** Stop the device automatically after this long with no input. 0 disables. */
-  const idleStopMinutes = useLocalStorage('ph-idle-stop-min', 0)
+  const idleStopMinutes = useLocalStorage('ph:safety.idleStopMinutes', 0)
 
   /** What was running when panic fired, so resume can be faithful. */
   const suspended = ref<{

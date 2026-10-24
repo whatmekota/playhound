@@ -11,7 +11,7 @@ export interface Bookmark {
 }
 
 // Legacy key kept so existing bookmarks survive the rename.
-const STORAGE_KEY = 'mwhoplayer:bookmarks'
+const STORAGE_KEY = 'ph:bookmarks'
 
 function load(): Bookmark[] {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') }

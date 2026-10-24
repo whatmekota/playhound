@@ -252,7 +252,7 @@ function match(q: string, item: Item): Hit | null {
 }
 
 // ─── Recent ──────────────────────────────────────────────────────────────────
-const RECENT_KEY = 'ph-palette-recent'
+const RECENT_KEY = 'ph:ui.palette.recent'
 const RECENT_MAX = 6
 const recentIds = ref<string[]>(loadRecent())
 
