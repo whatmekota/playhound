@@ -1,25 +1,32 @@
 <script setup lang="ts">
 import type { MenuItem } from '~/components/ui/menu'
+import type { Chapter } from '~/lib/chapters'
+import { useElementSize } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import UiContextMenu from '~/components/ui/UiContextMenu.vue'
 import { useLoopSection } from '~/composables/useLoopSection'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { toast } from '~/composables/useToast'
+import { chapterAt, chaptersForScript } from '~/lib/chapters'
 import { sampleEnvelope } from '~/lib/funscriptAnalysis'
+import { getStrip, isStripBuilding, previewProgress } from '~/lib/previews'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useStatsStore } from '~/stores/statsStore'
+import ScrubPreview from './ScrubPreview.vue'
 
 /**
  * The scrub bar, with the script drawn on it.
  *
  * Lanes, top to bottom: the script waveform, then (when `heatmap` is on) a
  * band coloured by stroke speed with the stroke-rate curve over it. On top of
- * those sit the A–B loop, bookmarks, finish markers and the playhead.
+ * those sit chapter boundaries, the A–B loop, bookmarks, finish markers and
+ * the playhead. Hovering shows a card with the frame there (once the video's
+ * preview strip is built), the time and the chapter.
  *
  * `dock` draws in theme colours for the bottom dock; `overlay` draws white
  * for the fullscreen bar over video. It seeks through the playback store.
@@ -34,7 +41,7 @@ const playback = usePlaybackStore()
 const scriptStore = useScriptStore()
 const bookmarkStore = useBookmarkStore()
 const statsStore = useStatsStore()
-const { analysis } = useScriptAnalysis()
+const { analysis, source } = useScriptAnalysis()
 const loop = useLoopSection()
 
 const rootEl = ref<HTMLDivElement | null>(null)
@@ -48,9 +55,18 @@ const drag = ref<'scrub' | 'loopStart' | 'loopEnd' | null>(null)
 let scrubTime: number | null = null
 let playheadT = 0
 
+/** Time under the pointer. */
+const hoverTime = computed(() => {
+  const w = size.value.w
+  return w ? (hoverX.value / w) * player.videoDuration : 0
+})
+
 const videoName = computed(() => player.videoPath?.split(/[\\/]/).pop() ?? null)
 const bookmarks = computed(() => (videoName.value ? bookmarkStore.forVideo(videoName.value) : []))
 const finishes = computed(() => (videoName.value ? statsStore.stats[videoName.value]?.finishEvents ?? [] : []))
+const chapters = computed(() => chaptersForScript(source.value, player.videoDuration, analysis.value?.peaks, playback.scriptMetadata))
+const hoverChapter = computed<Chapter | null>(() =>
+  chapters.value.length > 1 ? chapterAt(chapters.value, hoverTime.value * 1000) : null)
 
 /**
  * Fraction of the strip given over to the heatmap band at the bottom.
@@ -85,6 +101,29 @@ let themeObs: MutationObserver | null = null
 
 // ─── Static layer ────────────────────────────────────────────────────────────
 
+/** Canvas oklch() support (Chromium 111+); an unsupported colour is silently ignored. */
+const oklchOk = (() => {
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (!ctx)
+    return false
+  ctx.fillStyle = '#000'
+  ctx.fillStyle = 'oklch(70% 0.1 200)'
+  return ctx.fillStyle !== '#000000'
+})()
+
+/**
+ * Heatmap colour for a speed in funscript units (0-100 position per second),
+ * on the same oklch scale as EroScripts' funlib, so the band reads the way
+ * script makers are used to: blue through green and yellow to red as speed
+ * rises, darkening past 500 and greying out past 800.
+ */
+function heatColor(speed: number): string {
+  const hue = (((210 - speed / 2.4) % 360) + 360) % 360
+  const l = 80 - 40 * Math.min(1, Math.max(0, (speed - 500) / 100))
+  const c = 0.4 - 0.3 * Math.min(1, Math.max(0, (speed - 800) / 100))
+  return oklchOk ? `oklch(${l}% ${c} ${hue} / 0.9)` : `hsla(${hue},85%,${l * 0.75}%,0.9)`
+}
+
 /** Speed heatmap, drawn as a band along the bottom edge. */
 function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, duration: number) {
   const a = analysis.value
@@ -94,28 +133,22 @@ function drawHeatmap(ctx: CanvasRenderingContext2D, W: number, H: number, durati
   const durMs = duration * 1000
   const bandTop = H * (1 - HEAT_BAND)
   const bandH = H - bandTop
-  // Normalise against this script's own peak so quiet scripts still read,
-  // with a floor so a nearly-static script is not amplified into noise.
-  const ref = Math.max(0.5, a.peakSpeed)
 
   const step = 2
   for (let x = 0; x < W; x += step) {
     const s = sampleEnvelope(a.envelope, (x / W) * durMs)
-    if (!s)
+    // Below a couple of units a second nothing is really moving: leave it clear.
+    if (!s || s.speed < 0.02)
       continue
-    const v = Math.min(1, s.speed / ref)
-    if (v < 0.02)
-      continue
-    // A data ramp, not a theme colour: cool blue for slow, hot magenta for fast.
-    const hue = 260 - v * 220
-    ctx.fillStyle = `hsla(${hue},${60 + v * 40}%,${36 + v * 24}%,0.9)`
+    ctx.fillStyle = heatColor(s.speed * 100)
     ctx.fillRect(x, bandTop, step + 0.5, bandH)
   }
 
   // Stroke-rate curve inside the band.
   const maxSpm = Math.max(30, a.peakSpm)
   ctx.beginPath()
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+  // Dark, because the ramp is light until speeds get extreme.
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'
   ctx.lineWidth = 1
   let started = false
   for (let x = 0; x <= W; x += 2) {
@@ -272,6 +305,27 @@ function draw(t: number) {
     ctx.fillRect(0, y, px, barH)
   }
 
+  // ── Chapters: a hairline at each boundary, a wash over the one being pointed at ──
+  const ch = chapters.value
+  if (ch.length > 1) {
+    const durMs = duration * 1000
+    const hc = hovering.value && drag.value === null ? hoverChapter.value : null
+    ctx.fillStyle = p.ink
+    if (hc) {
+      ctx.globalAlpha = props.variant === 'overlay' ? 0.1 : 0.06
+      ctx.fillRect((hc.start / durMs) * W, 0, ((hc.end - hc.start) / durMs) * W, H)
+    }
+    for (let i = 1; i < ch.length; i++) {
+      const x = Math.round((ch[i].start / durMs) * W)
+      ctx.globalAlpha = props.variant === 'overlay' ? 0.35 : 0.2
+      ctx.fillRect(x - 0.5, 0, 1, H)
+      // A notch at the top, so a boundary still reads over a busy waveform.
+      ctx.globalAlpha = props.variant === 'overlay' ? 0.75 : 0.45
+      ctx.fillRect(x - 1.5, 0, 3, 3)
+    }
+    ctx.globalAlpha = 1
+  }
+
   // ── A–B loop ──
   const { loopStart, loopEnd } = player
   if (loopStart !== null) {
@@ -352,6 +406,8 @@ watch(
     bookmarks,
     finishes,
     analysis,
+    chapters,
+    hoverChapter,
     showBand,
     palette,
     hovering,
@@ -462,11 +518,6 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 // ─── Hover readout ──────────────────────────────────────────────────────────
-const hoverTime = computed(() => {
-  const w = size.value.w
-  return w ? (hoverX.value / w) * player.videoDuration : 0
-})
-
 /** A bookmark under the pointer, so its label shows in the readout. */
 const hoverBookmark = computed(() => {
   const w = size.value.w
@@ -476,11 +527,42 @@ const hoverBookmark = computed(() => {
   return bookmarks.value.find(b => Math.abs((b.time / d) * w - hoverX.value) < 6) ?? null
 })
 
-const readoutLeft = computed(() => {
+const entry = computed(() => playback.currentEntry)
+const strip = computed(() => getStrip(entry.value))
+const building = computed(() => !strip.value && isStripBuilding(entry.value))
+const showFrame = computed(() => !!entry.value && (!!strip.value || building.value))
+const buildPct = computed(() =>
+  previewProgress.total ? Math.round((previewProgress.done / previewProgress.total) * 100) : 0)
+
+const cardEl = ref<HTMLElement | null>(null)
+const cardW = useElementSize(cardEl, undefined, { box: 'border-box' }).width
+const cardLeft = computed(() => {
   const w = size.value.w
-  // Keep the bubble inside the strip.
-  return Math.max(28, Math.min(w - 28, hoverX.value))
+  // Keep the card over the strip, however wide it is.
+  const half = Math.max(28, cardW.value / 2)
+  return Math.max(half, Math.min(w - half, hoverX.value))
 })
+
+/** Data colours for chapter kinds: calm to hot, like the heatmap. */
+const KIND_DOT: Record<Chapter['kind'], string> = {
+  break: 'bg-fg-faint',
+  slow: 'bg-info',
+  medium: 'bg-ok',
+  fast: 'bg-warn',
+  peak: 'bg-danger',
+}
+
+function loopChapter(c: Chapter) {
+  const a = c.start / 1000
+  // A loop end at the very end would never be reached before the video ends.
+  const b = player.videoDuration > 1 ? Math.min(c.end / 1000, player.videoDuration - 0.25) : c.end / 1000
+  player.setLoopStart(a)
+  player.setLoopEnd(b)
+  player.loopEnabled = true
+  if (player.currentTime < a || player.currentTime >= b)
+    playback.seek(a)
+  toast(`Looping ${c.name}`, { detail: `${formatTime(a)} – ${formatTime(b)}`, icon: 'i-carbon-repeat', key: 'loop' })
+}
 
 // ─── Context menu ────────────────────────────────────────────────────────────
 const menu = ref<{ x: number, y: number, items: MenuItem[] } | null>(null)
@@ -491,6 +573,15 @@ function onContextMenu(e: MouseEvent) {
   e.preventDefault()
   const t = xToTime(e.clientX)
   const at = formatTime(t)
+  const chapter = chapters.value.length > 1 ? chapterAt(chapters.value, t * 1000) : null
+  const chapterItems: MenuItem[] = chapter
+    ? [
+        { separator: true },
+        { heading: true, label: `Chapter · ${chapter.name}` },
+        { label: 'Loop this chapter', icon: 'i-carbon-repeat', run: () => loopChapter(chapter) },
+        { label: 'Play from its start', icon: 'i-carbon-skip-back', run: () => playback.seek(chapter.start / 1000) },
+      ]
+    : []
   menu.value = {
     x: e.clientX,
     y: e.clientY,
@@ -506,6 +597,7 @@ function onContextMenu(e: MouseEvent) {
         run: () => loop.toggleLoop(),
       },
       { label: 'Clear loop', icon: 'i-carbon-close', disabled: player.loopStart === null, run: () => loop.clearLoop() },
+      ...chapterItems,
       { separator: true },
       {
         label: `Bookmark ${at}`,
@@ -585,21 +677,42 @@ defineExpose({ redraw, playhead: () => playheadT })
   >
     <canvas ref="canvasEl" class="rounded-[var(--radius-sm)] h-full w-full inset-0 absolute" />
 
-    <!-- Hover readout -->
+    <!-- Hover card: frame, time, chapter -->
     <Transition name="t-fade">
       <div
         v-if="(hovering || drag === 'scrub') && player.videoDuration > 0"
-        class="text-[11px] font-medium px-1.5 py-0.5 rounded-[var(--radius-xs)] flex gap-1.5 pointer-events-none whitespace-nowrap items-center absolute z-1 -translate-x-1/2"
+        ref="cardEl"
+        class="mb-2 rounded-[var(--radius-md)] pointer-events-none bottom-full absolute z-1 overflow-hidden -translate-x-1/2"
         :class="variant === 'overlay'
-          ? 'bg-black/75 text-white -top-7'
-          : 'bg-surface-700 text-fg shadow-[var(--shadow-md)] -top-7'"
-        :style="{ left: `${readoutLeft}px` }"
+          ? 'bg-black/80 text-white ring-1 ring-white/15 backdrop-blur-md'
+          : 'bg-surface-700 text-fg ring-1 ring-edge shadow-[var(--shadow-lg)]'"
+        :style="{ left: `${cardLeft}px` }"
       >
-        <span class="num">{{ formatTime(hoverTime, '0:00') }}</span>
-        <template v-if="hoverBookmark && drag === null">
-          <span class="i-carbon-bookmark-filled text-[11px] text-warn" />
-          <span class="max-w-[160px] truncate">{{ hoverBookmark.label }}</span>
-        </template>
+        <div v-if="showFrame && entry" class="bg-black w-40 aspect-video relative">
+          <ScrubPreview v-if="strip" :entry="entry" :progress="hoverTime / player.videoDuration" />
+          <div v-else class="text-[10.5px] text-white/55 flex flex-col gap-1 items-center inset-0 justify-center absolute">
+            <span class="i-carbon-image text-[16px] animate-pulse-dot" />
+            <span class="num">Preparing previews {{ buildPct }}%</span>
+          </div>
+          <span class="text-[11px] text-white font-medium num px-1 rounded-[var(--radius-xs)] bg-black/70 bottom-1 right-1 absolute">
+            {{ formatTime(hoverTime, '0:00') }}
+          </span>
+        </div>
+        <div
+          v-if="!showFrame || hoverChapter || (hoverBookmark && drag === null)"
+          class="text-[11px] font-medium px-2 flex gap-1.5 h-6 whitespace-nowrap items-center"
+          :class="showFrame ? 'max-w-40' : 'max-w-60'"
+        >
+          <span v-if="!showFrame" class="num">{{ formatTime(hoverTime, '0:00') }}</span>
+          <template v-if="hoverChapter">
+            <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="KIND_DOT[hoverChapter.kind]" />
+            <span class="truncate">{{ hoverChapter.name }}</span>
+          </template>
+          <template v-if="hoverBookmark && drag === null">
+            <span class="i-carbon-bookmark-filled text-[11px] text-warn shrink-0" />
+            <span class="truncate">{{ hoverBookmark.label }}</span>
+          </template>
+        </div>
       </div>
     </Transition>
 

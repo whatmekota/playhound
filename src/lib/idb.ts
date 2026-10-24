@@ -4,12 +4,13 @@
  *   "thumbs"    — key: filename, value: dataURL string
  *   "meta"      — key: string,   value: any
  *   "vidmeta"   — key: filename, value: VideoMeta (user editable overrides)
+ *   "previews"  — key: name|size|mtime, value: PreviewRecord (scrub sprite sheets; a cache)
  */
 
 // Storage identifier, not a brand string. Renaming it would orphan every
 // user's playlists, video metadata and saved directory handles.
 const DB_NAME = 'mwhoplayer'
-const DB_VERSION = 4
+const DB_VERSION = 5
 let db: IDBDatabase | null = null
 
 function openDB(): Promise<IDBDatabase> {
@@ -31,8 +32,20 @@ function openDB(): Promise<IDBDatabase> {
         d.createObjectStore('vidmeta')
       if (!d.objectStoreNames.contains('summaries'))
         d.createObjectStore('summaries')
+      // v5: scrub preview strips.
+      if (!d.objectStoreNames.contains('previews'))
+        d.createObjectStore('previews')
     }
-    req.onsuccess = () => { db = req.result; resolve(db) }
+    req.onsuccess = () => {
+      db = req.result
+      // Another tab upgrading the schema waits on this connection; let it go
+      // and reopen on the next call.
+      db.onversionchange = () => {
+        db?.close()
+        db = null
+      }
+      resolve(db)
+    }
     req.onerror = () => reject(req.error)
   })
 }
@@ -203,4 +216,56 @@ export const summaryDb = {
 export const videoMetaDb = {
   get: (filename: string) => idbGet<VideoMeta>('vidmeta', filename),
   set: (filename: string, value: VideoMeta) => idbSet('vidmeta', filename, value),
+}
+
+/** A scrub preview strip: frames packed into one JPEG sprite sheet. */
+export interface PreviewRecord {
+  /** Layout version, so a change to the format can ignore old entries. */
+  v: number
+  blob: Blob
+  cols: number
+  rows: number
+  frameW: number
+  frameH: number
+  /** Seconds between frames; frame i shows (i + 0.5) × interval. */
+  interval: number
+  count: number
+  /** Last time it was built or used (ms epoch), for pruning. */
+  at: number
+}
+
+/**
+ * Preview strips. A pure cache (rebuilt on demand), so not in BACKUP_STORES.
+ * `prune` keeps the store from growing without bound on a large library.
+ */
+export const previewDb = {
+  get: (key: string) => idbGet<PreviewRecord>('previews', key),
+  set: (key: string, value: PreviewRecord) => idbSet('previews', key, value),
+  async prune(keep: number): Promise<void> {
+    await openDB()
+    const store = db!.transaction('previews', 'readonly').objectStore('previews')
+    const entries: { key: IDBValidKey, at: number }[] = await new Promise((resolve, reject) => {
+      const out: { key: IDBValidKey, at: number }[] = []
+      // A cursor over values hands back Blob handles, not their bytes, so this stays cheap.
+      const req = store.openCursor()
+      req.onsuccess = () => {
+        const c = req.result
+        if (!c)
+          return resolve(out)
+        out.push({ key: c.key, at: (c.value as PreviewRecord)?.at ?? 0 })
+        c.continue()
+      }
+      req.onerror = () => reject(req.error)
+    })
+    if (entries.length <= keep)
+      return
+    entries.sort((a, b) => a.at - b.at)
+    const tr = db!.transaction('previews', 'readwrite')
+    for (const e of entries.slice(0, entries.length - keep))
+      tr.objectStore('previews').delete(e.key)
+    await new Promise<void>((resolve, reject) => {
+      tr.oncomplete = () => resolve()
+      tr.onerror = () => reject(tr.error)
+    })
+  },
 }

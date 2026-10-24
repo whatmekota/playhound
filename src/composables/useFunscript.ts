@@ -4,12 +4,18 @@ import { ref } from 'vue'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { useScriptStore } from '~/stores/scriptStore'
 
+/**
+ * Raw metadata from the last parsed funscript (for merged scripts, from the
+ * main file). Shared by every caller: it describes what is loaded, and a
+ * per-call copy meant a script loaded by hand left the previous video's author
+ * chapters showing.
+ */
+const lastRawMetadata = ref<Record<string, unknown> | null>(null)
+
 export function useFunscript() {
   const scriptStore = useScriptStore()
   const loading = ref(false)
   const error = ref<string | null>(null)
-  /** Raw metadata from the last parsed funscript (for merged scripts, from the main file) */
-  const lastRawMetadata = ref<Record<string, unknown> | null>(null)
 
   /** Auto-detect using pre-resolved ScriptMatch array (carries isAlt/altName). */
   async function autoDetectFromFiles(videoFile: File, matches: ScriptMatch[]) {
@@ -30,6 +36,7 @@ export function useFunscript() {
   async function loadScriptFiles(files: File[], videoBasename = '') {
     loading.value = true
     error.value = null
+    lastRawMetadata.value = null
     try {
       const matches: ScriptMatch[] = files.map(f => ({ file: f, isAlt: false, altName: '' }))
       const results = await parseMatches(matches, videoBasename)

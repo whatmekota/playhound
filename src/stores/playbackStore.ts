@@ -12,7 +12,7 @@ import type { ScriptMatch, VideoEntry } from './libraryStore'
  * controls with `bindPlayer` on mount.
  */
 import { defineStore } from 'pinia'
-import { nextTick, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { toast } from '~/composables/useToast'
@@ -53,6 +53,11 @@ export const usePlaybackStore = defineStore('playback', () => {
   const loading = ref(false)
   /** Bumped on every track change, for transitions and now-playing cards. */
   const trackSeq = ref(0)
+  /**
+   * The loaded main script's `metadata` block, as written (chapters, bookmarks,
+   * tags…). Null with no script, so a script-less video never shows the last one's.
+   */
+  const scriptMetadata = computed(() => (scripts.scripts.length ? lastRawMetadata.value : null))
 
   function bindPlayer(c: PlayerControls | null) {
     controls.value = c
@@ -353,6 +358,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     currentEntry,
     loading,
     trackSeq,
+    scriptMetadata,
     bindPlayer,
     loadFile,
     loadEntry,

@@ -1,15 +1,22 @@
 <script setup lang="ts">
+import type { Chapter } from '~/lib/chapters'
 import { useElementSize, useLocalStorage } from '@vueuse/core'
 import { computed, defineComponent, h, ref, watch } from 'vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
+import UiKbd from '~/components/ui/UiKbd.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
+import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
+import { toast } from '~/composables/useToast'
+import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
+import { KEYS } from '~/lib/persist'
+import { getStrip } from '~/lib/previews'
 import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { useAudioStore } from '~/stores/audio'
@@ -25,13 +32,15 @@ import FunscriptTimeline from './FunscriptTimeline.vue'
 import LoopControls from './LoopControls.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import ScriptOffsetControl from './ScriptOffsetControl.vue'
+import ScrubPreview from './ScrubPreview.vue'
 import SpeedControl from './SpeedControl.vue'
 
 /**
  * The dock: what is playing, the transport, and the session's vital signs.
  *
  * Always on screen, whichever view owns the stage. On the player view the
- * script timeline spans its top edge; elsewhere a slim progress line does.
+ * script timeline spans its top edge, with the script's chapters beside it;
+ * elsewhere a slim progress line does.
  * The right side gives way as the window narrows: tools go into an overflow
  * menu first, then the status readouts, then the volume slider.
  */
@@ -47,7 +56,7 @@ const audio = useAudioStore()
 const director = useAutoDirector()
 const binaural = useBinauralBeats()
 
-const heatmap = useLocalStorage('ph:ui.timeline.heatmap', true)
+const heatmap = useLocalStorage(KEYS.timelineHeatmap.key, true)
 
 const hasTrack = computed(() => !!player.videoUrl)
 const title = computed(() => {
@@ -77,6 +86,52 @@ watch(() => [playback.trackSeq, playback.currentEntry?.thumbnailUrl] as const, (
 function toggleStar() {
   if (playback.currentEntry)
     library.toggleStar(playback.currentEntry)
+}
+
+// ─── Chapters ────────────────────────────────────────────────────────────────
+const { analysis, source } = useScriptAnalysis()
+const chapters = computed(() => chaptersForScript(source.value, player.videoDuration, analysis.value?.peaks, playback.scriptMetadata))
+const currentChapter = computed(() =>
+  chapters.value.length > 1 ? chapterAt(chapters.value, player.currentTime * 1000) : null)
+const chaptersByAuthor = computed(() => chapters.value[0]?.source === 'author')
+const fastestChapter = computed(() => Math.max(0.5, ...chapters.value.map(c => c.avgSpeed)))
+
+/** Data colours for chapter kinds: calm to hot, like the heatmap. */
+const KIND_DOT: Record<Chapter['kind'], string> = {
+  break: 'bg-fg-faint',
+  slow: 'bg-info',
+  medium: 'bg-ok',
+  fast: 'bg-warn',
+  peak: 'bg-danger',
+}
+
+function skipChapter(dir: -1 | 1) {
+  const ms = player.currentTime * 1000
+  const c = dir > 0 ? nextChapter(chapters.value, ms) : prevChapter(chapters.value, ms)
+  if (c)
+    playback.seek(c.start / 1000)
+}
+
+function isLooping(c: Chapter) {
+  return player.loopActive
+    && Math.abs((player.loopStart ?? -1) - c.start / 1000) < 0.05
+    && Math.abs((player.loopEnd ?? -1) - c.end / 1000) < 0.3
+}
+
+function loopChapter(c: Chapter) {
+  if (isLooping(c)) {
+    player.loopEnabled = false
+    return
+  }
+  const a = c.start / 1000
+  // A loop end at the very end would never be reached before the video ends.
+  const b = player.videoDuration > 1 ? Math.min(c.end / 1000, player.videoDuration - 0.25) : c.end / 1000
+  player.setLoopStart(a)
+  player.setLoopEnd(b)
+  player.loopEnabled = true
+  if (player.currentTime < a || player.currentTime >= b)
+    playback.seek(a)
+  toast(`Looping ${c.name}`, { detail: `${formatTime(a)} – ${formatTime(b)}`, icon: 'i-carbon-repeat', key: 'loop' })
 }
 
 // ─── Volume ──────────────────────────────────────────────────────────────────
@@ -198,6 +253,11 @@ function onScrubUp(e: PointerEvent) {
   setTimeout(() => (scrubbing.value = false), 120)
 }
 const scrubHoverTime = computed(() => (scrubW.value ? (scrubX.value / scrubW.value) * player.videoDuration : 0))
+const scrubChapter = computed(() =>
+  chapters.value.length > 1 ? chapterAt(chapters.value, scrubHoverTime.value * 1000) : null)
+const scrubStrip = computed(() => getStrip(playback.currentEntry))
+/** Half the hover card's width, to keep it on screen at the edges. */
+const scrubCardHalf = computed(() => (scrubStrip.value ? 82 : 48))
 
 // ─── Responsive right side ───────────────────────────────────────────────────
 /**
@@ -251,11 +311,22 @@ const needsOverflow = computed(() => level.value > 0)
       </div>
       <span class="np-knob rounded-full bg-fg opacity-0 h-3 w-3 shadow-[var(--shadow-md)] transition-opacity top-1/2 absolute group-hover/scrub:opacity-100 -translate-x-1/2 -translate-y-1/2" />
       <Transition name="t-fade">
-        <span
+        <div
           v-if="scrubHover && player.videoDuration > 0"
-          class="text-[11px] text-fg font-medium num px-1.5 py-0.5 rounded-[var(--radius-xs)] bg-surface-700 pointer-events-none shadow-[var(--shadow-md)] absolute -translate-x-1/2 -top-6"
-          :style="{ left: `${Math.max(24, Math.min(scrubW - 24, scrubX))}px` }"
-        >{{ formatTime(scrubHoverTime, '0:00') }}</span>
+          class="text-fg mb-1 rounded-[var(--radius-md)] bg-surface-700 pointer-events-none ring-1 ring-edge shadow-[var(--shadow-lg)] bottom-full absolute overflow-hidden -translate-x-1/2"
+          :style="{ left: `${Math.max(scrubCardHalf, Math.min(scrubW - scrubCardHalf, scrubX))}px` }"
+        >
+          <div v-if="scrubStrip && playback.currentEntry" class="bg-black w-40 aspect-video relative">
+            <ScrubPreview :entry="playback.currentEntry" :progress="scrubHoverTime / player.videoDuration" />
+          </div>
+          <div class="text-[11px] font-medium px-2 flex gap-1.5 h-6 whitespace-nowrap items-center" :class="scrubStrip ? 'max-w-40' : 'max-w-60'">
+            <span class="num">{{ formatTime(scrubHoverTime, '0:00') }}</span>
+            <template v-if="scrubChapter">
+              <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="KIND_DOT[scrubChapter.kind]" />
+              <span class="truncate">{{ scrubChapter.name }}</span>
+            </template>
+          </div>
+        </div>
       </Transition>
     </div>
 
@@ -265,6 +336,73 @@ const needsOverflow = computed(() => level.value > 0)
         <div class="np-tl-inner min-h-0">
           <div class="px-4 pt-2.5 flex gap-2 items-center">
             <FunscriptTimeline class="flex-1 h-11" :heatmap="heatmap" />
+
+            <!-- Chapters: skip either way, or pick from the list -->
+            <div v-if="chapters.length > 1" class="flex shrink-0 gap-0.5 items-center">
+              <UiIconButton icon="i-carbon-skip-back-outline" label="Previous chapter" kbd="," size="xs" @click="skipChapter(-1)" />
+              <UiPopover placement="top" align="end" width="320px">
+                <template #trigger="{ toggle, open }">
+                  <button
+                    type="button"
+                    class="text-[11.5px] px-2 focusable rounded-[var(--radius-sm)] flex gap-1.5 h-6 max-w-36 pressable items-center"
+                    :class="open ? 'bg-fg/8 text-fg' : 'text-fg-muted hover:text-fg hover:bg-fg/7'"
+                    :aria-label="`Chapters: ${currentChapter?.name ?? 'none'}`"
+                    @click="toggle"
+                  >
+                    <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="currentChapter ? KIND_DOT[currentChapter.kind] : 'bg-fg-faint'" />
+                    <Transition name="t-fade" mode="out-in">
+                      <span :key="currentChapter?.index ?? -1" class="truncate">{{ currentChapter?.name ?? 'Chapters' }}</span>
+                    </Transition>
+                    <span v-if="currentChapter" class="text-fg-faint num shrink-0">{{ currentChapter.index + 1 }}/{{ chapters.length }}</span>
+                  </button>
+                </template>
+
+                <div class="flex flex-col gap-2">
+                  <div class="px-1 flex gap-2 items-baseline justify-between">
+                    <span class="eyebrow">Chapters</span>
+                    <span class="hint">{{ chaptersByAuthor ? 'Written by the script\'s author' : 'Found in the script' }}</span>
+                  </div>
+                  <div class="scroll-y flex flex-col gap-0.5 max-h-[50vh]">
+                    <div
+                      v-for="c in chapters"
+                      :key="c.index"
+                      class="group/ch pr-1 rounded-[var(--radius-sm)] flex gap-1 transition-colors items-center"
+                      :class="c === currentChapter ? 'bg-accent-soft' : 'hover:bg-fg/6'"
+                    >
+                      <button
+                        type="button"
+                        class="pl-2 text-left focusable rounded-[var(--radius-sm)] flex flex-1 gap-2 h-8 min-w-0 items-center"
+                        @click="playback.seek(c.start / 1000)"
+                      >
+                        <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="KIND_DOT[c.kind]" />
+                        <span class="text-[12.5px] flex-1 truncate" :class="c === currentChapter ? 'text-accent-300 font-medium' : 'text-fg'">{{ c.name }}</span>
+                        <span
+                          v-tip="`Average speed ${Math.round(c.avgSpeed * 100)}${c.avgSpm ? ` · ${Math.round(c.avgSpm)} strokes/min` : ''}`"
+                          class="rounded-full bg-fg/8 shrink-0 h-1 w-8 overflow-hidden"
+                        >
+                          <span class="rounded-full h-full block" :class="KIND_DOT[c.kind]" :style="{ width: `${Math.min(100, (c.avgSpeed / fastestChapter) * 100)}%` }" />
+                        </span>
+                        <span class="text-[11px] text-fg-faint num text-right shrink-0 w-10">{{ formatTime(c.start / 1000) }}</span>
+                      </button>
+                      <UiIconButton
+                        icon="i-carbon-repeat"
+                        :label="isLooping(c) ? 'Stop looping' : 'Loop this chapter'"
+                        size="xs"
+                        :active="isLooping(c)"
+                        :class="isLooping(c) ? '' : 'opacity-0 group-hover/ch:opacity-100 focus-visible:opacity-100'"
+                        @click="loopChapter(c)"
+                      />
+                    </div>
+                  </div>
+                  <p class="hint px-1">
+                    <UiKbd>,</UiKbd> <UiKbd>.</UiKbd> skip chapters · right-click the timeline to loop one
+                  </p>
+                </div>
+              </UiPopover>
+              <UiIconButton icon="i-carbon-skip-forward-outline" label="Next chapter" kbd="." size="xs" @click="skipChapter(1)" />
+              <div class="mx-1 divider-x" />
+            </div>
+
             <UiIconButton
               icon="i-carbon-chart-histogram"
               label="Speed heatmap on the timeline"

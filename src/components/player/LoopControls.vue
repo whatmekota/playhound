@@ -1,17 +1,21 @@
 <script setup lang="ts">
+import type { Chapter } from '~/lib/chapters'
 import { computed } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useLoopSection } from '~/composables/useLoopSection'
+import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
+import { chapterAt, chaptersForScript } from '~/lib/chapters'
 import { formatTime } from '~/lib/time'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 
 /**
  * A–B loop: mark two points at the playhead and repeat what is between them.
- * The same points can be dragged on the timeline or set from its context menu.
+ * The same points can be dragged on the timeline or set from its context menu,
+ * and "Loop this chapter" sets both to the script chapter under the playhead.
  * `inline` renders just the panel, for the dock's overflow menu.
  */
 defineProps<{ inline?: boolean }>()
@@ -41,6 +45,34 @@ function markB() {
 
 const span = computed(() =>
   player.hasLoop ? formatTime((player.loopEnd ?? 0) - (player.loopStart ?? 0)) : null)
+
+// ─── Chapters ────────────────────────────────────────────────────────────────
+const { analysis, source } = useScriptAnalysis()
+const chapters = computed(() => chaptersForScript(source.value, player.videoDuration, analysis.value?.peaks, playback.scriptMetadata))
+const chapter = computed<Chapter | null>(() =>
+  chapters.value.length > 1 ? chapterAt(chapters.value, player.currentTime * 1000) : null)
+
+/** The loop already spans this chapter, give or take a rounding. */
+const loopingChapter = computed(() => {
+  const c = chapter.value
+  return !!c && player.loopActive
+    && Math.abs((player.loopStart ?? -1) - c.start / 1000) < 0.05
+    && Math.abs((player.loopEnd ?? -1) - c.end / 1000) < 0.3
+})
+
+function loopChapter() {
+  const c = chapter.value
+  if (!c)
+    return
+  if (loopingChapter.value) {
+    player.loopEnabled = false
+    return
+  }
+  player.setLoopStart(c.start / 1000)
+  // A loop end at the very end would never be reached before the video ends.
+  player.setLoopEnd(player.videoDuration > 1 ? Math.min(c.end / 1000, player.videoDuration - 0.25) : c.end / 1000)
+  player.loopEnabled = true
+}
 </script>
 
 <template>
@@ -86,6 +118,20 @@ const span = computed(() =>
           <span class="text-[13px] num">{{ formatTime(side === 'A' ? player.loopStart : player.loopEnd) }}</span>
         </button>
       </div>
+
+      <UiButton
+        v-if="chapter"
+        variant="subtle"
+        size="sm"
+        icon="i-carbon-repeat"
+        block
+        :active="loopingChapter"
+        class="!justify-start"
+        @click="loopChapter"
+      >
+        <span class="text-left flex-1 truncate">{{ loopingChapter ? 'Looping chapter' : 'Loop this chapter' }}</span>
+        <span class="text-[11.5px] opacity-70 truncate">{{ chapter.name }}</span>
+      </UiButton>
 
       <div class="flex gap-1 items-center">
         <span class="hint flex-1">

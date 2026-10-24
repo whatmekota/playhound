@@ -8,8 +8,12 @@ import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useLoopSection } from '~/composables/useLoopSection'
+import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { useVideoSync } from '~/composables/useVideoSync'
+import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
+import { KEYS } from '~/lib/persist'
+import { requestStrip } from '~/lib/previews'
 import { ensureThumb, prefetchThumbs } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -52,7 +56,7 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 const hasVideo = computed(() => !!player.videoUrl)
 /** Fullscreen always gets the full chrome, even if it was entered from the mini player. */
 const isMini = computed(() => !!props.mini && !player.isFullscreen)
-const heatmap = useLocalStorage('ph:ui.timeline.heatmap', true)
+const heatmap = useLocalStorage(KEYS.timelineHeatmap.key, true)
 /** The end-of-video card, while it counts down. */
 const upNext = ref<{ entry: VideoEntry, directed: boolean, key: number } | null>(null)
 /** In-player menu open in fullscreen (popovers cannot show there). */
@@ -384,6 +388,44 @@ function onSbsDblClick() {
     toggleFullscreen()
 }
 
+// ─── Chapters ────────────────────────────────────────────────────────────────
+const { analysis, source } = useScriptAnalysis()
+const chapters = computed(() => chaptersForScript(source.value, player.videoDuration, analysis.value?.peaks, playback.scriptMetadata))
+const currentChapter = computed(() =>
+  chapters.value.length > 1 ? chapterAt(chapters.value, player.currentTime * 1000) : null)
+
+function skipChapter(dir: -1 | 1) {
+  if (chapters.value.length < 2) {
+    showOsd('i-carbon-list', 'No chapters', { sub: hasVideo.value && !source.value ? 'No script' : undefined })
+    return
+  }
+  const ms = (videoEl.value?.currentTime ?? player.currentTime) * 1000
+  const c = dir > 0 ? nextChapter(chapters.value, ms) : prevChapter(chapters.value, ms)
+  if (!c) {
+    showOsd('i-carbon-skip-forward-outline', 'Last chapter')
+    return
+  }
+  seek(c.start / 1000)
+  showOsd(dir > 0 ? 'i-carbon-skip-forward-outline' : 'i-carbon-skip-back-outline', c.name, {
+    sub: `${c.index + 1} of ${chapters.value.length} · ${formatTime(c.start / 1000, '0:00')}`,
+  })
+}
+
+// ─── Scrub previews ──────────────────────────────────────────────────────────
+// The playing video's strip is built first, but not straight away: the
+// strip decodes on a second <video>, and the first seconds of playback
+// deserve the decoder to themselves.
+const STRIP_DELAY_MS = 4000
+let releaseStrip: (() => void) | null = null
+let stripTimer: ReturnType<typeof setTimeout> | undefined
+watch(() => playback.currentEntry, (entry) => {
+  clearTimeout(stripTimer)
+  releaseStrip?.()
+  releaseStrip = null
+  if (entry)
+    stripTimer = setTimeout(() => (releaseStrip = requestStrip(entry, 'now')), STRIP_DELAY_MS)
+}, { immediate: true })
+
 // ─── Keyboard ────────────────────────────────────────────────────────────────
 function onKeyDown(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey)
@@ -445,6 +487,15 @@ function onKeyDown(e: KeyboardEvent) {
     case 'Backslash':
       e.preventDefault()
       setSpeed(1)
+      break
+    case 'Comma':
+    case 'Period':
+      if (e.shiftKey)
+        return
+      e.preventDefault()
+      skipChapter(e.code === 'Comma' ? -1 : 1)
+      if (player.isFullscreen)
+        poke()
       break
   }
 }
@@ -542,7 +593,7 @@ watch(() => playback.trackSeq, () => {
 const RING = 2 * Math.PI * 21
 
 // ─── Fullscreen extras ───────────────────────────────────────────────────────
-const sheetOpen = useLocalStorage('ph:ui.player.fsUpNext', false)
+const sheetOpen = useLocalStorage(KEYS.fsUpNext.key, false)
 const FS_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const upcoming = computed(() => queue.upcoming.slice(0, 60))
@@ -593,6 +644,8 @@ onBeforeUnmount(() => {
   for (const t of [idleTimer, flashTimer, rippleTimer, osdTimer, spinnerTimer, pendingToggle ?? undefined])
     clearTimeout(t)
   clearUpNextTimers()
+  clearTimeout(stripTimer)
+  releaseStrip?.()
   stop()
 })
 
@@ -725,6 +778,13 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                   <span v-else class="vp-chip text-white/55">No script</span>
                   <span v-if="player.playbackSpeed !== 1" class="vp-chip vp-chip-accent font-mono">{{ Number(player.playbackSpeed.toFixed(2)) }}×</span>
                   <span v-if="player.loopActive" class="vp-chip vp-chip-accent font-mono">A–B</span>
+                  <Transition name="t-fade" mode="out-in">
+                    <span v-if="currentChapter" :key="currentChapter.index" class="vp-chip">
+                      <span class="i-carbon-bookmark text-[10px] opacity-70" />
+                      {{ currentChapter.name }}
+                      <span class="text-white/50 num">{{ currentChapter.index + 1 }}/{{ chapters.length }}</span>
+                    </span>
+                  </Transition>
                   <span v-if="queue.sourceLabel && queue.length > 1" class="ml-1 truncate">
                     {{ queue.sourceLabel }} · {{ queue.pos + 1 }} of {{ queue.length }}
                   </span>
@@ -824,6 +884,12 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
             <span class="text-[12.5px] text-white/85 num ml-2">
               {{ timeText }} <span class="text-white/45">/ {{ durationText }}</span>
             </span>
+
+            <div v-if="chapters.length > 1" class="ml-3 flex gap-0.5 min-w-0 items-center">
+              <UiIconButton icon="i-carbon-skip-back-outline" label="Previous chapter" kbd="," variant="glass" size="sm" @click="skipChapter(-1)" />
+              <span class="text-[12px] text-white/75 px-1 max-w-40 truncate">{{ currentChapter?.name }}</span>
+              <UiIconButton icon="i-carbon-skip-forward-outline" label="Next chapter" kbd="." variant="glass" size="sm" @click="skipChapter(1)" />
+            </div>
 
             <div class="flex-1" />
 
