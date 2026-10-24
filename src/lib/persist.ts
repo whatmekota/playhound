@@ -146,7 +146,7 @@ export function isOwnKey(key: string): boolean {
 
 // ─── Migrations ───────────────────────────────────────────────────────────────
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 /** Old name → new name, for the move to the `ph:` namespace (schema 1 → 2). */
 export const LEGACY_RENAMES: Record<string, string> = {
@@ -240,8 +240,22 @@ export const LEGACY_RENAMES: Record<string, string> = {
 /** Keys that are simply gone: replaced by something else, or never worth keeping. */
 const LEGACY_DROPPED = ['uiState', 'ph-favorites-into-stars']
 
+/**
+ * Keys from features that no longer exist (an LLM helper and a VRM viewer
+ * from before the merge, sections and strips of the old UI). Found in real
+ * storage after the 1 → 2 step, which only knew the keys code still used.
+ */
+const ORPHANED = [
+  'mwhoplayer:llm',
+  'vrmViewer:poseId',
+  'ph-sec-beat',
+  'ph-sec-layers',
+  'ph-sec-session',
+  'ph-upnext-open',
+]
+
 function isLegacyKey(key: string): boolean {
-  return key in LEGACY_RENAMES || LEGACY_DROPPED.includes(key)
+  return key in LEGACY_RENAMES || LEGACY_DROPPED.includes(key) || ORPHANED.includes(key)
 }
 
 /** Minimal storage surface, so migrations run against a fake in tests. */
@@ -307,6 +321,14 @@ const MIGRATIONS: { from: number, run: (kv: KV) => void }[] = [
       }
       for (const from of [...Object.keys(LEGACY_RENAMES), ...LEGACY_DROPPED])
         kv.removeItem(from)
+    },
+  },
+  {
+    // 2 → 3: drop what no feature reads any more.
+    from: 2,
+    run(kv) {
+      for (const k of ORPHANED)
+        kv.removeItem(k)
     },
   },
 ]

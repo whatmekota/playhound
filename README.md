@@ -11,7 +11,7 @@ script can.
 
 **Player** — local video library with automatic funscript matching, playlists,
 bookmarks, an organizer that renames videos and scripts together, watch stats, an
-EroScripts browser, 180° SBS playback and a VRM viewer.
+EroScripts browser and 180° SBS playback.
 
 **Session** — binaural tone generator with a noise layer, a free-placement media
 wall, a beat-synced slideshow, and a session engine that moves through

@@ -228,7 +228,7 @@ async function onDrop(e: DragEvent) {
       return
     }
     if (files.length > 1) {
-      await library.setFiles(files)
+      await library.addFiles(files)
       library.loadedAt = Date.now()
       toast.success(`Added ${videos.length} video${videos.length === 1 ? '' : 's'}`, { icon: 'i-carbon-folder' })
       if (videos.length > 1) {

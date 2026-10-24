@@ -88,6 +88,24 @@ export const useLibraryStore = defineStore('library', () => {
    * Process files from folder input in async batches so the UI never freezes.
    * Only File *handles* are stored — no file content is ever read here.
    */
+  /**
+   * Add loose files (a drag and drop) to what is already loaded instead of
+   * replacing it: dropping one clip and its scripts used to swap a whole
+   * restored library for that one video. Same-named entries are replaced.
+   */
+  async function addFiles(files: File[]) {
+    if (!videos.value.length)
+      return setFiles(files)
+    const kept = videos.value
+    const keptFolder = folderName.value
+    await setFiles(files)
+    const added = new Set(videos.value.map(v => v.name))
+    videos.value = [...kept.filter(v => !added.has(v.name)), ...videos.value]
+      .sort((a, b) => a.name.localeCompare(b.name))
+    folderName.value = keptFolder
+    totalFiles.value = videos.value.length
+  }
+
   async function setFiles(files: File[]) {
     scanning.value = true
     totalFiles.value = files.length
@@ -360,6 +378,7 @@ export const useLibraryStore = defineStore('library', () => {
     watchNewCount,
     loadedAt,
     setFiles,
+    addFiles,
     clear,
     toggleStar,
     pickFolder,

@@ -29,7 +29,7 @@ describe('runMigrations', () => {
       'deviceConfig': '{"axes":1}',
     })
     expect(storedSchema(kv)).toBe(1)
-    expect(runMigrations(kv)).toEqual([1])
+    expect(runMigrations(kv)).toEqual([1, 2])
 
     expect(kv.data[KEYS.playlists.key]).toBe('[{"id":"x","name":"Mine","entries":[]}]')
     expect(kv.data[KEYS.hypnoWords.key]).toBe('["a","b"]')
@@ -87,6 +87,22 @@ describe('runMigrations', () => {
     runMigrations(kv, 1)
     expect(kv.data[KEYS.audioVolume.key]).toBe('0.2')
     expect(kv.data['ph-volume']).toBeUndefined()
+  })
+
+  it('drops keys of features that no longer exist', () => {
+    const kv = memory({ 'ph:schema': '2', 'mwhoplayer:llm': '{}', 'ph-sec-beat': 'true', 'ph:playlists': '[]' })
+    expect(runMigrations(kv)).toEqual([2])
+    expect(kv.data['mwhoplayer:llm']).toBeUndefined()
+    expect(kv.data['ph-sec-beat']).toBeUndefined()
+    expect(kv.data['ph:playlists']).toBe('[]')
+    expect(kv.data[KEYS.schema.key]).toBe(String(SCHEMA_VERSION))
+  })
+
+  it('walks every step from the oldest layout', () => {
+    const kv = memory({ 'ph-volume': '0.5', 'ph-sec-layers': 'true' })
+    expect(runMigrations(kv)).toEqual([1, 2])
+    expect(kv.data[KEYS.audioVolume.key]).toBe('0.5')
+    expect(kv.data['ph-sec-layers']).toBeUndefined()
   })
 
   it('is idempotent', () => {
