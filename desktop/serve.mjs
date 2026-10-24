@@ -83,6 +83,18 @@ export function serveStatic(root, { port, host }) {
       return
     }
 
+    // A folder with its own page (static extras under public/, such as the
+    // icon concepts) is served as that page, the way Vite does in dev, rather
+    // than handing the app's router a URL it does not know.
+    if (stat?.isDirectory()) {
+      const page = path.join(file, 'index.html')
+      const s = await fs.promises.stat(page).catch(() => null)
+      if (s?.isFile()) {
+        send(req, res, page, s.size)
+        return
+      }
+    }
+
     // Routes have no extension. A missing *asset* gets a real 404 instead, so
     // a stale chunk fails loudly rather than being parsed as HTML.
     if (!path.extname(pathname)) {
