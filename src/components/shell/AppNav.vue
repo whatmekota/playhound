@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ViewId } from '~/lib/views'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { desktop } from '~/lib/browserApi'
 import { VIEW_GROUPS } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -11,6 +12,8 @@ const emit = defineEmits<{ open: [] }>()
 const ui = useUiStore()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
+/** The desktop title bar already carries the brand. */
+const showBrand = !desktop?.window
 
 const listEl = ref<HTMLElement | null>(null)
 const indicator = ref({ top: 0, height: 0, show: false })
@@ -44,7 +47,7 @@ function go(id: ViewId) {
     aria-label="Views"
   >
     <!-- Brand -->
-    <div class="px-3.5 flex shrink-0 gap-2.5 h-14 items-center overflow-hidden">
+    <div v-if="showBrand" class="px-3.5 flex shrink-0 gap-2.5 h-14 items-center overflow-hidden">
       <BrandMark :size="30" />
       <span
         class="text-[15px] tracking-[-0.02em] font-semibold whitespace-nowrap transition-opacity duration-200"
@@ -53,7 +56,7 @@ function go(id: ViewId) {
     </div>
 
     <!-- Views -->
-    <div ref="listEl" class="px-2.5 pb-2 scroll-y flex flex-1 flex-col gap-0.5 relative overflow-x-hidden">
+    <div ref="listEl" class="px-2.5 pb-2 scroll-y flex flex-1 flex-col gap-0.5 relative overflow-x-hidden" :class="showBrand ? '' : 'pt-2.5'">
       <span
         class="rounded-[var(--radius-md)] bg-fg/8 transition-all duration-300 ease-[var(--ease-out)] left-2.5 right-2.5 absolute"
         :style="{ top: `${indicator.top}px`, height: `${indicator.height}px`, opacity: indicator.show ? 1 : 0 }"

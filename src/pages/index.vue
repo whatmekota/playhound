@@ -13,6 +13,7 @@ import PanicCover from '~/components/shell/PanicCover.vue'
 import SettingsModal from '~/components/shell/SettingsModal.vue'
 import ShortcutsModal from '~/components/shell/ShortcutsModal.vue'
 import SplashScreen from '~/components/shell/SplashScreen.vue'
+import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
 import { useGamepad } from '~/composables/useGamepad'
@@ -24,7 +25,7 @@ import { useSessionAudio } from '~/composables/useSessionAudio'
 import { useSettings } from '~/composables/useSettings'
 import { toast } from '~/composables/useToast'
 import { useVideoBeat } from '~/composables/useVideoBeat'
-import { openVideoFile, storage } from '~/lib/browserApi'
+import { desktop, openVideoFile, storage } from '~/lib/browserApi'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { KEYS } from '~/lib/persist'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
@@ -339,6 +340,8 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     @drop="onDrop"
   >
     <SplashScreen />
+    <!-- The desktop window is frameless; the page draws its title bar. -->
+    <TitleBar v-if="desktop?.window" />
 
     <div class="flex flex-1 min-h-0">
       <AppNav @open="openSingleVideo" />

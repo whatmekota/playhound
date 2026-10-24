@@ -105,6 +105,8 @@ function lanAddresses() {
 // ── Single instance ──────────────────────────────────────────────────────────
 
 let win = null
+/** Origin of the page the main window loads; IPC from anything else is ignored. */
+let appOrigin = null
 
 if (!app.requestSingleInstanceLock()) {
   // Another playhound already owns the window and the ports; it gets focused
@@ -146,6 +148,25 @@ async function boot() {
       port: APP_PORT,
       lan: lanAddresses(),
       dev: DEV,
+      // Only the frameless main window draws a title bar; the phone-preview
+      // popup has a native frame and gets null here.
+      window: win && event.sender === win.webContents ? windowState() : null,
+    }
+  })
+  ipcMain.on('ph:win', (event, action) => {
+    if (!win || !fromMainWindow(event))
+      return
+    if (action === 'minimize') {
+      win.minimize()
+    }
+    else if (action === 'toggle-maximize' && !win.isFullScreen()) {
+      if (win.isMaximized())
+        win.unmaximize()
+      else
+        win.maximize()
+    }
+    else if (action === 'close') {
+      win.close()
     }
   })
   ipcMain.on('ph:bg', (_event, color) => {
@@ -196,16 +217,28 @@ function iconPath() {
   return candidates.find(p => fs.existsSync(p))
 }
 
-function createWindow(url) {
-  const origin = new URL(url).origin
-  const isOurs = (u) => {
-    try {
-      return new URL(u).origin === origin
-    }
-    catch {
-      return false
-    }
+function isOurs(u) {
+  try {
+    return new URL(u).origin === appOrigin
   }
+  catch {
+    return false
+  }
+}
+
+/** The main window's top frame, on our own page — not an iframe, not a popup. */
+function fromMainWindow(event) {
+  const frame = event.senderFrame
+  return !!win && event.sender === win.webContents
+    && !!frame && frame === win.webContents.mainFrame && isOurs(frame.url)
+}
+
+function windowState() {
+  return { maximized: !!win?.isMaximized(), fullScreen: !!win?.isFullScreen() }
+}
+
+function createWindow(url) {
+  appOrigin = new URL(url).origin
 
   win = new BrowserWindow({
     ...restoreBounds(),
@@ -213,11 +246,16 @@ function createWindow(url) {
     minHeight: 560,
     title: 'playhound',
     icon: iconPath(),
+    // No OS frame at all: the page draws its own title bar and caption
+    // buttons (src/components/shell/TitleBar.vue), so it can follow the theme.
+    // Windows still treats the window as resizable (thickFrame stays on), so
+    // edge resizing, Aero Snap, Win+arrows and the drag-region double-click
+    // to maximise all come from the OS.
+    frame: false,
     // Painted before the page is: the theme the app was last closed in, so
     // there is no white frame on launch (index.html takes over from there).
     backgroundColor: state.bg ?? '#08080a',
     show: false,
-    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(ROOT, 'desktop', 'preload.cjs'),
       contextIsolation: true,
@@ -246,6 +284,15 @@ function createWindow(url) {
     win = null
   })
 
+  // The title bar swaps maximise/restore and hides itself in fullscreen.
+  // 'restore' covers un-minimising straight back into a maximised window.
+  const pushState = () => {
+    if (win && !win.isDestroyed())
+      win.webContents.send('ph:win:state', windowState())
+  }
+  for (const ev of ['maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen', 'enter-html-full-screen', 'leave-html-full-screen'])
+    win.on(ev, pushState)
+
   const wc = win.webContents
 
   // External links go to the system browser. Our own pages (the remote's
@@ -257,6 +304,8 @@ function createWindow(url) {
         overrideBrowserWindowOptions: {
           width: 420,
           height: 860,
+          // Popups would otherwise pick up the main window's frame: false.
+          frame: true,
           autoHideMenuBar: true,
           backgroundColor: state.bg ?? '#08080a',
           icon: iconPath(),

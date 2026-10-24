@@ -191,6 +191,26 @@ export interface DesktopInfo {
   dev: boolean
   /** This machine's IPv4 addresses, physical adapters first. */
   lan: readonly { name: string, address: string }[]
+  /**
+   * Controls for the frameless main window, whose title bar the page draws
+   * (TitleBar.vue). Null in any other desktop window.
+   */
+  window: DesktopWindow | null
+}
+
+export interface DesktopWindowState {
+  maximized: boolean
+  /** OS fullscreen, including the one HTML fullscreen (the video player's) puts the window in. */
+  fullScreen: boolean
+}
+
+export interface DesktopWindow {
+  minimize: () => void
+  toggleMaximize: () => void
+  close: () => void
+  state: () => DesktopWindowState
+  /** Called on every maximise / restore / fullscreen change; returns an unsubscribe. */
+  onStateChange: (cb: (state: DesktopWindowState) => void) => () => void
 }
 
 /**

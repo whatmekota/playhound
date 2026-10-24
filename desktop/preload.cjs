@@ -6,6 +6,45 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 const info = ipcRenderer.sendSync('ph:info')
 
+// ── Window controls (main window only) ──────────────────────────────────────
+// The main window is frameless and the page draws the title bar, so it needs
+// minimise / maximise / close and to know when the window changes state.
+// Null in any other window (the phone-preview popup has a native frame).
+
+let winState = info.window ? { ...info.window } : null
+const listeners = new Set()
+
+if (winState) {
+  ipcRenderer.on('ph:win:state', (_event, s) => {
+    winState = { maximized: !!s?.maximized, fullScreen: !!s?.fullScreen }
+    for (const cb of listeners) {
+      try {
+        cb({ ...winState })
+      }
+      catch (err) {
+        console.error('[playhound] window state listener failed', err)
+      }
+    }
+  })
+}
+
+const windowApi = winState
+  ? Object.freeze({
+      minimize: () => ipcRenderer.send('ph:win', 'minimize'),
+      toggleMaximize: () => ipcRenderer.send('ph:win', 'toggle-maximize'),
+      close: () => ipcRenderer.send('ph:win', 'close'),
+      /** { maximized, fullScreen } right now. */
+      state: () => ({ ...winState }),
+      /** Calls `cb({ maximized, fullScreen })` on every change; returns an unsubscribe. */
+      onStateChange: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        listeners.add(cb)
+        return () => void listeners.delete(cb)
+      },
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -16,6 +55,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   port: info.port,
   dev: info.dev,
   lan: Object.freeze(info.lan.map(a => Object.freeze({ ...a }))),
+  window: windowApi,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the
