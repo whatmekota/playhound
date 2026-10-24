@@ -9,6 +9,8 @@
 
 export type ShellAction
   = | 'bookmark' | 'star' | 'next' | 'prev' | 'random' | 'panic' | 'help'
+    | 'view-player' | 'view-library' | 'view-playlists'
+    | 'queue' | 'device' | 'shuffle' | 'repeat' | 'palette'
 
 export interface Hotkey {
   /** How the key is written in the cheat sheet. */
@@ -34,6 +36,19 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: '← / →', label: 'Seek 5 seconds', owner: 'player' },
       { keys: 'Shift + ← / →', label: 'Seek 30 seconds', owner: 'player' },
       { keys: 'F', label: 'Fullscreen', owner: 'player' },
+      { keys: 'Shift + S', label: 'Shuffle on / off', owner: 'shell', code: 'KeyS', action: 'shuffle' },
+      { keys: 'Shift + R', label: 'Cycle repeat', owner: 'shell', code: 'KeyR', action: 'repeat' },
+    ],
+  },
+  {
+    title: 'Navigate',
+    keys: [
+      { keys: 'Ctrl + K', label: 'Command palette', owner: 'shell', action: 'palette' },
+      { keys: '1', label: 'Player', owner: 'shell', code: 'Digit1', action: 'view-player' },
+      { keys: '2', label: 'Library', owner: 'shell', code: 'Digit2', action: 'view-library' },
+      { keys: '3', label: 'Playlists', owner: 'shell', code: 'Digit3', action: 'view-playlists' },
+      { keys: 'Q', label: 'Queue', owner: 'shell', code: 'KeyQ', action: 'queue' },
+      { keys: 'D', label: 'Device', owner: 'shell', code: 'KeyD', action: 'device' },
     ],
   },
   {
@@ -75,11 +90,11 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
   },
 ]
 
-/** Shell-dispatched keys, as a code lookup. */
-export const SHELL_HOTKEYS: { code: string, action: ShellAction }[] = HOTKEY_GROUPS
+/** Shell-dispatched keys, as a code lookup. `shift` distinguishes S from Shift+S. */
+export const SHELL_HOTKEYS: { code: string, shift: boolean, action: ShellAction }[] = HOTKEY_GROUPS
   .flatMap(g => g.keys)
   .filter((k): k is Hotkey & { code: string, action: ShellAction } =>
     k.owner === 'shell' && !!k.code && !!k.action)
-  .map(({ code, action }) => ({ code, action }))
+  .map(({ code, action, keys }) => ({ code, action, shift: keys.startsWith('Shift') }))
   // Backquote is a second way to reach panic, easier to hit without looking.
-  .concat([{ code: 'Backquote', action: 'panic' }])
+  .concat([{ code: 'Backquote', shift: false, action: 'panic' }])

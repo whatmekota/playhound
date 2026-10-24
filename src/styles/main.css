@@ -1,83 +1,153 @@
-/* ── Theme variables ────────────────────────────────────────────────────────── */
+/* ══ Design tokens ════════════════════════════════════════════════════════════
+   Every colour the UI uses resolves through these, and uno.config.ts binds them
+   into the utility theme (surface-*, fg-*, accent-*, edge, ok/warn/danger/info).
+   A theme is just a block that redefines them. */
+
 :root,
 [data-theme='dark'] {
-  --bg-base: #0a0a0a;
-  --bg-900: #111111;
-  --bg-850: #181818;
-  --bg-800: #1e1e1e;
-  --bg-700: #2a2a2a;
-  --surface-50: #f8f8f8;
-  --surface-100: #efefef;
-  --surface-200: #dcdcdc;
-  --text: #ffffff;
-  --text-muted: rgba(255, 255, 255, 0.55);
-  --text-faint: rgba(255, 255, 255, 0.3);
-  --border: rgba(255, 255, 255, 0.08);
-  --accent: #c026d3;
-  --accent-light: #e879f9;
-  --accent-soft: rgba(192, 38, 211, 0.2);
-  --scrollbar: #2a2a2a;
+  --bg-base: #08080a;
+  --bg-900: #0e0e12;
+  --bg-850: #131318;
+  --bg-800: #1a1a21;
+  --bg-700: #24242d;
+  --bg-600: #30303b;
+  --surface-50: #f8f8fa;
+  --surface-100: #efeff2;
+  --surface-200: #dcdce2;
+  --text: #f3f3f6;
+  --text-muted: rgba(243, 243, 246, 0.62);
+  --text-faint: rgba(243, 243, 246, 0.36);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --accent: #d946ef;
+  --accent-strong: #c026d3;
+  --accent-light: #f0abfc;
+  --accent-soft: rgba(217, 70, 239, 0.16);
+  --accent-contrast: #ffffff;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --danger: #f43f5e;
+  --info: #2dd4bf;
+  --scrollbar: #2a2a33;
+  --shadow-color: 0 0% 0%;
+  --glass: rgba(14, 14, 18, 0.72);
 }
 
 [data-theme='light'] {
-  --bg-base: #f4f4f5;
+  --bg-base: #f3f3f6;
   --bg-900: #ffffff;
-  --bg-850: #fafafa;
-  --bg-800: #f0f0f1;
-  --bg-700: #e2e2e5;
+  --bg-850: #fbfbfc;
+  --bg-800: #f1f1f4;
+  --bg-700: #e5e5ea;
+  --bg-600: #d6d6dd;
   --surface-50: #ffffff;
-  --surface-100: #f5f5f5;
-  --surface-200: #e5e5e5;
-  --text: #18181b;
-  --text-muted: rgba(24, 24, 27, 0.6);
-  --text-faint: rgba(24, 24, 27, 0.4);
-  --border: rgba(24, 24, 27, 0.12);
-  --accent: #7c3aed;
-  --accent-light: #6d28d9;
-  --accent-soft: rgba(124, 58, 237, 0.15);
-  --scrollbar: #c8c8cc;
+  --surface-100: #f5f5f7;
+  --surface-200: #e5e5ea;
+  --text: #17171c;
+  --text-muted: rgba(23, 23, 28, 0.64);
+  --text-faint: rgba(23, 23, 28, 0.42);
+  --border: rgba(23, 23, 28, 0.09);
+  --border-strong: rgba(23, 23, 28, 0.16);
+  --accent: #a21caf;
+  --accent-strong: #86198f;
+  --accent-light: #a21caf;
+  --accent-soft: rgba(162, 28, 175, 0.12);
+  --accent-contrast: #ffffff;
+  --ok: #059669;
+  --warn: #d97706;
+  --danger: #e11d48;
+  --info: #0d9488;
+  --scrollbar: #c8c8d0;
+  --shadow-color: 240 10% 30%;
+  --glass: rgba(255, 255, 255, 0.78);
   color-scheme: light;
 }
 
 [data-theme='catppuccin'] {
-  --bg-base: #1e1e2e;
-  --bg-900: #181825;
-  --bg-850: #232338;
-  --bg-800: #313244;
-  --bg-700: #45475a;
+  --bg-base: #181825;
+  --bg-900: #1e1e2e;
+  --bg-850: #232336;
+  --bg-800: #2a2b3d;
+  --bg-700: #363849;
+  --bg-600: #45475a;
   --surface-50: #cdd6f4;
   --surface-100: #bac2de;
   --surface-200: #a6adc8;
   --text: #cdd6f4;
   --text-muted: #a6adc8;
   --text-faint: #7f849c;
-  --border: rgba(205, 214, 244, 0.1);
+  --border: rgba(205, 214, 244, 0.08);
+  --border-strong: rgba(205, 214, 244, 0.15);
   --accent: #cba6f7;
+  --accent-strong: #b48ef0;
   --accent-light: #f5c2e7;
-  --accent-soft: rgba(203, 166, 247, 0.15);
+  --accent-soft: rgba(203, 166, 247, 0.16);
+  --accent-contrast: #1e1e2e;
+  --ok: #a6e3a1;
+  --warn: #f9e2af;
+  --danger: #f38ba8;
+  --info: #94e2d5;
   --scrollbar: #45475a;
+  --shadow-color: 240 30% 5%;
+  --glass: rgba(30, 30, 46, 0.75);
 }
 
 [data-theme='dracula'] {
-  --bg-base: #282a36;
-  --bg-900: #21222c;
-  --bg-850: #2d2f3d;
-  --bg-800: #343746;
-  --bg-700: #44475a;
+  --bg-base: #1f2029;
+  --bg-900: #262833;
+  --bg-850: #2b2d3a;
+  --bg-800: #323444;
+  --bg-700: #3d4054;
+  --bg-600: #4b4f66;
   --surface-50: #f8f8f2;
   --surface-100: #e6e6e0;
   --surface-200: #c8c8c2;
   --text: #f8f8f2;
-  --text-muted: #a4aed4;
-  --text-faint: #6272a4;
-  --border: rgba(248, 248, 242, 0.09);
-  --accent: #bd93f9;
-  --accent-light: #ff79c6;
-  --accent-soft: rgba(189, 147, 249, 0.2);
+  --text-muted: #b6bde0;
+  --text-faint: #6f7cb0;
+  --border: rgba(248, 248, 242, 0.08);
+  --border-strong: rgba(248, 248, 242, 0.15);
+  --accent: #ff79c6;
+  --accent-strong: #f25fb6;
+  --accent-light: #bd93f9;
+  --accent-soft: rgba(255, 121, 198, 0.16);
+  --accent-contrast: #1f2029;
+  --ok: #50fa7b;
+  --warn: #f1fa8c;
+  --danger: #ff5555;
+  --info: #8be9fd;
   --scrollbar: #44475a;
+  --shadow-color: 235 20% 5%;
+  --glass: rgba(38, 40, 51, 0.78);
 }
 
-/* ── Base ───────────────────────────────────────────────────────────────────── */
+/* Theme-independent tokens */
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 360ms;
+
+  --shadow-sm: 0 1px 2px hsl(var(--shadow-color) / 0.25);
+  --shadow-md: 0 4px 12px -2px hsl(var(--shadow-color) / 0.35), 0 1px 3px hsl(var(--shadow-color) / 0.2);
+  --shadow-lg: 0 18px 48px -12px hsl(var(--shadow-color) / 0.55), 0 4px 12px -4px hsl(var(--shadow-color) / 0.3);
+  --shadow-pop: 0 0 0 1px var(--border-strong), var(--shadow-lg);
+
+  /* Shell metrics, read by the shell and by views that need to line up with it. */
+  --nav-w: 60px;
+  --rail-w: 48px;
+  --dock-h: 76px;
+}
+
+/* ══ Base ═════════════════════════════════════════════════════════════════════ */
 html,
 body,
 #app {
@@ -91,8 +161,7 @@ body,
 ::after {
   box-sizing: border-box;
   /* presetWind4 ships no default border colour, so a bare `border` utility
-     falls back to currentColor. Tailwind 3's preflight set this, and 39
-     templates inherited from the player rely on it. */
+     falls back to currentColor. */
   border-color: var(--border);
 }
 
@@ -106,70 +175,39 @@ html {
 
 :root {
   font-family:
+    'Geist',
     'Inter',
     system-ui,
     -apple-system,
     sans-serif;
+  font-feature-settings:
+    'ss01' on,
+    'cv11' on;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-base);
+  color: var(--text);
+  font-size: 14px;
+}
+
+::selection {
+  background: var(--accent-soft);
   color: var(--text);
 }
 
-/* Hardcoded white utilities inherited from the player, remapped so the light
-   theme stays readable. Everything else resolves through the UnoCSS theme. */
-.text-white {
-  color: var(--text) !important;
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
-.text-white\/80 {
-  color: color-mix(in srgb, var(--text) 80%, transparent) !important;
-}
-.text-white\/70 {
-  color: color-mix(in srgb, var(--text) 70%, transparent) !important;
-}
-.text-white\/60 {
-  color: color-mix(in srgb, var(--text) 60%, transparent) !important;
-}
-.text-white\/50 {
-  color: color-mix(in srgb, var(--text) 50%, transparent) !important;
-}
-.text-white\/40 {
-  color: color-mix(in srgb, var(--text) 40%, transparent) !important;
-}
-.text-white\/30 {
-  color: color-mix(in srgb, var(--text) 30%, transparent) !important;
-}
-.text-white\/20 {
-  color: color-mix(in srgb, var(--text) 20%, transparent) !important;
-}
-.text-white\/10 {
-  color: color-mix(in srgb, var(--text) 10%, transparent) !important;
+button:disabled {
+  cursor: default;
 }
 
-.bg-white\/5 {
-  background-color: color-mix(in srgb, var(--text) 5%, transparent) !important;
-}
-.bg-white\/10 {
-  background-color: color-mix(in srgb, var(--text) 10%, transparent) !important;
-}
-.bg-white\/20 {
-  background-color: color-mix(in srgb, var(--text) 20%, transparent) !important;
-}
-.hover\:bg-white\/10:hover {
-  background-color: color-mix(in srgb, var(--text) 10%, transparent) !important;
-}
-.hover\:bg-white\/20:hover {
-  background-color: color-mix(in srgb, var(--text) 20%, transparent) !important;
-}
-
-.border-white\/5,
-.border-white\/10 {
-  border-color: var(--border) !important;
-}
-
-/* ── Scrollbars ─────────────────────────────────────────────────────────────── */
+/* ══ Scrollbars ═══════════════════════════════════════════════════════════════ */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -177,49 +215,28 @@ html {
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar);
   border-radius: 9999px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-faint);
   background-clip: content-box;
 }
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
-/* ── Range inputs ───────────────────────────────────────────────────────────── */
+/* ══ Native range input (UiSlider styles its own; this covers stragglers) ════ */
 input[type='range'] {
   -webkit-appearance: none;
   appearance: none;
   background: transparent;
   cursor: pointer;
-  height: 14px;
+  height: 16px;
 }
 input[type='range']::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 9999px;
-  background: var(--bg-700);
-}
-input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  margin-top: -4px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform 0.12s ease;
-}
-input[type='range']:hover::-webkit-slider-thumb {
-  transform: scale(1.25);
-}
-input[type='range']:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-input[type='range'].accent::-webkit-slider-thumb {
-  background: var(--accent);
-}
-
-/* Track filled up to the thumb via the JS-set --pct custom property */
-input[type='range'].filled::-webkit-slider-runnable-track {
   background: linear-gradient(
     to right,
     var(--accent) 0%,
@@ -228,28 +245,243 @@ input[type='range'].filled::-webkit-slider-runnable-track {
     var(--bg-700) 100%
   );
 }
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--surface-50);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.15),
+    var(--shadow-sm);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast);
+}
+input[type='range']:hover::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.05);
+}
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+input[type='range']:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 
-/* ── Checkboxes ─────────────────────────────────────────────────────────────── */
 input[type='checkbox'] {
   accent-color: var(--accent);
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   cursor: pointer;
 }
 
-select.input {
-  cursor: pointer;
+input[type='number']::-webkit-inner-spin-button {
+  opacity: 0.4;
 }
 
-/* ── Multi-axis glow ────────────────────────────────────────────────────────── */
-.glow-multiaxis {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent),
-    0 0 8px 1px color-mix(in srgb, var(--accent-soft) 50%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+/* ══ Transitions ══════════════════════════════════════════════════════════════
+   Shared Vue <Transition> / <TransitionGroup> names, so motion feels the same
+   everywhere. Use these instead of inventing per-component ones. */
+
+/* t-fade — opacity only */
+.t-fade-enter-active,
+.t-fade-leave-active {
+  transition: opacity var(--dur) var(--ease-out);
+}
+.t-fade-enter-from,
+.t-fade-leave-to {
+  opacity: 0;
 }
 
-/* ── Motion preferences ─────────────────────────────────────────────────────── */
+/* t-pop — popovers, menus, tooltips: small scale from the anchor */
+.t-pop-enter-active {
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur) var(--ease-out);
+}
+.t-pop-leave-active {
+  transition:
+    opacity 90ms ease-in,
+    transform 90ms ease-in;
+}
+.t-pop-enter-from,
+.t-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.96) translateY(var(--pop-dy, 4px));
+}
+
+/* t-modal — dialogs: backdrop fades, card rises */
+.t-modal-enter-active,
+.t-modal-leave-active {
+  transition: opacity var(--dur) var(--ease-out);
+}
+.t-modal-enter-active .ui-modal-card,
+.t-modal-leave-active .ui-modal-card {
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.t-modal-enter-from,
+.t-modal-leave-to {
+  opacity: 0;
+}
+.t-modal-enter-from .ui-modal-card,
+.t-modal-leave-to .ui-modal-card {
+  transform: translateY(12px) scale(0.98);
+}
+
+/* t-slide-up — toasts, cards entering from below */
+.t-slide-up-enter-active {
+  transition:
+    opacity var(--dur) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.t-slide-up-leave-active {
+  transition:
+    opacity var(--dur-fast) ease-in,
+    transform var(--dur-fast) ease-in;
+}
+.t-slide-up-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.t-slide-up-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+}
+
+/* t-slide-right — drawers and panels docked on the right */
+.t-slide-right-enter-active,
+.t-slide-right-leave-active {
+  transition:
+    opacity var(--dur) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.t-slide-right-enter-from,
+.t-slide-right-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
+}
+
+/* t-view — switching the main stage between views */
+.t-view-enter-active {
+  transition:
+    opacity var(--dur) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.t-view-leave-active {
+  transition: opacity 100ms ease-in;
+}
+.t-view-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.t-view-leave-to {
+  opacity: 0;
+}
+
+/* t-list — TransitionGroup for lists that reorder, insert and remove */
+.t-list-move {
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+.t-list-enter-active {
+  transition:
+    opacity var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out);
+}
+.t-list-leave-active {
+  transition:
+    opacity var(--dur-fast) ease-in,
+    transform var(--dur-fast) ease-in;
+  position: absolute;
+  width: 100%;
+}
+.t-list-enter-from,
+.t-list-leave-to {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+
+/* t-collapse — height reveal for sections (UiSection drives max-height) */
+.t-collapse-enter-active,
+.t-collapse-leave-active {
+  transition:
+    grid-template-rows var(--dur-slow) var(--ease-out),
+    opacity var(--dur) var(--ease-out);
+  display: grid;
+}
+.t-collapse-enter-from,
+.t-collapse-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.t-collapse-enter-to,
+.t-collapse-leave-from {
+  grid-template-rows: 1fr;
+}
+
+/* ══ Keyframes, exposed as utilities through uno.config.ts ══════════════════ */
+@keyframes ph-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ph-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes ph-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes ph-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+@keyframes ph-pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+@keyframes ph-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ph-eq {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+/* Skeleton placeholder shimmer */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-800) 25%, var(--bg-700) 50%, var(--bg-800) 75%);
+  background-size: 200% 100%;
+  animation: ph-shimmer 1.6s linear infinite;
+}
+
+/* ══ Motion preferences ═══════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,

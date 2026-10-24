@@ -3,7 +3,8 @@ import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { AXIS_MAP } from '~/lib/axisMap'
-import { metaDb } from '~/lib/idb'
+import { openFolderWithHandle } from '~/lib/browserApi'
+import { handleDb, metaDb } from '~/lib/idb'
 import { sniffScript } from '~/lib/scriptSniff'
 
 export interface ScriptMatch {
@@ -203,5 +204,187 @@ export const useLibraryStore = defineStore('library', () => {
     totalFiles.value = 0
   }
 
-  return { videos, scanning, folderName, totalFiles, hasVideos, setFiles, clear, toggleStar }
+  // ── Folder lifecycle ──────────────────────────────────────────────────────
+  // Lives here rather than in the library panel so the folder comes back at
+  // startup whether or not that panel happens to be open.
+  const HANDLE_KEY = 'lastDirHandle'
+  const restoring = ref(false)
+  /** A folder is remembered but the browser wants a click before reading it again. */
+  const needsReconnect = ref(false)
+  /** Name of the remembered folder, for the reconnect prompt. */
+  const savedFolderName = ref('')
+  const isWatching = ref(false)
+  const watchNewCount = ref(0)
+  /** Bumped after every completed scan, so views can react to a fresh library. */
+  const loadedAt = ref(0)
+  let watchTimer: ReturnType<typeof setInterval> | null = null
+  let watchedHandle: FileSystemDirectoryHandle | null = null
+  const WATCH_INTERVAL_MS = 30_000
+  const VIDEO_EXTS = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
+
+  async function loadFrom(files: File[], handle: FileSystemDirectoryHandle | null) {
+    await setFiles(files)
+    if (handle) {
+      folderName.value = handle.name || folderName.value
+      startWatching(handle)
+    }
+    needsReconnect.value = false
+    loadedAt.value = Date.now()
+  }
+
+  /** Ask the user for a folder. Returns false when they cancel. */
+  async function pickFolder(): Promise<boolean> {
+    const { files, handle } = await openFolderWithHandle()
+    if (!files.length)
+      return false
+    if (handle) {
+      await handleDb.set(HANDLE_KEY, handle)
+      savedFolderName.value = handle.name
+    }
+    await loadFrom(files, handle)
+    return true
+  }
+
+  async function readHandle(handle: FileSystemDirectoryHandle, prompt: boolean): Promise<File[] | null> {
+    const h = handle as any
+    if (!h || !('queryPermission' in h))
+      return null
+    try {
+      let perm = await h.queryPermission({ mode: 'read' })
+      if (perm !== 'granted' && prompt)
+        perm = await h.requestPermission({ mode: 'read' })
+      if (perm !== 'granted')
+        return null
+      return await collectFiles(handle)
+    }
+    catch {
+      return null
+    }
+  }
+
+  /**
+   * Bring back the last folder.
+   *
+   * Without a user gesture the browser will not show its permission prompt, so
+   * a silent restore that comes back 'prompt' just flags `needsReconnect` and
+   * leaves a one-click reconnect to the UI.
+   */
+  async function restoreFolder(opts: { prompt?: boolean } = {}): Promise<boolean> {
+    if (hasVideos.value)
+      return true
+    let handle: FileSystemDirectoryHandle | undefined
+    try {
+      handle = await handleDb.get(HANDLE_KEY)
+    }
+    catch {
+      return false
+    }
+    if (!handle)
+      return false
+    savedFolderName.value = handle.name
+    restoring.value = true
+    try {
+      const files = await readHandle(handle, !!opts.prompt)
+      if (!files) {
+        needsReconnect.value = true
+        return false
+      }
+      if (files.length)
+        await loadFrom(files, handle)
+      return files.length > 0
+    }
+    finally {
+      restoring.value = false
+    }
+  }
+
+  /** Must be called from a click: it may show the browser's permission prompt. */
+  function reconnect() {
+    return restoreFolder({ prompt: true })
+  }
+
+  async function forgetFolder() {
+    stopWatching()
+    await handleDb.del(HANDLE_KEY).catch(() => {})
+    savedFolderName.value = ''
+    needsReconnect.value = false
+    clear()
+  }
+
+  async function rescan() {
+    if (!watchedHandle)
+      return
+    const files = await readHandle(watchedHandle, false)
+    if (files)
+      await loadFrom(files, watchedHandle)
+  }
+
+  function startWatching(handle: FileSystemDirectoryHandle) {
+    stopWatching()
+    watchedHandle = handle
+    isWatching.value = true
+    watchNewCount.value = 0
+    watchTimer = setInterval(async () => {
+      const files = await readHandle(handle, false)
+      if (!files)
+        return
+      const prevNames = new Set(videos.value.map(v => v.name))
+      const fresh = files.filter(f => VIDEO_EXTS.test(f.name) && !prevNames.has(f.name))
+      if (fresh.length) {
+        watchNewCount.value += fresh.length
+        await setFiles(files)
+        loadedAt.value = Date.now()
+      }
+    }, WATCH_INTERVAL_MS)
+  }
+
+  function stopWatching() {
+    isWatching.value = false
+    watchNewCount.value = 0
+    if (watchTimer) {
+      clearInterval(watchTimer)
+      watchTimer = null
+    }
+  }
+
+  return {
+    videos,
+    scanning,
+    folderName,
+    totalFiles,
+    hasVideos,
+    restoring,
+    needsReconnect,
+    savedFolderName,
+    isWatching,
+    watchNewCount,
+    loadedAt,
+    setFiles,
+    clear,
+    toggleStar,
+    pickFolder,
+    restoreFolder,
+    reconnect,
+    forgetFolder,
+    rescan,
+    startWatching,
+    stopWatching,
+  }
 })
+
+/** Every file under a directory handle, recursing into sub-folders. */
+async function collectFiles(dirHandle: any): Promise<File[]> {
+  const files: File[] = []
+  for await (const entry of dirHandle.values()) {
+    if (entry.kind === 'file') {
+      files.push(await entry.getFile())
+    }
+    else if (entry.kind === 'directory') {
+      try {
+        files.push(...await collectFiles(entry))
+      }
+      catch {}
+    }
+  }
+  return files
+}
