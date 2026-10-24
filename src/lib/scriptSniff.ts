@@ -28,7 +28,10 @@ export interface ScriptInfo {
  * Only the key matters — a single-axis script never contains one.
  */
 export function looksMerged(text: string): boolean {
-  return /"axes"\s*:/.test(text)
+  // `axes` for the 1.1-style layouts, `channels` for funscript 2.0. A 2.0
+  // single-axis file may carry `"channel": "stroke"` (singular), which the
+  // colon-anchored plural does not match.
+  return /"(?:axes|channels)"\s*:/.test(text)
 }
 
 /**
@@ -64,6 +67,12 @@ export function parseAxisChannels(text: string): string[] {
 
   addFrom(raw?.metadata?.axes)
   addFrom(raw?.axes)
+  // Funscript 2.0 names its channels as object keys instead of a list.
+  if (raw?.channels && typeof raw.channels === 'object' && !Array.isArray(raw.channels)) {
+    addFrom(Object.entries(raw.channels)
+      .filter(([, v]) => Array.isArray((v as any)?.actions) && (v as any).actions.length > 0)
+      .map(([name]) => ({ id: name })))
+  }
 
   // Top-level actions are the stroke axis in both layouts.
   if (Array.isArray(raw?.actions) && raw.actions.length > 0)

@@ -33,6 +33,7 @@ export interface ParsedFunscript {
  *   - Standard single-axis: { version, actions: [{at, pos}] }
  *   - Merged multi-axis (metadata.axes style): { metadata: { axes: [...] }, ... }
  *   - Merged multi-axis (top-level axes style): { actions: [...], axes: [{ id, actions },...] }
+ *   - Funscript 2.0: { actions: [...], channels: { roll: { actions }, ... } }
  */
 export function parseFunscriptContent(
   content: string,
@@ -85,6 +86,39 @@ export function parseFunscriptContent(
     }
 
     return { axes, isMerged: true, rawMetadata: raw.metadata }
+  }
+
+  // ── Funscript 2.0 (named channels object) ────────────────────────────────
+  // e.g. { version: "2.0", actions: [...], channels: { roll: { actions }, ... } }
+  // What funlib's merge writes for multi-axis scripts. When both `actions` and
+  // `channels.stroke` exist, the spec says multi-axis devices should prefer
+  // channels.stroke — which is what this app drives.
+  if (raw.channels && typeof raw.channels === 'object' && !Array.isArray(raw.channels)) {
+    const axes: ParsedAxis[] = []
+    const add = (axisKey: string, list: unknown) => {
+      const axisDef = suffixToAxis(axisKey)
+      if (axes.some(a => a.channel === axisDef.channel) || !Array.isArray(list) || !list.length)
+        return
+      const actions = normalizeActions(list)
+      axes.push({
+        channel: axisDef.channel,
+        axisKey,
+        label: axisDef.label,
+        axisDef,
+        actions,
+        filePath,
+        duration: actions.length > 0 ? actions[actions.length - 1].at : 0,
+      })
+    }
+    for (const [name, data] of Object.entries(raw.channels as Record<string, { actions?: unknown }>)) {
+      if (suffixToAxis(name.toLowerCase()).channel === 'L0')
+        add(name.toLowerCase(), data?.actions)
+    }
+    add('default', raw.actions)
+    for (const [name, data] of Object.entries(raw.channels as Record<string, { actions?: unknown }>))
+      add(name.toLowerCase(), data?.actions)
+    if (axes.length > 0)
+      return { axes, isMerged: axes.length > 1, rawMetadata: raw.metadata }
   }
 
   // ── Merged multi-axis format (top-level axes array style) ─────────────────
