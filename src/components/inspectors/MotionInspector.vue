@@ -260,6 +260,17 @@ const CEILING_WARN = 180
 const sessionCapped = computed(() => motion.sessionMaxSpm > motion.maxSpm)
 const beatCapped = computed(() => motion.beatBandHi > motion.maxSpm)
 
+/** Music source: the grid counts as locked once most recent hits land on it. */
+const beatLocked = computed(() => videoBeat.confidence.value >= 0.6)
+
+/** How the music source is stroking relative to the beat, in words. */
+const subdivisionLabel = computed(() => ({
+  2: 'Twice a beat',
+  1: 'Every beat',
+  0.5: 'Every 2 beats',
+  0.25: 'Every bar',
+} as Record<number, string>)[motion.musicStrokesPerBeat] ?? '')
+
 // ─── Gamepad ──────────────────────────────────────────────────────────────────
 function stickBar(v: number) {
   const half = Math.min(1, Math.abs(v)) * 50
@@ -337,7 +348,7 @@ const PAD_MAP = [
           </div>
           <div v-else-if="motion.source === 'music' && videoBeat.bpm.value" class="flex flex-col">
             <span class="text-[15px] text-fg font-semibold num">{{ videoBeat.bpm.value }}</span>
-            <span class="eyebrow">BPM</span>
+            <span class="eyebrow">{{ subdivisionLabel || 'BPM' }}</span>
           </div>
           <span v-if="nearCeiling" v-tip="'Held back by the speed ceiling below'" class="text-[11px] text-warn ml-auto flex gap-1 items-center">
             <span class="i-carbon-warning-alt text-[13px]" />
@@ -466,7 +477,7 @@ const PAD_MAP = [
       <!-- Music -->
       <UiSection v-else-if="motion.source === 'music'" key="music" title="Music" icon="i-carbon-music">
         <p class="hint">
-          Takes the tempo from the video's own soundtrack. Needs a few bars to settle on a beat after the track starts.
+          Strokes on the beat of the video's soundtrack, at whichever subdivision of the tempo fits your band, and deeper when the music gets louder. Needs a few bars to settle after the track starts.
         </p>
 
         <div v-if="audio.scriptDrive.value" class="text-[12px] text-warn px-2.5 py-2 rounded-[var(--radius-md)] bg-warn/10 flex gap-2 ring-1 ring-warn/20">
@@ -476,12 +487,12 @@ const PAD_MAP = [
 
         <template v-else>
           <div class="gap-2 grid grid-cols-3">
-            <div class="px-2.5 py-2 well flex flex-col gap-0.5">
-              <span class="text-[12.5px] font-medium flex gap-1.5 items-center" :class="videoBeat.locked.value ? 'text-ok' : 'text-fg-muted'">
-                <span class="rounded-full bg-current h-1.5 w-1.5" :class="videoBeat.locked.value ? 'animate-pulse-dot' : ''" />
-                {{ videoBeat.locked.value ? 'Locked' : 'Listening' }}
+            <div v-tip="'How many recent hits landed on the beat grid'" class="px-2.5 py-2 well flex flex-col gap-0.5">
+              <span class="text-[12.5px] font-medium flex gap-1.5 items-center" :class="beatLocked ? 'text-ok' : 'text-fg-muted'">
+                <span class="rounded-full bg-current h-1.5 w-1.5" :class="beatLocked ? 'animate-pulse-dot' : ''" />
+                {{ beatLocked ? 'Locked' : 'Listening' }}
               </span>
-              <span class="eyebrow">Beat</span>
+              <span class="eyebrow">Beat · {{ pct(videoBeat.confidence.value) }}</span>
             </div>
             <div class="px-2.5 py-2 well flex flex-col gap-0.5">
               <span class="text-[12.5px] font-medium" :class="videoBeat.hasSignal.value ? 'text-ok' : 'text-warn'">
@@ -494,6 +505,15 @@ const PAD_MAP = [
               <span class="eyebrow">Onsets</span>
             </div>
           </div>
+          <div class="flex flex-col gap-1">
+            <div class="flex justify-between">
+              <span class="label">Loudness</span>
+              <span class="text-[11.5px] text-fg-muted num">{{ pct(videoBeat.energy.value) }}</span>
+            </div>
+            <UiProgress :value="videoBeat.energy.value" tone="accent" />
+          </div>
+          <UiSlider v-model="motion.beatBandLo" label="Slowest" unit=" spm" :min="10" :max="300" :step="1" :reset="35" />
+          <UiSlider v-model="motion.beatBandHi" label="Fastest" unit=" spm" :min="10" :max="300" :step="1" :reset="140" hint="The stroke rate stays inside this band: a fast track strokes every second beat or bar, a slow one can double up." />
           <p v-if="!videoBeat.hasSignal.value && (player.isMuted || player.volume === 0)" class="hint text-warn">
             The player is muted, so the analyser only hears silence. Turn the volume down rather than muting.
           </p>

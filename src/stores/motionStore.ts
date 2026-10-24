@@ -91,6 +91,10 @@ export const useMotionStore = defineStore('motion', () => {
   const currentDepth = ref(0)
   const currentPos = ref(0.5)
   const beatDivisor = ref(1)
+  /** Music source readouts: strokes per beat in use, loudness 0–1, beat-grid confidence 0–1. */
+  const musicStrokesPerBeat = ref(0)
+  const musicEnergy = ref(0)
+  const musicConfidence = ref(0)
 
   const isGenerated = computed(() => source.value !== 'funscript')
   const running = computed(() => enabled.value && isGenerated.value)
@@ -195,6 +199,9 @@ export const useMotionStore = defineStore('motion', () => {
     currentSpm,
     currentDepth,
     currentPos,
+    musicStrokesPerBeat,
+    musicEnergy,
+    musicConfidence,
     beatDivisor,
     isGenerated,
     running,

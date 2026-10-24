@@ -1,12 +1,12 @@
 import { ref, watch } from 'vue'
 import {
-  beatPhaseAt,
   createOnsetDetector,
   estimatePeriod,
   periodToBpm,
   spectralFlux,
 } from '~/lib/beatDetect'
 import { phaseError } from '~/lib/funscriptAnalysis'
+import { createBeatGrid, createEnergyFollower } from '~/lib/musicMotion'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -29,11 +29,17 @@ let raf: number | null = null
 // construct this, and a second copy of the detector would silently observe
 // nothing while the first one ran.
 const detector = createOnsetDetector()
+// Onsets steer a grid instead of each one resetting the phase: an off-beat
+// hat used to yank the stroke half a beat over, which is what felt like
+// vibrating rather than moving to the music.
+const grid = createBeatGrid()
+const loudness = createEnergyFollower()
+let lastFrameMs = 0
+let lastPublishMs = 0
 let prevSpectrum: Float32Array<ArrayBuffer> | null = null
 let spectrum: Float32Array<ArrayBuffer> | null = null
 let onsets: number[] = []
 let periodMs = 0
-let lastOnsetMs = 0
 
 const bpm = ref(0)
 const locked = ref(false)
@@ -42,11 +48,20 @@ const available = ref(true)
 // engine running — the pulse clock lives inside that graph, and requiring it
 // meant "follow the music" did nothing unless a tone was playing.
 const beatPeriodMs = ref(0)
-const beatLastOnsetMs = ref(0)
 /** Onsets seen since the track started — zero means no audio is arriving. */
 const onsetCount = ref(0)
 /** Whether any signal at all is reaching the analyser. */
 const hasSignal = ref(false)
+/**
+ * Whether the beat grid has a tempo and a downbeat. Reactive, unlike the grid
+ * itself, so whatever waits on a beat (the motion engine's "is the music
+ * source live") re-evaluates the moment one appears.
+ */
+const beatReady = ref(false)
+/** How loud the track is right now relative to itself, 0–1 (published ~10 Hz). */
+const energy = ref(0)
+/** Share of recent onsets on the beat grid, 0–1 (published ~10 Hz). */
+const confidence = ref(0)
 
 /**
  * Where we are in the beat, extrapolated between onsets. Null when unknown.
@@ -56,11 +71,33 @@ const hasSignal = ref(false)
  * onset to ~250ms and makes the tempo estimate impossible to settle.
  */
 export function getBeatClock(): { phase: number, rateHz: number } | null {
-  if (beatPeriodMs.value <= 0)
+  if (!grid.ready)
+    return null
+  const beats = grid.beatsAt(performance.now())
+  return {
+    phase: beats - Math.floor(beats),
+    rateHz: 1000 / grid.periodMs,
+  }
+}
+
+/**
+ * The beat grid as the motion engine needs it: where we are in beats (a
+ * continuous count, so bars and subdivisions can be derived), the tempo, how
+ * sure the grid is, and how loud the music is. Null until a tempo is known.
+ */
+/** Reactive: true once the soundtrack has given up a tempo and a downbeat. */
+export function isBeatReady(): boolean {
+  return beatReady.value
+}
+
+export function getBeatGrid(): { beats: number, bpm: number, confidence: number, energy: number } | null {
+  if (!grid.ready)
     return null
   return {
-    phase: beatPhaseAt(beatLastOnsetMs.value, beatPeriodMs.value, performance.now()),
-    rateHz: 1000 / beatPeriodMs.value,
+    beats: grid.beatsAt(performance.now()),
+    bpm: 60000 / grid.periodMs,
+    confidence: grid.confidence(),
+    energy: loudness.energy,
   }
 }
 
@@ -127,12 +164,16 @@ export function useVideoBeat() {
 
   function reset() {
     detector.reset()
+    grid.reset()
+    loudness.reset()
+    beatReady.value = false
+    lastFrameMs = 0
+    energy.value = 0
+    confidence.value = 0
     prevSpectrum = null
     onsets = []
     periodMs = 0
-    lastOnsetMs = 0
     beatPeriodMs.value = 0
-    beatLastOnsetMs.value = 0
     bpm.value = 0
     locked.value = false
     onsetCount.value = 0
@@ -158,6 +199,20 @@ export function useVideoBeat() {
     // High-resolution, monotonic, and advancing every frame.
     const tMs = performance.now()
 
+    // Loudness: the mean level of the lower two thirds of the spectrum, where
+    // kick, bass and vocals live; the top end is mostly hats and air.
+    const upto = Math.floor(bins.length * 0.66)
+    let sum = 0
+    for (let i = 0; i < upto; i++)
+      sum += bins[i]
+    loudness.push(sum / (upto || 1), lastFrameMs ? (tMs - lastFrameMs) / 1000 : 0)
+    lastFrameMs = tMs
+    if (tMs - lastPublishMs > 100) {
+      lastPublishMs = tMs
+      energy.value = loudness.energy
+      confidence.value = grid.confidence()
+    }
+
     if (prevSpectrum) {
       const flux = spectralFlux(prevSpectrum, bins)
       // Silence sits at the floor across every bin.
@@ -166,18 +221,19 @@ export function useVideoBeat() {
 
       if (detector.push(flux, tMs)) {
         onsetCount.value++
-        lastOnsetMs = tMs
-        beatLastOnsetMs.value = tMs
         onsets.push(tMs)
         if (onsets.length > HISTORY)
           onsets.shift()
 
         const p = estimatePeriod(onsets)
         if (p) {
-          periodMs = p
-          beatPeriodMs.value = p
-          bpm.value = Math.round(periodToBpm(p))
+          grid.setPeriod(p)
+          periodMs = grid.periodMs
+          beatPeriodMs.value = periodMs
+          bpm.value = Math.round(periodToBpm(periodMs))
         }
+        grid.onset(tMs)
+        beatReady.value = grid.ready
       }
     }
     // bins is reused each frame, so keep a copy to diff against.
@@ -187,8 +243,9 @@ export function useVideoBeat() {
 
     // ── Steer the pulse onto the beat ────────────────────────────────────
     const clock = getPulseClock()
-    if (periodMs > 0 && clock) {
-      const target = beatPhaseAt(lastOnsetMs, periodMs, tMs)
+    if (grid.ready && clock) {
+      const beats = grid.beatsAt(tMs)
+      const target = beats - Math.floor(beats)
       const err = phaseError(clock.phase, target)
       const bend = Math.max(-MAX_BEND, Math.min(MAX_BEND, err * PHASE_GAIN))
       const rateHz = 1000 / periodMs
@@ -247,5 +304,5 @@ export function useVideoBeat() {
     },
   )
 
-  return { bpm, locked, available, beatPeriodMs, onsetCount, hasSignal, start, stop }
+  return { bpm, locked, available, beatPeriodMs, onsetCount, hasSignal, energy, confidence, start, stop }
 }

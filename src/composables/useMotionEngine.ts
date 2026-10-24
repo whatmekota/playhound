@@ -9,13 +9,14 @@ import {
   spmFromIntensity,
   strokePosition,
 } from '~/lib/motionMath'
+import { createSubdivisionHold, pickStrokesPerBeat, steerPhase } from '~/lib/musicMotion'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { useTCode } from './useTCode'
-import { getBeatClock } from './useVideoBeat'
+import { getBeatGrid, isBeatReady } from './useVideoBeat'
 
 // ─── Singleton loop state ─────────────────────────────────────────────────────
 // One engine drives the device regardless of how many panels are mounted.
@@ -25,6 +26,9 @@ let phase = 0
 let spm = 0
 let depth = 0
 let running = false
+/** Music source: the stroke's own 0–1 phase, steered onto the beat grid. */
+let musicPhase = 0
+const subdivision = createSubdivisionHold()
 
 /** TCode interval hint: how long the device should take to reach the position. */
 const SEND_INTERVAL_MS = 40
@@ -66,7 +70,7 @@ export function useMotionEngine() {
       case 'music':
         // Needs a tempo, and the track has to be running for one to mean
         // anything. Deliberately does not require the binaural engine.
-        return player.isPlaying && getBeatClock() !== null
+        return player.isPlaying && isBeatReady()
       default:
         return false
     }
@@ -89,8 +93,18 @@ export function useMotionEngine() {
     }
 
     if (motion.source === 'music') {
-      const beat = getBeatClock()
-      return beat ? beat.rateHz * 60 : 0
+      // A musical subdivision of the tempo, chosen to sit in the band and
+      // under the ceiling, and switched only on bar lines. One stroke per beat
+      // put most tracks at the ceiling, where every song felt the same.
+      const grid = getBeatGrid()
+      if (!grid)
+        return 0
+      const wanted = pickStrokesPerBeat(grid.bpm, { lo: motion.beatBandLo, hi: motion.beatBandHi }, motion.maxSpm, grid.energy)
+      const k = subdivision.update(grid.beats, wanted)
+      motion.musicStrokesPerBeat = k
+      motion.musicEnergy = grid.energy
+      motion.musicConfidence = grid.confidence
+      return grid.bpm * k
     }
 
     if (motion.source === 'pulse') {
@@ -107,6 +121,15 @@ export function useMotionEngine() {
   function targetDepth(): number {
     if (motion.source === 'manual')
       return motion.manualDepth
+    if (motion.source === 'music') {
+      // Loud passages stroke deeper, quiet ones shallower — relative to this
+      // track. A shaky beat grid holds back a little until it settles.
+      const grid = getBeatGrid()
+      if (!grid)
+        return motion.minDepth
+      const d = motion.minDepth + (motion.maxDepth - motion.minDepth) * grid.energy
+      return d * (0.6 + 0.4 * grid.confidence)
+    }
     return depthFromIntensity(audio.intensity.value, motion.minDepth, motion.maxDepth)
   }
 
@@ -127,18 +150,31 @@ export function useMotionEngine() {
     spm = rampToward(spm, wantSpm, motion.spmRampPerSec, dt)
     depth = rampToward(depth, wantDepth, motion.depthRampPerSec, dt)
 
-    // When locked to the pulse, read the audio clock's phase rather than
-    // integrating our own — that keeps the stroke genuinely in step with what
-    // is being heard instead of merely at the same tempo.
-    const locked = motion.source === 'pulse'
-      ? getPulseClock()
-      : motion.source === 'music'
-        ? getBeatClock()
-        : null
-    if (locked)
-      phase = locked.phase * Math.PI * 2
-    else
-      phase = advancePhase(phase, spm, dt)
+    if (motion.source === 'music') {
+      // Steer our own phase onto the grid instead of copying it: a grid that
+      // gets nudged, or a switch of subdivision, eases in over a stroke or two
+      // and the rate never exceeds the ceiling while catching up.
+      const grid = getBeatGrid()
+      const k = motion.musicStrokesPerBeat || 1
+      if (grid) {
+        const strokes = grid.beats * k
+        musicPhase = steerPhase(musicPhase, strokes - Math.floor(strokes), Math.max(spm, 1) / 60, dt, {
+          maxRateHz: motion.maxSpm / 60,
+        })
+      }
+      phase = musicPhase * Math.PI * 2
+    }
+    else {
+      // Locked to the pulse: read the audio clock's phase rather than
+      // integrating our own, so the stroke is in step with what is heard —
+      // but only while that clock runs under the ceiling. Copying a faster
+      // clock's phase used to bypass maxSpm entirely.
+      const locked = motion.source === 'pulse' ? getPulseClock() : null
+      if (locked && locked.rateHz * 60 <= motion.maxSpm)
+        phase = locked.phase * Math.PI * 2
+      else
+        phase = advancePhase(phase, spm, dt)
+    }
 
     // Direct control bypasses the oscillator entirely: the stick *is* the
     // position. Still ramped, so a flick of the thumb cannot snap the axis.
@@ -205,6 +241,9 @@ export function useMotionEngine() {
     lastTs = null
     spm = 0
     depth = 0
+    musicPhase = 0
+    subdivision.reset()
+    motion.musicStrokesPerBeat = 0
     motion.currentSpm = 0
     motion.currentDepth = 0
     if (home)
