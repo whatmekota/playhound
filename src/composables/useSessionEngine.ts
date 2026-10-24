@@ -81,8 +81,9 @@ export function useSessionEngine() {
     listeners.get(event)?.forEach(fn => fn(data))
   }
 
-  function applyPhaseConfig(ph: SessionPhase) {
+  function applyPhaseConfig(ph: SessionPhase, opts: { ownIntensity?: boolean, beatRange?: [number, number] } = {}) {
     const cfg = PHASE_CONFIG[ph]
+    const beatRange = opts.beatRange ?? cfg.beatRange
 
     // While the script is driving, it owns beat and intensity — the phase
     // engine morphing on its own 8-second schedule would simply override it,
@@ -91,13 +92,13 @@ export function useSessionEngine() {
     const scriptOwnsBeat = store.scriptDrive.value
     const scriptOwnsIntensity = scriptOwnsBeat && store.scriptDriveIntensity.value
 
-    if (!scriptOwnsIntensity) {
+    if (!scriptOwnsIntensity && opts.ownIntensity !== false) {
       // Each edged pass reaches a little higher than the last.
       store.intensity.value = Math.min(1, cfg.intensity + edgeBoost)
     }
 
     // Pick a target delta in the phase's beat range
-    const targetDelta = cfg.beatRange[0] + Math.random() * (cfg.beatRange[1] - cfg.beatRange[0])
+    const targetDelta = beatRange[0] + Math.random() * (beatRange[1] - beatRange[0])
 
     if (scriptOwnsBeat) {
       // leave the beat to useScriptPulse
@@ -328,6 +329,23 @@ export function useSessionEngine() {
     scheduleNextPhase(idx)
   }
 
+  /**
+   * Enter a phase on someone else's clock — a programme. Beat, noise and the
+   * visual LFO move exactly as they would here, but nothing is scheduled and
+   * intensity is left alone: the caller drives it continuously. Refuses while
+   * this engine's own session runs, since two clocks would fight.
+   */
+  function applyPhase(ph: Exclude<SessionPhase, 'idle'>, opts: { beatRange?: [number, number] } = {}) {
+    if (sessionRunning)
+      return
+    store.phase.value = ph
+    applyPhaseConfig(ph, { ownIntensity: false, beatRange: opts.beatRange })
+  }
+
+  function isRunning(): boolean {
+    return sessionRunning
+  }
+
   function setArc(next: SessionArc, cfg?: Partial<EdgeConfig>) {
     arc = next
     edgeCfg = { ...DEFAULT_EDGE, ...cfg }
@@ -346,6 +364,8 @@ export function useSessionEngine() {
     startDrift,
     stopDrift,
     jumpToPhase,
+    applyPhase,
+    isRunning,
     setArc,
     getArc,
   }

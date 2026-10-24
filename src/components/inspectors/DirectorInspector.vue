@@ -12,15 +12,15 @@ import UiStat from '~/components/ui/UiStat.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { toast } from '~/composables/useToast'
-import { speedToIntensity } from '~/lib/funscriptAnalysis'
 import { thumbDb } from '~/lib/idb'
+import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
 import { useAudioStore } from '~/stores/audio'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { useUiStore } from '~/stores/uiStore'
 
 const director = useAutoDirector()
-const { enabled, sweeping, sweepDone, sweepTotal, summaries } = director
+const { enabled, userEnabled, steer, sweeping, sweepDone, sweepTotal, summaries } = director
 const library = useLibraryStore()
 const playback = usePlaybackStore()
 const ui = useUiStore()
@@ -108,7 +108,7 @@ watch(intensity, (v) => {
 })
 
 const pickSummary = computed(() => pick.value ? summaries.value[pick.value.name] ?? null : null)
-const pickIntensity = computed(() => pickSummary.value ? speedToIntensity(pickSummary.value.meanSpeed) : null)
+const pickIntensity = computed(() => pickSummary.value ? meanSpeedToIntensity(pickSummary.value.meanSpeed) : null)
 
 function duration(ms: number) {
   const s = Math.round(ms / 1000)
@@ -138,7 +138,7 @@ const histogram = computed(() => {
     const s = summaries.value[v.name]
     if (!s)
       continue
-    const i = speedToIntensity(s.meanSpeed)
+    const i = meanSpeedToIntensity(s.meanSpeed)
     const bin = Math.min(BINS - 1, Math.floor(i * BINS))
     counts[bin]++
     scored.push({ bin, delta: Math.abs(i - intensity.value) })
@@ -169,11 +169,13 @@ const targetLabel = computed(() => sessionActive.value
           <span class="text-[13px] text-fg font-medium">Auto-director</span>
           <span class="hint">Chooses what plays next by matching a script's pace to where the session is.</span>
         </div>
-        <UiSwitch v-model="enabled" />
+        <!-- Bound to your own setting: a running programme steers the director
+             without changing it, and stopping the programme hands it back. -->
+        <UiSwitch v-model="userEnabled" />
       </div>
       <div class="flex gap-2 items-center">
         <UiBadge :tone="enabled ? 'ok' : 'neutral'" :dot="enabled" :pulse="enabled && sessionActive">
-          {{ enabled ? 'Directing Next' : 'Off — Next follows the queue' }}
+          {{ steer !== null ? 'Steered by the programme' : enabled ? 'Directing Next' : 'Off — Next follows the queue' }}
         </UiBadge>
         <span v-if="enabled" class="text-[11.5px] text-fg-faint num ml-auto">target {{ pct(intensity) }}</span>
       </div>

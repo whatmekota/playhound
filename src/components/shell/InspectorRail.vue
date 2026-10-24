@@ -5,6 +5,7 @@ import { INSPECTOR_GROUPS } from '~/lib/views'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
+import { useProgrammeStore } from '~/stores/programmeStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -13,6 +14,7 @@ const device = useDeviceStore()
 const motion = useMotionStore()
 const audio = useAudioStore()
 const queue = useQueueStore()
+const programme = useProgrammeStore()
 
 function isOn(id: InspectorId | FloatingId) {
   return id === 'emulator' ? ui.isFloatingOpen('emulator') : ui.inspector === id || ui.pinned === id
@@ -35,6 +37,7 @@ const status = computed<Partial<Record<InspectorId | FloatingId, 'ok' | 'info' |
   device: device.connected ? 'ok' : null,
   motion: motion.running ? 'ok' : null,
   binaural: audio.isPlaying.value ? 'info' : null,
+  programme: programme.status === 'running' || programme.status === 'stopping' ? 'accent' : programme.status === 'paused' ? 'info' : null,
 }))
 
 const upcomingCount = computed(() => queue.upcoming.length)

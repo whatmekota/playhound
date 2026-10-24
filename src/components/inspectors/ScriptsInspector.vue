@@ -5,7 +5,7 @@ import { useFunscript } from '~/composables/useFunscript'
 import { analyseActions, analysisKey } from '~/composables/useScriptAnalysis'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 import { openScriptFiles } from '~/lib/browserApi'
-import { speedToIntensity } from '~/lib/funscriptAnalysis'
+import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
 import { formatTime } from '~/lib/time'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -99,7 +99,7 @@ const shapes = computed(() => {
     out.set(keyOf(s), {
       bins: bins.map(v => v / peak),
       meanSpm: a.meanSpm,
-      intensity: speedToIntensity(a.meanSpeed),
+      intensity: meanSpeedToIntensity(a.meanSpeed),
       durationMs: a.durationMs,
     })
   }
