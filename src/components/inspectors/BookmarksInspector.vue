@@ -1,87 +1,228 @@
 <script setup lang="ts">
+import type { Directive } from 'vue'
+import type { Bookmark } from '~/stores/bookmarkStore'
 import { computed, ref } from 'vue'
+import UiButton from '~/components/ui/UiButton.vue'
+import UiEmpty from '~/components/ui/UiEmpty.vue'
+import UiIconButton from '~/components/ui/UiIconButton.vue'
+import UiKbd from '~/components/ui/UiKbd.vue'
+import UiPanel from '~/components/ui/UiPanel.vue'
+import { toast } from '~/composables/useToast'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
+import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { useUiStore } from '~/stores/uiStore'
 
-const emit = defineEmits<{ seek: [time: number] }>()
-const bookmarkStore = useBookmarkStore()
-const playerStore = usePlayerStore()
+const bookmarks = useBookmarkStore()
+const player = usePlayerStore()
+const playback = usePlaybackStore()
+const ui = useUiStore()
 
-const currentVideo = computed(() => playerStore.videoPath?.split(/[\\/]/).pop() ?? null)
-const bms = computed(() => currentVideo.value ? bookmarkStore.forVideo(currentVideo.value) : [])
+/** Bookmarks are keyed by file name, the same key the B shortcut uses. */
+const videoName = computed(() => player.videoPath?.split(/[\\/]/).pop() ?? null)
+const title = computed(() => playback.currentEntry?.basename ?? videoName.value?.replace(/\.[^.]+$/, '') ?? '')
+const list = computed(() => (videoName.value ? bookmarks.forVideo(videoName.value) : []))
+const duration = computed(() => player.videoDuration)
 
+/** The bookmark the playhead has most recently passed, so the list shows where you are. */
+const hereId = computed(() => {
+  let id: string | null = null
+  for (const b of list.value) {
+    if (b.time <= player.currentTime + 0.25)
+      id = b.id
+  }
+  return id
+})
+
+// ─── Edit ─────────────────────────────────────────────────────────────────────
 const editingId = ref<string | null>(null)
 const editLabel = ref('')
-
-function startEdit(id: string, label: string) {
-  editingId.value = id
-  editLabel.value = label
+const vFocus: Directive<HTMLInputElement> = {
+  mounted: (el) => {
+    el.focus()
+    el.select()
+  },
 }
 
-function commitEdit(id: string) {
+function startEdit(b: Bookmark) {
+  editingId.value = b.id
+  editLabel.value = b.label
+}
+
+function commitEdit() {
+  const id = editingId.value
+  if (!id)
+    return
   if (editLabel.value.trim())
-    bookmarkStore.rename(id, editLabel.value.trim())
+    bookmarks.rename(id, editLabel.value.trim())
   editingId.value = null
 }
+
+function addHere() {
+  if (!videoName.value)
+    return
+  const b = bookmarks.add(videoName.value, player.currentTime)
+  // From the button there is time to name it; the B key stays instant.
+  startEdit(b)
+}
+
+function remove(b: Bookmark) {
+  bookmarks.remove(b.id)
+  toast('Bookmark removed', {
+    detail: `${formatTime(b.time)} · ${b.label}`,
+    icon: 'i-carbon-bookmark',
+    key: 'bookmark-remove',
+    action: { label: 'Undo', run: () => bookmarks.add(b.videoName, b.time, b.label) },
+  })
+}
+
+function seek(b: Bookmark) {
+  playback.seek(b.time)
+}
+
+const pct = (t: number) => `${duration.value > 0 ? Math.min(100, (t / duration.value) * 100) : 0}%`
 </script>
 
 <template>
-  <div class="flex flex-col h-full overflow-hidden">
-    <div class="px-4 py-3 border-b border-white/5 flex shrink-0 items-center justify-between">
-      <h2 class="text-sm text-white/80 font-semibold">
-        Bookmarks
-      </h2>
-      <span class="text-[10px] text-white/30">B to add at current time</span>
-    </div>
-
-    <div v-if="!currentVideo" class="text-xs text-white/30 py-8 text-center">
-      No video loaded
-    </div>
-    <div v-else-if="bms.length === 0" class="text-xs text-white/30 py-8 text-center">
-      No bookmarks yet.<br>Press <kbd class="px-1 rounded bg-white/10">B</kbd> to add one.
-    </div>
-
-    <div class="flex-1 overflow-y-auto">
-      <div
-        v-for="bm in bms" :key="bm.id"
-        class="group px-4 py-2 border-b border-white/5 flex gap-2 cursor-pointer transition-colors items-center hover:bg-white/5"
-        @click="emit('seek', bm.time)"
-      >
-        <!-- Time badge -->
-        <span class="text-[10px] text-amber-400 font-mono px-2 py-0.5 rounded bg-amber-500/15 shrink-0">
-          {{ formatTime(bm.time) }}
-        </span>
-
-        <!-- Label (editable) -->
-        <input
-          v-if="editingId === bm.id"
-          v-model="editLabel"
-          class="text-xs text-white px-2 py-0.5 outline-none border border-accent-500/50 rounded bg-white/10 flex-1"
-          autofocus
-          @click.stop
-          @keydown.enter="commitEdit(bm.id)"
-          @keydown.escape="editingId = null"
-          @blur="commitEdit(bm.id)"
-        >
-        <span v-else class="text-xs text-white/70 flex-1 truncate">{{ bm.label }}</span>
-
-        <!-- Actions -->
-        <div class="opacity-0 flex shrink-0 gap-1 transition-opacity group-hover:opacity-100">
-          <button
-            class="btn-ghost text-[10px] text-white/40 px-1 py-0.5 hover:text-white"
-            @click.stop="startEdit(bm.id, bm.label)"
-          >
-            ✏️
-          </button>
-          <button
-            class="btn-ghost text-[10px] text-white/40 px-1 py-0.5 hover:text-red-400"
-            @click.stop="bookmarkStore.remove(bm.id)"
-          >
-            ✕
-          </button>
+  <UiPanel pad="none">
+    <template #toolbar>
+      <div class="flex gap-2 items-center">
+        <div class="flex-1 min-w-0">
+          <p class="text-[12.5px] text-fg font-medium truncate" :title="title">
+            {{ title || 'Nothing playing' }}
+          </p>
+          <p class="text-[11.5px] text-fg-faint num">
+            {{ videoName ? `${list.length} bookmark${list.length === 1 ? '' : 's'}` : 'Open a video to bookmark it' }}
+          </p>
         </div>
+        <UiButton
+          v-tip="{ text: 'Bookmark the current moment', kbd: 'B' }"
+          variant="primary"
+          icon="i-carbon-bookmark-add"
+          :disabled="!videoName"
+          @click="addHere"
+        >
+          Add <span class="num opacity-80">{{ formatTime(player.currentTime) }}</span>
+        </UiButton>
       </div>
-    </div>
-  </div>
+
+      <!-- Where they sit in the video -->
+      <div v-if="videoName && duration > 0 && list.length" class="py-1.5 h-5 relative">
+        <div class="rounded-full bg-surface-700 h-1 inset-x-0 top-1/2 absolute -translate-y-1/2" />
+        <div class="rounded-full bg-fg/20 h-1 left-0 top-1/2 absolute -translate-y-1/2" :style="{ width: pct(player.currentTime) }" />
+        <button
+          v-for="b in list"
+          :key="b.id"
+          v-tip="`${formatTime(b.time)} · ${b.label}`"
+          type="button"
+          class="tick focusable rounded-full h-3 w-3 top-1/2 absolute"
+          :class="b.id === hereId ? 'is-here' : ''"
+          :style="{ left: pct(b.time) }"
+          :aria-label="`Seek to ${b.label}`"
+          @click="seek(b)"
+        />
+        <div class="rounded-full bg-fg h-3.5 w-0.5 pointer-events-none top-1/2 absolute -translate-y-1/2" :style="{ left: pct(player.currentTime) }" />
+      </div>
+    </template>
+
+    <UiEmpty
+      v-if="!videoName"
+      icon="i-carbon-bookmark"
+      title="No video loaded"
+      description="Bookmarks belong to a video. Play one and mark the moments worth coming back to."
+    >
+      <UiButton icon="i-carbon-video-chat" @click="ui.openView('library')">
+        Browse library
+      </UiButton>
+    </UiEmpty>
+
+    <UiEmpty
+      v-else-if="!list.length"
+      icon="i-carbon-bookmark-add"
+      title="No bookmarks yet"
+    >
+      <template #description>
+        <p class="text-[12.5px] text-fg-muted leading-relaxed">
+          Press <UiKbd>B</UiKbd> while watching to mark the moment, then click a bookmark to jump straight back to it.
+        </p>
+      </template>
+    </UiEmpty>
+
+    <TransitionGroup v-else name="t-list" tag="div" class="p-2 flex flex-col relative">
+      <div
+        v-for="b in list"
+        :key="b.id"
+        class="bm-row group focusable"
+        :class="b.id === hereId ? 'is-here' : ''"
+        tabindex="0"
+        role="button"
+        @click="editingId !== b.id && seek(b)"
+        @keydown.enter="editingId !== b.id && seek(b)"
+      >
+        <span class="time num">{{ formatTime(b.time) }}</span>
+        <input
+          v-if="editingId === b.id"
+          v-model="editLabel"
+          v-focus
+          class="text-[12.5px] text-fg px-2 outline-none border border-accent/60 rounded-[var(--radius-xs)] bg-surface-900 flex-1 h-6 min-w-0 ring-2 ring-accent-soft"
+          aria-label="Bookmark name"
+          @click.stop
+          @keydown.enter.stop="commitEdit"
+          @keydown.esc.stop="editingId = null"
+          @blur="commitEdit"
+        >
+        <span v-else class="text-[12.5px] text-fg flex-1 min-w-0 truncate" @dblclick.stop="startEdit(b)">{{ b.label }}</span>
+        <span v-if="editingId !== b.id" class="opacity-0 flex shrink-0 gap-0.5 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+          <UiIconButton icon="i-carbon-edit" label="Rename" size="xs" @click.stop="startEdit(b)" />
+          <UiIconButton icon="i-carbon-trash-can" label="Delete" size="xs" @click.stop="remove(b)" />
+        </span>
+      </div>
+    </TransitionGroup>
+  </UiPanel>
 </template>
+
+<style scoped>
+.bm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-fast);
+}
+.bm-row:hover {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.bm-row .time {
+  flex-shrink: 0;
+  min-width: 52px;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 13%, transparent);
+}
+.bm-row.is-here {
+  background: var(--accent-soft);
+}
+.bm-row.is-here .time {
+  color: var(--accent-contrast);
+  background: var(--accent);
+}
+.tick {
+  transform: translate(-50%, -50%);
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg-900);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.tick:hover {
+  transform: translate(-50%, -50%) scale(1.35);
+}
+.tick.is-here {
+  background: var(--accent);
+}
+</style>

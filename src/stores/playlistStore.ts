@@ -190,6 +190,13 @@ export const usePlaylistStore = defineStore('playlists', () => {
       pl.name = name
   }
 
+  /** Replace a user smart playlist's rules. Built-ins stay as they are. */
+  function setSmartRules(id: string, rules: SmartRule[]) {
+    const pl = smartPlaylists.value.find(p => p.id === id)
+    if (pl && !id.startsWith('smart:'))
+      pl.rules = rules
+  }
+
   return {
     playlists,
     smartPlaylists,
@@ -207,5 +214,6 @@ export const usePlaylistStore = defineStore('playlists', () => {
     createSmartPlaylist,
     deleteSmartPlaylist,
     renameSmartPlaylist,
+    setSmartRules,
   }
 })

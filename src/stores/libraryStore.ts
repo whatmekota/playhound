@@ -76,6 +76,21 @@ export const useLibraryStore = defineStore('library', () => {
   const STARS_KEY = 'mwhoplayer:starred'
   const starredNames = new Set<string>(JSON.parse(localStorage.getItem(STARS_KEY) ?? '[]'))
 
+  // The old library card's star wrote to the Favorites playlist while the S key
+  // wrote here, so the two disagreed. Stars are this set now; fold Favorites
+  // into it once so nothing starred the old way loses its star.
+  const FAV_MIGRATED = 'ph-favorites-into-stars'
+  if (!localStorage.getItem(FAV_MIGRATED)) {
+    try {
+      const lists = JSON.parse(localStorage.getItem('mwhoplayer:playlists') ?? '[]') as { id: string, entries?: { videoName: string }[] }[]
+      for (const e of lists.find(l => l.id === 'favorites')?.entries ?? [])
+        starredNames.add(e.videoName)
+      localStorage.setItem(STARS_KEY, JSON.stringify([...starredNames]))
+    }
+    catch {}
+    localStorage.setItem(FAV_MIGRATED, '1')
+  }
+
   function toggleStar(entry: VideoEntry) {
     entry.starred = !entry.starred
     if (entry.starred)

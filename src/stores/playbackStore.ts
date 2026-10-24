@@ -12,7 +12,7 @@ import type { ScriptMatch, VideoEntry } from './libraryStore'
  * controls with `bindPlayer` on mount.
  */
 import { defineStore } from 'pinia'
-import { ref, shallowRef, watch } from 'vue'
+import { nextTick, ref, shallowRef, watch } from 'vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { toast } from '~/composables/useToast'
@@ -175,6 +175,31 @@ export const usePlaybackStore = defineStore('playback', () => {
     return loadFile(file, [], { autoplay: true })
   }
 
+  /**
+   * A remote stream (EroScripts sources). Scripts are whatever is already in
+   * the script store — the caller loads them first, since there is no folder to
+   * auto-detect from. The queue is left alone: a stream is not a library entry.
+   */
+  async function playStream(name: string, url: string) {
+    ++loadToken
+    loading.value = false
+    if (player.videoUrl?.startsWith('blob:'))
+      URL.revokeObjectURL(player.videoUrl)
+    // Clearing first makes the same URL count as a change, so the <video> reloads.
+    player.setVideo('', '')
+    await nextTick()
+    player.setVideo(name, url)
+    player.clearLoop()
+    currentEntry.value = null
+    trackSeq.value++
+    for (const s of scripts.scripts) {
+      if (s.enabled && device.axisConfigs[s.channel])
+        device.axisConfigs[s.channel].enabled = true
+    }
+    pendingPlay = true
+    flushPending()
+  }
+
   /** Jump to an item already queued (queue panel, up-next strip). */
   function jumpTo(target: VideoEntry | number) {
     const entry = queue.jumpTo(target)
@@ -333,6 +358,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     loadEntry,
     play,
     playFile,
+    playStream,
     jumpTo,
     playNextInQueue,
     addToQueue,

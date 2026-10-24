@@ -1,9 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <style>
-    path { fill: #222; }
-    @media (prefers-color-scheme: dark) {
-      path { fill: #ffffff; }
-    }
-  </style>
-  <path d="M27.562 26L17.17 8.928l2.366-3.888L17.828 4L16 7.005L14.17 4l-1.708 1.04l2.366 3.888L4.438 26H2v2h28v-2zM16 10.85L25.22 26H17v-8h-2v8H6.78z" />
+  <!-- Static copy of src/components/shell/BrandMark.vue in the dark theme's accent. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f0abfc" />
+      <stop offset=".5" stop-color="#d946ef" />
+      <stop offset="1" stop-color="#c026d3" />
+    </linearGradient>
+  </defs>
+  <path fill="url(#g)" d="M9 0H20.4Q21 0 21.5 .5L31.5 10.5Q32 11 32 11.6V23A9 9 0 0 1 23 32H9A9 9 0 0 1 0 23V9A9 9 0 0 1 9 0Z" />
+  <path fill="#c026d3" fill-opacity=".55" transform="translate(-.7 .7)" d="M21 0V8.6Q21 11 23.4 11H32Z" />
+  <path fill="#fff" fill-opacity=".5" d="M21 0V8.6Q21 11 23.4 11H32Z" />
+  <g fill="#fff">
+    <rect x="8.6" y="8" width="3" height="16" rx="1.5" />
+    <rect x="13.4" y="10.3" width="3" height="11.4" rx="1.5" />
+    <rect x="18.2" y="12.55" width="3" height="6.9" rx="1.5" />
+    <rect x="23" y="14.4" width="3" height="3.2" rx="1.5" />
+  </g>
 </svg>

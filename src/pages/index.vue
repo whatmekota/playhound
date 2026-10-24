@@ -21,14 +21,16 @@ import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
+import { useSettings } from '~/composables/useSettings'
 import { toast } from '~/composables/useToast'
 import { useVideoBeat } from '~/composables/useVideoBeat'
-import { openVideoFile } from '~/lib/browserApi'
+import { openVideoFile, storage } from '~/lib/browserApi'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useHypnoStore } from '~/stores/hypnoStore'
 import { useLibraryStore } from '~/stores/libraryStore'
+import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSafetyStore } from '~/stores/safetyStore'
@@ -71,6 +73,19 @@ const transport = {
 useGamepad(transport)
 // Phone remote, when switched on in the Remote inspector.
 useRemoteHost(transport)
+
+// Device axes and motion settings have to be in place before anything moves,
+// not only once their inspector has been opened.
+const motion = useMotionStore()
+useSettings().load()
+{
+  // The old shell kept motion inside its 'uiState' blob; read that once so an
+  // existing setup survives the move to its own key.
+  const saved = storage.get<unknown>('motion') ?? storage.get<{ motion?: unknown }>('uiState')?.motion
+  if (saved)
+    motion.deserialize(saved)
+}
+watch(() => motion.serialize(), v => storage.set('motion', v), { deep: true })
 
 onMounted(() => {
   // Bring the last folder back at startup, whichever view is open.
@@ -331,7 +346,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
       <!-- Stage -->
       <main ref="stageEl" class="flex-1 min-w-0 relative overflow-hidden">
         <Transition name="t-view" mode="out-in">
-          <KeepAlive :max="3" :include="['LibraryView', 'PlaylistsView']">
+          <KeepAlive :max="4" :include="['LibraryView', 'PlaylistsView', 'EroScriptsView', 'OrganizerView']">
             <component :is="stageView" v-if="stageView" :key="ui.view" class="h-full w-full inset-0 absolute" />
           </KeepAlive>
         </Transition>
@@ -350,8 +365,11 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
             borderRadius: `${playerBox.radius}px`,
           }"
         >
-          <VideoPlayer :mini="mini" @expand="ui.openView('player')" @close-mini="closeMini" />
-          <HypnoOverlay v-if="hypno.enabled && !mini" />
+          <VideoPlayer :mini="mini" @expand="ui.openView('player')" @close-mini="closeMini">
+            <template #overlay>
+              <HypnoOverlay v-if="hypno.enabled && !mini" />
+            </template>
+          </VideoPlayer>
           <Transition name="t-fade">
             <WelcomeScreen v-if="!player.videoUrl && !mini" class="inset-0 absolute z-20" @open-file="openSingleVideo" />
           </Transition>

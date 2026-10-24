@@ -19,7 +19,9 @@ export interface WallItem {
 const sessionItems = reactive<WallItem[]>([])
 const persistedItems = useLocalStorage<WallItem[]>('ph-wall-items', [])
 const items = computed<WallItem[]>(() => [...persistedItems.value, ...sessionItems])
-let zCounter = 1
+// Seeded past anything restored from storage, or a new tile would land behind
+// the saved YouTube ones after a reload.
+let zCounter = Math.max(0, ...persistedItems.value.map(i => i.zIndex ?? 0)) + 1
 
 function addItem(item: Omit<WallItem, 'id' | 'zIndex'>): WallItem {
   const newItem: WallItem = { ...item, id: crypto.randomUUID(), zIndex: zCounter++ }

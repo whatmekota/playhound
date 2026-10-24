@@ -8,6 +8,20 @@ let emuInstance: { write: (s: string) => void } | null = null
 export function setEmuInstance(inst: { write: (s: string) => void } | null) { emuInstance = inst }
 export const setEmuRef = setEmuInstance
 
+/**
+ * Last position sent per axis, after range and inversion: where the hardware
+ * is being told to be, 0-1. A plain object rather than a ref on purpose - it
+ * changes every frame, and the panels that show it read it on their own
+ * animation frame instead of re-rendering through Vue.
+ */
+export const axisOutput: Record<string, number> = {}
+
+function track(channel: string, position: number, limits: AxisLimits) {
+  let p = limits.invert ? 1 - position : position
+  p = limits.min + p * (limits.max - limits.min)
+  axisOutput[channel] = Math.max(0, Math.min(1, p))
+}
+
 // Per-axis rate limiting: don't flood the serial port (min 33ms between writes per axis)
 const lastSentAt: Record<string, number> = {}
 const SEND_INTERVAL_MS = 33 // ~30 Hz max per axis
@@ -24,6 +38,7 @@ export function useTCode() {
       : { min: 0, max: 1, invert: false }
 
     const cmd = encodeTCode({ channel, position, interval }, limits, ver)
+    track(channel, position, limits)
 
     logCommand(cmd)
     emuInstance?.write(cmd)
@@ -50,6 +65,7 @@ export function useTCode() {
         continue
       const limits: AxisLimits = { min: axisCfg.min, max: axisCfg.max, invert: axisCfg.invert }
       const cmd = encodeTCode({ channel, position: axisCfg.defaultPos, interval }, limits, ver)
+      track(channel, axisCfg.defaultPos, limits)
       logCommand(cmd)
       emuInstance?.write(cmd)
     }
@@ -73,6 +89,7 @@ export function useTCode() {
     const limits: AxisLimits = { min: axisCfg.min, max: axisCfg.max, invert: axisCfg.invert }
     const send = (pos: number, ivl: number) => {
       const cmd = encodeTCode({ channel, position: pos, interval: ivl }, limits, ver)
+      track(channel, pos, limits)
       logCommand(cmd)
       emuInstance?.write(cmd)
       if (deviceStore.connected)

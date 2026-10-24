@@ -72,15 +72,26 @@ organizer, and Web Serial for TCode output. Buttplug works anywhere Intiface doe
 
 ## Layout
 
-Panels are grouped in the rail on the right — Media, Script, Session, Device, Data.
-Clicking an icon opens a panel; middle-clicking pins it to a second slot above the
-active one, so a readout stays visible while you work elsewhere. Sidebar width, both
-slots and the split ratio persist.
+- **Left nav** picks what the stage shows: Player, Library, Playlists, Media Wall,
+  Slideshow, EroScripts, Organizer, Stats.
+- **Right rail** opens tool panels in a resizable drawer: Queue, Scripts, Bookmarks,
+  Device, Motion, Remote, Binaural, Hypno, Director, Backup. Middle-click an icon to
+  pin that panel above the active one.
+- **Dock** along the bottom: now playing, transport, timeline, and live device /
+  motion / binaural status.
+- Away from the Player view the video keeps playing as a **mini player** in the corner.
+- **Ctrl K** opens the command palette (views, commands, videos); **?** lists every
+  shortcut.
+
+Everything goes through `src/stores/playbackStore.ts`, so the library, playlists,
+queue, hotkeys, gamepad and phone remote all share one idea of what plays next.
+UI primitives live in `src/components/ui/`, design tokens in `src/styles/main.css`.
 
 ## Stack
 
 Vue 3.5, Vite 7, UnoCSS (`presetWind4`), vue-router 5 with file-based routing,
 Pinia, Vitest, ESLint. Themes are CSS custom properties bound into the UnoCSS theme,
-so `surface-*` and `accent-*` reskin across dark, light, catppuccin and dracula.
+so `surface-*`, `fg-*`, `accent-*` and the status colours reskin across dark, light,
+catppuccin and dracula.
 
 Scaffolded from [vitesse-lite](https://github.com/antfu-collective/vitesse-lite).

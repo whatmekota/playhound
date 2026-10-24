@@ -20,7 +20,7 @@ const KIND_TONE: Record<Toast['kind'], string> = {
 
 <template>
   <div
-    class="flex flex-col-reverse gap-2 w-[340px] pointer-events-none items-end bottom-[calc(var(--dock-h)+14px)] right-4 fixed z-[1200]"
+    class="flex flex-col-reverse gap-2 max-w-[calc(100vw-32px)] w-[360px] pointer-events-none items-center bottom-[calc(var(--dock-h)+44px)] left-1/2 fixed z-[1200] -translate-x-1/2"
     aria-live="polite"
   >
     <TransitionGroup name="t-slide-up">

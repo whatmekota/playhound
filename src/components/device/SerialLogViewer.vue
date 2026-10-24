@@ -1,78 +1,84 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { toast } from '~/composables/useToast'
 import { serialLog } from '~/lib/serialLog'
 
-const open = ref(false)
+/**
+ * The raw command stream, newest first.
+ *
+ * Lives inside the Device inspector. The log moves at frame rate while
+ * anything is playing, which makes a line impossible to read, so it can be
+ * frozen on a snapshot without stopping the logging underneath.
+ */
 
-function clearLog() { serialLog.value = [] }
+/** Rendering all 200 lines at 30 Hz is wasted work; nobody reads that far down live. */
+const VISIBLE = 120
+
+const frozen = ref<string[] | null>(null)
+const lines = computed(() => (frozen.value ?? serialLog.value).slice(0, VISIBLE))
+
+function toggleFreeze() {
+  frozen.value = frozen.value ? null : [...serialLog.value]
+}
+
+function clear() {
+  serialLog.value = []
+  frozen.value = null
+}
+
+async function copy() {
+  try {
+    await navigator.clipboard.writeText([...(frozen.value ?? serialLog.value)].reverse().join('\n'))
+    toast.success('Log copied', { key: 'serial-log' })
+  }
+  catch {
+    toast.error('Could not copy the log', { key: 'serial-log' })
+  }
+}
+
+/** Split "HH:MM:SS  L05000I40" into time and command for colouring. */
+function parts(line: string) {
+  return { time: line.slice(0, 8), cmd: line.slice(8).trim() }
+}
 </script>
 
 <template>
-  <div class="relative">
-    <button
-      class="btn-ghost text-xs px-2 py-1"
-      :class="open ? 'text-accent-400 bg-accent-600/20' : 'text-white/40'"
-      title="Serial log"
-      @click="open = !open"
-    >
-      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path
-          stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+  <div class="flex flex-col gap-2">
+    <div class="flex gap-1 items-center">
+      <span class="text-[11.5px] text-fg-faint num">
+        {{ serialLog.length }} {{ serialLog.length === 1 ? 'command' : 'commands' }}
+      </span>
+      <span v-if="frozen" class="text-[11px] text-warn font-medium ml-1.5 flex gap-1 items-center">
+        <span class="i-carbon-pause-filled text-[11px]" />
+        Frozen
+      </span>
+      <div class="ml-auto flex gap-0.5 items-center">
+        <UiIconButton
+          :icon="frozen ? 'i-carbon-play' : 'i-carbon-pause'"
+          :label="frozen ? 'Follow live' : 'Freeze to read'"
+          :active="!!frozen"
+          size="xs"
+          @click="toggleFreeze"
         />
-      </svg>
-      Log
-    </button>
-
-    <Transition name="popup">
-      <div
-        v-if="open"
-        class="mt-2 border rounded-xl flex flex-col shadow-2xl right-0 top-full absolute z-50"
-        style="background:var(--bg-850); border-color:var(--border); width:420px; height:260px"
-      >
-        <!-- Header -->
-        <div
-          class="px-3 py-2 border-b flex shrink-0 items-center justify-between"
-          style="border-color:var(--border)"
-        >
-          <span class="text-xs font-medium font-mono" style="color:var(--text-muted)">Serial Log</span>
-          <div class="flex gap-2 items-center">
-            <span class="text-[10px]" style="color:var(--text-faint)">{{ serialLog.length }} cmds</span>
-            <button class="text-[10px] hover:opacity-80" style="color:var(--text-muted)" @click="clearLog">
-              Clear
-            </button>
-          </div>
-        </div>
-        <!-- Log lines -->
-        <div class="font-mono p-2 flex-1 overflow-y-auto">
-          <div v-if="!serialLog.length" class="text-[11px] mt-4 text-center" style="color:var(--text-faint)">
-            No commands yet
-          </div>
-          <div
-            v-for="(line, i) in serialLog"
-            :key="i"
-            class="text-[11px] leading-5 truncate hover:whitespace-normal hover:z-10 hover:overflow-visible"
-            style="color:var(--text-muted)"
-          >
-            <span style="color:var(--text-faint)">{{ line.slice(0, 8) }}</span>
-            <span style="color:var(--accent)">{{ line.slice(8) }}</span>
-          </div>
-        </div>
+        <UiIconButton icon="i-carbon-copy" label="Copy log" size="xs" :disabled="!serialLog.length" @click="copy" />
+        <UiIconButton icon="i-carbon-erase" label="Clear" size="xs" :disabled="!serialLog.length" @click="clear" />
       </div>
-    </Transition>
+    </div>
+
+    <div class="font-mono py-1.5 scroll-y rounded-[var(--radius-md)] bg-surface-950/70 h-56 ring-1 ring-edge">
+      <div v-if="!lines.length" class="text-center flex flex-col gap-1.5 h-full items-center justify-center">
+        <span class="i-carbon-terminal text-[20px] text-fg-faint" />
+        <span class="text-[12px] text-fg-faint font-sans">Nothing sent yet</span>
+        <span class="hint font-sans">Play a script or press Test to see commands here</span>
+      </div>
+      <div
+        v-for="(line, i) in lines"
+        :key="i"
+        class="text-[11px] leading-[18px] px-2.5 flex gap-2.5 whitespace-nowrap hover:bg-fg/5"
+      >
+        <span class="text-fg-faint shrink-0">{{ parts(line).time }}</span>
+        <span class="truncate" :class="parts(line).cmd.startsWith('[BP]') ? 'text-info' : 'text-accent-300'">{{ parts(line).cmd }}</span>
+      </div>
+    </div>
   </div>
 </template>
-
-<style scoped>
-.popup-enter-active,
-.popup-leave-active {
-  transition:
-    opacity 0.1s,
-    transform 0.1s;
-}
-.popup-enter-from,
-.popup-leave-to {
-  opacity: 0;
-  transform: translateY(4px);
-}
-</style>

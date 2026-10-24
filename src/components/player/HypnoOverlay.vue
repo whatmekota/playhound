@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
 import { breathRadius, flashOpacity, parseWords, spiralAngle, wordIndex } from '~/lib/hypno'
 import { useAudioStore } from '~/stores/audio'
 import { useHypnoStore } from '~/stores/hypnoStore'
+
+const props = defineProps<{
+  /**
+   * Small rendition inside a panel. Sizes that are absolute on the stage (the
+   * word's font size) are scaled to the box, so the preview looks like a
+   * shrunken stage rather than a giant word in a thumbnail.
+   */
+  preview?: boolean
+}>()
+
+/** Stage width the preview pretends to be. */
+const PREVIEW_STAGE_PX = 1100
 
 const hypno = useHypnoStore()
 const audio = useAudioStore()
@@ -12,6 +24,8 @@ const { getPulseClock } = useBinauralBeats()
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const currentWord = ref('')
 const wordAlpha = ref(0)
+/** Text scale; 1 on the stage, box-relative in preview. */
+const fit = ref(1)
 
 let raf: number | null = null
 let ro: ResizeObserver | null = null
@@ -36,6 +50,7 @@ function resize() {
   const r = c.getBoundingClientRect()
   c.width = Math.max(1, Math.round(r.width * dpr))
   c.height = Math.max(1, Math.round(r.height * dpr))
+  fit.value = props.preview ? r.width / PREVIEW_STAGE_PX : 1
 }
 
 /**
@@ -164,17 +179,32 @@ onMounted(() => {
   raf = requestAnimationFrame(frame)
 })
 
-onUnmounted(() => {
+function stop() {
   if (raf !== null)
     cancelAnimationFrame(raf)
+  raf = null
+}
+
+onUnmounted(() => {
+  stop()
   ro?.disconnect()
+})
+
+// Inside a kept-alive panel the preview stays mounted while hidden; there is
+// nothing to draw for, so let the frame loop rest.
+onDeactivated(stop)
+onActivated(() => {
+  if (raf === null) {
+    lastTs = 0
+    raf = requestAnimationFrame(frame)
+  }
 })
 </script>
 
 <template>
   <!-- Never intercepts input: it sits over the video while everything
        underneath stays usable. -->
-  <div class="pointer-events-none select-none inset-0 absolute overflow-hidden">
+  <div class="pointer-events-none select-none animate-fade-in inset-0 absolute overflow-hidden">
     <canvas ref="canvasEl" class="h-full w-full inset-0 absolute" />
 
     <div
@@ -193,9 +223,9 @@ onUnmounted(() => {
         class="tracking-[0.2em] font-semibold uppercase"
         :style="{
           color: hypno.textColor,
-          fontSize: `${hypno.textSize}px`,
+          fontSize: `${hypno.textSize * fit}px`,
           opacity: wordAlpha * hypno.textOpacity,
-          textShadow: '0 2px 24px rgba(0,0,0,0.6)',
+          textShadow: `0 ${2 * fit}px ${24 * fit}px rgba(0,0,0,0.6)`,
         }"
       >{{ currentWord }}</span>
     </div>

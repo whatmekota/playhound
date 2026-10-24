@@ -1,559 +1,863 @@
+<script lang="ts">
+// Device config is read from storage once per page load. The inspector can be
+// unmounted and remounted by the drawer's KeepAlive; reloading then would
+// throw away nothing, but there is no reason to do it either.
+</script>
+
 <script setup lang="ts">
-import type { DevicePreset } from '~/stores/deviceStore'
-import { computed, onMounted, ref } from 'vue'
+import type { MenuItem } from '~/components/ui/menu'
+import type { AxisConfig, DevicePreset } from '~/stores/deviceStore'
+import { useLocalStorage } from '@vueuse/core'
+import { OutputType } from 'buttplug'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
 import { useButtplug } from '~/composables/useButtplug'
 import { useSerialPort } from '~/composables/useSerialPort'
 import { useSettings } from '~/composables/useSettings'
-import { useTCode } from '~/composables/useTCode'
+import { axisOutput, useTCode } from '~/composables/useTCode'
+import { toast } from '~/composables/useToast'
 import { webSerial } from '~/lib/browserApi'
+import { serialLog } from '~/lib/serialLog'
 import { useDeviceStore } from '~/stores/deviceStore'
+import { useUiStore } from '~/stores/uiStore'
 
-const deviceStore = useDeviceStore()
-const { requestAndConnect, disconnect } = useSerialPort()
+let hydrated = false
+
+const device = useDeviceStore()
+const ui = useUiStore()
+const bp = useButtplug()
+const { requestAndConnect, disconnect, connecting } = useSerialPort()
 const { homeAllAxes, testAxis } = useTCode()
 const { save, load, downloadGoon, importGoon } = useSettings()
-const bp = useButtplug()
 
-const importError = ref<string | null>(null)
-const importOk = ref(false)
+const pct = (v: number) => `${Math.round(v * 100)}%`
 
-// ─── Section accordion (only one open at a time; connection is always visible) ─
-const openSection = ref<'presets' | 'axes' | 'settings' | 'buttplug' | null>('presets')
-function toggleSection(s: 'presets' | 'axes' | 'settings' | 'buttplug') {
-  openSection.value = openSection.value === s ? null : s
-}
-
-// ─── Buttplug ────────────────────────────────────────────────────────────────
-const bpUrl = ref(bp.serverUrl.value)
-async function handleBpConnect() {
-  if (bp.connected.value) { await bp.disconnect() }
-  else { await bp.connect(bpUrl.value) }
-}
-// ─── Cog advanced settings ────────────────────────────────────────────────────
-const showAdvanced = ref(false)
-
-async function handleConnect() {
-  if (deviceStore.connected) {
-    await disconnect()
+// ─── Persistence ──────────────────────────────────────────────────────────────
+onMounted(() => {
+  if (!hydrated) {
+    load()
+    hydrated = true
   }
-  else {
-    await requestAndConnect(deviceStore.baudRate)
+})
+
+// Every edit used to call save() by hand, and the ones that forgot were lost
+// on reload. Watching the serialised form catches all of them.
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+watch(() => device.serialize(), () => {
+  if (saveTimer)
+    clearTimeout(saveTimer)
+  saveTimer = setTimeout(save, 250)
+}, { deep: true })
+onBeforeUnmount(() => {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
     save()
   }
+})
+
+// ─── Transport ────────────────────────────────────────────────────────────────
+type Transport = 'serial' | 'buttplug'
+const transport = useLocalStorage<Transport>('ph-device-transport', 'serial')
+onMounted(() => {
+  // Land on whichever link is actually up.
+  if (bp.connected.value && !device.connected)
+    transport.value = 'buttplug'
+  else if (device.connected && !bp.connected.value)
+    transport.value = 'serial'
+})
+
+const TRANSPORTS = [
+  { value: 'serial' as const, label: 'Serial', icon: 'i-carbon-usb', title: 'TCode over USB (OSR2, SR6, SSR1…)' },
+  { value: 'buttplug' as const, label: 'Buttplug', icon: 'i-carbon-bluetooth', title: 'Any toy Intiface Central supports' },
+]
+
+// ─── Serial ───────────────────────────────────────────────────────────────────
+const showSerialOptions = ref(false)
+const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400].map(v => ({ value: v, label: `${v}` }))
+const TCODE_VERSIONS = [
+  { value: 'v3' as const, label: 'v3 · 0000–9999' },
+  { value: 'v2' as const, label: 'v2 · 000–999' },
+]
+
+/** Browser error strings are written for developers; say what to actually do. */
+function explainSerialError(msg: string) {
+  if (/failed to open/i.test(msg))
+    return 'The port is busy. Close anything else using it (another tab, MultiFunPlayer, a serial monitor) and try again.'
+  if (/disconnected|device lost|closed/i.test(msg))
+    return 'The device went away. Check the USB cable, then reconnect.'
+  if (/not supported/i.test(msg))
+    return 'This browser has no Web Serial. Use Chrome or Edge.'
+  return msg
 }
 
-function pct(val: number) { return `${Math.round(val * 100)}%` }
+let leaving = false
+async function connectSerial() {
+  await requestAndConnect(device.baudRate)
+  if (device.connected) {
+    toast.success('Device connected', { detail: `${device.baudRate} baud · TCode ${device.tcodeVersion}`, icon: 'i-carbon-plug-filled', key: 'serial' })
+  }
+  else if (device.connectionError) {
+    toast.error('Could not connect', { detail: explainSerialError(device.connectionError), key: 'serial' })
+  }
+  // A cancelled port picker leaves neither, and deserves no toast.
+}
+
+async function disconnectSerial() {
+  leaving = true
+  await disconnect()
+  leaving = false
+  toast('Device disconnected', { icon: 'i-carbon-plug', key: 'serial' })
+}
+
+// The read loop drops `connected` when the cable is pulled; say so.
+watch(() => device.connected, (now, was) => {
+  if (was && !now && !leaving) {
+    toast.warn('Device connection lost', {
+      detail: explainSerialError(device.connectionError ?? 'disconnected'),
+      key: 'serial',
+      action: { label: 'Reconnect', run: () => void connectSerial() },
+    })
+  }
+})
+
+const serialSummary = computed(() => `${device.baudRate} baud · TCode ${device.tcodeVersion}`)
+
+// ─── Buttplug ─────────────────────────────────────────────────────────────────
+const bpUrl = ref(bp.serverUrl.value)
+const bpConnecting = ref(false)
+const bpEnabled = computed({
+  get: () => bp.enabled.value,
+  set: v => bp.setEnabled(v),
+})
+
+async function connectBp() {
+  bpConnecting.value = true
+  try {
+    await bp.connect(bpUrl.value.trim() || 'ws://localhost:12345')
+  }
+  finally {
+    bpConnecting.value = false
+  }
+  if (bp.connected.value) {
+    toast.success('Connected to Intiface', { detail: bp.deviceCount.value ? `${bp.deviceCount.value} device(s) ready` : 'Scan to find your devices', icon: 'i-carbon-bluetooth', key: 'bp' })
+    if (!bp.deviceCount.value)
+      void bp.startScan()
+  }
+  else {
+    toast.error('Could not reach Intiface', { detail: `Is Intiface Central running with its server started at ${bpUrl.value}?`, key: 'bp' })
+  }
+}
+
+async function disconnectBp() {
+  await bp.disconnect()
+  toast('Disconnected from Intiface', { icon: 'i-carbon-bluetooth-off', key: 'bp' })
+}
+
+function deviceKinds(d: (typeof bp.devices.value)[number]) {
+  const out: string[] = []
+  try {
+    if (d.hasOutput(OutputType.HwPositionWithDuration))
+      out.push('Linear')
+    if (d.hasOutput(OutputType.Vibrate))
+      out.push('Vibe')
+  }
+  catch {}
+  return out
+}
+
+// ─── Connection hero ──────────────────────────────────────────────────────────
+type Tone = 'ok' | 'info' | 'warn' | 'danger' | 'idle'
+const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
+  if (transport.value === 'serial') {
+    if (connecting.value)
+      return { tone: 'info', label: 'Connecting…', detail: 'Pick the port in the browser dialog' }
+    if (device.connected) {
+      return device.deviceEnabled
+        ? { tone: 'ok', label: 'Connected', detail: `${device.portPath || 'Serial port'} · ${serialSummary.value}` }
+        : { tone: 'warn', label: 'Connected, output held', detail: 'Commands are not being sent' }
+    }
+    if (!webSerial.supported)
+      return { tone: 'danger', label: 'Web Serial unavailable', detail: 'Use Chrome or Edge for a USB device' }
+    return { tone: 'idle', label: 'Not connected', detail: 'Plug the device in by USB, then connect' }
+  }
+  if (bpConnecting.value)
+    return { tone: 'info', label: 'Connecting…', detail: bpUrl.value }
+  if (bp.connected.value) {
+    const n = bp.deviceCount.value
+    if (!bp.enabled.value)
+      return { tone: 'warn', label: 'Connected, output held', detail: 'Turn on output to drive devices' }
+    return { tone: n ? 'ok' : 'warn', label: n ? 'Connected' : 'No devices yet', detail: n ? `Intiface · ${n} device${n === 1 ? '' : 's'}` : 'Scan, then wake the toy' }
+  }
+  return { tone: 'idle', label: 'Not connected', detail: 'Start Intiface Central, then connect' }
+})
+
+const DOT: Record<Tone, string> = {
+  ok: 'bg-ok text-ok',
+  info: 'bg-info text-info',
+  warn: 'bg-warn text-warn',
+  danger: 'bg-danger text-danger',
+  idle: 'bg-fg-faint text-fg-faint',
+}
+const TILE: Record<Tone, string> = {
+  ok: 'bg-ok/12 text-ok',
+  info: 'bg-info/12 text-info',
+  warn: 'bg-warn/12 text-warn',
+  danger: 'bg-danger/12 text-danger',
+  idle: 'bg-surface-800 text-fg-muted',
+}
+const live = computed(() => status.value.tone === 'ok' || status.value.tone === 'info')
+
+// ─── Axes ─────────────────────────────────────────────────────────────────────
+const axesOpen = ref(true)
+const expanded = ref<string | null>(null)
+function toggleAxis(ch: string) {
+  expanded.value = expanded.value === ch ? null : ch
+}
+
+/** Keep a sliver of travel; min == max would pin the axis in place. */
+const MIN_SPAN = 0.05
+function setMin(axis: AxisConfig, e: Event) {
+  const el = e.target as HTMLInputElement
+  const v = Math.min(Number(el.value), axis.max - MIN_SPAN)
+  axis.min = Math.max(0, v)
+  el.value = String(axis.min)
+}
+function setMax(axis: AxisConfig, e: Event) {
+  const el = e.target as HTMLInputElement
+  const v = Math.max(Number(el.value), axis.min + MIN_SPAN)
+  axis.max = Math.min(1, v)
+  el.value = String(axis.max)
+}
+
+/** Linear and rotary axes rest centred; vibration and suction rest off. */
+const restDefault = (ch: string) => (ch.startsWith('L') || ch.startsWith('R') ? 0.5 : 0)
+
+function test(ch: string) {
+  void testAxis(ch)
+  toast(`Testing ${device.axisConfigs[ch]?.label ?? ch}`, {
+    detail: device.connected ? 'Bottom, top, then back to rest' : 'No device connected: the emulator shows it',
+    icon: 'i-carbon-play',
+    key: 'axis-test',
+  })
+}
+
+async function home() {
+  await homeAllAxes()
+  toast('Sent every axis to rest', { icon: 'i-carbon-home', key: 'axis-home' })
+}
+
+// Live markers are written straight to the DOM on each frame: re-rendering the
+// list through Vue sixty times a second would cost more than the device does.
+const markers = new Map<string, HTMLElement>()
+function markerRef(ch: string, el: unknown) {
+  if (el instanceof HTMLElement)
+    markers.set(ch, el)
+  else
+    markers.delete(ch)
+}
+const shown: Record<string, number> = {}
+let raf: number | null = null
+function frame() {
+  for (const [ch, el] of markers) {
+    const cfg = device.axisConfigs[ch]
+    if (!cfg)
+      continue
+    const rest = cfg.min + (cfg.invert ? 1 - cfg.defaultPos : cfg.defaultPos) * (cfg.max - cfg.min)
+    const target = axisOutput[ch] ?? rest
+    // Positions are targets the device eases toward, so ease the marker too.
+    const cur = shown[ch] ?? target
+    const next = cur + (target - cur) * 0.3
+    shown[ch] = next
+    el.style.left = `${next * 100}%`
+  }
+  raf = requestAnimationFrame(frame)
+}
+function startFrames() {
+  if (raf === null)
+    raf = requestAnimationFrame(frame)
+}
+function stopFrames() {
+  if (raf !== null)
+    cancelAnimationFrame(raf)
+  raf = null
+}
+onMounted(startFrames)
+onActivated(startFrames)
+onDeactivated(stopFrames)
+onBeforeUnmount(stopFrames)
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
+const presetsOpen = ref(false)
+const activePresetId = computed(() => device.detectActivePreset())
+const activePresetName = computed(() =>
+  device.allPresets.find(p => p.id === activePresetId.value)?.name ?? 'Custom',
+)
+
+function presetMeta(p: DevicePreset) {
+  const on = p.axes.filter(a => a.enabled)
+  if (!on.length)
+    return 'No axes'
+  const [first, ...rest] = on
+  const head = `${first.channel} ${pct(first.min)}–${pct(first.max)}${first.invert ? ' inv' : ''}`
+  return rest.length ? `${head} · +${rest.length} more` : head
+}
+
+function applyPreset(p: DevicePreset) {
+  device.applyPreset(p)
+  toast(`Applied ${p.name}`, { icon: 'i-carbon-checkmark', key: 'preset' })
+}
+
 const newPresetName = ref('')
-const renamingId = ref<string | null>(null)
-const renameValue = ref('')
-const expandedPresetId = ref<string | null>(null)
-
-const activePresetId = computed(() => deviceStore.detectActivePreset())
-
-function handleApplyPreset(preset: DevicePreset) { deviceStore.applyPreset(preset); save() }
-
-function handleSavePreset() {
+function savePreset() {
   const name = newPresetName.value.trim()
   if (!name)
     return
-  deviceStore.saveAsPreset(name)
+  device.saveAsPreset(name)
   newPresetName.value = ''
-  save()
+  toast.success(`Saved preset "${name}"`, { key: 'preset' })
 }
 
-function handleDeletePreset(id: string) { deviceStore.deletePreset(id); save() }
-
-function startRename(preset: DevicePreset) { renamingId.value = preset.id; renameValue.value = preset.name }
-
-function commitRename(id: string) {
+const renamingId = ref<string | null>(null)
+const renameValue = ref('')
+const renameInput = ref<{ focus: () => void, select: () => void }[]>([])
+async function startRename(p: DevicePreset) {
+  renamingId.value = p.id
+  renameValue.value = p.name
+  await nextTick()
+  renameInput.value[0]?.focus()
+  renameInput.value[0]?.select()
+}
+function commitRename() {
+  const id = renamingId.value
   const v = renameValue.value.trim()
-  if (v)
-    deviceStore.renamePreset(id, v)
+  if (id && v)
+    device.renamePreset(id, v)
   renamingId.value = null
-  save()
 }
 
-function toggleExpand(id: string) {
-  expandedPresetId.value = expandedPresetId.value === id ? null : id
+function deletePreset(p: DevicePreset) {
+  const idx = device.userPresets.findIndex(x => x.id === p.id)
+  device.deletePreset(p.id)
+  toast(`Deleted "${p.name}"`, {
+    icon: 'i-carbon-trash-can',
+    key: 'preset',
+    action: { label: 'Undo', run: () => device.userPresets.splice(Math.max(0, idx), 0, p) },
+  })
 }
 
-async function handleImport() {
-  importError.value = null; importOk.value = false
+function presetMenu(p: DevicePreset): MenuItem[] {
+  return [
+    { label: 'Apply', icon: 'i-carbon-checkmark', run: () => applyPreset(p) },
+    { label: 'Rename', icon: 'i-carbon-edit', run: () => void startRename(p) },
+    { separator: true },
+    { label: 'Delete', icon: 'i-carbon-trash-can', danger: true, run: () => deletePreset(p) },
+  ]
+}
+
+// ─── More menu ────────────────────────────────────────────────────────────────
+async function importFile() {
   try {
     await importGoon()
-    importOk.value = true
-    setTimeout(() => { importOk.value = false }, 2500)
+    toast.success('Settings imported', { icon: 'i-carbon-document-import' })
   }
-  catch (e: any) { importError.value = e?.message ?? 'Import failed' }
+  catch (e: any) {
+    toast.error('Import failed', { detail: e?.message ?? 'That file could not be read' })
+  }
 }
 
-onMounted(() => { load() })
+function resetAxes() {
+  const before = JSON.parse(JSON.stringify(device.axisConfigs)) as Record<string, AxisConfig>
+  device.resetAllAxisConfigs()
+  toast('Axes reset to defaults', {
+    icon: 'i-carbon-reset',
+    action: { label: 'Undo', run: () => (device.axisConfigs = before) },
+  })
+}
+
+const moreMenu = computed<MenuItem[]>(() => [
+  { heading: true, label: 'Settings file' },
+  { label: 'Export .goon', icon: 'i-carbon-document-export', run: downloadGoon },
+  { label: 'Import .goon', icon: 'i-carbon-document-import', run: () => void importFile() },
+  { separator: true },
+  { label: 'Reset all axes', icon: 'i-carbon-reset', danger: true, run: resetAxes },
+])
+
+const logOpen = ref(false)
 </script>
 
 <template>
-  <div class="p-3 flex flex-col gap-2 h-full overflow-y-auto">
-    <!-- Master enable -->
-    <div class="px-1 py-1 flex items-center justify-between">
-      <h2 class="text-sm text-white/80 font-semibold">
-        TCode Device
-      </h2>
-      <label class="flex gap-2 cursor-pointer select-none items-center">
-        <span class="text-xs text-white/50">Enable</span>
-        <div
-          class="rounded-full h-5 w-9 transition-colors relative"
-          :class="deviceStore.deviceEnabled ? 'bg-accent-600' : 'bg-surface-700'"
-          @click="deviceStore.deviceEnabled = !deviceStore.deviceEnabled"
-        >
-          <div
-            class="rounded-full bg-white h-4 w-4 shadow transition-transform top-0.5 absolute"
-            :class="deviceStore.deviceEnabled ? 'translate-x-4' : 'translate-x-0.5'"
+  <UiPanel>
+    <!-- ─── Connection ─────────────────────────────────────────────────────── -->
+    <section class="p-3 card flex flex-col gap-3 relative overflow-hidden">
+      <div
+        class="conn-glow pointer-events-none transition-opacity duration-500 inset-0 absolute"
+        :class="status.tone === 'ok' ? 'opacity-100' : 'opacity-0'"
+      />
+
+      <div class="flex gap-3 items-center relative">
+        <div class="rounded-[var(--radius-md)] center shrink-0 h-10 w-10 transition-colors duration-300 relative" :class="TILE[status.tone]">
+          <span :class="transport === 'serial' ? 'i-carbon-usb' : 'i-carbon-bluetooth'" class="text-[19px]" />
+          <span
+            class="rounded-full h-2.5 w-2.5 ring-2 ring-surface-850 transition-colors duration-300 absolute -right-0.5 -top-0.5"
+            :class="[DOT[status.tone], live ? 'animate-pulse-dot' : '']"
           />
         </div>
-      </label>
-    </div>
-
-    <!-- Web Serial warning -->
-    <div v-if="!webSerial.supported" class="text-xs text-yellow-400 px-3 py-2 rounded bg-yellow-900/20">
-      ⚠ Web Serial API not available. Use Chrome or Edge.
-    </div>
-
-    <!-- ─── Connection (always expanded) ──────────────────────────────────── -->
-    <div class="panel overflow-hidden">
-      <div class="px-3 py-2 flex gap-2 w-full items-center">
-        <span class="label text-left flex-1">Serial Connection</span>
-        <div class="rounded-full shrink-0 h-2 w-2" :class="deviceStore.connected ? 'bg-green-400 animate-pulse' : 'bg-surface-600'" />
-        <button
-          class="text-white/30 p-0.5 shrink-0 transition-colors hover:text-white/60"
-          title="Advanced settings"
-          @click.stop="showAdvanced = !showAdvanced"
-        >
-          <svg class="h-3.5 w-3.5 transition-transform" :class="showAdvanced ? 'rotate-45 text-accent-400' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+        <div class="flex-1 min-w-0">
+          <Transition name="t-fade" mode="out-in">
+            <p :key="status.label" class="text-[14px] text-fg tracking-[-0.01em] font-semibold truncate">
+              {{ status.label }}
+            </p>
+          </Transition>
+          <p class="hint truncate">
+            {{ status.detail }}
+          </p>
+        </div>
       </div>
 
-      <div class="px-3 pb-3 flex flex-col gap-2">
-        <!-- Advanced: baud rate + tcode version (hidden by default) -->
-        <Transition name="slide-down">
-          <div v-if="showAdvanced" class="pt-1 gap-2 grid grid-cols-2">
-            <div>
-              <p class="label mb-1">
-                Baud Rate
-              </p>
-              <select v-model.number="deviceStore.baudRate" class="input text-xs w-full">
-                <option :value="9600">
-                  9600
-                </option>
-                <option :value="19200">
-                  19200
-                </option>
-                <option :value="38400">
-                  38400
-                </option>
-                <option :value="57600">
-                  57600
-                </option>
-                <option :value="115200">
-                  115200
-                </option>
-                <option :value="230400">
-                  230400
-                </option>
-              </select>
-            </div>
-            <div>
-              <p class="label mb-1">
-                TCode
-              </p>
-              <select v-model="deviceStore.tcodeVersion" class="input text-xs w-full">
-                <option value="v2">
-                  v2 (000-999)
-                </option>
-                <option value="v3">
-                  v3 (0000-9999)
-                </option>
-              </select>
-            </div>
+      <UiSegmented v-model="transport" :options="TRANSPORTS" block class="relative" />
+
+      <Transition name="t-fade" mode="out-in">
+        <!-- Serial -->
+        <div v-if="transport === 'serial'" key="serial" class="flex flex-col gap-2.5 relative">
+          <div v-if="!webSerial.supported" class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20">
+            <span class="i-carbon-warning-alt text-[15px] mt-px shrink-0" />
+            <span>This browser cannot talk to USB serial devices. Open playhound in Chrome or Edge, or use Buttplug.</span>
           </div>
-        </Transition>
 
-        <!-- Connect button -->
-        <button
-          class="text-sm font-medium py-2 rounded-lg w-full transition-colors"
-          :class="deviceStore.connected ? 'bg-red-700/60 hover:bg-red-700 text-white' : 'bg-accent-600 hover:bg-accent-500 text-white'"
-          :disabled="!webSerial.supported"
-          @click="handleConnect"
-        >
-          {{ deviceStore.connected ? '⏏ Disconnect' : '⚡ Select Port & Connect' }}
-        </button>
-
-        <div class="text-xs flex gap-2 items-center">
-          <div class="rounded-full h-2 w-2" :class="deviceStore.connected ? 'bg-green-400 animate-pulse' : 'bg-red-500'" />
-          <span :class="deviceStore.connected ? 'text-green-400' : 'text-white/40'">
-            {{ deviceStore.connected ? `Connected · ${deviceStore.baudRate}` : 'Disconnected' }}
-          </span>
-        </div>
-        <p v-if="deviceStore.connectionError" class="text-xs text-red-400 px-2 py-1 rounded bg-red-900/20">
-          {{ deviceStore.connectionError }}
-        </p>
-        <div v-if="deviceStore.lastCommand && deviceStore.connected" class="text-xs text-white/30 font-mono truncate">
-          ↑ {{ deviceStore.lastCommand }}
-        </div>
-      </div>
-    </div>
-
-    <!-- ─── Presets ─────────────────────────────────────────────────────────── -->
-    <div class="panel overflow-hidden">
-      <button class="px-3 py-2 flex gap-2 w-full transition-colors items-center hover:bg-white/5" @click="toggleSection('presets')">
-        <svg class="text-white/40 shrink-0 h-3 w-3 transition-transform" :class="openSection === 'presets' ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
-        <span class="label text-left flex-1">Device Presets</span>
-        <span v-if="activePresetId" class="text-[10px] text-accent-400 shrink-0">
-          {{ deviceStore.allPresets.find(p => p.id === activePresetId)?.name }}
-        </span>
-      </button>
-
-      <div v-if="openSection === 'presets'" class="mt-2 px-3 pb-3 flex flex-col gap-2">
-        <div class="flex flex-col gap-1">
-          <div
-            v-for="preset in deviceStore.allPresets"
-            :key="preset.id"
-            class="border rounded-lg transition-colors overflow-hidden"
-            :class="activePresetId === preset.id ? 'border-accent-500 bg-accent-600/10' : 'border-white/8 bg-surface-800'"
+          <UiButton
+            v-if="!device.connected"
+            variant="primary"
+            size="lg"
+            block
+            icon="i-carbon-plug"
+            :loading="connecting"
+            :disabled="!webSerial.supported"
+            @click="connectSerial"
           >
-            <div class="px-2 py-1.5 flex gap-1.5 items-center">
-              <div
-                class="rounded-full shrink-0 h-1.5 w-1.5 transition-colors"
-                :class="activePresetId === preset.id ? 'bg-accent-400' : 'bg-transparent'"
-              />
+            {{ connecting ? 'Waiting for a port…' : 'Choose port & connect' }}
+          </UiButton>
+          <UiButton v-else variant="secondary" size="md" block icon="i-carbon-close" @click="disconnectSerial">
+            Disconnect
+          </UiButton>
 
-              <div class="flex-1 min-w-0">
-                <input
-                  v-if="renamingId === preset.id"
-                  v-model="renameValue"
-                  class="text-xs text-white px-1.5 py-0.5 outline-none border border-accent-500 rounded bg-surface-900 w-full"
-                  autofocus
-                  @keydown.enter="commitRename(preset.id)"
-                  @keydown.escape="renamingId = null"
-                  @blur="commitRename(preset.id)"
+          <UiSwitch
+            v-if="device.connected"
+            v-model="device.deviceEnabled"
+            size="sm"
+            label="Send to device"
+            hint="Off keeps the port open but sends nothing"
+          />
+
+          <div
+            v-if="device.connectionError && !device.connected"
+            class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20 animate-fade-in"
+          >
+            <span class="i-carbon-error-filled text-[14px] mt-px shrink-0" />
+            <span class="min-w-0">{{ explainSerialError(device.connectionError) }}</span>
+          </div>
+
+          <div class="flex flex-col">
+            <button
+              type="button"
+              class="text-[11.5px] text-fg-faint px-1 focusable rounded-[var(--radius-sm)] flex gap-1.5 h-6 transition-colors items-center hover:text-fg-muted"
+              :aria-expanded="showSerialOptions"
+              @click="showSerialOptions = !showSerialOptions"
+            >
+              <span class="i-carbon-chevron-right text-[11px] transition-transform duration-200" :class="showSerialOptions ? 'rotate-90' : ''" />
+              <span>Port options</span>
+              <span class="num ml-auto">{{ serialSummary }}</span>
+            </button>
+            <Transition name="t-collapse">
+              <div v-if="showSerialOptions">
+                <div class="min-h-0 overflow-hidden">
+                  <div class="pt-1.5 gap-2 grid grid-cols-2">
+                    <UiSelect v-model="device.baudRate" label="Baud rate" :options="BAUD_RATES" :disabled="device.connected" />
+                    <UiSelect v-model="device.tcodeVersion" label="TCode" :options="TCODE_VERSIONS" />
+                  </div>
+                  <p v-if="device.connected" class="hint mt-1.5">
+                    Disconnect to change the baud rate.
+                  </p>
+                </div>
+              </div>
+            </Transition>
+          </div>
+
+          <div
+            v-if="device.connected && device.lastCommand"
+            class="text-[11px] text-fg-faint font-mono px-2 rounded-[var(--radius-sm)] bg-surface-950/60 flex gap-1.5 h-6 items-center"
+          >
+            <span class="i-carbon-arrow-up-right text-[11px] text-accent-300 shrink-0" />
+            <span class="truncate">{{ device.lastCommand }}</span>
+          </div>
+        </div>
+
+        <!-- Buttplug -->
+        <div v-else key="buttplug" class="flex flex-col gap-2.5 relative">
+          <UiInput
+            v-model="bpUrl"
+            icon="i-carbon-network-3"
+            label="Intiface server"
+            placeholder="ws://localhost:12345"
+            mono
+            size="md"
+            :disabled="bp.connected.value || bpConnecting"
+            @enter="connectBp"
+          />
+
+          <UiButton
+            v-if="!bp.connected.value"
+            variant="primary"
+            size="lg"
+            block
+            icon="i-carbon-connect"
+            :loading="bpConnecting"
+            @click="connectBp"
+          >
+            Connect to Intiface
+          </UiButton>
+          <UiButton v-else variant="secondary" size="md" block icon="i-carbon-close" @click="disconnectBp">
+            Disconnect
+          </UiButton>
+
+          <div
+            v-if="bp.error.value && !bp.connected.value"
+            class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20 animate-fade-in"
+          >
+            <span class="i-carbon-error-filled text-[14px] mt-px shrink-0" />
+            <span class="min-w-0 break-words">{{ bp.error.value }}</span>
+          </div>
+
+          <p v-if="!bp.connected.value" class="hint">
+            Open Intiface Central and press Start Server first. Linear strokers follow the stroke axis with its range;
+            vibrators take the position as intensity.
+          </p>
+
+          <template v-else>
+            <UiSwitch v-model="bpEnabled" size="sm" label="Send to devices" hint="Off keeps the link but sends nothing" />
+
+            <div class="p-1.5 well flex flex-col gap-1">
+              <div class="pl-1.5 flex gap-1 h-7 items-center">
+                <span class="eyebrow">Devices</span>
+                <span class="text-[11px] text-fg-faint num">{{ bp.deviceCount.value }}</span>
+                <div class="ml-auto flex gap-1 items-center">
+                  <UiButton
+                    size="xs"
+                    variant="ghost"
+                    :icon="bp.scanning.value ? undefined : 'i-carbon-search'"
+                    :loading="bp.scanning.value"
+                    @click="bp.scanning.value ? bp.stopScan() : bp.startScan()"
+                  >
+                    {{ bp.scanning.value ? 'Scanning' : 'Scan' }}
+                  </UiButton>
+                  <UiButton v-if="bp.deviceCount.value" size="xs" variant="ghost" icon="i-carbon-stop-filled-alt" @click="bp.stopAll()">
+                    Stop all
+                  </UiButton>
+                </div>
+              </div>
+              <TransitionGroup name="t-list" tag="div" class="flex flex-col gap-1 relative">
+                <div
+                  v-for="d in bp.devices.value"
+                  :key="d.index"
+                  class="px-2 rounded-[var(--radius-sm)] bg-surface-850 flex gap-2 h-8 items-center"
                 >
-                <span v-else class="text-xs block truncate" :class="activePresetId === preset.id ? 'text-accent-300 font-medium' : 'text-white/70'">
-                  {{ preset.name }}
-                  <span v-if="preset.builtin" class="text-[9px] text-white/25 font-normal ml-1">built-in</span>
-                </span>
-              </div>
-
-              <!-- Expand -->
-              <button class="text-white/30 p-0.5 shrink-0 transition-colors hover:text-white/60" @click="toggleExpand(preset.id)">
-                <svg class="h-3 w-3 transition-transform" :class="expandedPresetId === preset.id ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <!-- Rename -->
-              <button
-                v-if="!preset.builtin && renamingId !== preset.id"
-                class="text-white/30 p-0.5 shrink-0 transition-colors hover:text-white/60"
-                @click="startRename(preset)"
-              >
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-              <!-- Delete -->
-              <button
-                v-if="!preset.builtin"
-                class="text-white/25 p-0.5 shrink-0 transition-colors hover:text-red-400"
-                @click="handleDeletePreset(preset.id)"
-              >
-                <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-              <!-- Apply -->
-              <button
-                class="text-xs font-medium px-2 py-0.5 rounded shrink-0 transition-colors"
-                :class="activePresetId === preset.id ? 'bg-accent-600/30 text-accent-300 cursor-default' : 'bg-accent-600 hover:bg-accent-500 text-white'"
-                @click="handleApplyPreset(preset)"
-              >
-                {{ activePresetId === preset.id ? '✓' : 'Apply' }}
-              </button>
-            </div>
-
-            <!-- Expanded axes — 2 columns -->
-            <div v-if="expandedPresetId === preset.id" class="px-3 py-2 border-t border-white/5 gap-x-3 gap-y-1 grid grid-cols-2">
-              <div v-for="entry in preset.axes" :key="entry.channel" class="flex gap-1.5 items-center">
-                <div class="rounded-full shrink-0 h-1.5 w-1.5" :class="entry.enabled ? 'bg-accent-400' : 'bg-white/10'" />
-                <span class="text-[10px] text-white/50 font-mono shrink-0 w-5">{{ entry.channel }}</span>
-                <span class="text-[10px] text-white/30 font-mono">{{ pct(entry.min) }}–{{ pct(entry.max) }}</span>
-                <span v-if="entry.invert" class="text-[9px] text-orange-400/70 ml-auto">INV</span>
+                  <span class="text-ok rounded-full bg-ok shrink-0 h-1.5 w-1.5" />
+                  <span class="text-[12.5px] text-fg flex-1 truncate">{{ d.name }}</span>
+                  <UiBadge v-for="k in deviceKinds(d)" :key="k" size="xs" :tone="k === 'Linear' ? 'info' : 'accent'">
+                    {{ k }}
+                  </UiBadge>
+                </div>
+              </TransitionGroup>
+              <div v-if="!bp.deviceCount.value" class="text-[12px] text-fg-faint px-2 py-3 text-center">
+                <template v-if="bp.scanning.value">
+                  <div class="flex flex-col gap-1.5">
+                    <div class="skeleton rounded-[var(--radius-sm)] h-8" />
+                    <span>Looking for devices — wake the toy now</span>
+                  </div>
+                </template>
+                <template v-else>
+                  Nothing found yet. Turn the device on and scan.
+                </template>
               </div>
             </div>
-          </div>
+          </template>
         </div>
+      </Transition>
+    </section>
 
-        <!-- Save as new -->
-        <div class="mt-1 flex gap-1.5">
-          <input v-model="newPresetName" placeholder="New preset name…" class="input text-xs py-1 flex-1" @keydown.enter="handleSavePreset">
-          <button class="btn-ghost text-xs px-2 py-1 shrink-0" :disabled="!newPresetName.trim()" @click="handleSavePreset">
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-            </svg>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- ─── Axes ──────────────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="axesOpen"
+      title="Axes"
+      icon="i-carbon-chart-line-data"
+      collapsible
+      :summary="`${device.enabledAxes.length} of ${device.orderedAxes.length} on`"
+    >
+      <template #actions>
+        <UiIconButton icon="i-carbon-home" label="Send every axis to rest" size="xs" @click="home" />
+      </template>
 
-    <!-- ─── Axes ────────────────────────────────────────────────────────────── -->
-    <div class="panel overflow-hidden">
-      <div class="flex transition-colors items-center hover:bg-white/5">
-        <button class="px-3 py-2 flex flex-1 gap-2 min-w-0 items-center" @click="toggleSection('axes')">
-          <svg class="text-white/40 shrink-0 h-3 w-3 transition-transform" :class="openSection === 'axes' ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-          </svg>
-          <span class="label text-left flex-1">Axes</span>
-          <span class="text-[10px] text-white/30 shrink-0">{{ deviceStore.enabledAxes.length }} active</span>
-        </button>
-        <button class="text-xs text-white/30 px-3 py-2 shrink-0 transition-colors hover:text-white/60" @click="homeAllAxes()">
-          Home All
-        </button>
-      </div>
-
-      <div v-if="openSection === 'axes'" class="mt-2 px-3 pb-3 flex flex-col gap-0">
+      <div class="flex flex-col gap-0.5 -mx-1.5">
         <div
-          v-for="axis in deviceStore.orderedAxes"
+          v-for="axis in device.orderedAxes"
           :key="axis.channel"
-          class="py-2 border-t border-white/5 flex flex-col gap-2 first:pt-0 first:border-0"
+          class="rounded-[var(--radius-md)] transition-colors duration-200"
+          :class="expanded === axis.channel ? 'bg-surface-800/70 ring-1 ring-edge' : ''"
         >
-          <div class="flex gap-2 items-center">
+          <div class="pl-1.5 pr-2 flex gap-2 h-9 items-center">
             <button
-              class="rounded flex shrink-0 h-5 w-5 transition-colors items-center justify-center"
-              :class="axis.enabled ? 'bg-accent-600 text-white' : 'bg-surface-700 text-white/30'"
-              @click="axis.enabled = !axis.enabled; save()"
+              type="button"
+              class="focusable rounded-[var(--radius-sm)] flex flex-1 gap-2 h-full min-w-0 items-center"
+              :aria-expanded="expanded === axis.channel"
+              :aria-label="`${axis.label} settings`"
+              @click="toggleAxis(axis.channel)"
             >
-              <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  v-if="axis.enabled" fill-rule="evenodd" clip-rule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+              <span
+                class="i-carbon-chevron-right text-[11px] text-fg-faint shrink-0 transition-transform duration-200"
+                :class="expanded === axis.channel ? 'rotate-90' : ''"
+              />
+              <span
+                class="text-[10.5px] font-medium font-mono rounded-[var(--radius-xs)] center shrink-0 h-5 w-7 transition-colors"
+                :class="axis.enabled ? 'bg-accent-soft text-accent-300' : 'bg-fg/6 text-fg-faint'"
+              >{{ axis.channel }}</span>
+              <span class="text-[12.5px] text-left shrink-0 w-[3.6rem] truncate" :class="axis.enabled ? 'text-fg' : 'text-fg-muted'">
+                {{ axis.label }}
+              </span>
+              <!-- Track: the shaded band is the allowed range, the tick is where the axis was last sent -->
+              <span class="rounded-full bg-surface-700 flex-1 h-1.5 min-w-8 relative" :class="axis.enabled ? '' : 'opacity-40'">
+                <span
+                  class="rounded-full h-full transition-[left,width] duration-200 absolute"
+                  :class="axis.invert ? 'bg-warn/30' : 'bg-accent/30'"
+                  :style="{ left: pct(axis.min), width: pct(axis.max - axis.min) }"
                 />
-                <path
-                  v-else fill-rule="evenodd" clip-rule="evenodd"
-                  d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                <span
+                  :ref="el => markerRef(axis.channel, el)"
+                  class="rounded-full h-3 w-1 shadow-[var(--shadow-sm)] top-1/2 absolute -translate-x-1/2 -translate-y-1/2"
+                  :class="axis.invert ? 'bg-warn' : 'bg-accent'"
                 />
-              </svg>
+              </span>
             </button>
-            <span class="text-xs text-accent-400 font-mono shrink-0 w-6">{{ axis.channel }}</span>
-            <span class="text-xs text-white/70 flex-1">{{ axis.label }}</span>
-            <button
-              class="text-xs px-1.5 py-0.5 rounded transition-colors"
-              :class="axis.invert ? 'bg-orange-600/40 text-orange-300' : 'text-white/30 hover:text-white/60'"
-              @click="axis.invert = !axis.invert; save()"
-            >
-              INV
-            </button>
-            <button
-              class="text-xs text-white/30 px-1.5 py-0.5 rounded transition-colors hover:text-white/60"
-              :disabled="!deviceStore.connected || !axis.enabled"
-              @click="testAxis(axis.channel)"
-            >
-              TEST
-            </button>
+            <UiSwitch v-model="axis.enabled" size="sm" :aria-label="`Enable ${axis.label}`" />
           </div>
 
-          <div v-if="axis.enabled" class="pl-7 gap-x-3 gap-y-1 grid grid-cols-2">
-            <div>
-              <div class="flex justify-between">
-                <span class="text-[10px] text-white/40">Min</span>
-                <span class="text-[10px] text-white/60 font-mono">{{ pct(axis.min) }}</span>
+          <Transition name="t-collapse">
+            <div v-if="expanded === axis.channel">
+              <div class="min-h-0 overflow-hidden">
+                <div class="px-3 pb-3 pt-1 flex flex-col gap-3">
+                  <!-- Range: two thumbs on one track -->
+                  <div class="flex flex-col gap-1">
+                    <div class="flex items-baseline justify-between">
+                      <span class="label">Range</span>
+                      <span class="text-[11.5px] text-fg num">{{ pct(axis.min) }} – {{ pct(axis.max) }}</span>
+                    </div>
+                    <div class="h-4 relative">
+                      <div class="inset-x-[7px] inset-y-0 absolute">
+                        <div class="rounded-full bg-surface-700 h-1 inset-x-0 top-1/2 absolute -translate-y-1/2" />
+                        <div
+                          class="rounded-full h-1 top-1/2 absolute -translate-y-1/2"
+                          :class="axis.invert ? 'bg-warn' : 'bg-accent'"
+                          :style="{ left: pct(axis.min), width: pct(axis.max - axis.min) }"
+                        />
+                      </div>
+                      <input
+                        type="range"
+                        class="dual"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        :value="axis.min"
+                        :aria-label="`${axis.label} minimum`"
+                        :style="{ zIndex: axis.min > 0.9 ? 3 : 2 }"
+                        @input="setMin(axis, $event)"
+                      >
+                      <input
+                        type="range"
+                        class="dual"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        :value="axis.max"
+                        :aria-label="`${axis.label} maximum`"
+                        @input="setMax(axis, $event)"
+                      >
+                    </div>
+                    <div class="text-[10.5px] text-fg-faint flex justify-between">
+                      <span>{{ axis.channel.startsWith('L') ? 'Bottom' : 'Low' }}</span>
+                      <span>{{ axis.channel.startsWith('L') ? 'Top' : 'High' }}</span>
+                    </div>
+                  </div>
+
+                  <UiSlider
+                    v-model="axis.defaultPos"
+                    label="Rest position"
+                    :format="pct"
+                    :reset="restDefault(axis.channel)"
+                    hint="Where Home and Stop leave it. Double-click to reset."
+                  />
+
+                  <UiSwitch
+                    v-model="axis.invert"
+                    size="sm"
+                    tone="warn"
+                    label="Invert"
+                    hint="Flip direction, for a device mounted the other way up"
+                  />
+
+                  <div class="flex gap-1.5 items-center">
+                    <UiButton size="xs" icon="i-carbon-play" :disabled="!axis.enabled" @click="test(axis.channel)">
+                      Test sweep
+                    </UiButton>
+                    <UiButton size="xs" variant="ghost" icon="i-carbon-reset" class="ml-auto" @click="device.resetAxisConfig(axis.channel)">
+                      Defaults
+                    </UiButton>
+                  </div>
+                </div>
               </div>
-              <input
-                type="range" min="0" max="1" step="0.01" :value="axis.min" class="accent w-full"
-                @input="axis.min = parseFloat(($event.target as HTMLInputElement).value); save()"
-              >
             </div>
-            <div>
-              <div class="flex justify-between">
-                <span class="text-[10px] text-white/40">Max</span>
-                <span class="text-[10px] text-white/60 font-mono">{{ pct(axis.max) }}</span>
-              </div>
-              <input
-                type="range" min="0" max="1" step="0.01" :value="axis.max" class="accent w-full"
-                @input="axis.max = parseFloat(($event.target as HTMLInputElement).value); save()"
-              >
-            </div>
-          </div>
+          </Transition>
         </div>
       </div>
-    </div>
+    </UiSection>
 
-    <!-- ─── Buttplug / Intiface ────────────────────────────────────────────── -->
-    <div class="panel overflow-hidden">
-      <button class="px-3 py-2 flex gap-2 w-full transition-colors items-center hover:bg-white/5" @click="toggleSection('buttplug')">
-        <svg class="text-white/40 shrink-0 h-3 w-3 transition-transform" :class="openSection === 'buttplug' ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
-        <span class="label text-left flex-1">Buttplug / Intiface</span>
-        <div class="flex shrink-0 gap-1.5 items-center">
-          <div class="rounded-full h-2 w-2" :class="bp.connected.value ? 'bg-pink-400 animate-pulse' : 'bg-surface-600'" />
-          <span v-if="bp.deviceCount.value > 0" class="text-[10px] text-pink-300">{{ bp.deviceCount.value }} device{{ bp.deviceCount.value !== 1 ? 's' : '' }}</span>
-        </div>
-      </button>
-
-      <div v-if="openSection === 'buttplug'" class="mt-1 px-3 pb-3 flex flex-col gap-2.5">
-        <!-- Enable toggle -->
-        <div class="flex items-center justify-between">
-          <span class="text-xs text-white/50">Enable output</span>
-          <div
-            class="rounded-full h-5 w-9 cursor-pointer transition-colors relative"
-            :class="bp.enabled.value ? 'bg-pink-600' : 'bg-surface-700'"
-            @click="bp.setEnabled(!bp.enabled.value)"
-          >
-            <div
-              class="rounded-full bg-white h-4 w-4 shadow transition-transform top-0.5 absolute"
-              :class="bp.enabled.value ? 'translate-x-4' : 'translate-x-0.5'"
+    <!-- ─── Presets ───────────────────────────────────────────────────────── -->
+    <UiSection v-model:open="presetsOpen" title="Presets" icon="i-carbon-settings-adjust" collapsible :summary="activePresetName">
+      <TransitionGroup name="t-list" tag="div" class="flex flex-col gap-0.5 relative -mx-1.5">
+        <div
+          v-for="p in device.allPresets"
+          :key="p.id"
+          class="group pr-1 rounded-[var(--radius-md)] flex gap-1 w-full transition-colors items-center"
+          :class="activePresetId === p.id ? 'bg-accent-soft' : 'hover:bg-fg/5'"
+        >
+          <div v-if="renamingId === p.id" class="py-1 pl-1.5 flex-1 min-w-0">
+            <UiInput
+              ref="renameInput"
+              v-model="renameValue"
+              size="sm"
+              @enter="commitRename"
+              @escape="renamingId = null"
+              @focusout="commitRename"
             />
           </div>
-        </div>
-
-        <!-- Server URL -->
-        <div>
-          <p class="label mb-1">
-            Intiface Server URL
-          </p>
-          <input v-model="bpUrl" class="input text-xs font-mono py-1 w-full" placeholder="ws://localhost:12345">
-          <p class="text-[10px] text-white/25 mt-0.5">
-            Open Intiface Central, then connect here.
-          </p>
-        </div>
-
-        <!-- Connect button -->
-        <button
-          class="text-sm font-medium py-2 rounded-lg w-full transition-colors"
-          :class="bp.connected.value ? 'bg-red-700/60 hover:bg-red-700 text-white' : 'bg-pink-700 hover:bg-pink-600 text-white'"
-          @click="handleBpConnect"
-        >
-          {{ bp.connected.value ? '⏏ Disconnect' : '🔌 Connect to Intiface' }}
-        </button>
-
-        <!-- Error -->
-        <p v-if="bp.error.value" class="text-xs text-red-400 px-2 py-1 rounded bg-red-900/20">
-          {{ bp.error.value }}
-        </p>
-
-        <!-- Status -->
-        <div v-if="bp.connected.value" class="text-xs flex gap-2 items-center">
-          <div class="rounded-full bg-pink-400 h-2 w-2 animate-pulse" />
-          <span class="text-pink-300">Connected · {{ bp.deviceCount.value }} device{{ bp.deviceCount.value !== 1 ? 's' : '' }}</span>
-          <div class="ml-auto flex gap-1">
-            <span v-if="bp.hasLinear.value" class="text-[10px] text-teal-300 px-1.5 py-0.5 rounded bg-teal-700/40">Linear</span>
-            <span v-if="bp.hasVibrators.value" class="text-[10px] text-pink-300 px-1.5 py-0.5 rounded bg-pink-700/40">Vibe</span>
-          </div>
-        </div>
-
-        <!-- Scan + Stop -->
-        <div v-if="bp.connected.value" class="flex gap-2">
           <button
-            class="text-xs font-medium py-1.5 rounded-lg flex-1 transition-colors"
-            :class="bp.scanning.value ? 'bg-amber-700/50 text-amber-300' : 'bg-white/10 hover:bg-white/15 text-white/70'"
-            @click="bp.scanning.value ? bp.stopScan() : bp.startScan()"
+            v-else
+            type="button"
+            class="px-1.5 py-1.5 text-left focusable rounded-[var(--radius-md)] flex flex-1 gap-2.5 min-w-0 items-center"
+            @click="applyPreset(p)"
           >
-            {{ bp.scanning.value ? '⏹ Stop Scan' : '🔍 Scan (5s)' }}
+            <span
+              class="rounded-full center shrink-0 h-4 w-4 transition-colors"
+              :class="activePresetId === p.id ? 'bg-accent text-accent-contrast' : 'ring-1 ring-edge-strong'"
+            >
+              <span v-if="activePresetId === p.id" class="i-carbon-checkmark text-[11px]" />
+            </span>
+            <span class="flex flex-col min-w-0">
+              <span class="text-[12.5px] flex gap-1.5 items-center" :class="activePresetId === p.id ? 'text-accent-300 font-medium' : 'text-fg'">
+                <span class="truncate">{{ p.name }}</span>
+                <UiBadge v-if="p.builtin" size="xs">Built-in</UiBadge>
+              </span>
+              <span class="text-[11px] text-fg-faint num truncate">{{ presetMeta(p) }}</span>
+            </span>
           </button>
-          <button
-            v-if="bp.deviceCount.value > 0" class="text-xs text-white/50 px-3 py-1.5 rounded-lg bg-white/5 transition-colors hover:bg-white/10"
-            @click="bp.stopAll()"
-          >
-            Stop All
-          </button>
+          <UiPopover v-if="!p.builtin && renamingId !== p.id" placement="bottom" align="end" flush>
+            <template #trigger="{ toggle, open }">
+              <UiIconButton
+                icon="i-carbon-overflow-menu-horizontal"
+                label="Preset actions"
+                size="xs"
+                :active="open"
+                class="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                :class="open ? '!opacity-100' : ''"
+                @click="toggle"
+              />
+            </template>
+            <template #default="{ close }">
+              <div class="p-1">
+                <UiMenu :items="presetMenu(p)" @done="close" />
+              </div>
+            </template>
+          </UiPopover>
         </div>
+      </TransitionGroup>
 
-        <!-- Device list -->
-        <div v-if="bp.connected.value && bp.devices.value.length > 0" class="flex flex-col gap-1">
-          <p class="label mb-0.5">
-            Connected Devices
-          </p>
-          <div
-            v-for="dev in bp.devices.value" :key="dev.index"
-            class="px-2 py-1.5 border border-white/5 rounded-lg bg-surface-800 flex gap-2 items-center"
-          >
-            <div class="rounded-full bg-pink-400 shrink-0 h-1.5 w-1.5" />
-            <span class="text-xs text-white/80 flex-1 truncate">{{ dev.name }}</span>
-            <span class="text-[10px] text-white/30 shrink-0">#{{ dev.index }}</span>
-          </div>
-        </div>
-
-        <p
-          v-else-if="bp.connected.value && bp.devices.value.length === 0 && !bp.scanning.value"
-          class="text-xs text-white/30 py-1 text-center"
-        >
-          No devices found. Click Scan.
-        </p>
-        <p v-else-if="bp.scanning.value" class="text-xs text-amber-300/70 py-1 text-center animate-pulse">
-          Scanning for devices…
-        </p>
+      <div class="flex gap-1.5">
+        <UiInput
+          v-model="newPresetName"
+          class="flex-1"
+          placeholder="Save current axes as…"
+          icon="i-carbon-add"
+          @enter="savePreset"
+        />
+        <UiButton icon="i-carbon-save" :disabled="!newPresetName.trim()" @click="savePreset">
+          Save
+        </UiButton>
       </div>
-    </div>
+    </UiSection>
 
-    <!-- ─── Settings export/import ─────────────────────────────────────────── -->
-    <div class="panel overflow-hidden">
-      <button class="px-3 py-2 flex gap-2 w-full transition-colors items-center hover:bg-white/5" @click="toggleSection('settings')">
-        <svg class="text-white/40 shrink-0 h-3 w-3 transition-transform" :class="openSection === 'settings' ? 'rotate-90' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-        </svg>
-        <span class="label text-left flex-1">Settings File (.goon)</span>
-      </button>
+    <!-- ─── Serial log ────────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="logOpen"
+      title="Serial log"
+      icon="i-carbon-terminal"
+      collapsible
+      :summary="serialLog.length ? `${serialLog.length}` : 'empty'"
+    >
+      <SerialLogViewer />
+    </UiSection>
 
-      <div v-if="openSection === 'settings'" class="mt-2 px-3 pb-3 flex flex-col gap-2">
-        <p class="text-[10px] text-white/30">
-          Export / import all app settings including presets, theme, and playback preferences.
-        </p>
-        <div class="flex gap-2">
-          <button class="btn-ghost text-xs py-2 flex-1 justify-center" @click="downloadGoon">
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Export
-          </button>
-          <button class="btn-ghost text-xs py-2 flex-1 justify-center" @click="handleImport">
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
-            </svg>
-            Import
-          </button>
-        </div>
-        <p v-if="importOk" class="text-xs text-green-400 px-2 py-1 rounded bg-green-900/20">
-          ✓ Settings imported successfully
-        </p>
-        <p v-if="importError" class="text-xs text-red-400 px-2 py-1 rounded bg-red-900/20">
-          ✗ {{ importError }}
-        </p>
+    <template #footer>
+      <UiButton icon="i-carbon-home" @click="home">
+        Home
+      </UiButton>
+      <UiButton icon="i-carbon-play" :disabled="!device.axisConfigs.L0?.enabled" @click="test('L0')">
+        Test stroke
+      </UiButton>
+      <div class="ml-auto flex gap-0.5 items-center">
+        <UiIconButton
+          icon="i-carbon-cube"
+          :label="ui.isFloatingOpen('emulator') ? 'Hide emulator' : 'Show emulator'"
+          :active="ui.isFloatingOpen('emulator')"
+          @click="ui.toggleFloating('emulator')"
+        />
+        <UiPopover placement="top" align="end" flush>
+          <template #trigger="{ toggle, open }">
+            <UiIconButton icon="i-carbon-overflow-menu-vertical" label="More" :active="open" @click="toggle" />
+          </template>
+          <template #default="{ close }">
+            <div class="p-1">
+              <UiMenu :items="moreMenu" @done="close" />
+            </div>
+          </template>
+        </UiPopover>
       </div>
-    </div>
-  </div>
+    </template>
+  </UiPanel>
 </template>
 
 <style scoped>
-.slide-down-enter-active,
-.slide-down-leave-active {
-  transition: all 0.18s ease;
-  overflow: hidden;
+.conn-glow {
+  background: radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--ok) 10%, transparent), transparent 60%);
 }
-.slide-down-enter-from,
-.slide-down-leave-to {
-  opacity: 0;
-  max-height: 0;
+
+/* Two native ranges stacked on one track. The inputs ignore the pointer so
+   either thumb can be grabbed; only the thumbs themselves take it back. */
+.dual {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  pointer-events: none;
+  background: transparent;
 }
-.slide-down-enter-to,
-.slide-down-leave-from {
-  opacity: 1;
-  max-height: 120px;
+.dual::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.dual::-moz-range-track {
+  background: transparent;
+}
+.dual::-webkit-slider-thumb {
+  pointer-events: auto;
+}
+.dual::-moz-range-thumb {
+  pointer-events: auto;
 }
 </style>

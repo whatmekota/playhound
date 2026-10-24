@@ -7,11 +7,18 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const MIN_H: typeof import('./src/composables/wallGeometry').MIN_H
+  const MIN_W: typeof import('./src/composables/wallGeometry').MIN_W
+  const MOVE_EDGES: typeof import('./src/composables/wallGeometry').MOVE_EDGES
+  const PHASE_TRANSITIONS: typeof import('./src/composables/useSlideshowEngine').PHASE_TRANSITIONS
   const RC_PORT: typeof import('./src/composables/useRemoteLink').RC_PORT
+  const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
   const analysisKey: typeof import('./src/composables/useScriptAnalysis').analysisKey
+  const arrangeGrid: typeof import('./src/composables/wallGeometry').arrangeGrid
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
+  const axisOutput: typeof import('./src/composables/useTCode').axisOutput
   const computed: typeof import('vue').computed
   const computedAsync: typeof import('@vueuse/core').computedAsync
   const computedEager: typeof import('@vueuse/core').computedEager
@@ -36,6 +43,7 @@ declare global {
   const defineComponent: typeof import('vue').defineComponent
   const definePage: typeof import('vue-router/experimental').definePage
   const defineStore: typeof import('pinia').defineStore
+  const dismissToast: typeof import('./src/composables/useToast').dismissToast
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
   const extendRef: typeof import('@vueuse/core').extendRef
@@ -44,6 +52,7 @@ declare global {
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const h: typeof import('vue').h
+  const holdToast: typeof import('./src/composables/useToast').holdToast
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
   const inject: typeof import('vue').inject
   const injectLocal: typeof import('@vueuse/core').injectLocal
@@ -56,7 +65,9 @@ declare global {
   const isShallow: typeof import('vue').isShallow
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
+  const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
   const nextTick: typeof import('vue').nextTick
+  const number: typeof import('./src/composables/useTCode').number
   const onActivated: typeof import('vue').onActivated
   const onBeforeMount: typeof import('vue').onBeforeMount
   const onBeforeRouteLeave: typeof import('vue-router').onBeforeRouteLeave
@@ -79,6 +90,7 @@ declare global {
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
+  const pickMediaFiles: typeof import('./src/composables/useMediaDrop').pickMediaFiles
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
   const reactify: typeof import('@vueuse/core').reactify
@@ -95,8 +107,10 @@ declare global {
   const refManualReset: typeof import('@vueuse/core').refManualReset
   const refThrottled: typeof import('@vueuse/core').refThrottled
   const refWithControl: typeof import('@vueuse/core').refWithControl
+  const releaseToast: typeof import('./src/composables/useToast').releaseToast
   const remoteRoom: typeof import('./src/composables/useRemoteLink').remoteRoom
   const remoteUrl: typeof import('./src/composables/useRemoteLink').remoteUrl
+  const resizeRect: typeof import('./src/composables/wallGeometry').resizeRect
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
@@ -104,6 +118,7 @@ declare global {
   const shallowReactive: typeof import('vue').shallowReactive
   const shallowReadonly: typeof import('vue').shallowReadonly
   const shallowRef: typeof import('vue').shallowRef
+  const snapRect: typeof import('./src/composables/wallGeometry').snapRect
   const storeToRefs: typeof import('pinia').storeToRefs
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
@@ -115,6 +130,7 @@ declare global {
   const toRef: typeof import('vue').toRef
   const toRefs: typeof import('vue').toRefs
   const toValue: typeof import('vue').toValue
+  const toast: typeof import('./src/composables/useToast').toast
   const toggleDark: typeof import('./src/composables/dark').toggleDark
   const triggerRef: typeof import('vue').triggerRef
   const tryOnBeforeMount: typeof import('@vueuse/core').tryOnBeforeMount
@@ -201,6 +217,7 @@ declare global {
   const useGeolocation: typeof import('@vueuse/core').useGeolocation
   const useId: typeof import('vue').useId
   const useIdle: typeof import('@vueuse/core').useIdle
+  const useIdleChrome: typeof import('./src/composables/useIdleChrome').useIdleChrome
   const useImage: typeof import('@vueuse/core').useImage
   const useInfiniteScroll: typeof import('@vueuse/core').useInfiniteScroll
   const useIntersectionObserver: typeof import('@vueuse/core').useIntersectionObserver
@@ -215,6 +232,7 @@ declare global {
   const useMagicKeys: typeof import('@vueuse/core').useMagicKeys
   const useManualRefHistory: typeof import('@vueuse/core').useManualRefHistory
   const useMediaControls: typeof import('@vueuse/core').useMediaControls
+  const useMediaDrop: typeof import('./src/composables/useMediaDrop').useMediaDrop
   const useMediaQuery: typeof import('@vueuse/core').useMediaQuery
   const useMemoize: typeof import('@vueuse/core').useMemoize
   const useMemory: typeof import('@vueuse/core').useMemory
@@ -269,7 +287,9 @@ declare global {
   const useSessionStorage: typeof import('@vueuse/core').useSessionStorage
   const useSettings: typeof import('./src/composables/useSettings').useSettings
   const useShare: typeof import('@vueuse/core').useShare
+  const useSlideshowEngine: typeof import('./src/composables/useSlideshowEngine').useSlideshowEngine
   const useSlots: typeof import('vue').useSlots
+  const useSmoothPlayhead: typeof import('./src/composables/useSmoothPlayhead').useSmoothPlayhead
   const useSorted: typeof import('@vueuse/core').useSorted
   const useSpeechRecognition: typeof import('@vueuse/core').useSpeechRecognition
   const useSpeechSynthesis: typeof import('@vueuse/core').useSpeechSynthesis
@@ -297,6 +317,7 @@ declare global {
   const useTitle: typeof import('@vueuse/core').useTitle
   const useToNumber: typeof import('@vueuse/core').useToNumber
   const useToString: typeof import('@vueuse/core').useToString
+  const useToast: typeof import('./src/composables/useToast').useToast
   const useToggle: typeof import('@vueuse/core').useToggle
   const useTransition: typeof import('@vueuse/core').useTransition
   const useUrlSearchParams: typeof import('@vueuse/core').useUrlSearchParams
@@ -344,6 +365,9 @@ declare global {
   export type { GamepadActions } from './src/composables/useGamepad'
   import('./src/composables/useGamepad')
   // @ts-ignore
+  export type { MediaKind } from './src/composables/useMediaDrop'
+  import('./src/composables/useMediaDrop')
+  // @ts-ignore
   export type { RemoteAction, RemoteState } from './src/composables/useRemoteLink'
   import('./src/composables/useRemoteLink')
   // @ts-ignore
@@ -352,6 +376,15 @@ declare global {
   // @ts-ignore
   export type { SessionArc, EdgeConfig } from './src/composables/useSessionEngine'
   import('./src/composables/useSessionEngine')
+  // @ts-ignore
+  export type { AdvanceMode } from './src/composables/useSlideshowEngine'
+  import('./src/composables/useSlideshowEngine')
+  // @ts-ignore
+  export type { ToastKind, Toast, ToastOptions } from './src/composables/useToast'
+  import('./src/composables/useToast')
+  // @ts-ignore
+  export type { Rect, Guide, Edges } from './src/composables/wallGeometry'
+  import('./src/composables/wallGeometry')
 }
 
 // for vue template auto import
@@ -360,11 +393,18 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly MIN_H: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_H']>
+    readonly MIN_W: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_W']>
+    readonly MOVE_EDGES: UnwrapRef<typeof import('./src/composables/wallGeometry')['MOVE_EDGES']>
+    readonly PHASE_TRANSITIONS: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['PHASE_TRANSITIONS']>
     readonly RC_PORT: UnwrapRef<typeof import('./src/composables/useRemoteLink')['RC_PORT']>
+    readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
     readonly analysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analysisKey']>
+    readonly arrangeGrid: UnwrapRef<typeof import('./src/composables/wallGeometry')['arrangeGrid']>
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
+    readonly axisOutput: UnwrapRef<typeof import('./src/composables/useTCode')['axisOutput']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
     readonly computedEager: UnwrapRef<typeof import('@vueuse/core')['computedEager']>
@@ -389,6 +429,7 @@ declare module 'vue' {
     readonly defineComponent: UnwrapRef<typeof import('vue')['defineComponent']>
     readonly definePage: UnwrapRef<typeof import('vue-router/experimental')['definePage']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
+    readonly dismissToast: UnwrapRef<typeof import('./src/composables/useToast')['dismissToast']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
@@ -397,6 +438,7 @@ declare module 'vue' {
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
+    readonly holdToast: UnwrapRef<typeof import('./src/composables/useToast')['holdToast']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
@@ -409,7 +451,9 @@ declare module 'vue' {
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
+    readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
+    readonly number: UnwrapRef<typeof import('./src/composables/useTCode')['number']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
     readonly onBeforeMount: UnwrapRef<typeof import('vue')['onBeforeMount']>
     readonly onBeforeRouteLeave: UnwrapRef<typeof import('vue-router')['onBeforeRouteLeave']>
@@ -432,6 +476,7 @@ declare module 'vue' {
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
+    readonly pickMediaFiles: UnwrapRef<typeof import('./src/composables/useMediaDrop')['pickMediaFiles']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
@@ -448,8 +493,10 @@ declare module 'vue' {
     readonly refManualReset: UnwrapRef<typeof import('@vueuse/core')['refManualReset']>
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
+    readonly releaseToast: UnwrapRef<typeof import('./src/composables/useToast')['releaseToast']>
     readonly remoteRoom: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteRoom']>
     readonly remoteUrl: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteUrl']>
+    readonly resizeRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['resizeRect']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
@@ -457,6 +504,7 @@ declare module 'vue' {
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
+    readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
@@ -468,6 +516,7 @@ declare module 'vue' {
     readonly toRef: UnwrapRef<typeof import('vue')['toRef']>
     readonly toRefs: UnwrapRef<typeof import('vue')['toRefs']>
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
+    readonly toast: UnwrapRef<typeof import('./src/composables/useToast')['toast']>
     readonly toggleDark: UnwrapRef<typeof import('./src/composables/dark')['toggleDark']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly tryOnBeforeMount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeMount']>
@@ -554,6 +603,7 @@ declare module 'vue' {
     readonly useGeolocation: UnwrapRef<typeof import('@vueuse/core')['useGeolocation']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useIdle: UnwrapRef<typeof import('@vueuse/core')['useIdle']>
+    readonly useIdleChrome: UnwrapRef<typeof import('./src/composables/useIdleChrome')['useIdleChrome']>
     readonly useImage: UnwrapRef<typeof import('@vueuse/core')['useImage']>
     readonly useInfiniteScroll: UnwrapRef<typeof import('@vueuse/core')['useInfiniteScroll']>
     readonly useIntersectionObserver: UnwrapRef<typeof import('@vueuse/core')['useIntersectionObserver']>
@@ -568,6 +618,7 @@ declare module 'vue' {
     readonly useMagicKeys: UnwrapRef<typeof import('@vueuse/core')['useMagicKeys']>
     readonly useManualRefHistory: UnwrapRef<typeof import('@vueuse/core')['useManualRefHistory']>
     readonly useMediaControls: UnwrapRef<typeof import('@vueuse/core')['useMediaControls']>
+    readonly useMediaDrop: UnwrapRef<typeof import('./src/composables/useMediaDrop')['useMediaDrop']>
     readonly useMediaQuery: UnwrapRef<typeof import('@vueuse/core')['useMediaQuery']>
     readonly useMemoize: UnwrapRef<typeof import('@vueuse/core')['useMemoize']>
     readonly useMemory: UnwrapRef<typeof import('@vueuse/core')['useMemory']>
@@ -622,7 +673,9 @@ declare module 'vue' {
     readonly useSessionStorage: UnwrapRef<typeof import('@vueuse/core')['useSessionStorage']>
     readonly useSettings: UnwrapRef<typeof import('./src/composables/useSettings')['useSettings']>
     readonly useShare: UnwrapRef<typeof import('@vueuse/core')['useShare']>
+    readonly useSlideshowEngine: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['useSlideshowEngine']>
     readonly useSlots: UnwrapRef<typeof import('vue')['useSlots']>
+    readonly useSmoothPlayhead: UnwrapRef<typeof import('./src/composables/useSmoothPlayhead')['useSmoothPlayhead']>
     readonly useSorted: UnwrapRef<typeof import('@vueuse/core')['useSorted']>
     readonly useSpeechRecognition: UnwrapRef<typeof import('@vueuse/core')['useSpeechRecognition']>
     readonly useSpeechSynthesis: UnwrapRef<typeof import('@vueuse/core')['useSpeechSynthesis']>
@@ -650,6 +703,7 @@ declare module 'vue' {
     readonly useTitle: UnwrapRef<typeof import('@vueuse/core')['useTitle']>
     readonly useToNumber: UnwrapRef<typeof import('@vueuse/core')['useToNumber']>
     readonly useToString: UnwrapRef<typeof import('@vueuse/core')['useToString']>
+    readonly useToast: UnwrapRef<typeof import('./src/composables/useToast')['useToast']>
     readonly useToggle: UnwrapRef<typeof import('@vueuse/core')['useToggle']>
     readonly useTransition: UnwrapRef<typeof import('@vueuse/core')['useTransition']>
     readonly useUrlSearchParams: UnwrapRef<typeof import('@vueuse/core')['useUrlSearchParams']>

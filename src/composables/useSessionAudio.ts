@@ -95,11 +95,58 @@ export function useSessionAudio() {
     session.setArc(audio.sessionArc.value, { cycles: audio.edgeCycles.value })
   }, { immediate: true })
 
+  // ── Layers ──────────────────────────────────────────────────────────────
+  // These lived in the Binaural panel, so a tone started from the dock (or
+  // with the panel closed) came up without its noise, harmonics or drift.
+
+  function startBeatDrift() {
+    binaural.startBeatDrift(
+      () => audio.baseFrequency.value,
+      () => audio.beatDelta.value,
+      (next) => { audio.beatDelta.value = next },
+    )
+  }
+
+  watch([audio.noiseEnabled, audio.isPlaying], ([on, playing], [wasOn, wasPlaying]) => {
+    if (on && playing && !(wasOn && wasPlaying)) {
+      binaural.startNoise(audio.noiseVolume.value)
+      binaural.morphNoise(audio.noiseType.value, 0.5)
+    }
+    else if (!on && wasOn) {
+      binaural.stopNoise()
+    }
+  })
+
+  watch(audio.harmonicsEnabled, (on) => {
+    if (audio.isPlaying.value)
+      binaural.setHarmonics(on)
+  })
+
+  watch(audio.beatDriftEnabled, (on) => {
+    if (on && audio.isPlaying.value)
+      startBeatDrift()
+    else
+      binaural.stopBeatDrift()
+  })
+
+  watch(audio.driftMode, (on) => {
+    if (!audio.sessionActive.value)
+      return
+    if (on)
+      session.startDrift()
+    else
+      session.stopDrift()
+  })
+
   // Re-apply everything when the engine (re)starts.
   watch(audio.isPlaying, (playing) => {
     if (!playing)
       return
     binaural.setMode(audio.beatMode.value)
+    if (audio.harmonicsEnabled.value)
+      binaural.setHarmonics(true)
+    if (audio.beatDriftEnabled.value)
+      startBeatDrift()
     pushPulse()
     pushBreath()
   })

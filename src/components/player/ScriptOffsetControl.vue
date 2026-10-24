@@ -1,119 +1,135 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import type { ScriptFile } from '~/stores/scriptStore'
+import { computed } from 'vue'
+import UiBadge from '~/components/ui/UiBadge.vue'
+import UiButton from '~/components/ui/UiButton.vue'
+import UiPopover from '~/components/ui/UiPopover.vue'
 import { useScriptStore } from '~/stores/scriptStore'
 
+/**
+ * Per-axis script offset, for scripts made against a slightly different cut
+ * of the video. `inline` renders just the panel, for the dock's overflow menu.
+ */
+defineProps<{ inline?: boolean }>()
+
 const scriptStore = useScriptStore()
-const open = ref(false)
 
-const hasScripts = computed(() => scriptStore.scripts.length > 0)
+const STEP = 50
+const LIMIT = 9999
 
-function clamp(val: number) {
-  return Math.max(-9999, Math.min(9999, val))
-}
+const clamp = (v: number) => Math.max(-LIMIT, Math.min(LIMIT, Math.round(v)))
 
-function setOffset(script: typeof scriptStore.scripts[0], val: string) {
-  const n = Number.parseInt(val, 10)
+function setOffset(script: ScriptFile, raw: string) {
+  const n = Number.parseInt(raw, 10)
   script.offsetMs = Number.isNaN(n) ? 0 : clamp(n)
 }
 
-function resetAll() {
-  scriptStore.scripts.forEach(s => s.offsetMs = 0)
+function nudgeAll(delta: number) {
+  scriptStore.scripts.forEach(s => (s.offsetMs = clamp(s.offsetMs + delta)))
 }
+
+function resetAll() {
+  scriptStore.scripts.forEach(s => (s.offsetMs = 0))
+}
+
+const anyOffset = computed(() => scriptStore.scripts.some(s => s.offsetMs !== 0))
+
+/** What the trigger shows: the shared offset, or "mixed" when axes differ. */
+const summary = computed(() => {
+  const set = new Set(scriptStore.scripts.map(s => s.offsetMs))
+  if (!anyOffset.value)
+    return ''
+  if (set.size > 1)
+    return 'mixed'
+  const v = [...set][0]
+  return `${v > 0 ? '+' : ''}${v}`
+})
 </script>
 
 <template>
-  <div class="relative">
-    <button
-      class="btn-ghost text-xs font-mono px-2 py-1"
-      :class="open ? 'text-accent-400 bg-accent-600/20' : 'text-white/40'"
-      title="Script offset (ms)"
-      @click="open = !open"
-    >
-      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path
-          stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-        />
-      </svg>
-      <span>Offset</span>
-    </button>
-
-    <Transition name="popup">
-      <div
-        v-if="open"
-        class="mb-2 p-3 border rounded-xl w-64 shadow-2xl bottom-full right-0 absolute z-50"
-        style="background:var(--bg-850); border-color:var(--border)"
+  <component :is="inline ? 'div' : UiPopover" v-bind="inline ? {} : { placement: 'top', width: '288px' }">
+    <template v-if="!inline" #trigger="{ toggle, open }">
+      <UiButton
+        v-tip="'Script offset'"
+        variant="ghost"
+        size="sm"
+        icon="i-carbon-time"
+        class="num"
+        :class="[open && !anyOffset ? '!bg-fg/8 !text-fg' : '', summary ? '' : '!px-0 w-7']"
+        :active="anyOffset"
+        aria-label="Script offset"
+        @click="toggle"
       >
-        <div class="mb-2 flex items-center justify-between">
-          <span class="text-xs font-medium" style="color:var(--text-muted)">Script Offset (ms)</span>
-          <button class="text-[10px] hover:opacity-80" style="color:var(--text-muted)" @click="resetAll">
-            Reset all
-          </button>
-        </div>
+        <span v-if="summary">{{ summary }}</span>
+      </UiButton>
+    </template>
 
-        <div v-if="!hasScripts" class="text-xs py-2 text-center" style="color:var(--text-faint)">
-          No scripts loaded
-        </div>
+    <div class="flex flex-col gap-2.5" :class="inline ? '' : 'p-1'">
+      <div class="flex items-center justify-between">
+        <span class="eyebrow">Script offset</span>
+        <UiButton variant="ghost" size="xs" :disabled="!anyOffset" @click="resetAll">
+          Reset
+        </UiButton>
+      </div>
 
-        <div v-else class="flex flex-col gap-1.5">
-          <div
-            v-for="script in scriptStore.scripts"
-            :key="script.path + script.channel"
-            class="flex gap-2 items-center"
-          >
-            <!-- Channel badge -->
-            <span class="text-[10px] font-mono shrink-0 w-6" style="color:var(--accent)">{{ script.channel }}</span>
-            <!-- Label -->
-            <span class="text-[11px] flex-1 truncate" style="color:var(--text-muted)" :title="script.label">
-              {{ script.label }}
-              <span v-if="script.isAlt" class="text-[9px] ml-1 opacity-60">({{ script.altName }})</span>
-            </span>
-            <!-- Offset input -->
-            <div class="flex shrink-0 gap-1 items-center">
-              <button
-                class="text-xs rounded flex h-5 w-5 transition-opacity items-center justify-center hover:opacity-80"
-                style="background:var(--bg-700); color:var(--text)"
-                @click="script.offsetMs = clamp(script.offsetMs - 50)"
-              >
-                −
-              </button>
-              <input
-                type="number"
-                :value="script.offsetMs"
-                class="text-xs py-0.5 text-center rounded w-16 focus:outline-none"
-                style="background:var(--bg-900); border:1px solid var(--border); color:var(--text)"
-                step="50"
-                @change="setOffset(script, ($event.target as HTMLInputElement).value)"
-              >
-              <button
-                class="text-xs rounded flex h-5 w-5 transition-opacity items-center justify-center hover:opacity-80"
-                style="background:var(--bg-700); color:var(--text)"
-                @click="script.offsetMs = clamp(script.offsetMs + 50)"
-              >
-                +
-              </button>
-            </div>
+      <p v-if="!scriptStore.scripts.length" class="text-[12.5px] text-fg-muted py-2">
+        No script loaded. Offsets apply per axis once one is.
+      </p>
+
+      <div v-else class="flex flex-col gap-1">
+        <div
+          v-for="script in scriptStore.scripts"
+          :key="script.path + script.channel"
+          class="flex gap-2 h-8 items-center"
+        >
+          <UiBadge tone="accent" size="xs" class="num">
+            {{ script.channel }}
+          </UiBadge>
+          <span v-tip="script.label" class="text-[12px] text-fg-muted flex-1 min-w-0 truncate">
+            {{ script.label }}<span v-if="script.isAlt" class="text-fg-faint"> · {{ script.altName }}</span>
+          </span>
+          <div class="well flex shrink-0 items-center">
+            <button
+              type="button"
+              class="text-fg-muted focusable rounded-[var(--radius-sm)] center h-7 w-6 pressable hover:text-fg hover:bg-fg/8"
+              :aria-label="`${script.channel} earlier`"
+              @click="script.offsetMs = clamp(script.offsetMs - STEP)"
+            >
+              <span class="i-carbon-subtract text-[13px]" />
+            </button>
+            <input
+              type="number"
+              :step="STEP"
+              :value="script.offsetMs"
+              class="text-[12px] text-fg num text-center outline-none bg-transparent h-7 w-14"
+              :aria-label="`${script.channel} offset in milliseconds`"
+              @change="setOffset(script, ($event.target as HTMLInputElement).value)"
+            >
+            <button
+              type="button"
+              class="text-fg-muted focusable rounded-[var(--radius-sm)] center h-7 w-6 pressable hover:text-fg hover:bg-fg/8"
+              :aria-label="`${script.channel} later`"
+              @click="script.offsetMs = clamp(script.offsetMs + STEP)"
+            >
+              <span class="i-carbon-add text-[13px]" />
+            </button>
           </div>
         </div>
 
-        <p class="text-[10px] mt-2" style="color:var(--text-faint)">
-          + = script ahead of video &nbsp;·&nbsp; − = script behind
-        </p>
+        <div v-if="scriptStore.scripts.length > 1" class="mt-1 pt-2 border-t border-edge flex gap-2 items-center">
+          <span class="text-[12px] text-fg-muted flex-1">All axes</span>
+          <UiButton size="xs" variant="subtle" class="num" @click="nudgeAll(-STEP)">
+            −{{ STEP }}
+          </UiButton>
+          <UiButton size="xs" variant="subtle" class="num" @click="nudgeAll(STEP)">
+            +{{ STEP }}
+          </UiButton>
+        </div>
       </div>
-    </Transition>
-  </div>
-</template>
 
-<style scoped>
-.popup-enter-active,
-.popup-leave-active {
-  transition:
-    opacity 0.1s,
-    transform 0.1s;
-}
-.popup-enter-from,
-.popup-leave-to {
-  opacity: 0;
-  transform: translateY(4px);
-}
-</style>
+      <p class="hint">
+        In milliseconds. Positive runs the script ahead of the video, negative behind it.
+      </p>
+    </div>
+  </component>
+</template>

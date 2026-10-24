@@ -1,6 +1,6 @@
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 
 /**
  * Panic: one action that stops everything and covers the screen, and can put it
@@ -36,5 +36,14 @@ export const useSafetyStore = defineStore('safety', () => {
     suspended.value = null
   }
 
-  return { panicked, panicOnBlur, idleStopMinutes, suspended, remember, clear }
+  /**
+   * Panic itself is wired in useSafety, which needs the shell's video controls;
+   * it registers here so a command palette or button can reach it too.
+   */
+  const toggleHandler = shallowRef<(() => void) | null>(null)
+  function toggle() {
+    toggleHandler.value?.()
+  }
+
+  return { panicked, panicOnBlur, idleStopMinutes, suspended, remember, clear, toggleHandler, toggle }
 })

@@ -289,6 +289,16 @@ input[type='number']::-webkit-inner-spin-button {
    Shared Vue <Transition> / <TransitionGroup> names, so motion feels the same
    everywhere. Use these instead of inventing per-component ones. */
 
+/* Anything on its way out must not catch clicks: a dialog's backdrop fading
+   away used to swallow the first click after Esc. */
+.t-fade-leave-active,
+.t-pop-leave-active,
+.t-modal-leave-active,
+.t-slide-up-leave-active,
+.t-view-leave-active {
+  pointer-events: none;
+}
+
 /* t-fade — opacity only */
 .t-fade-enter-active,
 .t-fade-leave-active {

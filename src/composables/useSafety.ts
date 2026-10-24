@@ -113,7 +113,10 @@ export function useSafety(controls: {
 
   watch(() => safety.idleStopMinutes, resetIdle, { immediate: true })
 
+  safety.toggleHandler = toggle
+
   onUnmounted(() => {
+    safety.toggleHandler = null
     for (const ev of IDLE_EVENTS)
       window.removeEventListener(ev, resetIdle)
     window.removeEventListener('blur', onBlur)

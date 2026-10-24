@@ -36,6 +36,8 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: '← / →', label: 'Seek 5 seconds', owner: 'player' },
       { keys: 'Shift + ← / →', label: 'Seek 30 seconds', owner: 'player' },
       { keys: 'F', label: 'Fullscreen', owner: 'player' },
+      { keys: 'Double-click left / right', label: 'Seek 10 seconds (keep clicking to skip more)', owner: 'player' },
+      { keys: 'Double-click centre', label: 'Fullscreen', owner: 'player' },
       { keys: 'Shift + S', label: 'Shuffle on / off', owner: 'shell', code: 'KeyS', action: 'shuffle' },
       { keys: 'Shift + R', label: 'Cycle repeat', owner: 'shell', code: 'KeyR', action: 'repeat' },
     ],

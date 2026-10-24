@@ -1,8 +1,26 @@
 <script setup lang="ts">
-import type { TransitionName } from '~/stores/slideshow'
-import { useBinauralBeats } from '~/composables/useBinauralBeats'
+import type { AdvanceMode } from '~/composables/useSlideshowEngine'
+import type { SlideshowOverlay, TransitionName } from '~/stores/slideshow'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import UiButton from '~/components/ui/UiButton.vue'
+import UiEmpty from '~/components/ui/UiEmpty.vue'
+import UiIconButton from '~/components/ui/UiIconButton.vue'
+import UiSection from '~/components/ui/UiSection.vue'
+import UiSegmented from '~/components/ui/UiSegmented.vue'
+import UiSelect from '~/components/ui/UiSelect.vue'
+import UiSlider from '~/components/ui/UiSlider.vue'
+import UiSwitch from '~/components/ui/UiSwitch.vue'
+import AddYoutubeModal from '~/components/views/AddYoutubeModal.vue'
+import { useIdleChrome } from '~/composables/useIdleChrome'
+import { mediaKind, pickMediaFiles, useMediaDrop } from '~/composables/useMediaDrop'
+import { useSlideshowEngine } from '~/composables/useSlideshowEngine'
+import { toast } from '~/composables/useToast'
 import { useAudioStore } from '~/stores/audio'
+import { usePlayerStore } from '~/stores/playerStore'
 import { useSlideshowStore } from '~/stores/slideshow'
+import { useUiStore } from '~/stores/uiStore'
+
+defineOptions({ name: 'SlideshowView' })
 
 const {
   items,
@@ -17,266 +35,114 @@ const {
   addOverlay,
   removeOverlay,
   updateOverlay,
-  ALL_TRANSITIONS,
 } = useSlideshowStore()
 const audioStore = useAudioStore()
-const lfo = useLFO()
-const session = useSessionEngine()
+const ui = useUiStore()
+const player = usePlayerStore()
 
-const showSettings = ref(false)
-const showYtModal = ref(false)
-const fileInput = ref<HTMLInputElement>()
-const overlayFileInput = ref<HTMLInputElement>()
-const slideshowRoot = ref<HTMLElement>()
-const isFullscreen = ref(false)
+const engine = useSlideshowEngine()
+const { currentItem, mode, beatSlideSeconds, progress, pulseAvailable, activeTransition, transitionName } = engine
+const { prev, next, goTo, togglePlay, toggleTransitionPool } = engine
+const lfoValues = engine.lfo.values
+const lfoConfig = engine.lfo.config
+const lfoActive = engine.lfo.active
+
+const root = ref<HTMLElement | null>(null)
+const sheetOpen = ref(false)
+const ytOpen = ref(false)
+const overToolbar = ref(false)
+/** Quick panel hanging under the toolbar. Drawn inside the view, not teleported, so it still works in fullscreen. */
+const tray = ref<'transition' | 'timing' | null>(null)
+
+const chrome = useIdleChrome({
+  enabled: () => isPlaying.value && items.length > 0,
+  hold: () => overToolbar.value || sheetOpen.value || ytOpen.value || tray.value !== null,
+})
+
+// ─── Options ────────────────────────────────────────────────────────────────
+const TRANSITIONS: { value: TransitionName, label: string, icon: string }[] = [
+  { value: 'fade', label: 'Fade', icon: 'i-carbon-fade' },
+  { value: 'slide', label: 'Slide', icon: 'i-carbon-arrow-right' },
+  { value: 'zoom', label: 'Zoom', icon: 'i-carbon-zoom-in' },
+  { value: 'flip', label: 'Flip', icon: 'i-carbon-rotate-180' },
+  { value: 'blur', label: 'Blur', icon: 'i-carbon-fog' },
+  { value: 'wipe', label: 'Wipe', icon: 'i-carbon-split-screen' },
+  { value: 'rotate', label: 'Rotate', icon: 'i-carbon-rotate' },
+  { value: 'none', label: 'Cut', icon: 'i-carbon-subtract' },
+]
+const transitionMeta = computed(() => TRANSITIONS.find(t => t.value === activeTransition.value) ?? TRANSITIONS[0])
+
+const MODES: { value: AdvanceMode, label: string, icon: string, title: string }[] = [
+  { value: 'timer', label: 'Timer', icon: 'i-carbon-timer', title: 'Fixed delay, ±20% so it never feels mechanical' },
+  { value: 'beat', label: 'Beats', icon: 'i-carbon-music', title: 'Every N beats of the binaural beat frequency' },
+  { value: 'pulse', label: 'Pulse', icon: 'i-carbon-activity', title: 'Locked to the shared session pulse' },
+]
+const COUNTS = [1, 2, 4, 8, 16, 32].map(n => ({ value: n, label: String(n) }))
 
 const BLEND_MODES = ['normal', 'screen', 'overlay', 'multiply', 'soft-light', 'color-dodge', 'lighten', 'darken']
+  .map(b => ({ value: b, label: b.replace('-', ' ') }))
+const OVERLAY_FITS: { value: SlideshowOverlay['fit'], label: string }[] = [
+  { value: 'cover', label: 'Cover' },
+  { value: 'contain', label: 'Contain' },
+  { value: 'fill', label: 'Stretch' },
+]
 
-// Phase → auto-transition map
-const PHASE_TRANSITIONS: Record<string, TransitionName> = {
-  idle: 'fade',
-  entry: 'slide',
-  build: 'zoom',
-  peak: 'rotate',
-  descent: 'blur',
-}
-
-// --- Timer with variance ---
-let timer: ReturnType<typeof setTimeout> | null = null
-
-// --- Pulse-locked advance ---
-// Counts cycles of the shared session pulse so slides land on the same beat the
-// audio and the device are on, rather than merely at a similar rate.
-const { getPulseClock } = useBinauralBeats()
-let pulseRaf: number | null = null
-let lastPulsePhase = 0
-let pulsesSeen = 0
-
-function stopPulseWatch() {
-  if (pulseRaf !== null) {
-    cancelAnimationFrame(pulseRaf)
-    pulseRaf = null
-  }
-}
-
-function startPulseWatch() {
-  stopPulseWatch()
-  pulsesSeen = 0
-  const clock = getPulseClock()
-  lastPulsePhase = clock?.phase ?? 0
-
-  function frame() {
-    if (!settings.value.pulseSync || !isPlaying.value) {
-      pulseRaf = null
-      return
-    }
-    const c = getPulseClock()
-    if (c) {
-      // A wrap back past the start of the cycle is one completed pulse.
-      if (c.phase < lastPulsePhase)
-        pulsesSeen++
-      lastPulsePhase = c.phase
-
-      if (pulsesSeen >= Math.max(1, settings.value.pulsesPerSlide)) {
-        pulsesSeen = 0
-        advance()
-      }
-    }
-    pulseRaf = requestAnimationFrame(frame)
-  }
-  pulseRaf = requestAnimationFrame(frame)
-}
-
-function getSlideDelay(): number {
-  if (settings.value.beatSync) {
-    const beats = settings.value.beatsPerSlide ?? 8
-    return (beats / Math.max(0.25, audioStore.beatDelta.value)) * 1000
-  }
-  // eslint-disable-next-line ts/no-use-before-define -- hoisted; read after setup
-  const base = (currentItem.value?.duration ?? settings.value.delay) * 1000
-  return session.variantDelay(base, 0.2)
-}
-
-function scheduleNext() {
-  clearScheduled()
-  if (items.length === 0 || !isPlaying.value)
-    return
-
-  // Pulse sync drives advances from the audio clock, not a timer.
-  if (settings.value.pulseSync) {
-    startPulseWatch()
-    return
-  }
-  stopPulseWatch()
-  timer = setTimeout(() => {
-    advance()
-    if (isPlaying.value)
-      scheduleNext()
-  }, getSlideDelay())
-}
-
-function clearScheduled() {
-  if (timer !== null) { clearTimeout(timer); timer = null }
-  stopPulseWatch()
-}
-
-// Current random transition (refreshed on each advance when randomTransition is on)
-const randomPickedTransition = ref<TransitionName>('fade')
-
-function pickRandom(): TransitionName {
-  const pool = settings.value.transitionPool ?? []
-  if (!pool.length)
-    return 'fade'
-  return pool[Math.floor(Math.random() * pool.length)]
-}
-
-function advance() {
-  if (items.length === 0)
-    return
-
-  // Pick random transition before changing slide so it's ready
-  if (settings.value.randomTransition) {
-    randomPickedTransition.value = pickRandom()
-  }
-
-  if (settings.value.shuffle) {
-    let next = currentIndex.value
-    if (items.length > 1) {
-      while (next === currentIndex.value)
-        next = Math.floor(Math.random() * items.length)
-    }
-    currentIndex.value = next
-  }
-  else {
-    const next = currentIndex.value + 1
-    if (next >= items.length) {
-      if (settings.value.loop) {
-        currentIndex.value = 0
-      }
-      else {
-        isPlaying.value = false
-        clearScheduled()
-        return
-      }
-    }
-    else {
-      currentIndex.value = next
-    }
-  }
-  session.emit('slideChange', { index: currentIndex.value, total: items.length })
-}
-
-function prev() {
-  if (items.length === 0)
-    return
-  if (currentIndex.value > 0)
-    currentIndex.value--
-  else if (settings.value.loop)
-    currentIndex.value = items.length - 1
-  if (isPlaying.value)
-    scheduleNext()
-}
-
-function next() {
-  advance()
-  if (isPlaying.value)
-    scheduleNext()
-}
-
-function togglePlay() {
-  isPlaying.value = !isPlaying.value
-}
-
-watch(isPlaying, (p) => {
-  if (p) { lfo.start(); scheduleNext() }
-  else { clearScheduled(); lfo.stop() }
+const timingLabel = computed(() => {
+  if (mode.value === 'pulse')
+    return `${settings.value.pulsesPerSlide} pulse${settings.value.pulsesPerSlide === 1 ? '' : 's'}`
+  if (mode.value === 'beat')
+    return `${settings.value.beatsPerSlide} beat${settings.value.beatsPerSlide === 1 ? '' : 's'}`
+  return `${settings.value.delay}s`
 })
+const timingIcon = computed(() => MODES.find(m => m.value === mode.value)?.icon ?? 'i-carbon-timer')
 
-// Sync LFO speed to beat frequency; also re-schedule if beat-sync is active
-watch(() => audioStore.beatDelta.value, (delta) => {
-  lfo.syncToFreq(delta)
-  if (settings.value.beatSync && isPlaying.value)
-    scheduleNext()
-})
+const pulseWaiting = computed(() => isPlaying.value && mode.value === 'pulse' && !pulseAvailable.value)
 
-// Switching advance mode has to rebuild the schedule.
-watch(() => [settings.value.pulseSync, settings.value.pulsesPerSlide], () => {
-  if (isPlaying.value)
-    scheduleNext()
-})
-
-// Auto-transition: update the picked transition when phase changes
-watch(() => audioStore.phase.value, (ph) => {
-  if (settings.value.autoTransition) {
-    settings.value.transition = PHASE_TRANSITIONS[ph] ?? 'fade'
-  }
-})
-
-onMounted(() => {
-  document.addEventListener('fullscreenchange', () => {
-    isFullscreen.value = !!document.fullscreenElement
-  })
-  randomPickedTransition.value = pickRandom()
-})
-
-onUnmounted(() => {
-  clearScheduled()
-  lfo.stop()
-})
-
-// --- Fullscreen ---
-
-async function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    await slideshowRoot.value?.requestFullscreen()
-  }
-  else {
-    await document.exitFullscreen()
-  }
-}
-
-// --- File handling ---
-function openFilePicker() { fileInput.value?.click() }
-function openOverlayFilePicker() { overlayFileInput.value?.click() }
-
-function onFileInput(e: Event) {
-  const files = (e.target as HTMLInputElement).files
-  if (!files)
-    return
-  for (const file of Array.from(files)) {
-    const isImage = file.type.startsWith('image/')
-    const isVideo = file.type.startsWith('video/')
-    if (!isImage && !isVideo)
+// ─── Adding ─────────────────────────────────────────────────────────────────
+function addFiles(files: File[]) {
+  const wasEmpty = items.length === 0
+  let n = 0
+  for (const file of files) {
+    const kind = mediaKind(file)
+    if (!kind)
       continue
-    addItem({ type: isImage ? 'image' : 'video', src: URL.createObjectURL(file), label: file.name })
+    addItem({ type: kind, src: URL.createObjectURL(file), label: file.name })
+    n++
   }
-  ;(e.target as HTMLInputElement).value = ''
+  if (!n)
+    return
+  if (wasEmpty)
+    currentIndex.value = 0
+  toast.success(`Added ${n} slide${n === 1 ? '' : 's'}`, { icon: 'i-carbon-image', key: 'ss-add' })
 }
 
-function onOverlayFileInput(e: Event) {
-  const files = (e.target as HTMLInputElement).files
-  if (!files)
-    return
-  for (const file of Array.from(files)) {
-    const isImage = file.type.startsWith('image/')
-    const isVideo = file.type.startsWith('video/')
-    if (!isImage && !isVideo)
-      continue
-    addOverlay({
-      type: isImage ? 'image' : 'video',
-      src: URL.createObjectURL(file),
-      label: file.name,
-      opacity: 0.5,
-      blendMode: 'screen',
-      enabled: true,
-      fit: 'cover',
-    })
-  }
-  ;(e.target as HTMLInputElement).value = ''
+const drop = useMediaDrop(files => addFiles(files))
+
+function addFromDisk() {
+  pickMediaFiles(addFiles)
+}
+
+async function openYoutube() {
+  // The dialog is teleported to <body>, which fullscreen would hide.
+  if (document.fullscreenElement)
+    await document.exitFullscreen().catch(() => {})
+  tray.value = null
+  ytOpen.value = true
 }
 
 function addYoutube({ youtubeId, label }: { youtubeId: string, label: string }) {
   addItem({ type: 'youtube', src: youtubeId, label })
+}
+
+function addOverlaysFromDisk() {
+  pickMediaFiles((files) => {
+    for (const file of files) {
+      const kind = mediaKind(file)
+      if (!kind)
+        continue
+      addOverlay({ type: kind, src: URL.createObjectURL(file), label: file.name, opacity: 0.5, blendMode: 'screen', enabled: true, fit: 'cover' })
+    }
+  })
 }
 
 function randomizeVideoStart(e: Event) {
@@ -285,70 +151,69 @@ function randomizeVideoStart(e: Event) {
     video.currentTime = Math.random() * video.duration
 }
 
-// --- Drag-to-reorder ---
-const dragStartIdx = ref<number | null>(null)
-const dragOverIdx = ref<number | null>(null)
+// ─── Slide list ─────────────────────────────────────────────────────────────
+function removeSlide(id: string) {
+  const idx = items.findIndex(i => i.id === id)
+  if (idx < 0)
+    return
+  // Keep showing the same slide when one before it goes.
+  if (idx < currentIndex.value)
+    currentIndex.value--
+  removeItem(id)
+}
 
-function onDragStart(e: DragEvent, i: number) {
-  dragStartIdx.value = i
+const dragFrom = ref<number | null>(null)
+const dragOver = ref<number | null>(null)
+
+function onRowDragStart(e: DragEvent, i: number) {
+  dragFrom.value = i
   if (e.dataTransfer)
     e.dataTransfer.effectAllowed = 'move'
 }
-function onDragOver(e: DragEvent, i: number) {
+function onRowDragOver(e: DragEvent, i: number) {
+  if (dragFrom.value === null)
+    return
   e.preventDefault()
-  dragOverIdx.value = i
+  dragOver.value = i
 }
-function onDragLeave() { dragOverIdx.value = null }
-function onDrop(e: DragEvent, i: number) {
+function onRowDrop(e: DragEvent, i: number) {
+  if (dragFrom.value === null)
+    return
   e.preventDefault()
-  if (dragStartIdx.value !== null && dragStartIdx.value !== i) {
-    const from = dragStartIdx.value
+  const from = dragFrom.value
+  if (from !== i) {
+    const currentId = currentItem.value?.id
     moveItem(from, i)
-    if (currentIndex.value === from)
-      currentIndex.value = i
+    const idx = items.findIndex(it => it.id === currentId)
+    if (idx >= 0)
+      currentIndex.value = idx
   }
-  dragStartIdx.value = null
-  dragOverIdx.value = null
+  dragFrom.value = null
+  dragOver.value = null
 }
-function onDragEnd() { dragStartIdx.value = null; dragOverIdx.value = null }
-
-// --- Transition pool toggle ---
-function toggleTransitionPool(t: TransitionName) {
-  const pool = settings.value.transitionPool ?? []
-  const idx = pool.indexOf(t)
-  if (idx >= 0) {
-    if (pool.length > 1)
-      pool.splice(idx, 1)
-  }
-  else {
-    pool.push(t)
-  }
+function onRowDragEnd() {
+  dragFrom.value = null
+  dragOver.value = null
 }
 
-// --- Computed ---
-const currentItem = computed(() => items[currentIndex.value])
+function setDuration(id: string, e: Event) {
+  const v = (e.target as HTMLInputElement).value
+  updateItem(id, { duration: v ? Math.max(0.5, +v) : undefined })
+}
 
+function ytThumb(id: string) {
+  return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`
+}
+
+// ─── Stage styling ──────────────────────────────────────────────────────────
 const ytUrl = computed(() => {
   if (!currentItem.value || currentItem.value.type !== 'youtube')
     return ''
   const id = currentItem.value.src
-  return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&modestbranding=1&playsinline=1`
+  return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&modestbranding=1&playsinline=1&rel=0`
 })
 
-const transitionName = computed(() => {
-  let t: TransitionName
-  if (settings.value.randomTransition) {
-    t = randomPickedTransition.value
-  }
-  else if (settings.value.autoTransition && audioStore.phase.value !== 'idle') {
-    t = PHASE_TRANSITIONS[audioStore.phase.value] ?? settings.value.transition
-  }
-  else {
-    t = settings.value.transition
-  }
-  return t === 'none' ? '' : t
-})
-
+// The noise bed darkens the picture a little, so louder noise reads as dimmer light.
 const brightnessOverlayOpacity = computed(() =>
   audioStore.noiseEnabled.value ? audioStore.noiseVolume.value * 0.25 : 0,
 )
@@ -357,33 +222,115 @@ const lfoStyle = computed(() => {
   if (!isPlaying.value)
     return {}
   return {
-    transform: `scale(${lfo.values.zoom}) translate(${lfo.values.panX}px, ${lfo.values.panY}px)`,
-    opacity: lfo.values.opacity,
+    transform: `scale(${lfoValues.zoom}) translate(${lfoValues.panX}px, ${lfoValues.panY}px)`,
+    opacity: lfoValues.opacity,
     transition: 'none',
   }
 })
 
 const activeOverlays = computed(() => overlays.filter(o => o.enabled))
 
-function overlayMediaStyle(overlay: typeof overlays[0]) {
-  const lfoOpacity = (isPlaying.value && lfo.active.value && settings.value.lfoOverlays)
-    ? lfo.values.opacity
-    : 1
+function overlayMediaStyle(overlay: SlideshowOverlay) {
+  const lfoOpacity = (isPlaying.value && lfoActive.value && settings.value.lfoOverlays) ? lfoValues.opacity : 1
   return {
     opacity: overlay.opacity * lfoOpacity,
     mixBlendMode: overlay.blendMode as any,
     objectFit: overlay.fit,
   }
 }
+
+// ─── Fullscreen ─────────────────────────────────────────────────────────────
+const isFullscreen = ref(false)
+
+function onFullscreenChange() {
+  isFullscreen.value = document.fullscreenElement === root.value
+}
+
+async function toggleFullscreen() {
+  try {
+    if (document.fullscreenElement)
+      await document.exitFullscreen()
+    else
+      await root.value?.requestFullscreen()
+  }
+  catch {
+    toast.warn('Fullscreen was refused by the browser')
+  }
+}
+
+// ─── Keyboard ───────────────────────────────────────────────────────────────
+// Captured at the document so the slideshow owns Space, arrows and F while it
+// is on stage, instead of the (mini) video player underneath.
+function onKey(e: KeyboardEvent) {
+  const t = e.target as HTMLElement
+  if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
+    return
+  if (e.ctrlKey || e.metaKey || e.altKey)
+    return
+  if (ytOpen.value || ui.paletteOpen || ui.settingsOpen || ui.shortcutsOpen || document.querySelector('[data-ui-popover]'))
+    return
+
+  let handled = true
+  switch (e.code) {
+    case 'Space':
+      togglePlay()
+      break
+    case 'ArrowLeft':
+      prev()
+      break
+    case 'ArrowRight':
+      next()
+      break
+    case 'KeyF':
+      void toggleFullscreen()
+      break
+    case 'Escape':
+      // Close our own layers before the shell reads Escape as panic. In
+      // fullscreen the browser takes Escape itself.
+      if (tray.value)
+        tray.value = null
+      else if (sheetOpen.value)
+        sheetOpen.value = false
+      else
+        handled = false
+      break
+    default:
+      handled = false
+  }
+  if (handled) {
+    e.preventDefault()
+    e.stopPropagation()
+    chrome.poke()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKey, true)
+  document.addEventListener('fullscreenchange', onFullscreenChange)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKey, true)
+  document.removeEventListener('fullscreenchange', onFullscreenChange)
+  if (document.fullscreenElement === root.value)
+    void document.exitFullscreen().catch(() => {})
+})
+
+function toggleTray(t: 'transition' | 'timing') {
+  tray.value = tray.value === t ? null : t
+}
 </script>
 
 <template>
-  <div ref="slideshowRoot" class="bg-surface-950 flex flex-col h-full w-full relative overflow-hidden">
-    <!-- Background vignette -->
-    <div class="pointer-events-none inset-0 absolute z-0" style="background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%)" />
-
-    <!-- Slide display area -->
-    <div class="flex-1 relative overflow-hidden">
+  <div
+    ref="root"
+    class="bg-black h-full w-full relative overflow-hidden isolate"
+    :class="chrome.visible.value ? '' : 'cursor-none'"
+    v-on="drop.handlers"
+    @pointermove="chrome.poke"
+    @pointerdown="chrome.poke"
+  >
+    <!-- Slides -->
+    <div class="inset-0 absolute overflow-hidden" @pointerdown="tray = null" @dblclick="toggleFullscreen">
       <Transition :name="transitionName">
         <div
           v-if="currentItem"
@@ -415,492 +362,496 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
           <iframe
             v-else-if="currentItem.type === 'youtube'"
             :src="ytUrl"
-            class="h-full w-full"
+            :title="currentItem.label"
+            class="border-0 h-full w-full pointer-events-none"
             allow="autoplay; encrypted-media"
-            frameborder="0"
             referrerpolicy="strict-origin-when-cross-origin"
           />
         </div>
       </Transition>
+    </div>
 
-      <!-- Audio-reactive brightness overlay -->
-      <div
-        class="bg-black pointer-events-none transition-opacity duration-500 inset-0 absolute z-10"
-        :style="{ opacity: brightnessOverlayOpacity }"
-      />
+    <!-- Audio-reactive brightness -->
+    <div
+      class="bg-black pointer-events-none transition-opacity duration-500 inset-0 absolute z-10"
+      :style="{ opacity: brightnessOverlayOpacity }"
+    />
 
-      <!-- Static overlays -->
-      <div
-        v-for="overlay in activeOverlays"
-        :key="overlay.id"
-        class="pointer-events-none inset-0 absolute z-[15]"
+    <!-- Overlays -->
+    <div v-for="overlay in activeOverlays" :key="overlay.id" class="pointer-events-none inset-0 absolute z-[11]">
+      <img
+        v-if="overlay.type === 'image'"
+        :src="overlay.src"
+        class="h-full w-full"
+        :style="overlayMediaStyle(overlay)"
+        draggable="false"
       >
-        <img
-          v-if="overlay.type === 'image'"
-          :src="overlay.src"
-          class="h-full w-full"
-          :style="overlayMediaStyle(overlay)"
-          draggable="false"
+      <video
+        v-else
+        :src="overlay.src"
+        autoplay
+        loop
+        muted
+        playsinline
+        class="h-full w-full"
+        :style="overlayMediaStyle(overlay)"
+        @loadedmetadata="randomizeVideoStart"
+      />
+    </div>
+
+    <!-- Vignette -->
+    <div v-if="currentItem" class="vignette pointer-events-none inset-0 absolute z-[12]" />
+
+    <!-- Progress through the current slide -->
+    <div
+      v-if="items.length"
+      class="h-0.5 pointer-events-none transition-opacity duration-500 inset-x-0 top-0 absolute z-20"
+      :class="isPlaying && chrome.visible.value ? 'opacity-100' : 'opacity-40'"
+    >
+      <div class="bg-accent h-full w-full origin-left" :style="{ transform: `scaleX(${progress})` }" />
+    </div>
+
+    <!-- Empty state: the whole view is the drop zone. -->
+    <Transition name="t-fade">
+      <div v-if="!items.length" class="p-6 bg-surface-950 center inset-0 absolute z-20">
+        <div
+          class="border-2 rounded-[var(--radius-xl)] border-dashed flex flex-col h-full max-h-[520px] max-w-[760px] w-full transition-colors duration-200 items-center justify-center"
+          :class="drop.over.value ? 'border-accent/70 bg-accent-soft' : 'border-edge-strong bg-surface-900/40'"
         >
-        <video
-          v-else-if="overlay.type === 'video'"
-          :src="overlay.src"
-          autoplay
-          loop
-          muted
-          playsinline
-          class="h-full w-full"
-          :style="overlayMediaStyle(overlay)"
-          @loadedmetadata="randomizeVideoStart"
+          <UiEmpty
+            size="lg"
+            icon="i-carbon-image"
+            title="Start a slideshow"
+            description="Drop images and videos here. Slides can advance on a timer, every few binaural beats, or locked to the session pulse."
+          >
+            <UiButton variant="primary" size="md" icon="i-carbon-add" @click="addFromDisk">
+              Add images or videos
+            </UiButton>
+            <UiButton size="md" icon="i-carbon-logo-youtube" @click="openYoutube">
+              Add YouTube
+            </UiButton>
+          </UiEmpty>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Toolbar, with its quick-settings tray underneath -->
+    <div
+      v-if="items.length"
+      class="chrome flex flex-col gap-2 items-center left-1/2 top-3 absolute z-30"
+      :class="chrome.visible.value ? '' : 'is-hidden'"
+      @pointerenter="overToolbar = true"
+      @pointerleave="overToolbar = false"
+      @pointerdown.stop
+    >
+      <div class="p-1 rounded-full glass flex gap-0.5 ring-1 ring-edge-strong shadow-[var(--shadow-lg)] items-center">
+        <UiIconButton icon="i-carbon-skip-back-filled" label="Previous slide" kbd="←" tip="bottom" class="!rounded-full" @click="prev" />
+        <button
+          v-tip="{ text: isPlaying ? 'Pause' : 'Play', kbd: 'Space', placement: 'bottom' }"
+          type="button"
+          :aria-label="isPlaying ? 'Pause' : 'Play'"
+          class="focusable rounded-full center shrink-0 h-8 w-8 pressable"
+          :class="isPlaying ? 'bg-fg/10 text-fg hover:bg-fg/16' : 'bg-accent text-accent-contrast hover:brightness-110'"
+          @click="togglePlay"
+        >
+          <span :class="isPlaying ? 'i-carbon-pause-filled' : 'i-carbon-play-filled-alt'" class="text-[15px]" />
+        </button>
+        <UiIconButton icon="i-carbon-skip-forward-filled" label="Next slide" kbd="→" tip="bottom" class="!rounded-full" @click="next" />
+
+        <span class="text-[12px] text-fg-muted num px-2 text-center min-w-[52px]">
+          {{ currentIndex + 1 }}<span class="text-fg-faint"> / {{ items.length }}</span>
+        </span>
+
+        <span class="mx-0.5 divider-x" />
+
+        <UiButton
+          variant="ghost"
+          :icon="settings.randomTransition ? 'i-carbon-shuffle' : transitionMeta.icon"
+          icon-right="i-carbon-chevron-down"
+          :active="tray === 'transition'"
+          class="!rounded-full"
+          @click="toggleTray('transition')"
+        >
+          <span class="hidden lg:inline">{{ settings.randomTransition ? 'Random' : transitionMeta.label }}</span>
+        </UiButton>
+        <UiButton
+          variant="ghost"
+          :icon="timingIcon"
+          icon-right="i-carbon-chevron-down"
+          :active="tray === 'timing'"
+          class="!rounded-full"
+          @click="toggleTray('timing')"
+        >
+          <span class="num">{{ timingLabel }}</span>
+        </UiButton>
+
+        <span class="mx-0.5 divider-x" />
+
+        <UiIconButton icon="i-carbon-shuffle" label="Shuffle" :active="settings.shuffle" tip="bottom" class="!rounded-full" @click="settings.shuffle = !settings.shuffle" />
+        <UiIconButton icon="i-carbon-repeat" label="Loop" :active="settings.loop" tip="bottom" class="!rounded-full" @click="settings.loop = !settings.loop" />
+
+        <span class="mx-0.5 divider-x" />
+
+        <UiIconButton icon="i-carbon-add" label="Add images or videos" tip="bottom" class="!rounded-full" @click="addFromDisk" />
+        <UiIconButton icon="i-carbon-logo-youtube" label="Add YouTube" tip="bottom" class="!rounded-full" @click="openYoutube" />
+        <UiIconButton
+          icon="i-carbon-settings-adjust"
+          label="Slideshow settings"
+          :active="sheetOpen"
+          tip="bottom"
+          class="!rounded-full"
+          @click="sheetOpen = !sheetOpen; tray = null"
+        />
+        <UiIconButton
+          :icon="isFullscreen ? 'i-carbon-minimize' : 'i-carbon-maximize'"
+          :label="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
+          kbd="F"
+          tip="bottom"
+          class="!rounded-full"
+          @click="toggleFullscreen"
         />
       </div>
 
-      <!-- Empty state -->
-      <div
-        v-if="items.length === 0"
-        class="flex flex-col gap-4 items-center inset-0 justify-center absolute z-20"
-      >
-        <div class="i-carbon-play-outline text-6xl text-fg-faint" />
-        <p class="text-sm text-fg-muted">
-          Add images, videos, or YouTube links to start a slideshow
-        </p>
-        <div class="mt-1 flex gap-2">
-          <button
-            class="text-sm text-fg-muted px-4 py-2 rounded-lg bg-surface-800 flex gap-2 transition-colors items-center hover:bg-surface-700"
-            @click="openFilePicker"
-          >
-            <div class="i-carbon-upload" /> Add Files
-          </button>
-          <button
-            class="text-sm text-fg-muted px-4 py-2 rounded-lg bg-surface-800 flex gap-2 transition-colors items-center hover:bg-surface-700"
-            @click="showYtModal = true"
-          >
-            <div class="i-carbon-logo-youtube text-red-400" /> YouTube
-          </button>
-        </div>
-      </div>
-
-      <!-- Slide label -->
-      <div
-        v-if="currentItem"
-        class="text-xs text-white/50 px-2 py-1 rounded-lg bg-black/30 bottom-4 left-4 absolute z-20 backdrop-blur-sm"
-      >
-        {{ currentIndex + 1 }} / {{ items.length }} — {{ currentItem.label }}
-      </div>
-
-      <!-- LFO active indicator -->
-      <div
-        v-if="lfo.active.value && isPlaying"
-        class="text-[10px] text-teal-500/60 px-2 py-1 rounded bottom-4 right-4 absolute z-20"
-      >
-        ◇ LFO
-      </div>
-
-      <!-- Top-right controls: fullscreen + settings -->
-      <div class="flex gap-1.5 right-3 top-3 absolute z-30">
-        <button
-          class="text-fg-muted rounded-full bg-black/40 flex h-8 w-8 transition-colors items-center justify-center backdrop-blur hover:text-fg"
-          :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'"
-          @click="toggleFullscreen"
-        >
-          <div :class="isFullscreen ? 'i-carbon-minimize' : 'i-carbon-maximize'" />
-        </button>
-        <button
-          class="text-fg-muted rounded-full bg-black/40 flex h-8 w-8 transition-colors items-center justify-center backdrop-blur hover:text-fg"
-          @click="showSettings = !showSettings"
-        >
-          <div class="i-carbon-settings" />
-        </button>
-      </div>
-
-      <!-- Settings panel -->
-      <Transition name="slide-settings">
+      <!-- Quick tray -->
+      <Transition name="t-pop" mode="out-in">
         <div
-          v-if="showSettings"
-          class="p-4 border-l border-edge bg-surface-900/95 h-full w-72 right-0 top-0 absolute z-30 overflow-y-auto backdrop-blur"
+          v-if="tray === 'transition'"
+          key="transition"
+          class="p-2 rounded-[var(--radius-lg)] glass w-[300px] ring-1 ring-edge-strong shadow-[var(--shadow-lg)]"
+          style="transform-origin: top center"
         >
-          <div class="mb-4 flex items-center justify-between">
-            <h3 class="text-sm text-fg font-semibold">
-              Settings
-            </h3>
-            <button class="text-fg-muted hover:text-fg" @click="showSettings = false">
-              <div class="i-carbon-close" />
+          <div class="mb-1.5 px-1 flex items-center justify-between">
+            <span class="eyebrow">Transition</span>
+            <div class="text-[11.5px] text-fg-muted flex gap-2 items-center">
+              Random
+              <UiSwitch v-model="settings.randomTransition" size="sm" />
+            </div>
+          </div>
+          <div class="gap-1 grid grid-cols-4">
+            <button
+              v-for="t in TRANSITIONS"
+              :key="t.value"
+              type="button"
+              class="text-[11px] py-2 focusable rounded-[var(--radius-sm)] flex flex-col gap-1 pressable items-center"
+              :class="(settings.randomTransition ? settings.transitionPool.includes(t.value) : settings.transition === t.value)
+                ? 'bg-accent-soft text-accent-300'
+                : 'text-fg-muted hover:bg-fg/8 hover:text-fg'"
+              @click="settings.randomTransition ? toggleTransitionPool(t.value) : (settings.transition = t.value)"
+            >
+              <span :class="t.icon" class="text-[16px]" />
+              {{ t.label }}
             </button>
           </div>
+          <p class="hint mt-1.5 px-1">
+            {{ settings.randomTransition ? `Pick the pool to draw from · next: ${transitionMeta.label.toLowerCase()}` : settings.autoTransition ? 'Following the session phase — turn that off in settings to pick one' : 'Used for every slide change' }}
+          </p>
+        </div>
 
-          <div class="space-y-4">
-            <!-- Delay + Beat Sync -->
-            <div>
-              <div class="mb-1 flex items-center justify-between">
-                <label class="text-xs text-fg-muted">
-                  Slide Delay
-                  <span class="text-fg-faint">(±20% variance)</span>
-                </label>
-                <div class="flex gap-2.5 items-center">
-                  <label class="flex gap-1.5 cursor-pointer items-center">
-                    <input v-model="settings.pulseSync" type="checkbox" class="accent-teal-500">
-                    <span class="text-[10px] text-fg-muted">Pulse sync</span>
-                  </label>
-                  <label class="flex gap-1.5 cursor-pointer items-center">
-                    <input v-model="settings.beatSync" type="checkbox" class="accent-teal-500" :disabled="settings.pulseSync">
-                    <span class="text-[10px]" :class="settings.pulseSync ? 'text-fg-faint' : 'text-fg-muted'">Beat sync</span>
-                  </label>
-                </div>
-              </div>
+        <div
+          v-else-if="tray === 'timing'"
+          key="timing"
+          class="p-3 rounded-[var(--radius-lg)] glass flex flex-col gap-2.5 w-[300px] ring-1 ring-edge-strong shadow-[var(--shadow-lg)]"
+          style="transform-origin: top center"
+        >
+          <span class="eyebrow">Advance</span>
+          <UiSegmented v-model="mode" :options="MODES" block />
+          <UiSlider
+            v-if="mode === 'timer'"
+            v-model="settings.delay"
+            label="Seconds per slide"
+            :min="0.2" :max="60" :step="0.2" :reset="5" unit="s"
+            hint="±20% each time so it never feels mechanical"
+          />
+          <template v-else-if="mode === 'beat'">
+            <UiSegmented v-model="settings.beatsPerSlide" :options="COUNTS" size="xs" block />
+            <span class="hint">Beats per slide · {{ beatSlideSeconds.toFixed(1) }}s at {{ audioStore.beatDelta.value.toFixed(1) }} Hz</span>
+          </template>
+          <template v-else>
+            <UiSegmented v-model="settings.pulsesPerSlide" :options="COUNTS" size="xs" block />
+            <span class="hint">Pulses per slide · lands on the beat the audio and device share</span>
+          </template>
+        </div>
+      </Transition>
 
-              <div v-if="settings.pulseSync" class="space-y-1">
-                <p class="text-[10px] text-fg-muted">
-                  Advances on the shared session pulse, so slides land on the
-                  same beat as the audio and the device.
-                </p>
-                <div class="flex flex-wrap gap-1">
-                  <button
-                    v-for="n in [1, 2, 4, 8, 16, 32]"
-                    :key="n"
-                    class="text-xs px-2 py-0.5 rounded transition-colors"
-                    :class="settings.pulsesPerSlide === n
-                      ? 'bg-teal-500/20 text-teal-300'
-                      : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                    @click="settings.pulsesPerSlide = n"
-                  >
-                    {{ n }}
-                  </button>
-                  <span class="text-[10px] text-fg-faint ml-1 self-center">pulses / slide</span>
-                </div>
-              </div>
-
-              <div v-else-if="!settings.beatSync" class="space-y-1">
-                <input
-                  type="range" min="0.2" max="60" step="0.2"
-                  :value="settings.delay"
-                  class="ss-slider w-full"
-                  @input="settings.delay = +($event.target as HTMLInputElement).value"
-                >
-                <div class="flex gap-1 items-center">
-                  <input
-                    min="0.2" max="60" step="0.2"
-                    type="number"
-                    :value="settings.delay"
-                    class="flex-1"
-                    @input="settings.delay = +($event.target as HTMLInputElement).value"
-                  >
-                  <span class="text-xs text-fg-muted">s</span>
-                </div>
-              </div>
-
-              <div v-else class="space-y-1">
-                <p class="text-[10px] text-fg-muted">
-                  Advances every N beats · current: {{ ((settings.beatsPerSlide ?? 8) / Math.max(0.25, audioStore.beatDelta.value)).toFixed(1) }}s
-                </p>
-                <div class="flex flex-wrap gap-1">
-                  <button
-                    v-for="n in [1, 2, 4, 8, 16, 32]"
-                    :key="n"
-                    class="text-xs px-2 py-0.5 rounded transition-colors"
-                    :class="(settings.beatsPerSlide ?? 8) === n ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                    @click="settings.beatsPerSlide = n"
-                  >
-                    {{ n }}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Transition -->
-            <div>
-              <div class="mb-2 flex items-center justify-between">
-                <label class="text-xs text-fg-muted">Transition</label>
-                <label class="flex gap-1.5 cursor-pointer items-center">
-                  <input v-model="settings.randomTransition" type="checkbox" class="accent-teal-500">
-                  <span class="text-[10px] text-fg-muted">Random</span>
-                </label>
-              </div>
-
-              <!-- Fixed single transition -->
-              <div v-if="!settings.randomTransition">
-                <div class="mb-2 gap-1 grid grid-cols-2">
-                  <button
-                    v-for="t in ALL_TRANSITIONS"
-                    :key="t"
-                    class="text-xs py-1.5 rounded-lg capitalize transition-colors"
-                    :class="settings.transition === t ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                    @click="settings.transition = t"
-                  >
-                    {{ t }}
-                  </button>
-                </div>
-                <label class="flex gap-2 cursor-pointer items-center">
-                  <input v-model="settings.autoTransition" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-fg-muted">Auto by session phase</span>
-                </label>
-              </div>
-
-              <!-- Random pool selector -->
-              <div v-else>
-                <p class="text-[10px] text-fg-muted mb-1.5">
-                  Pool — toggle to include/exclude:
-                </p>
-                <div class="gap-1 grid grid-cols-2">
-                  <button
-                    v-for="t in ALL_TRANSITIONS"
-                    :key="t"
-                    class="text-xs py-1.5 rounded-lg capitalize transition-colors"
-                    :class="(settings.transitionPool ?? []).includes(t) ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                    @click="toggleTransitionPool(t)"
-                  >
-                    {{ t }}
-                  </button>
-                </div>
-                <p v-if="transitionName" class="text-[10px] text-fg-faint mt-1">
-                  Next: {{ transitionName }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Loop / Shuffle -->
-            <label class="flex gap-2 cursor-pointer items-center">
-              <input v-model="settings.loop" type="checkbox" class="accent-teal-500">
-              <span class="text-xs text-fg-muted">Loop</span>
-            </label>
-            <label class="flex gap-2 cursor-pointer items-center">
-              <input v-model="settings.shuffle" type="checkbox" class="accent-teal-500">
-              <span class="text-xs text-fg-muted">Shuffle</span>
-            </label>
-
-            <!-- LFO controls -->
-            <div class="pt-2 border-t border-edge">
-              <div class="mb-2 flex items-center justify-between">
-                <p class="text-xs text-fg-muted">
-                  LFO Animation
-                </p>
-                <span v-if="lfo.active.value && isPlaying" class="text-[10px] text-teal-500/70">● active</span>
-              </div>
-              <div class="mb-3 space-y-1.5">
-                <label class="flex gap-2 cursor-pointer items-center">
-                  <input v-model="lfo.config.zoomEnabled" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-fg-muted">Zoom</span>
-                </label>
-                <label class="flex gap-2 cursor-pointer items-center">
-                  <input v-model="lfo.config.opacityEnabled" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-fg-muted">Opacity</span>
-                </label>
-                <label class="flex gap-2 cursor-pointer items-center">
-                  <input v-model="lfo.config.panEnabled" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-fg-muted">Pan</span>
-                </label>
-                <label class="flex gap-2 cursor-pointer items-center">
-                  <input v-model="settings.lfoOverlays" type="checkbox" class="accent-teal-500">
-                  <span class="text-xs text-fg-muted">Apply to overlays</span>
-                </label>
-              </div>
-              <div>
-                <label class="text-[10px] text-fg-muted mb-1 block">
-                  Depth — {{ lfo.config.depthMultiplier.toFixed(1) }}×
-                </label>
-                <input
-                  type="range" min="0" max="3" step="0.1"
-                  :value="lfo.config.depthMultiplier"
-                  class="ss-slider w-full"
-                  @input="lfo.config.depthMultiplier = +($event.target as HTMLInputElement).value"
-                >
-              </div>
-              <p class="text-[10px] text-fg-faint mt-1.5">
-                Speed syncs to beat frequency. Depth scales with session intensity.
-              </p>
-            </div>
-
-            <!-- Overlays -->
-            <div class="pt-2 border-t border-edge">
-              <div class="mb-2 flex items-center justify-between">
-                <p class="text-xs text-fg-muted">
-                  Overlays ({{ overlays.length }})
-                </p>
-                <button
-                  class="text-[10px] text-teal-400 px-2 py-0.5 rounded bg-teal-900/30 flex gap-1 transition-colors items-center hover:bg-teal-900/50"
-                  @click="openOverlayFilePicker"
-                >
-                  <div class="i-carbon-add text-[10px]" /> Add
-                </button>
-              </div>
-              <p v-if="overlays.length === 0" class="text-[10px] text-fg-faint py-2 text-center">
-                Layer images, GIFs or videos over slides
-              </p>
-              <div class="space-y-2">
-                <div
-                  v-for="overlay in overlays"
-                  :key="overlay.id"
-                  class="p-2 rounded-lg bg-surface-800/60 space-y-2"
-                >
-                  <div class="flex gap-2 items-center">
-                    <input
-                      type="checkbox"
-                      :checked="overlay.enabled"
-                      class="accent-teal-500 flex-shrink-0"
-                      @change="updateOverlay(overlay.id, { enabled: ($event.target as HTMLInputElement).checked })"
-                    >
-                    <div
-                      class="text-[10px] flex-shrink-0"
-                      :class="overlay.type === 'video' ? 'i-carbon-video text-blue-400' : 'i-carbon-image text-teal-400'"
-                    />
-                    <span class="text-xs text-fg-muted flex-1 truncate">{{ overlay.label }}</span>
-                    <button
-                      class="text-fg-faint ml-auto flex-shrink-0 transition-colors hover:text-red-400"
-                      @click="removeOverlay(overlay.id)"
-                    >
-                      <div class="i-carbon-trash-can text-xs" />
-                    </button>
-                  </div>
-                  <div class="flex gap-2 items-center">
-                    <span class="text-[10px] text-fg-muted text-right flex-shrink-0 w-7">{{ Math.round(overlay.opacity * 100) }}%</span>
-                    <input
-                      type="range" min="0" max="1" step="0.01"
-                      :value="overlay.opacity"
-                      class="ss-slider flex-1"
-                      @input="updateOverlay(overlay.id, { opacity: +($event.target as HTMLInputElement).value })"
-                    >
-                    <select
-                      :value="overlay.blendMode"
-                      class="text-[10px] text-fg-muted px-1 py-0.5 outline-none rounded border-none bg-surface-700 flex-shrink-0"
-                      @change="updateOverlay(overlay.id, { blendMode: ($event.target as HTMLSelectElement).value })"
-                    >
-                      <option v-for="bm in BLEND_MODES" :key="bm" :value="bm">
-                        {{ bm }}
-                      </option>
-                    </select>
-                  </div>
-                  <div class="flex gap-1">
-                    <button
-                      v-for="f in ['cover', 'contain', 'fill'] as const"
-                      :key="f"
-                      class="text-[10px] px-1.5 py-0.5 rounded capitalize transition-colors"
-                      :class="overlay.fit === f ? 'bg-teal-600/50 text-teal-300' : 'bg-surface-700/40 text-fg-muted hover:text-fg'"
-                      @click="updateOverlay(overlay.id, { fit: f })"
-                    >
-                      {{ f }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Slides list -->
-            <div class="pt-3 border-t border-edge">
-              <p class="text-xs text-fg-muted mb-2">
-                Slides ({{ items.length }})
-              </p>
-              <div class="max-h-64 overflow-y-auto space-y-0.5">
-                <div
-                  v-for="(item, i) in items"
-                  :key="item.id"
-                  draggable="true"
-                  class="p-1.5 border-t-2 rounded-lg flex gap-1.5 cursor-pointer transition-colors items-center"
-                  :class="[
-                    i === currentIndex ? 'bg-surface-700' : 'hover:bg-surface-800',
-                    dragOverIdx === i && dragStartIdx !== i ? 'border-teal-500' : 'border-transparent',
-                    dragStartIdx === i ? 'opacity-40' : '',
-                  ]"
-                  @click="currentIndex = i"
-                  @dragstart="e => onDragStart(e, i)"
-                  @dragover="e => onDragOver(e, i)"
-                  @dragleave="onDragLeave"
-                  @drop="e => onDrop(e, i)"
-                  @dragend="onDragEnd"
-                >
-                  <div class="i-carbon-drag-horizontal text-fg-faint flex-shrink-0 cursor-grab" />
-                  <span class="text-[10px] text-fg-muted flex-shrink-0 w-3">{{ i + 1 }}</span>
-                  <div
-                    class="text-[10px] flex-shrink-0"
-                    :class="item.type === 'youtube' ? 'i-carbon-logo-youtube text-red-400' : item.type === 'video' ? 'i-carbon-video text-blue-400' : 'i-carbon-image text-teal-400'"
-                  />
-                  <span class="text-xs text-fg-muted flex-1 truncate">{{ item.label }}</span>
-                  <!-- Per-slide fit toggle -->
-                  <button
-                    class="text-[9px] px-1 py-0.5 rounded flex-shrink-0 transition-colors"
-                    :class="item.fit === 'cover' ? 'text-teal-400' : 'text-fg-faint hover:text-fg-muted'"
-                    :title="item.fit === 'cover' ? 'Cover (crop to fill)' : 'Contain (fit inside)'"
-                    @click.stop="updateItem(item.id, { fit: item.fit === 'cover' ? undefined : 'cover' })"
-                  >
-                    {{ item.fit === 'cover' ? '▣' : '▢' }}
-                  </button>
-                  <!-- Per-slide duration override -->
-                  <input
-                    type="number"
-                    min="0.5" max="3600" step="0.5"
-                    :value="item.duration ?? ''"
-                    :placeholder="`${settings.delay}`"
-                    class="text-[10px] text-fg-muted py-0.5 text-center outline-none border border-edge rounded bg-transparent flex-shrink-0 w-8 focus:border-teal-600"
-                    title="Duration override (s), empty = global delay"
-                    @click.stop
-                    @change="updateItem(item.id, { duration: ($event.target as HTMLInputElement).value ? +($event.target as HTMLInputElement).value : undefined })"
-                  >
-                  <button
-                    class="text-fg-faint flex-shrink-0 transition-colors hover:text-red-400"
-                    @click.stop="removeItem(item.id)"
-                  >
-                    <div class="i-carbon-trash-can text-xs" />
-                  </button>
-                </div>
-              </div>
-              <div class="mt-2 flex gap-1">
-                <button
-                  class="text-xs text-fg-muted py-1 rounded-lg bg-surface-800 flex flex-1 gap-1 transition-colors items-center justify-center hover:bg-surface-700"
-                  @click="openFilePicker"
-                >
-                  <div class="i-carbon-upload text-xs" /> Files
-                </button>
-                <button
-                  class="text-xs text-fg-muted py-1 rounded-lg bg-surface-800 flex flex-1 gap-1 transition-colors items-center justify-center hover:bg-surface-700"
-                  @click="showYtModal = true"
-                >
-                  <div class="i-carbon-logo-youtube text-xs text-red-400" /> YouTube
-                </button>
-              </div>
-            </div>
-          </div>
+      <!-- Pulse sync has nothing to follow until the session audio runs. -->
+      <Transition name="t-fade">
+        <div
+          v-if="pulseWaiting && !tray"
+          class="text-[12px] text-fg-muted py-1.5 pl-3 pr-1.5 rounded-full glass flex gap-2 ring-1 ring-edge-strong items-center"
+        >
+          <span class="i-carbon-activity text-warn" />
+          Waiting for the session pulse
+          <UiButton size="xs" variant="subtle" class="!rounded-full" @click="ui.openInspector('binaural')">
+            Open audio
+          </UiButton>
         </div>
       </Transition>
     </div>
 
-    <!-- Playback controls -->
-    <div class="py-3 border-t border-edge bg-surface-900 flex flex-shrink-0 gap-4 items-center justify-center z-20">
-      <button
-        class="text-fg-muted rounded-full bg-surface-800 flex h-9 w-9 transition-colors items-center justify-center hover:bg-surface-700 disabled:opacity-40"
-        :disabled="items.length === 0"
-        @click="prev"
+    <!-- Caption (bottom-left; the mini player owns the other corner) -->
+    <Transition name="t-fade">
+      <div
+        v-if="currentItem && chrome.visible.value"
+        class="text-[12px] text-fg-muted py-1.5 pl-2.5 pr-3 rounded-full glass flex gap-2 max-w-[min(420px,45%)] ring-1 ring-edge items-center bottom-4 left-4 absolute z-30"
       >
-        <div class="i-carbon-skip-back-filled text-sm" />
-      </button>
-      <button
-        class="rounded-full flex h-11 w-11 transition-all items-center justify-center disabled:opacity-40 active:scale-95"
-        :class="isPlaying ? 'bg-surface-700 hover:bg-fg/15 text-fg' : 'bg-teal-600 hover:bg-teal-500 text-white'"
-        :disabled="items.length === 0"
-        @click="togglePlay"
-      >
-        <div :class="isPlaying ? 'i-carbon-pause-filled' : 'i-carbon-play-filled'" class="text-base" />
-      </button>
-      <button
-        class="text-fg-muted rounded-full bg-surface-800 flex h-9 w-9 transition-colors items-center justify-center hover:bg-surface-700 disabled:opacity-40"
-        :disabled="items.length === 0"
-        @click="next"
-      >
-        <div class="i-carbon-skip-forward-filled text-sm" />
-      </button>
-    </div>
+        <span
+          :class="currentItem.type === 'youtube' ? 'i-carbon-logo-youtube' : currentItem.type === 'video' ? 'i-carbon-video' : 'i-carbon-image'"
+          class="text-[13px] text-fg-faint shrink-0"
+        />
+        <span class="text-fg truncate">{{ currentItem.label }}</span>
+        <span v-if="lfoActive && isPlaying" v-tip="'Motion LFO is animating the slide'" class="text-[10.5px] text-accent-300 tracking-wide font-medium flex shrink-0 gap-1 items-center">
+          <span class="rounded-full bg-accent-300 h-1.5 w-1.5 animate-pulse-dot" />LFO
+        </span>
+      </div>
+    </Transition>
 
-    <!-- File pickers -->
-    <input ref="fileInput" type="file" accept="image/*,video/*" multiple class="hidden" @change="onFileInput">
-    <input ref="overlayFileInput" type="file" accept="image/*,video/*" multiple class="hidden" @change="onOverlayFileInput">
+    <!-- Settings sheet -->
+    <Transition name="t-slide-right">
+      <aside
+        v-if="sheetOpen"
+        class="border border-edge rounded-[var(--radius-lg)] bg-surface-900/92 flex flex-col w-[320px] shadow-[var(--shadow-lg)] bottom-3 right-3 top-3 absolute z-40 overflow-hidden backdrop-blur-xl"
+        @pointerdown.stop
+        @dblclick.stop
+      >
+        <header class="pl-4 pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center">
+          <span class="i-carbon-image text-[15px] text-fg-muted" />
+          <span class="text-[13px] text-fg font-medium flex-1">Slideshow</span>
+          <UiIconButton icon="i-carbon-close" label="Close" kbd="Esc" tip="left" @click="sheetOpen = false" />
+        </header>
 
-    <AddYoutubeModal
-      :open="showYtModal"
-      @close="showYtModal = false"
-      @add="addYoutube"
-    />
+        <div class="p-2.5 scroll-y flex flex-1 flex-col gap-2.5" :class="player.videoUrl && !isFullscreen ? 'pb-[230px]' : ''">
+          <!-- Slides -->
+          <UiSection title="Slides" icon="i-carbon-list" :summary="`${items.length}`" collapsible>
+            <template #actions>
+              <UiIconButton icon="i-carbon-add" label="Add images or videos" size="xs" @click="addFromDisk" />
+              <UiIconButton icon="i-carbon-logo-youtube" label="Add YouTube" size="xs" @click="openYoutube" />
+            </template>
+            <ul class="scroll-y flex flex-col gap-0.5 max-h-[300px] -mx-1">
+              <li
+                v-for="(item, i) in items"
+                :key="item.id"
+                draggable="true"
+                class="group px-1 border-t-2 rounded-[var(--radius-sm)] flex gap-2 h-10 cursor-pointer transition-colors items-center"
+                :class="[
+                  i === currentIndex ? 'bg-accent-soft' : 'hover:bg-fg/6',
+                  dragOver === i && dragFrom !== i ? 'border-accent' : 'border-transparent',
+                  dragFrom === i ? 'opacity-40' : '',
+                ]"
+                @click="goTo(i)"
+                @dragstart="onRowDragStart($event, i)"
+                @dragover="onRowDragOver($event, i)"
+                @dragleave="dragOver = null"
+                @drop="onRowDrop($event, i)"
+                @dragend="onRowDragEnd"
+              >
+                <span class="i-carbon-draggable text-[13px] text-fg-faint shrink-0 cursor-grab" />
+                <div class="rounded-[var(--radius-xs)] bg-surface-950 shrink-0 h-7 w-11 ring-1 ring-edge relative overflow-hidden">
+                  <img v-if="item.type === 'image'" :src="item.src" alt="" class="h-full w-full object-cover" draggable="false">
+                  <img v-else-if="item.type === 'youtube'" :src="ytThumb(item.src)" alt="" class="h-full w-full object-cover" draggable="false">
+                  <video v-else :src="`${item.src}#t=1`" preload="metadata" muted class="h-full w-full object-cover" />
+                  <span v-if="i === currentIndex && isPlaying" class="bg-black/40 center inset-0 absolute">
+                    <span class="i-carbon-play-filled-alt text-[11px] text-white" />
+                  </span>
+                </div>
+                <span class="text-[12px] flex-1 min-w-0 truncate" :class="i === currentIndex ? 'text-fg' : 'text-fg-muted'">{{ item.label }}</span>
+                <UiIconButton
+                  icon="i-carbon-fit-to-screen"
+                  :label="item.fit === 'cover' ? 'Cover: crop to fill' : 'Contain: fit inside'"
+                  :active="item.fit === 'cover'"
+                  size="xs"
+                  tip="left"
+                  class="shrink-0"
+                  @click.stop="updateItem(item.id, { fit: item.fit === 'cover' ? undefined : 'cover' })"
+                />
+                <input
+                  v-tip="{ text: 'Seconds on screen (blank uses the global delay)', placement: 'left' }"
+                  type="number"
+                  min="0.5" max="3600" step="0.5"
+                  :value="item.duration ?? ''"
+                  :placeholder="`${settings.delay}`"
+                  class="text-[11px] text-fg num px-1 text-center outline-none border border-edge-strong rounded-[var(--radius-xs)] bg-surface-950/60 shrink-0 h-6 w-10 transition-colors placeholder:text-fg-faint focus:border-accent/70"
+                  @click.stop
+                  @change="setDuration(item.id, $event)"
+                >
+                <UiIconButton
+                  icon="i-carbon-close"
+                  label="Remove slide"
+                  size="xs"
+                  tip="left"
+                  class="opacity-0 shrink-0 focus-visible:opacity-100 group-hover:opacity-100"
+                  @click.stop="removeSlide(item.id)"
+                />
+              </li>
+            </ul>
+          </UiSection>
+
+          <!-- Timing -->
+          <UiSection title="Timing" icon="i-carbon-timer" :summary="timingLabel" collapsible>
+            <UiSegmented v-model="mode" :options="MODES" block />
+            <template v-if="mode === 'timer'">
+              <UiSlider
+                v-model="settings.delay"
+                label="Seconds per slide"
+                :min="0.2" :max="60" :step="0.2" :reset="5" unit="s"
+                hint="Varies ±20% each time. Per-slide times in the list override it."
+              />
+            </template>
+            <template v-else-if="mode === 'beat'">
+              <span class="label">Beats per slide</span>
+              <UiSegmented v-model="settings.beatsPerSlide" :options="COUNTS" size="xs" block />
+              <span class="hint">{{ beatSlideSeconds.toFixed(1) }}s per slide at the current {{ audioStore.beatDelta.value.toFixed(1) }} Hz beat — it re-times as the beat drifts.</span>
+            </template>
+            <template v-else>
+              <span class="label">Pulses per slide</span>
+              <UiSegmented v-model="settings.pulsesPerSlide" :options="COUNTS" size="xs" block />
+              <span class="hint">Advances on the shared session pulse, so slides land on the same beat as the audio and the device.</span>
+              <span v-if="!pulseAvailable" class="text-[11.5px] text-warn flex gap-1.5 items-center">
+                <span class="i-carbon-warning-alt" /> No pulse yet — start the session audio.
+              </span>
+            </template>
+          </UiSection>
+
+          <!-- Transition -->
+          <UiSection title="Transition" icon="i-carbon-fade" :summary="settings.randomTransition ? 'Random' : transitionMeta.label" collapsible>
+            <UiSwitch v-model="settings.randomTransition" label="Random" hint="Draw a different one from the pool each slide" />
+            <div class="gap-1 grid grid-cols-4">
+              <button
+                v-for="t in TRANSITIONS"
+                :key="t.value"
+                type="button"
+                class="text-[11px] py-2 focusable rounded-[var(--radius-sm)] flex flex-col gap-1 ring-1 pressable items-center relative"
+                :class="(settings.randomTransition ? settings.transitionPool.includes(t.value) : settings.transition === t.value)
+                  ? 'bg-accent-soft text-accent-300 ring-accent/40'
+                  : 'text-fg-muted ring-edge hover:bg-fg/6 hover:text-fg'"
+                @click="settings.randomTransition ? toggleTransitionPool(t.value) : (settings.transition = t.value)"
+              >
+                <span :class="t.icon" class="text-[16px]" />
+                {{ t.label }}
+                <span
+                  v-if="settings.randomTransition && settings.transitionPool.includes(t.value)"
+                  class="i-carbon-checkmark text-[10px] right-1 top-1 absolute"
+                />
+              </button>
+            </div>
+            <span v-if="settings.randomTransition" class="hint">Next: {{ transitionMeta.label.toLowerCase() }}</span>
+            <UiSwitch
+              v-model="settings.autoTransition"
+              :disabled="settings.randomTransition"
+              label="Follow the session phase"
+              hint="Fade at rest, slide on entry, zoom while building, rotate at peak, blur on the way down"
+            />
+          </UiSection>
+
+          <!-- Playback -->
+          <UiSection title="Playback" icon="i-carbon-repeat" collapsible>
+            <UiSwitch v-model="settings.loop" label="Loop" hint="Start over after the last slide" />
+            <UiSwitch v-model="settings.shuffle" label="Shuffle" hint="Jump to a random slide each time" />
+          </UiSection>
+
+          <!-- Motion -->
+          <UiSection title="Motion" icon="i-carbon-wave-direction" :live="lfoActive && isPlaying" collapsible>
+            <div class="gap-x-4 gap-y-2.5 grid grid-cols-2">
+              <UiSwitch v-model="lfoConfig.zoomEnabled" size="sm" label="Zoom" />
+              <UiSwitch v-model="lfoConfig.panEnabled" size="sm" label="Pan" />
+              <UiSwitch v-model="lfoConfig.opacityEnabled" size="sm" label="Breathe" />
+              <UiSwitch v-model="settings.lfoOverlays" size="sm" label="Overlays too" />
+            </div>
+            <UiSlider
+              v-model="lfoConfig.depthMultiplier"
+              label="Depth"
+              :min="0" :max="3" :step="0.1" :reset="1"
+              :format="v => `${v.toFixed(1)}×`"
+              hint="Speed follows the beat frequency while playing."
+            />
+          </UiSection>
+
+          <!-- Overlays -->
+          <UiSection title="Overlays" icon="i-carbon-layers" :summary="overlays.length ? `${activeOverlays.length} / ${overlays.length}` : undefined" collapsible>
+            <template #actions>
+              <UiIconButton icon="i-carbon-add" label="Add overlay" size="xs" @click="addOverlaysFromDisk" />
+            </template>
+            <p v-if="!overlays.length" class="hint">
+              Layer images, GIFs or video over every slide, blended like a lighting gel.
+            </p>
+            <TransitionGroup tag="div" name="t-list" class="flex flex-col gap-2 relative">
+              <div v-for="overlay in overlays" :key="overlay.id" class="p-2.5 well flex flex-col gap-2.5">
+                <div class="flex gap-2 min-w-0 items-center">
+                  <UiSwitch
+                    :model-value="overlay.enabled"
+                    size="sm"
+                    @update:model-value="v => updateOverlay(overlay.id, { enabled: v })"
+                  />
+                  <span :class="overlay.type === 'video' ? 'i-carbon-video' : 'i-carbon-image'" class="text-[13px] text-fg-faint shrink-0" />
+                  <span class="text-[12px] flex-1 truncate" :class="overlay.enabled ? 'text-fg' : 'text-fg-faint'">{{ overlay.label }}</span>
+                  <UiIconButton icon="i-carbon-trash-can" label="Remove overlay" size="xs" tip="left" @click="removeOverlay(overlay.id)" />
+                </div>
+                <UiSlider
+                  :model-value="overlay.opacity"
+                  label="Opacity"
+                  :min="0" :max="1" :step="0.01" :reset="0.5"
+                  :format="v => `${Math.round(v * 100)}%`"
+                  :disabled="!overlay.enabled"
+                  @update:model-value="v => updateOverlay(overlay.id, { opacity: v })"
+                />
+                <div class="flex gap-2 items-end">
+                  <UiSelect
+                    :model-value="overlay.blendMode"
+                    :options="BLEND_MODES"
+                    label="Blend"
+                    class="flex-1 capitalize"
+                    @update:model-value="v => updateOverlay(overlay.id, { blendMode: v })"
+                  />
+                  <UiSegmented
+                    :model-value="overlay.fit"
+                    :options="OVERLAY_FITS"
+                    size="xs"
+                    @update:model-value="v => updateOverlay(overlay.id, { fit: v })"
+                  />
+                </div>
+              </div>
+            </TransitionGroup>
+          </UiSection>
+        </div>
+      </aside>
+    </Transition>
+
+    <!-- Drop overlay (the empty state is its own drop zone) -->
+    <Transition name="t-fade">
+      <div v-if="drop.over.value && items.length" class="p-4 pointer-events-none inset-0 absolute z-50">
+        <div class="border-2 border-accent/60 rounded-[var(--radius-xl)] border-dashed bg-black/45 flex flex-col gap-2 h-full w-full animate-scale-in items-center justify-center backdrop-blur-sm">
+          <span class="i-carbon-drop-photo text-[30px] text-accent-300" />
+          <p class="text-[15px] text-white font-semibold">
+            Drop to add slides
+          </p>
+          <p class="text-[12.5px] text-white/70">
+            They join the end of the show
+          </p>
+        </div>
+      </div>
+    </Transition>
+
+    <AddYoutubeModal v-model:open="ytOpen" @add="addYoutube" />
   </div>
 </template>
 
 <style scoped>
-/* ── Transitions ── */
+.vignette {
+  background: radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.45) 100%);
+}
+
+.chrome {
+  transform: translateX(-50%);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.chrome.is-hidden {
+  opacity: 0;
+  transform: translate(-50%, -8px);
+  pointer-events: none;
+}
+
+/* ── Slide transitions ── */
 
 /* True crossfade: entering slide at full opacity underneath, leaving fades out on top */
 .fade-leave-active {
@@ -988,43 +939,5 @@ function overlayMediaStyle(overlay: typeof overlays[0]) {
 .rotate-leave-to {
   opacity: 0;
   transform: rotate(6deg) scale(0.88);
-}
-
-/* ── Settings panel ── */
-.slide-settings-enter-active,
-.slide-settings-leave-active {
-  transition: transform 0.25s ease;
-}
-.slide-settings-enter-from,
-.slide-settings-leave-to {
-  transform: translateX(100%);
-}
-
-/* ── Shared slider ── */
-.ss-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  background: #3f3f46;
-  border-radius: 4px;
-  height: 4px;
-  outline: none;
-  width: 100%;
-}
-.ss-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  background: #2dd4bf;
-  border-radius: 50%;
-  cursor: pointer;
-}
-.ss-slider::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  background: #2dd4bf;
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
 }
 </style>

@@ -22,6 +22,16 @@ export const useThemeStore = defineStore('theme', () => {
     current.value = id
     document.documentElement.setAttribute('data-theme', id)
     localStorage.setItem('theme', id)
+    // Keep the browser chrome (title bar on installed apps, mobile toolbar) and
+    // the pre-paint background from index.html in step with the theme.
+    try {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg-base').trim()
+      if (bg) {
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', bg)
+        document.documentElement.style.backgroundColor = bg
+      }
+    }
+    catch {}
   }
 
   // Apply on init

@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import type { NoiseType, SessionPhase } from '~/stores/audio'
-import { useLocalStorage } from '@vueuse/core'
+import type { BeatMode, NoiseType, SessionPhase } from '~/stores/audio'
+import { useIntervalFn, useLocalStorage } from '@vueuse/core'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import UiBadge from '~/components/ui/UiBadge.vue'
+import UiButton from '~/components/ui/UiButton.vue'
+import UiPanel from '~/components/ui/UiPanel.vue'
+import UiSection from '~/components/ui/UiSection.vue'
+import UiSegmented from '~/components/ui/UiSegmented.vue'
+import UiSlider from '~/components/ui/UiSlider.vue'
+import UiStat from '~/components/ui/UiStat.vue'
+import UiSwitch from '~/components/ui/UiSwitch.vue'
+import { useBinauralBeats } from '~/composables/useBinauralBeats'
 import { useScriptPulse } from '~/composables/useScriptPulse'
-import { useAudioStore } from '~/stores/audio'
+import { useSessionEngine } from '~/composables/useSessionEngine'
+import { CARRIER_MAX, CARRIER_RECOMMENDED, MAX_BEAT_HZ, useAudioStore } from '~/stores/audio'
 import { useScriptStore } from '~/stores/scriptStore'
-import CollapsibleSection from '../CollapsibleSection.vue'
 
 const {
   baseFrequency,
@@ -36,926 +46,834 @@ const {
   scriptDriveIntensity,
 } = useAudioStore()
 
-const openBeat = useLocalStorage('ph-sec-beat', false)
-const openLayers = useLocalStorage('ph-sec-layers', false)
-const openSession = useLocalStorage('ph-sec-session', false)
-
-const beatSummary = computed(() =>
-  `${baseFrequency.value.toFixed(0)} Hz · Δ${beatDelta.value.toFixed(1)}`,
-)
-const layerSummary = computed(() =>
-  noiseEnabled.value ? `${noiseType.value} noise` : 'off',
-)
-const sessionSummary = computed(() => {
-  if (scriptDrive.value)
-    return 'script'
-  if (sessionActive.value)
-    return phase.value
-  return sessionArc.value
-})
-
-const scriptPulse = useScriptPulse()
+const binaural = useBinauralBeats()
+const session = useSessionEngine()
+const { locked, scriptSpm, scriptIntensity } = useScriptPulse()
 const scriptStore = useScriptStore()
 const hasScript = computed(() => scriptStore.activeScripts.length > 0)
 
-const BEAT_MODES = [
-  { id: 'binaural', label: 'Binaural', hint: 'One tone per ear. The beat exists only in your head — the gentlest, and the weakest at driving a response.' },
-  { id: 'monaural', label: 'Monaural', hint: 'Both tones in both ears, so the beat is physically in the air. Stronger, and works without headphones.' },
-  { id: 'isochronic', label: 'Isochronic', hint: 'A single tone gated on and off. Strongest cortical response of the three, and impossible to ignore.' },
-] as const
+// ─── Reference data ─────────────────────────────────────────────────────────
 
-const ARCS = [
-  { id: 'smooth', label: 'Smooth', hint: 'One rise and one fall.' },
-  { id: 'edged', label: 'Edged', hint: 'Repeated build, hold, then partial retreat — each pass reaching a little higher.' },
-] as const
-
-const beatModeHint = computed(() => BEAT_MODES.find(m => m.id === beatMode.value)?.hint ?? '')
-const arcHint = computed(() => ARCS.find(a => a.id === sessionArc.value)?.hint ?? '')
-const carrierOutOfRange = computed(() => baseFrequency.value < 250 || baseFrequency.value > 450)
-const breathPerMinute = computed(() => (60 / breathPeriod.value).toFixed(1))
-
-const binaural = useBinauralBeats()
-const session = useSessionEngine()
+/** Double-click targets: the store's own first-run values. */
+const DEFAULT = {
+  carrier: 300,
+  beat: 6,
+  volume: 0.4,
+  intensity: 0.5,
+  noise: 0.15,
+  pulseCpm: 50,
+  pulseDepth: 0.45,
+  edgeCycles: 3,
+  breathPeriod: 10,
+  inhale: 0.4,
+}
 
 const PRESETS = [
-  { name: 'Delta', desc: 'Deep sleep', hz: '0.5–4 Hz', base: 100, delta: 2, color: '#818cf8' },
-  { name: 'Theta', desc: 'Meditation', hz: '4–8 Hz', base: 180, delta: 6, color: '#a78bfa' },
-  { name: 'Alpha', desc: 'Relaxation', hz: '8–12 Hz', base: 220, delta: 10, color: '#2dd4bf' },
-  { name: 'Beta', desc: 'Focus', hz: '12–30 Hz', base: 300, delta: 20, color: '#34d399' },
+  { name: 'Delta', desc: 'Deep sleep', hz: '0.5–4', base: 100, delta: 2 },
+  { name: 'Theta', desc: 'Meditation', hz: '4–8', base: 180, delta: 6 },
+  { name: 'Alpha', desc: 'Relaxation', hz: '8–12', base: 220, delta: 10 },
+  { name: 'Beta', desc: 'Focus', hz: '12–30', base: 300, delta: 20 },
   // 40 Hz would exceed Oster's fusion limit and stop being heard as a beat.
-  { name: 'Gamma', desc: 'Flow state', hz: '30-35 Hz', base: 400, delta: 32, color: '#fbbf24' },
+  { name: 'Gamma', desc: 'Flow state', hz: '30–35', base: 400, delta: 32 },
+] as const
+type Preset = typeof PRESETS[number]
+
+const SOLFEGGIO = [396, 432, 528, 639, 741, 852]
+
+const BEAT_MODES: { value: BeatMode, label: string, hint: string }[] = [
+  { value: 'binaural', label: 'Binaural', hint: 'One tone per ear. The beat exists only in your head — the gentlest, and the weakest at driving a response.' },
+  { value: 'monaural', label: 'Monaural', hint: 'Both tones in both ears, so the beat is physically in the air. Stronger, and works without headphones.' },
+  { value: 'isochronic', label: 'Isochronic', hint: 'A single tone gated on and off. Strongest cortical response of the three, and impossible to ignore.' },
 ]
 
-const WAVE_TYPES: { value: OscillatorType, label: string }[] = [
+const WAVES: { value: OscillatorType, label: string }[] = [
   { value: 'sine', label: 'Sine' },
   { value: 'triangle', label: 'Triangle' },
-  { value: 'sawtooth', label: 'Sawtooth' },
+  { value: 'sawtooth', label: 'Saw' },
   { value: 'square', label: 'Square' },
 ]
 
-const NOISE_TYPES: { value: NoiseType, label: string, desc: string }[] = [
-  { value: 'brown', label: 'Brown', desc: 'Deep rumble' },
-  { value: 'pink', label: 'Pink', desc: 'Balanced' },
-  { value: 'white', label: 'White', desc: 'Full spectrum' },
+const NOISES: { value: NoiseType, label: string, title: string }[] = [
+  { value: 'brown', label: 'Brown', title: 'Deep rumble' },
+  { value: 'pink', label: 'Pink', title: 'Balanced' },
+  { value: 'white', label: 'White', title: 'Full spectrum' },
 ]
 
-const PHASE_META: Record<string, { label: string, color: string }> = {
-  idle: { label: 'Idle', color: '#52525b' },
-  entry: { label: 'Entry', color: '#60a5fa' },
-  build: { label: 'Build', color: '#2dd4bf' },
-  peak: { label: 'Peak', color: '#fbbf24' },
-  descent: { label: 'Descent', color: '#a78bfa' },
+const ARCS: { value: 'smooth' | 'edged', label: string, hint: string }[] = [
+  { value: 'smooth', label: 'Smooth', hint: 'One rise and one fall.' },
+  { value: 'edged', label: 'Edged', hint: 'Repeated build, hold, then partial retreat — each pass reaching a little higher.' },
+]
+
+const PHASES: Exclude<SessionPhase, 'idle'>[] = ['entry', 'build', 'peak', 'descent']
+const PHASE_LABEL: Record<SessionPhase, string> = { idle: 'Idle', entry: 'Entry', build: 'Build', peak: 'Peak', descent: 'Descent' }
+const PHASE_TONE: Record<SessionPhase, string> = {
+  idle: 'var(--text-faint)',
+  entry: 'var(--info)',
+  build: 'var(--ok)',
+  peak: 'var(--warn)',
+  descent: 'var(--accent)',
+}
+/**
+ * Mid-points of the engine's phase durations, in seconds. The engine varies
+ * each by ±20% and does not expose its timers, so the timeline is an estimate
+ * that never claims to be finished before the phase actually changes.
+ */
+const PHASE_NOMINAL: Record<SessionPhase, number> = { idle: 1, entry: 75, build: 120, peak: 150, descent: 90 }
+/** Mean hold at the top of an edged pass. */
+const EDGE_HOLD = 40
+
+function bandOf(hz: number) {
+  if (hz < 4)
+    return 'Delta'
+  if (hz < 8)
+    return 'Theta'
+  if (hz < 12)
+    return 'Alpha'
+  if (hz < 30)
+    return 'Beta'
+  return 'Gamma'
 }
 
-// Solfeggio / tuning base-frequency presets
-const SOLFEGGIO = [
-  { hz: 396, label: '396' },
-  { hz: 432, label: '432' },
-  { hz: 528, label: '528' },
-  { hz: 639, label: '639' },
-  { hz: 741, label: '741' },
-  { hz: 852, label: '852' },
-]
+const pct = (v: number) => `${Math.round(v * 100)}%`
 
-// --- Preset morphing ---
+// ─── Section state ──────────────────────────────────────────────────────────
 
-let morphAnimFrame: number | null = null
+const openTone = useLocalStorage('ph-bin-open-tone', true)
+const openScript = useLocalStorage('ph-bin-open-script', false)
+const openLayers = useLocalStorage('ph-bin-open-layers', false)
+const openPulse = useLocalStorage('ph-bin-open-pulse', false)
+const openSession = useLocalStorage('ph-bin-open-session', false)
+const openBreath = useLocalStorage('ph-bin-open-breath', false)
 
-function applyPreset(p: typeof PRESETS[0]) {
-  currentPreset.value = p.name
-  if (isPlaying.value) {
-    const startBase = baseFrequency.value
-    const startDelta = beatDelta.value
-    const startTime = Date.now()
-    const dur = 5000
+// ─── Preset morphing ────────────────────────────────────────────────────────
 
-    if (morphAnimFrame !== null)
-      cancelAnimationFrame(morphAnimFrame)
-    binaural.morphTo(p.base, p.delta, 5)
-
-    function frame() {
-      const t = Math.min(1, (Date.now() - startTime) / dur)
-      const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
-      baseFrequency.value = startBase + (p.base - startBase) * eased
-      beatDelta.value = startDelta + (p.delta - startDelta) * eased
-      if (t < 1)
-        morphAnimFrame = requestAnimationFrame(frame)
-    }
-    morphAnimFrame = requestAnimationFrame(frame)
+let morphRaf: number | null = null
+function cancelMorphAnim() {
+  if (morphRaf !== null) {
+    cancelAnimationFrame(morphRaf)
+    morphRaf = null
   }
-  else {
+}
+onBeforeUnmount(cancelMorphAnim)
+
+/**
+ * While playing, a preset glides there over five seconds rather than jumping;
+ * the engine ramps the oscillators and this mirrors it into the store so the
+ * readouts move with the sound.
+ */
+function applyPreset(p: Preset) {
+  currentPreset.value = p.name
+  cancelMorphAnim()
+  if (!isPlaying.value) {
     baseFrequency.value = p.base
     beatDelta.value = p.delta
+    return
   }
+  const startBase = baseFrequency.value
+  const startDelta = beatDelta.value
+  const startTime = Date.now()
+  const dur = 5000
+  binaural.morphTo(p.base, p.delta, 5)
+
+  const frame = () => {
+    const t = Math.min(1, (Date.now() - startTime) / dur)
+    const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
+    baseFrequency.value = startBase + (p.base - startBase) * eased
+    beatDelta.value = startDelta + (p.delta - startDelta) * eased
+    morphRaf = t < 1 ? requestAnimationFrame(frame) : null
+  }
+  morphRaf = requestAnimationFrame(frame)
 }
 
-// --- Manual controls ---
-
-function onBaseFreq(e: Event) {
-  const v = +(e.target as HTMLInputElement).value
-  baseFrequency.value = v
+/** A hand on a control ends any glide in progress, or it would fight the hand. */
+function takeManual() {
   currentPreset.value = ''
+  cancelMorphAnim()
   binaural.stopMorph()
-  if (isPlaying.value)
-    binaural.setFrequencies(v, beatDelta.value)
 }
 
-function setBaseFreq(hz: number) {
+// ─── Manual controls ────────────────────────────────────────────────────────
+
+function setCarrier(hz: number) {
   baseFrequency.value = hz
-  currentPreset.value = ''
-  binaural.stopMorph()
+  takeManual()
   if (isPlaying.value)
     binaural.setFrequencies(hz, beatDelta.value)
 }
 
-function onBeatDelta(e: Event) {
-  const v = +(e.target as HTMLInputElement).value
-  beatDelta.value = v
-  currentPreset.value = ''
-  binaural.stopMorph()
-  binaural.stopBeatDrift()
-  if (isPlaying.value)
-    binaural.setFrequencies(baseFrequency.value, v)
-}
+const carrier = computed({ get: () => baseFrequency.value, set: setCarrier })
 
-function onVolume(e: Event) {
-  const v = +(e.target as HTMLInputElement).value
-  volume.value = v
-  if (isPlaying.value)
-    binaural.setVolume(v)
-}
-
-function onWaveType(t: OscillatorType) {
-  waveType.value = t
-  if (isPlaying.value)
-    binaural.setWaveType(t)
-}
-
-// --- Master intensity ---
-
-function onIntensity(e: Event) {
-  const v = +(e.target as HTMLInputElement).value
-  intensity.value = v
-  const newDelta = 1 + v * 38
-  beatDelta.value = newDelta
-  binaural.stopMorph()
-  binaural.stopBeatDrift()
-  currentPreset.value = ''
-  if (isPlaying.value)
-    binaural.setFrequencies(baseFrequency.value, newDelta)
-  if (noiseEnabled.value && isPlaying.value)
-    binaural.setNoiseVolume(0.05 + v * 0.35)
-}
-
-// --- Noise layer ---
-
-watch([noiseEnabled, isPlaying], ([noiseOn, playing]) => {
-  if (noiseOn && playing) {
-    binaural.startNoise(noiseVolume.value)
-    binaural.morphNoise(noiseType.value, 0.5)
-  }
-  else if (!noiseOn) {
-    binaural.stopNoise()
-  }
-})
-
-function onNoiseVolume(e: Event) {
-  const v = +(e.target as HTMLInputElement).value
-  noiseVolume.value = v
-  if (isPlaying.value && noiseEnabled.value)
-    binaural.setNoiseVolume(v)
-}
-
-function setNoiseType(t: NoiseType) {
-  noiseType.value = t
-  if (isPlaying.value && noiseEnabled.value)
-    binaural.morphNoise(t, 3)
-}
-
-// --- Harmonics ---
-
-watch(harmonicsEnabled, (on) => {
-  if (isPlaying.value)
-    binaural.setHarmonics(on)
-})
-
-// --- Beat drift ---
-
-watch(beatDriftEnabled, (on) => {
-  if (on && isPlaying.value) {
-    binaural.startBeatDrift(
-      () => baseFrequency.value,
-      () => beatDelta.value,
-      (newDelta) => { beatDelta.value = newDelta },
-    )
-  }
-  else {
+const beat = computed({
+  get: () => beatDelta.value,
+  set: (v: number) => {
+    beatDelta.value = v
+    takeManual()
     binaural.stopBeatDrift()
-  }
+    if (isPlaying.value)
+      binaural.setFrequencies(baseFrequency.value, v)
+  },
 })
 
-// --- Drift mode ---
-
-watch(driftMode, (on) => {
-  if (sessionActive.value) {
-    if (on)
-      session.startDrift()
-    else session.stopDrift()
-  }
+const vol = computed({
+  get: () => volume.value,
+  set: (v: number) => {
+    volume.value = v
+    if (isPlaying.value)
+      binaural.setVolume(v)
+  },
 })
 
-// --- Main play / stop (with fade-in / fade-out) ---
+const wave = computed({
+  get: () => waveType.value,
+  set: (t: OscillatorType) => {
+    waveType.value = t
+    if (isPlaying.value)
+      binaural.setWaveType(t)
+  },
+})
 
+/** One knob for the whole session: beat rate, noise level and visual drive together. */
+const master = computed({
+  get: () => intensity.value,
+  set: (v: number) => {
+    intensity.value = v
+    const nextDelta = 1 + v * 38
+    beatDelta.value = nextDelta
+    takeManual()
+    binaural.stopBeatDrift()
+    if (isPlaying.value)
+      binaural.setFrequencies(baseFrequency.value, nextDelta)
+    if (noiseEnabled.value && isPlaying.value)
+      binaural.setNoiseVolume(0.05 + v * 0.35)
+  },
+})
+
+// ─── Layers ─────────────────────────────────────────────────────────────────
+
+// Layer on/off, harmonics, drift and drift mode are applied by useSessionAudio,
+// which runs whether or not this panel is open.
+
+const noiseVol = computed({
+  get: () => noiseVolume.value,
+  set: (v: number) => {
+    noiseVolume.value = v
+    if (isPlaying.value && noiseEnabled.value)
+      binaural.setNoiseVolume(v)
+  },
+})
+
+/** Changing colour cross-fades over three seconds instead of cutting. */
+const noiseKind = computed({
+  get: () => noiseType.value,
+  set: (t: NoiseType) => {
+    noiseType.value = t
+    if (isPlaying.value && noiseEnabled.value)
+      binaural.morphNoise(t, 3)
+  },
+})
+
+// ─── Transport ──────────────────────────────────────────────────────────────
+
+/** Starts with every enabled layer in place; stopping fades out over two seconds. */
 function togglePlay() {
   if (isPlaying.value) {
     isPlaying.value = false
     binaural.fadeOut(2)
     if (sessionActive.value)
       session.stopSession()
+    return
   }
-  else {
-    binaural.start(baseFrequency.value, beatDelta.value, volume.value, waveType.value)
-    if (harmonicsEnabled.value)
-      binaural.setHarmonics(true)
-    if (noiseEnabled.value) {
-      binaural.startNoise(noiseVolume.value)
-      binaural.morphNoise(noiseType.value, 0.5)
-    }
-    if (beatDriftEnabled.value) {
-      binaural.startBeatDrift(
-        () => baseFrequency.value,
-        () => beatDelta.value,
-        (newDelta) => { beatDelta.value = newDelta },
-      )
-    }
-    isPlaying.value = true
-  }
+  binaural.start(baseFrequency.value, beatDelta.value, volume.value, waveType.value)
+  // Layers come up from useSessionAudio's isPlaying watcher.
+  isPlaying.value = true
 }
 
-// --- Session ---
-
+/** A session needs sound, so starting one starts the tone too. */
 function toggleSession() {
   if (sessionActive.value) {
     session.stopSession()
+    return
   }
-  else {
-    if (!isPlaying.value)
-      togglePlay()
-    session.startSession()
-  }
+  if (!isPlaying.value)
+    togglePlay()
+  session.startSession()
 }
 
-// --- Computed ---
+// ─── Session clock ──────────────────────────────────────────────────────────
 
-const waveSpeed = computed(() => isPlaying.value ? 1 : 0.15)
-const rightFreq = computed(() => baseFrequency.value + beatDelta.value)
-const phaseColor = computed(() => PHASE_META[phase.value]?.color ?? '#52525b')
-const phaseLabel = computed(() => PHASE_META[phase.value]?.label ?? 'Idle')
+const now = ref(Date.now())
+const phaseStartedAt = ref(Date.now())
+const sessionStartedAt = ref(Date.now())
 
-// Beat pulse: period clamped to [80ms, 4s] so it's always visually readable
-const beatPulsePeriod = computed(() => {
-  const period = 1 / Math.max(0.25, beatDelta.value)
-  return Math.max(0.08, Math.min(period, 4)).toFixed(3)
+const clock = useIntervalFn(() => { now.value = Date.now() }, 500, { immediate: false })
+
+watch(sessionActive, (on) => {
+  if (on) {
+    sessionStartedAt.value = Date.now()
+    now.value = Date.now()
+    clock.resume()
+  }
+  else {
+    clock.pause()
+  }
+}, { immediate: true })
+
+watch(phase, () => {
+  phaseStartedAt.value = Date.now()
+  now.value = Date.now()
 })
+
+const phaseElapsed = computed(() => Math.max(0, (now.value - phaseStartedAt.value) / 1000))
+const sessionElapsed = computed(() => Math.max(0, (now.value - sessionStartedAt.value) / 1000))
+
+/** Where we are in the edged peak loop; read off the engine on each tick. */
+const edgePass = computed(() => {
+  void now.value
+  const arc = session.getArc()
+  return arc.arc === 'edged' ? { pass: arc.pass, of: arc.cfg.cycles } : null
+})
+
+function phaseFill(ph: SessionPhase): number {
+  if (!sessionActive.value)
+    return 0
+  const cur = PHASES.indexOf(phase.value as Exclude<SessionPhase, 'idle'>)
+  const idx = PHASES.indexOf(ph as Exclude<SessionPhase, 'idle'>)
+  if (idx < cur)
+    return 1
+  if (idx > cur)
+    return 0
+  if (ph === 'peak' && edgePass.value) {
+    const within = Math.min(0.95, phaseElapsed.value / EDGE_HOLD)
+    return Math.min(0.98, (edgePass.value.pass + within) / edgePass.value.of)
+  }
+  return Math.min(0.98, phaseElapsed.value / PHASE_NOMINAL[ph])
+}
+
+function mmss(sec: number) {
+  const s = Math.floor(sec)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+// ─── Readouts ───────────────────────────────────────────────────────────────
+
+const rightFreq = computed(() => baseFrequency.value + beatDelta.value)
+const band = computed(() => bandOf(beatDelta.value))
+const phaseTone = computed(() => PHASE_TONE[phase.value])
+
+/** The beat itself, slowed to something the eye can follow at high rates. */
+const beatPeriod = computed(() => `${Math.max(0.09, Math.min(4, 1 / Math.max(0.25, beatDelta.value))).toFixed(3)}s`)
+
+/** The session pulse the device and visuals lock to: the script's tempo when it is driving. */
+const pulseRate = computed(() => (scriptDrive.value && locked.value && scriptSpm.value > 0) ? scriptSpm.value : pulseCpm.value)
+const pulsePeriod = computed(() => `${(60 / Math.max(6, pulseRate.value)).toFixed(3)}s`)
+
+const carrierOutOfRange = computed(() => baseFrequency.value < CARRIER_RECOMMENDED[0] || baseFrequency.value > CARRIER_RECOMMENDED[1])
+const beatModeHint = computed(() => BEAT_MODES.find(m => m.value === beatMode.value)?.hint ?? '')
+const arcHint = computed(() => ARCS.find(a => a.value === sessionArc.value)?.hint ?? '')
+const breathNeedsNoise = computed(() => breathEnabled.value && !noiseEnabled.value)
+
+// ─── Summaries ──────────────────────────────────────────────────────────────
+
+const toneSummary = computed(() => `${baseFrequency.value.toFixed(0)} Hz · Δ${beatDelta.value.toFixed(1)} · ${beatMode.value}`)
+const scriptSummary = computed(() => {
+  if (!scriptDrive.value)
+    return 'off'
+  if (!hasScript.value)
+    return 'no script'
+  return locked.value ? `locked · ${scriptSpm.value.toFixed(0)} spm` : 'searching'
+})
+const layersSummary = computed(() => {
+  const on = [
+    noiseEnabled.value ? `${noiseType.value} noise` : '',
+    harmonicsEnabled.value ? 'harmonics' : '',
+    beatDriftEnabled.value ? 'drift' : '',
+  ].filter(Boolean)
+  return on.length ? on.join(' · ') : 'tone only'
+})
+const pulseSummary = computed(() => `${pulseCpm.value}/min · ${pulseEnabled.value ? pct(pulseDepth.value) : 'silent'}`)
+const sessionSummary = computed(() => {
+  const arc = sessionArc.value === 'edged' ? `edged ×${edgeCycles.value}` : 'smooth'
+  return driftMode.value ? `${arc} · drift` : arc
+})
+const breathSummary = computed(() => breathEnabled.value ? `${(60 / breathPeriod.value).toFixed(1)}/min` : 'off')
+
+// ─── Scope drawing ──────────────────────────────────────────────────────────
+
+/** A long sine strip that scrolls by exactly one period, so the loop is seamless. */
+function wavePath(amp: number, mid = 32): string {
+  let d = `M-200 ${mid}`
+  for (let x = -200; x < 800; x += 100)
+    d += ` Q${x + 25} ${mid - amp} ${x + 50} ${mid} Q${x + 75} ${mid + amp} ${x + 100} ${mid}`
+  return d
+}
+const WAVE_A = wavePath(18)
+const WAVE_B = wavePath(11)
 </script>
 
 <template>
-  <div class="bg-surface-950 h-full overflow-y-auto">
-    <div class="mx-auto px-3 py-3 max-w-2xl space-y-4">
-      <!-- Wave visualization + beat pulse -->
-      <div class="border border-edge rounded-2xl bg-surface-900 flex h-24 items-center relative overflow-hidden">
-        <svg
-          class="h-full w-full inset-0 absolute"
-          viewBox="0 0 600 96"
-          preserveAspectRatio="none"
-        >
-          <path
-            class="wave1"
-            :style="{ '--speed': waveSpeed }"
-            d="M-200 48 Q-150 12 -100 48 Q-50 84 0 48 Q50 12 100 48 Q150 84 200 48 Q250 12 300 48 Q350 84 400 48 Q450 12 500 48 Q550 84 600 48 Q650 12 700 48 Q750 84 800 48"
-            fill="none"
-            stroke="#2dd4bf"
-            stroke-width="2"
-            opacity="0.7"
-          />
-          <path
-            class="wave2"
-            :style="{ '--speed': waveSpeed }"
-            d="M-200 48 Q-150 20 -100 48 Q-50 76 0 48 Q50 20 100 48 Q150 76 200 48 Q250 20 300 48 Q350 76 400 48 Q450 20 500 48 Q550 76 600 48 Q650 20 700 48 Q750 76 800 48"
-            fill="none"
-            stroke="#0f766e"
-            stroke-width="1.5"
-            opacity="0.5"
-          />
-        </svg>
-
-        <!-- Beat pulse ring -->
-        <div
-          v-if="isPlaying"
-          class="flex pointer-events-none items-center inset-0 justify-center absolute"
-        >
-          <div
-            class="beat-pulse-ring border border-teal-400/40 rounded-full"
-            :style="{ '--pulse-period': `${beatPulsePeriod}s` }"
-          />
-        </div>
-
-        <div class="text-center w-full relative z-10">
-          <p class="text-xs text-fg-muted">
-            L: {{ baseFrequency.toFixed(0) }} Hz &nbsp;·&nbsp; R: {{ rightFreq.toFixed(1) }} Hz &nbsp;·&nbsp; Beat: {{ beatDelta.toFixed(1) }} Hz
-          </p>
-          <p v-if="currentPreset" class="text-sm text-teal-400 font-medium mt-1">
-            {{ currentPreset }}
-          </p>
-          <p v-if="phase !== 'idle'" class="text-xs font-medium mt-1" :style="{ color: phaseColor }">
-            ● {{ phaseLabel }}
-          </p>
-        </div>
-      </div>
-
-      <!-- Play button -->
-      <div class="pb-4 flex justify-center">
+  <UiPanel>
+    <!-- ─── Hero: transport, live readout, session timeline ─────────────── -->
+    <section
+      class="hero p-3 card flex flex-col gap-3"
+      :class="isPlaying ? 'is-live' : ''"
+      :style="{ '--phase': phaseTone, '--beat': beatPeriod, '--pulse': pulsePeriod }"
+    >
+      <div class="flex gap-3 items-center">
         <button
-          class="text-base font-semibold py-3.5 rounded-2xl w-48 transition-all active:scale-95"
+          v-tip="isPlaying ? 'Stop (fades out)' : 'Start the tone'"
+          type="button"
+          :aria-label="isPlaying ? 'Stop' : 'Play'"
+          class="focusable rounded-full center shrink-0 h-12 w-12 pressable"
           :class="isPlaying
-            ? 'bg-surface-700 hover:bg-fg/15 text-fg'
-            : 'bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/40'"
+            ? 'bg-surface-700 text-fg ring-1 ring-edge-strong hover:bg-surface-600'
+            : 'bg-accent text-accent-contrast shadow-[0_8px_20px_-8px_var(--accent)] hover:brightness-110'"
           @click="togglePlay"
         >
-          {{ isPlaying ? '■ Stop' : '▶ Play' }}
+          <Transition name="t-pop" mode="out-in">
+            <span :key="String(isPlaying)" :class="isPlaying ? 'i-carbon-stop-filled-alt' : 'i-carbon-play-filled-alt'" class="text-[20px]" />
+          </Transition>
         </button>
-      </div>
-      <!-- Master Intensity -->
-      <div class="p-4 border border-edge rounded-2xl bg-surface-900">
-        <div class="mb-2 flex items-center justify-between">
-          <label class="text-sm text-fg-muted font-medium">Master Intensity</label>
-          <span class="text-sm text-teal-400 font-mono">{{ Math.round(intensity * 100) }}%</span>
+
+        <div class="flex flex-1 gap-4 min-w-0">
+          <UiStat label="Carrier" :value="baseFrequency.toFixed(0)" unit="Hz" />
+          <UiStat :label="`Beat · ${band}`" :value="beatDelta.toFixed(1)" unit="Hz" tone="accent" />
         </div>
-        <input
-          type="range" min="0" max="1" step="0.01"
-          :value="intensity"
-          class="primary-slider w-full"
-          @input="onIntensity"
-        >
-        <p class="text-[10px] text-fg-faint mt-1">
-          Drives beat Hz, noise level, and visual intensity simultaneously
-        </p>
+
+        <Transition name="t-pop">
+          <UiBadge v-if="currentPreset" tone="accent" size="xs" class="self-start">
+            {{ currentPreset }}
+          </UiBadge>
+        </Transition>
       </div>
 
-      <!-- Drive from the funscript -->
-      <div class="panel p-3 space-y-2.5">
-        <div class="flex items-center justify-between">
-          <p class="label">
-            Follow the script
+      <!-- Scope: two carriers drifting past each other, the beat pulsing in
+           the middle at its real rate, the session pulse as a slow halo. -->
+      <div class="scope rounded-[var(--radius-md)] bg-surface-950/70 h-16 ring-1 ring-edge relative overflow-hidden">
+        <svg class="h-full w-full inset-0 absolute" viewBox="0 0 600 64" preserveAspectRatio="none" aria-hidden="true">
+          <path class="wave wave-a" :d="WAVE_A" />
+          <path class="wave wave-b" :d="WAVE_B" />
+        </svg>
+        <div class="center inset-0 absolute" aria-hidden="true">
+          <span class="halo" />
+          <span class="ring" />
+          <span class="ring-late ring" />
+          <span class="core" />
+        </div>
+        <span class="text-[10.5px] text-fg-faint num left-2 top-1.5 absolute">L {{ baseFrequency.toFixed(0) }}</span>
+        <span class="text-[10.5px] text-fg-faint num right-2 top-1.5 absolute">R {{ rightFreq.toFixed(1) }}</span>
+        <span class="eyebrow bottom-1.5 left-2 absolute">{{ beatMode }}</span>
+        <span class="text-[10.5px] text-fg-faint num bottom-1.5 right-2 absolute">pulse {{ pulseRate.toFixed(0) }}/min</span>
+      </div>
+
+      <!-- Session timeline -->
+      <div class="flex flex-col gap-1.5">
+        <div class="flex gap-1">
+          <button
+            v-for="ph in PHASES"
+            :key="ph"
+            v-tip="sessionActive ? `Jump to ${PHASE_LABEL[ph]}` : undefined"
+            type="button"
+            :aria-label="`${PHASE_LABEL[ph]} phase`"
+            :disabled="!sessionActive"
+            class="group py-1 focusable flex flex-col gap-1 min-w-0 disabled:cursor-default"
+            :style="{ flexGrow: PHASE_NOMINAL[ph] }"
+            @click="session.jumpToPhase(ph)"
+          >
+            <span class="rounded-full bg-surface-700 h-1.5 w-full block overflow-hidden">
+              <span
+                class="rounded-full h-full block transition-[width] duration-500 ease-linear"
+                :style="{ width: `${phaseFill(ph) * 100}%`, background: PHASE_TONE[ph] }"
+              />
+            </span>
+            <span
+              class="text-[10.5px] font-medium text-left truncate transition-colors"
+              :class="sessionActive && phase === ph ? '' : 'text-fg-faint group-hover:text-fg-muted'"
+              :style="sessionActive && phase === ph ? { color: PHASE_TONE[ph] } : undefined"
+            >{{ PHASE_LABEL[ph] }}</span>
+          </button>
+        </div>
+
+        <div class="flex gap-2 min-h-7 items-center">
+          <div class="flex flex-1 flex-col min-w-0">
+            <template v-if="sessionActive">
+              <span class="text-[12px] font-medium flex gap-1.5 items-center" :style="{ color: phaseTone }">
+                <span class="rounded-full bg-current h-1.5 w-1.5 animate-pulse-dot" />
+                {{ PHASE_LABEL[phase] }}
+                <span class="text-fg-faint font-normal num">{{ mmss(phaseElapsed) }}</span>
+                <span v-if="phase === 'peak' && edgePass" class="text-fg-faint font-normal">· pass {{ Math.min(edgePass.pass + 1, edgePass.of) }}/{{ edgePass.of }}</span>
+              </span>
+              <span class="hint num">session {{ mmss(sessionElapsed) }}</span>
+            </template>
+            <span v-else class="hint">Evolves beat, noise and visuals through four phases.</span>
+          </div>
+          <UiButton
+            v-tip="'Small random wander of the beat while a session runs'"
+            variant="ghost"
+            size="sm"
+            icon="i-carbon-chart-line-smooth"
+            :active="driftMode"
+            @click="driftMode = !driftMode"
+          >
+            Drift
+          </UiButton>
+          <UiButton
+            :variant="sessionActive ? 'secondary' : 'primary'"
+            size="sm"
+            :icon="sessionActive ? 'i-carbon-stop-filled-alt' : 'i-carbon-flow'"
+            @click="toggleSession"
+          >
+            {{ sessionActive ? 'End' : 'Session' }}
+          </UiButton>
+        </div>
+      </div>
+
+      <div class="gap-3 grid grid-cols-2">
+        <UiSlider
+          v-model="master"
+          label="Intensity"
+          :format="pct"
+          :reset="DEFAULT.intensity"
+          hint="Beat, noise and visuals"
+        />
+        <UiSlider
+          v-model="vol"
+          label="Volume"
+          :format="pct"
+          :reset="DEFAULT.volume"
+        />
+      </div>
+    </section>
+
+    <!-- ─── Tone ──────────────────────────────────────────────────────────── -->
+    <UiSection v-model:open="openTone" title="Tone" icon="i-carbon-waveform" :summary="toneSummary" collapsible :live="isPlaying">
+      <div class="flex flex-col gap-1.5">
+        <span class="label">Presets <span class="text-fg-faint font-normal">· glide while playing</span></span>
+        <div class="gap-1 grid grid-cols-5">
+          <button
+            v-for="p in PRESETS"
+            :key="p.name"
+            v-tip="`${p.desc} · ${p.base} Hz carrier, ${p.delta} Hz beat`"
+            type="button"
+            class="px-1 py-1.5 focusable rounded-[var(--radius-sm)] flex flex-col gap-0.5 ring-1 pressable items-center"
+            :class="currentPreset === p.name
+              ? 'bg-accent-soft ring-accent/40 text-accent-300'
+              : 'bg-surface-800 ring-edge text-fg hover:bg-surface-700'"
+            @click="applyPreset(p)"
+          >
+            <span class="text-[12px] font-semibold">{{ p.name }}</span>
+            <span class="text-[10px] num opacity-60">{{ p.hz }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <span class="label">Beat mode</span>
+        <UiSegmented v-model="beatMode" :options="BEAT_MODES" block />
+        <span class="hint">{{ beatModeHint }}</span>
+      </div>
+
+      <div class="flex flex-col gap-1.5">
+        <UiSlider v-model="carrier" label="Carrier" unit=" Hz" :min="40" :max="CARRIER_MAX" :step="1" :reset="DEFAULT.carrier" />
+        <div class="flex flex-wrap gap-1 items-center">
+          <span class="text-[10.5px] text-fg-faint mr-0.5">Tunings</span>
+          <button
+            v-for="hz in SOLFEGGIO"
+            :key="hz"
+            type="button"
+            class="text-[10.5px] num px-1.5 focusable rounded-[var(--radius-xs)] h-5 pressable"
+            :class="Math.round(baseFrequency) === hz ? 'bg-accent-soft text-accent-300' : 'bg-fg/6 text-fg-muted hover:text-fg hover:bg-fg/10'"
+            @click="setCarrier(hz)"
+          >
+            {{ hz }}
+          </button>
+        </div>
+        <Transition name="t-fade">
+          <p v-if="carrierOutOfRange" class="hint text-warn flex gap-1.5">
+            <span class="i-carbon-warning-alt mt-px shrink-0" />
+            <span>Beats are heard best around {{ CARRIER_RECOMMENDED[0] }}–{{ CARRIER_RECOMMENDED[1] }} Hz and fade out above ~1 kHz, whatever the delta says.</span>
           </p>
-          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-            <input v-model="scriptDrive" type="checkbox">
-            On
-          </label>
-        </div>
-        <p class="hint">
-          Builds the beat from the funscript you are watching: the pulse locks
-          to the stroke phase rather than running on its own tempo, so the audio
-          lands on the strokes.
+        </Transition>
+      </div>
+
+      <UiSlider
+        v-model="beat"
+        label="Beat Δ"
+        :min="0.5"
+        :max="MAX_BEAT_HZ"
+        :step="0.1"
+        :format="v => `${v.toFixed(1)} Hz · ${bandOf(v)}`"
+        :reset="DEFAULT.beat"
+      />
+
+      <div class="flex flex-col gap-1.5">
+        <span class="label">Wave shape</span>
+        <UiSegmented v-model="wave" :options="WAVES" size="xs" block />
+      </div>
+    </UiSection>
+
+    <!-- ─── Follow the script ─────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="openScript"
+      title="Follow script"
+      icon="i-carbon-chart-line-data"
+      :summary="scriptSummary"
+      collapsible
+      :live="scriptDrive && locked"
+    >
+      <template #actions>
+        <UiSwitch v-model="scriptDrive" size="sm" />
+      </template>
+      <p class="hint">
+        Builds the beat from the funscript you are watching: the pulse locks to
+        the stroke phase rather than running on its own tempo, so the audio lands
+        on the strokes.
+      </p>
+      <UiSwitch v-model="scriptDriveIntensity" label="Stroke speed drives intensity" :disabled="!scriptDrive" size="sm" />
+      <Transition name="t-fade" mode="out-in">
+        <p v-if="scriptDrive && !hasScript" key="none" class="hint text-warn flex gap-1.5 items-center">
+          <span class="i-carbon-warning-alt shrink-0" /> No script loaded — nothing to follow yet.
         </p>
-
-        <label
-          v-if="scriptDrive"
-          class="text-xs text-fg-muted flex gap-2 cursor-pointer items-center"
-        >
-          <input v-model="scriptDriveIntensity" type="checkbox">
-          Stroke speed also drives intensity
-        </label>
-
-        <p v-if="scriptDrive && !hasScript" class="hint text-amber-400/80">
-          No script loaded — nothing to follow yet.
-        </p>
-
-        <div
-          v-else-if="scriptDrive"
-          class="text-[11px] font-mono flex gap-2 items-center"
-        >
-          <span
-            class="rounded-full shrink-0 h-1.5 w-1.5"
-            :class="scriptPulse.locked.value ? 'bg-teal-400' : 'bg-fg/25'"
-          />
-          <span :class="scriptPulse.locked.value ? 'text-teal-400' : 'text-fg-faint'">
-            {{ scriptPulse.locked.value ? 'locked' : 'searching' }}
+        <div v-else-if="scriptDrive" key="live" class="px-2.5 py-2 well flex gap-3 items-center">
+          <span class="text-[11.5px] font-medium flex gap-1.5 items-center" :class="locked ? 'text-ok' : 'text-fg-faint'">
+            <span class="rounded-full bg-current h-1.5 w-1.5" :class="locked ? 'animate-pulse-dot' : ''" />
+            {{ locked ? 'Locked' : 'Searching' }}
           </span>
-          <span class="text-fg-faint">·</span>
-          <span class="text-fg-muted">{{ scriptPulse.scriptSpm.value.toFixed(0) }} spm</span>
-          <span class="text-fg-faint">·</span>
-          <span class="text-fg-muted">{{ (scriptPulse.scriptIntensity.value * 100).toFixed(0) }}%</span>
+          <span class="text-[11.5px] text-fg-muted num ml-auto">{{ scriptSpm.toFixed(0) }} spm</span>
+          <span class="divider-x" />
+          <span class="text-[11.5px] text-fg-muted num">{{ pct(scriptIntensity) }}</span>
         </div>
+      </Transition>
+    </UiSection>
+
+    <!-- ─── Layers ────────────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="openLayers"
+      title="Layers"
+      icon="i-carbon-layers"
+      :summary="layersSummary"
+      collapsible
+      :live="isPlaying && noiseEnabled"
+    >
+      <UiSwitch v-model="noiseEnabled" label="Noise bed" hint="A cushion under the tone; also carries the breath cue." />
+      <div class="pl-3 border-l border-edge flex flex-col gap-3 transition-opacity" :class="noiseEnabled ? '' : 'opacity-45'" :inert="!noiseEnabled">
+        <UiSegmented v-model="noiseKind" :options="NOISES" size="xs" block />
+        <UiSlider v-model="noiseVol" label="Noise level" :min="0.01" :max="0.6" :format="pct" :reset="DEFAULT.noise" />
       </div>
+      <div class="divider-y" />
+      <UiSwitch v-model="harmonicsEnabled" label="Harmonic stack" hint="Adds +1 and +2 octaves at 35% and 18%." />
+      <UiSwitch v-model="beatDriftEnabled" label="Beat micro-drift" hint="±0.4 Hz wander every 2.5–6 s, so the beat never sits dead still." />
+    </UiSection>
 
-      <CollapsibleSection
-        v-model:open="openBeat"
-        title="Beat"
-        icon="i-carbon-waveform"
-        :summary="beatSummary"
-        :active="isPlaying"
-      >
-        <!-- Beat mode -->
-        <div>
-          <p class="label mb-2">
-            Beat mode
-          </p>
-          <div class="gap-1 grid grid-cols-3">
-            <button
-              v-for="m in BEAT_MODES"
-              :key="m.id"
-              class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
-              :class="beatMode === m.id
-                ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
-                : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
-              @click="beatMode = m.id"
-            >
-              {{ m.label }}
-            </button>
-          </div>
-          <p class="hint mt-1.5">
-            {{ beatModeHint }}
-          </p>
-        </div>
+    <!-- ─── Session pulse ─────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="openPulse"
+      title="Pulse"
+      icon="i-carbon-activity"
+      :summary="pulseSummary"
+      collapsible
+      :live="isPlaying && pulseEnabled"
+    >
+      <template #actions>
+        <UiSwitch v-model="pulseEnabled" v-tip="'Audible'" size="sm" />
+      </template>
+      <p class="hint">
+        A slow swell the device stroke and the slideshow lock to in phase, so what
+        you hear and what you feel are the same beat. The switch makes it audible;
+        it keeps time either way.
+      </p>
+      <UiSwitch v-model="pulseFollowsSession" label="Follow session intensity" size="sm" />
+      <UiSlider
+        v-model="pulseCpm"
+        label="Tempo"
+        :min="12"
+        :max="160"
+        :step="1"
+        unit="/min"
+        :reset="DEFAULT.pulseCpm"
+        :disabled="pulseFollowsSession"
+        :hint="pulseFollowsSession ? 'Set by intensity while following the session.' : undefined"
+      />
+      <UiSlider v-model="pulseDepth" label="Depth" :format="pct" :reset="DEFAULT.pulseDepth" :disabled="!pulseEnabled" />
+    </UiSection>
 
-        <!-- Presets -->
-        <div>
-          <p class="label mb-2">
-            Presets <span class="text-fg-faint font-normal normal-case">&mdash; morphs smoothly while playing</span>
-          </p>
-          <div class="gap-1.5 grid grid-cols-2 xl:grid-cols-3">
-            <button
-              v-for="p in PRESETS"
-              :key="p.name"
-              class="px-2 py-1.5 text-left border rounded-lg transition-colors"
-              :class="currentPreset === p.name
-                ? 'border-accent-500/40 bg-accent-500/10'
-                : 'border-edge bg-surface-900 hover:bg-surface-800'"
-              @click="applyPreset(p)"
-            >
-              <div class="flex gap-1.5 items-center">
-                <span class="rounded-full shrink-0 h-1.5 w-1.5" :style="{ background: p.color }" />
-                <p class="text-[11px] text-fg font-semibold truncate">
-                  {{ p.name }}
-                </p>
-              </div>
-              <p class="text-[10px] text-fg-muted leading-tight mt-0.5">
-                {{ p.desc }}
-              </p>
-              <p class="text-[10px] mt-1" :style="{ color: p.color }">
-                {{ p.hz }}
-              </p>
-            </button>
+    <!-- ─── Session shape ─────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="openSession"
+      title="Session shape"
+      icon="i-carbon-flow"
+      :summary="sessionSummary"
+      collapsible
+      :live="sessionActive"
+    >
+      <div class="flex flex-col gap-1.5">
+        <UiSegmented v-model="sessionArc" :options="ARCS" block />
+        <span class="hint">{{ arcHint }}</span>
+      </div>
+      <Transition name="t-collapse">
+        <div v-if="sessionArc === 'edged'">
+          <div class="min-h-0 overflow-hidden">
+            <UiSlider v-model="edgeCycles" label="Passes before wind-down" :min="1" :max="8" :step="1" :reset="DEFAULT.edgeCycles" />
           </div>
         </div>
+      </Transition>
+      <UiSwitch v-model="driftMode" label="Drift" hint="Lets the beat wander a little while a session runs." size="sm" />
+    </UiSection>
 
-        <!-- Manual controls -->
-        <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
-          <p class="text-xs text-fg-muted tracking-wider uppercase">
-            Manual
-          </p>
-
-          <div>
-            <div class="mb-2 flex justify-between">
-              <label class="text-sm text-fg-muted">Base Frequency</label>
-              <span class="text-sm text-teal-400 font-mono">{{ baseFrequency.toFixed(0) }} Hz</span>
-            </div>
-            <input
-              type="range" min="40" max="500" step="1"
-              :value="baseFrequency"
-              class="primary-slider w-full"
-              @input="onBaseFreq"
-            >
-            <div class="text-[10px] text-fg-faint mb-1 mt-1 flex justify-between">
-              <span>40 Hz</span><span>500 Hz</span>
-            </div>
-            <p v-if="carrierOutOfRange" class="hint text-amber-400/80 mb-2">
-              Beat perception is widest around 250&ndash;450 Hz, and falls away
-              entirely above about 1 kHz. Outside that band the beat gets harder to
-              hear, whatever the delta says.
-            </p>
-            <!-- Solfeggio / tuning presets -->
-            <div class="flex flex-wrap gap-1">
-              <button
-                v-for="sf in SOLFEGGIO"
-                :key="sf.hz"
-                class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
-                :class="baseFrequency === sf.hz
-                  ? 'bg-teal-700 text-teal-100'
-                  : 'bg-surface-800 text-fg-muted hover:text-fg'"
-                @click="setBaseFreq(sf.hz)"
-              >
-                {{ sf.label }}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <div class="mb-2 flex justify-between">
-              <label class="text-sm text-fg-muted">Beat Delta</label>
-              <span class="text-sm text-teal-400 font-mono">{{ beatDelta.toFixed(1) }} Hz</span>
-            </div>
-            <input
-              type="range" min="0.5" max="40" step="0.5"
-              :value="beatDelta"
-              class="primary-slider w-full"
-              @input="onBeatDelta"
-            >
-            <div class="text-[10px] text-fg-faint mt-1 flex justify-between">
-              <span>0.5 Hz (Delta)</span><span>40 Hz (Gamma)</span>
-            </div>
-          </div>
-
-          <div>
-            <div class="mb-2 flex justify-between">
-              <label class="text-sm text-fg-muted">Volume</label>
-              <span class="text-sm text-teal-400 font-mono">{{ Math.round(volume * 100) }}%</span>
-            </div>
-            <input
-              type="range" min="0" max="1" step="0.01"
-              :value="volume"
-              class="primary-slider w-full"
-              @input="onVolume"
-            >
-          </div>
-
-          <div>
-            <label class="text-sm text-fg-muted mb-2 block">Wave Shape</label>
-            <div class="flex gap-2">
-              <button
-                v-for="wt in WAVE_TYPES"
-                :key="wt.value"
-                class="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
-                :class="waveType === wt.value
-                  ? 'bg-teal-600 text-white'
-                  : 'bg-surface-800 text-fg-muted hover:bg-surface-700 hover:text-fg'"
-                @click="onWaveType(wt.value)"
-              >
-                {{ wt.label }}
-              </button>
-            </div>
-          </div>
+    <!-- ─── Breath pacing ─────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="openBreath"
+      title="Breath pacing"
+      icon="i-carbon-rain-drop"
+      :summary="breathSummary"
+      collapsible
+      :live="isPlaying && breathEnabled && noiseEnabled"
+    >
+      <template #actions>
+        <UiSwitch v-model="breathEnabled" size="sm" />
+      </template>
+      <p class="hint">
+        Swells the noise bed to breathe along with, longer out than in. The one
+        part of this panel with a solid physiological mechanism behind it rather
+        than entrainment folklore.
+      </p>
+      <Transition name="t-fade">
+        <div v-if="breathNeedsNoise" class="px-2.5 py-2 well flex gap-2 items-center">
+          <span class="i-carbon-warning-alt text-warn shrink-0" />
+          <span class="text-[11.5px] text-fg-muted flex-1">Needs the noise bed on.</span>
+          <UiButton size="xs" variant="subtle" @click="noiseEnabled = true">
+            Turn on
+          </UiButton>
         </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        v-model:open="openLayers"
-        title="Layers"
-        icon="i-carbon-layers"
-        :summary="layerSummary"
-        :active="noiseEnabled"
-      >
-        <!-- Audio Layers -->
-        <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-5">
-          <p class="text-xs text-fg-muted tracking-wider uppercase">
-            Audio Layers
-          </p>
-
-          <!-- Noise -->
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <label class="text-sm text-fg-muted font-medium">Ambient Noise</label>
-              <button
-                class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-                :class="noiseEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                @click="noiseEnabled = !noiseEnabled"
-              >
-                {{ noiseEnabled ? 'On' : 'Off' }}
-              </button>
-            </div>
-
-            <Transition name="expand">
-              <div v-if="noiseEnabled" class="pl-3 border-l border-edge space-y-3">
-                <div class="flex gap-2">
-                  <button
-                    v-for="nt in NOISE_TYPES"
-                    :key="nt.value"
-                    class="text-xs font-medium py-2 text-center rounded-lg flex-1 transition-colors"
-                    :class="noiseType === nt.value
-                      ? 'bg-teal-700 text-white'
-                      : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-                    @click="setNoiseType(nt.value)"
-                  >
-                    <div class="font-semibold">
-                      {{ nt.label }}
-                    </div>
-                    <div class="text-[10px] text-fg-muted mt-0.5">
-                      {{ nt.desc }}
-                    </div>
-                  </button>
-                </div>
-
-                <div>
-                  <div class="mb-1.5 flex justify-between">
-                    <label class="text-xs text-fg-muted">Noise Volume</label>
-                    <span class="text-xs text-teal-400 font-mono">{{ Math.round(noiseVolume * 100) }}%</span>
-                  </div>
-                  <input
-                    type="range" min="0.01" max="0.6" step="0.01"
-                    :value="noiseVolume"
-                    class="primary-slider w-full"
-                    @input="onNoiseVolume"
-                  >
-                </div>
-              </div>
-            </Transition>
-          </div>
-
-          <!-- Harmonics -->
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm text-fg-muted font-medium">
-                Harmonic Stack
-              </p>
-              <p class="text-[10px] text-fg-faint mt-0.5">
-                Adds +1 and +2 octave layers (35%, 18% gain)
-              </p>
-            </div>
-            <button
-              class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-              :class="harmonicsEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-              @click="harmonicsEnabled = !harmonicsEnabled"
-            >
-              {{ harmonicsEnabled ? 'On' : 'Off' }}
-            </button>
-          </div>
-
-          <!-- Beat Drift -->
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm text-fg-muted font-medium">
-                Beat Drift
-              </p>
-              <p class="text-[10px] text-fg-faint mt-0.5">
-                ±0.4 Hz micro-variation every 2.5–6s
-              </p>
-            </div>
-            <button
-              class="text-xs font-medium px-3 py-1 rounded-full transition-colors"
-              :class="beatDriftEnabled ? 'bg-teal-600 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-              @click="beatDriftEnabled = !beatDriftEnabled"
-            >
-              {{ beatDriftEnabled ? 'On' : 'Off' }}
-            </button>
-          </div>
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        v-model:open="openSession"
-        title="Session"
-        icon="i-carbon-flow"
-        :summary="sessionSummary"
-        :active="sessionActive"
-      >
-        <!-- Session pulse -->
-        <div class="panel p-3 space-y-2.5">
-          <div class="flex items-center justify-between">
-            <p class="label">
-              Session pulse
-            </p>
-            <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-              <input v-model="pulseEnabled" type="checkbox">
-              Audible
-            </label>
-          </div>
-          <p class="hint">
-            A slow swell the device stroke and the slideshow lock to in phase, so
-            what you hear and what you feel are the same beat.
-          </p>
-
-          <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-            <input v-model="pulseFollowsSession" type="checkbox">
-            Follow session intensity
-          </label>
-
-          <div>
-            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-              <span>Tempo</span>
-              <span class="font-mono">{{ pulseCpm }} / min</span>
-            </div>
-            <input
-              v-model.number="pulseCpm" type="range" min="12" max="160" step="1"
-              class="accent w-full" :disabled="pulseFollowsSession"
-            >
-          </div>
-
-          <div>
-            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-              <span>Depth</span>
-              <span class="font-mono">{{ (pulseDepth * 100).toFixed(0) }}%</span>
-            </div>
-            <input v-model.number="pulseDepth" type="range" min="0" max="1" step="0.01" class="accent w-full">
-          </div>
-        </div>
-
-        <!-- Session arc -->
-        <div>
-          <p class="label mb-2">
-            Session arc
-          </p>
-          <div class="gap-1 grid grid-cols-2">
-            <button
-              v-for="a in ARCS"
-              :key="a.id"
-              class="text-[11px] font-medium px-2 py-1.5 border rounded-lg transition-colors"
-              :class="sessionArc === a.id
-                ? 'border-teal-500/40 bg-teal-500/10 text-teal-300'
-                : 'border-edge bg-surface-900 text-fg-muted hover:bg-surface-800'"
-              @click="sessionArc = a.id"
-            >
-              {{ a.label }}
-            </button>
-          </div>
-          <p class="hint mt-1.5">
-            {{ arcHint }}
-          </p>
-          <div v-if="sessionArc === 'edged'" class="mt-2">
-            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-              <span>Passes before wind-down</span>
-              <span class="font-mono">{{ edgeCycles }}</span>
-            </div>
-            <input v-model.number="edgeCycles" type="range" min="1" max="8" step="1" class="accent w-full">
-          </div>
-        </div>
-
-        <!-- Breath pacing -->
-        <div class="panel p-3 space-y-2.5">
-          <div class="flex items-center justify-between">
-            <p class="label">
-              Breath pacing
-            </p>
-            <label class="text-[11px] text-fg-muted flex gap-1.5 cursor-pointer items-center">
-              <input v-model="breathEnabled" type="checkbox">
-              On
-            </label>
-          </div>
-          <p class="hint">
-            Swells the noise bed to breathe along with, longer out than in. Needs
-            the noise layer on. This is the one part of this panel with a solid
-            physiological mechanism behind it rather than entrainment folklore.
-          </p>
-          <div>
-            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-              <span>Rate</span>
-              <span class="font-mono">{{ breathPerMinute }} / min</span>
-            </div>
-            <input v-model.number="breathPeriod" type="range" min="4" max="20" step="0.5" class="accent w-full">
-          </div>
-          <div>
-            <div class="text-[10px] text-fg-faint mb-1 flex justify-between">
-              <span>In / out</span>
-              <span class="font-mono">{{ (breathInhaleRatio * 100).toFixed(0) }} / {{ (100 - breathInhaleRatio * 100).toFixed(0) }}</span>
-            </div>
-            <input v-model.number="breathInhaleRatio" type="range" min="0.25" max="0.5" step="0.01" class="accent w-full">
-          </div>
-        </div>
-
-        <!-- Session Engine -->
-        <div class="p-5 border border-edge rounded-2xl bg-surface-900 space-y-4">
-          <div class="flex items-center justify-between">
-            <p class="text-xs text-fg-muted tracking-wider uppercase">
-              Session Engine
-            </p>
-            <div v-if="phase !== 'idle'" class="flex gap-2 items-center">
-              <div class="rounded-full h-2 w-2 animate-pulse" :style="{ background: phaseColor }" />
-              <span class="text-xs font-medium" :style="{ color: phaseColor }">{{ phaseLabel }}</span>
-            </div>
-          </div>
-
-          <p class="text-xs text-fg-faint">
-            Automatically evolves beat, noise and visual intensity through entry → build → peak → descent phases.
-          </p>
-
-          <!-- Phase timeline -->
-          <div v-if="sessionActive" class="flex gap-1 h-1.5">
-            <div
-              v-for="ph in ['entry', 'build', 'peak', 'descent']"
-              :key="ph"
-              class="rounded-full flex-1 transition-all duration-500"
-              :style="{
-                background: PHASE_META[ph].color,
-                opacity: phase === ph ? 1 : 0.25,
-              }"
-            />
-          </div>
-
-          <!-- Phase jump buttons (only during active session) -->
-          <div v-if="sessionActive" class="flex gap-1">
-            <button
-              v-for="ph in (['entry', 'build', 'peak', 'descent'] as SessionPhase[])"
-              :key="ph"
-              class="text-[10px] font-medium px-2 py-1 rounded-lg flex-1 transition-all"
-              :class="phase === ph
-                ? 'text-fg-faint font-semibold'
-                : 'bg-surface-800 text-fg-muted hover:text-fg'"
-              :style="phase === ph ? { background: PHASE_META[ph].color } : {}"
-              @click="session.jumpToPhase(ph)"
-            >
-              {{ PHASE_META[ph].label }}
-            </button>
-          </div>
-
-          <div class="flex gap-3">
-            <button
-              class="text-sm font-semibold py-2.5 rounded-xl flex-1 transition-all active:scale-95"
-              :class="sessionActive
-                ? 'bg-surface-700 hover:bg-fg/15 text-fg'
-                : 'bg-teal-600 hover:bg-teal-500 text-white'"
-              @click="toggleSession"
-            >
-              {{ sessionActive ? '■ End Session' : '▶ Start Session' }}
-            </button>
-
-            <button
-              class="text-xs font-medium px-3 rounded-xl transition-colors"
-              :class="driftMode ? 'bg-purple-700 text-white' : 'bg-surface-800 text-fg-muted hover:bg-surface-700'"
-              @click="driftMode = !driftMode"
-            >
-              Drift Mode
-            </button>
-          </div>
-        </div>
-      </CollapsibleSection>
-    </div>
-  </div>
+      </Transition>
+      <UiSlider
+        v-model="breathPeriod"
+        label="Rate"
+        :min="4"
+        :max="20"
+        :step="0.5"
+        :format="v => `${(60 / v).toFixed(1)}/min · ${v}s`"
+        :reset="DEFAULT.breathPeriod"
+      />
+      <UiSlider
+        v-model="breathInhaleRatio"
+        label="In / out"
+        :min="0.25"
+        :max="0.5"
+        :format="v => `${Math.round(v * 100)} / ${100 - Math.round(v * 100)}`"
+        :reset="DEFAULT.inhale"
+      />
+    </UiSection>
+  </UiPanel>
 </template>
 
 <style scoped>
-.primary-slider {
-  -webkit-appearance: none;
-  appearance: none;
-  background: #3f3f46;
-  border-radius: 4px;
-  height: 5px;
-  outline: none;
-  width: 100%;
-}
-.primary-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  background: #2dd4bf;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform 0.1s;
-}
-.primary-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-}
-.primary-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  background: #2dd4bf;
-  border-radius: 50%;
-  cursor: pointer;
-  border: none;
+/* A faint wash of the current phase colour, so the hero reads the session at a glance. */
+.hero {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--phase) 9%, var(--bg-850)) 0%, var(--bg-850) 70%);
+  transition: background var(--dur-slow) var(--ease-out);
 }
 
+.wave {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  animation: wave-flow 4s linear infinite;
+  animation-play-state: paused;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+.wave-a {
+  stroke: var(--accent);
+  stroke-width: 1.75;
+  opacity: 0.35;
+}
+.wave-b {
+  stroke: var(--info);
+  stroke-width: 1.25;
+  opacity: 0.2;
+  animation-duration: 6s;
+  animation-direction: reverse;
+}
+.is-live .wave {
+  animation-play-state: running;
+}
+.is-live .wave-a {
+  opacity: 0.75;
+}
+.is-live .wave-b {
+  opacity: 0.5;
+}
 @keyframes wave-flow {
+  to {
+    transform: translateX(100px);
+  }
+}
+
+.core,
+.ring,
+.halo {
+  position: absolute;
+  border-radius: 9999px;
+}
+.core {
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  opacity: 0.35;
+  transition: opacity var(--dur) var(--ease-out);
+}
+.ring {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--accent);
+  opacity: 0;
+}
+.halo {
+  width: 56px;
+  height: 56px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--info) 30%, transparent) 0%, transparent 70%);
+  opacity: 0;
+}
+.is-live .core {
+  opacity: 1;
+  box-shadow: 0 0 14px var(--accent);
+  animation: beat-core var(--beat) ease-in-out infinite;
+}
+.is-live .ring {
+  animation: beat-ring var(--beat) ease-out infinite;
+}
+.is-live .ring-late {
+  animation-delay: calc(var(--beat) / 2);
+}
+.is-live .halo {
+  animation: pulse-halo var(--pulse) ease-in-out infinite;
+}
+@keyframes beat-core {
+  0%,
+  100% {
+    transform: scale(0.7);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+@keyframes beat-ring {
   from {
-    transform: translateX(0);
+    transform: scale(0.8);
+    opacity: 0.75;
   }
   to {
-    transform: translateX(200px);
-  }
-}
-.wave1 {
-  animation: wave-flow calc(4s / var(--speed, 1)) linear infinite;
-}
-.wave2 {
-  animation: wave-flow calc(6s / var(--speed, 1)) linear infinite reverse;
-}
-
-@keyframes beat-ring {
-  0% {
-    width: 20px;
-    height: 20px;
-    opacity: 0.6;
-  }
-  100% {
-    width: 72px;
-    height: 72px;
+    transform: scale(3.4);
     opacity: 0;
   }
 }
-.beat-pulse-ring {
-  animation: beat-ring var(--pulse-period, 1s) ease-out infinite;
-}
-
-.expand-enter-active,
-.expand-leave-active {
-  transition:
-    opacity 0.3s ease,
-    max-height 0.3s ease;
-  max-height: 200px;
-  overflow: hidden;
-}
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  max-height: 0;
+@keyframes pulse-halo {
+  0%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.9;
+  }
 }
 </style>

@@ -91,7 +91,8 @@ export function useScriptPulse() {
       return
 
     analyse()
-    const tMs = player.currentTime * 1000 - (s.offsetMs ?? 0)
+    // Same sign as useVideoSync, so the pulse and the device agree on an offset.
+    const tMs = player.currentTime * 1000 + (s.offsetMs ?? 0)
 
     // ── Intensity from stroke speed ──────────────────────────────────────
     const sample = sampleEnvelope(envelope, tMs)

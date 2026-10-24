@@ -1,26 +1,35 @@
 <!doctype html>
-<html lang="en" class="h-full" data-theme="dark">
+<html lang="en" class="h-full" data-theme="dark" style="background-color: #08080a">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#08080a" />
+    <meta name="color-scheme" content="dark light" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>playhound</title>
     <meta name="description" content="Audiovisual session engine and funscript player with TCode/OSR device support" />
+    <script>
+      // Apply the persisted theme before first paint. The stylesheet is not in
+      // yet, so the page background is set by hand from the theme's --bg-base
+      // (src/styles/main.css) — otherwise every launch opens on a white flash.
+      ;(function () {
+        var BG = { dark: '#08080a', light: '#f3f3f6', catppuccin: '#181825', dracula: '#1f2029' }
+        try {
+          var t = localStorage.getItem('theme') || 'dark'
+          if (!BG[t]) t = 'dark'
+          var root = document.documentElement
+          root.setAttribute('data-theme', t)
+          root.style.backgroundColor = BG[t]
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', BG[t])
+        } catch (e) {}
+      })()
+    </script>
   </head>
-  <body class="h-full bg-surface-950 text-white overflow-hidden">
+  <body class="h-full overflow-hidden">
     <div id="app" class="h-full"></div>
     <noscript>
       <div>Please enable JavaScript to use this application.</div>
     </noscript>
-    <script>
-      // Apply the persisted theme before first paint to avoid a flash
-      ;(function () {
-        try {
-          var t = localStorage.getItem('theme') || 'dark'
-          document.documentElement.setAttribute('data-theme', t)
-        } catch (e) {}
-      })()
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

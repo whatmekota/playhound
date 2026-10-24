@@ -1,70 +1,163 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-
-const visible = ref(true)
-const gone = ref(false)
-
-// ?nosplash skips the intro — useful when grabbing screenshots or iterating on
-// the shell, where sitting through the animation every reload gets old.
-if (typeof location !== 'undefined' && new URLSearchParams(location.search).has('nosplash')) {
-  visible.value = false
-  gone.value = true
-}
+import { useLocalStorage } from '@vueuse/core'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useLibraryStore } from '~/stores/libraryStore'
+import BrandMark from './BrandMark.vue'
 
 /**
- * Bars for the logo mark: an amplitude envelope that swells toward the middle,
- * so it reads as both an audio waveform and a stroke meter — the two things
- * this app drives. Deterministic, so the mark never renders differently.
+ * The intro.
+ *
+ * Plays in full once per browser session; a reload in the same session gets a
+ * short beat of the mark instead, since sitting through it every time gets old.
+ * It waits for the last folder to come back when that is quick, but never
+ * holds the app for more than MAX_MS — and any click or key skips it.
+ *
+ * Off entirely with `?nosplash` (screenshots, shell work) or the setting.
  */
-const BARS = Array.from({ length: 27 }, (_, i) => {
-  const t = i / 26
-  const envelope = Math.sin(Math.PI * t) ** 0.7
-  const detail = 0.62 + 0.38 * Math.abs(Math.sin(t * Math.PI * 6.5))
-  return Math.max(0.08, envelope * detail)
+
+const SEEN_KEY = 'ph-splash-seen'
+const MAX_MS = 2200
+
+const library = useLibraryStore()
+// Shared with the settings modal; VueUse keeps same-key refs in sync.
+const enabled = useLocalStorage('ph-splash', true)
+
+function flag(fn: () => boolean) {
+  try { return fn() }
+  catch { return false }
+}
+
+const skipParam = flag(() => new URLSearchParams(location.search).has('nosplash'))
+const quick = flag(() => sessionStorage.getItem(SEEN_KEY) === '1')
+const reducedMotion = flag(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+const MIN_MS = quick ? 260 : reducedMotion ? 500 : 1450
+
+const show = ref(enabled.value && !skipParam)
+/** 0..1, eased toward where we expect to be; 1 means leaving. */
+const progress = ref(0)
+const progressMs = ref(0)
+
+const status = computed(() => {
+  if (library.restoring)
+    return library.savedFolderName ? `Restoring ${library.savedFolderName}…` : 'Restoring library…'
+  if (library.scanning)
+    return 'Scanning videos…'
+  return progress.value >= 1 ? 'Ready' : 'Starting…'
 })
 
+let t0 = 0
+let minTimer: ReturnType<typeof setTimeout> | null = null
+let maxTimer: ReturnType<typeof setTimeout> | null = null
+let stopWait: (() => void) | null = null
+
+function setProgress(p: number, ms: number) {
+  progressMs.value = ms
+  progress.value = p
+}
+
+function finish() {
+  if (!show.value)
+    return
+  setProgress(1, 160)
+  cleanup()
+  // Let the bar land before the fade starts.
+  setTimeout(() => (show.value = false), quick ? 0 : 140)
+}
+
+function busy() {
+  return library.restoring || library.scanning
+}
+
+function onMinElapsed() {
+  if (quick || !busy()) {
+    finish()
+    return
+  }
+  // The folder is coming back; wait for it, up to the cap.
+  setProgress(0.94, MAX_MS - (performance.now() - t0))
+  stopWait = watch(busy, b => !b && finish())
+  maxTimer = setTimeout(finish, Math.max(0, MAX_MS - (performance.now() - t0)))
+}
+
+function onKey(e: KeyboardEvent) {
+  // The key that skips the intro should not also play, seek or panic.
+  e.stopPropagation()
+  finish()
+}
+
+function cleanup() {
+  if (minTimer)
+    clearTimeout(minTimer)
+  if (maxTimer)
+    clearTimeout(maxTimer)
+  stopWait?.()
+  minTimer = maxTimer = stopWait = null
+  window.removeEventListener('keydown', onKey, true)
+}
+
 onMounted(() => {
-  setTimeout(() => {
-    visible.value = false
-    setTimeout(() => {
-      gone.value = true
-    }, 500)
-  }, 1500)
+  if (!show.value)
+    return
+  try { sessionStorage.setItem(SEEN_KEY, '1') }
+  catch {}
+  t0 = performance.now()
+  window.addEventListener('keydown', onKey, true)
+  minTimer = setTimeout(onMinElapsed, MIN_MS)
+  // Start the bar on the next frame so its transition actually runs.
+  void nextTick(() => requestAnimationFrame(() => setProgress(0.82, MIN_MS)))
 })
+
+onBeforeUnmount(cleanup)
+
+const WORD = [...'play'].map(c => ({ c, accent: false })).concat([...'hound'].map(c => ({ c, accent: true })))
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="splash">
-      <div v-if="!gone && visible" class="splash-root">
-        <div class="splash-bg" />
+      <div
+        v-if="show"
+        class="splash"
+        :class="{ 'is-quick': quick }"
+        role="presentation"
+        @pointerdown="finish"
+      >
+        <div class="splash-glow" aria-hidden="true" />
 
-        <div class="splash-logo">
+        <div class="splash-stage">
           <div class="splash-mark">
-            <div class="splash-bars">
-              <span
-                v-for="(h, i) in BARS"
-                :key="i"
-                class="splash-bar-tick"
-                :style="{
-                  height: `${h * 100}%`,
-                  animationDelay: `${i * 26}ms`,
-                }"
-              />
-            </div>
-            <span class="splash-axis" />
+            <span class="splash-ring" aria-hidden="true" />
+            <span class="splash-ring splash-ring-2" aria-hidden="true" />
+            <BrandMark :size="92" :animated="!quick" />
           </div>
 
-          <div class="splash-title">
-            play<span>hound</span>
-          </div>
-          <div class="splash-sub">
-            Session engine &middot; Funscript player
-          </div>
+          <h1 class="splash-word" aria-label="playhound">
+            <span
+              v-for="(l, i) in WORD"
+              :key="i"
+              :class="{ 'is-accent': l.accent }"
+              :style="{ animationDelay: `${780 + i * 38}ms` }"
+              aria-hidden="true"
+            >{{ l.c }}</span>
+          </h1>
+          <p class="splash-tag">
+            Funscript player <span>·</span> Session engine
+          </p>
         </div>
 
-        <div class="splash-bar-wrap">
-          <div class="splash-bar" />
+        <div class="splash-foot">
+          <div class="splash-track">
+            <div
+              class="splash-fill"
+              :style="{ transform: `scaleX(${progress})`, transitionDuration: `${progressMs}ms` }"
+            />
+          </div>
+          <p class="splash-status" aria-live="polite">
+            {{ status }}
+          </p>
+          <p class="splash-skip">
+            Click or press any key to skip
+          </p>
         </div>
       </div>
     </Transition>
@@ -72,189 +165,203 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.splash-root {
+.splash {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: var(--bg-base, #0a0a0a);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 30px;
+  background: var(--bg-base);
+  color: var(--text);
+  cursor: default;
+  user-select: none;
+  overflow: hidden;
 }
 
-.splash-bg {
+/* Accent bloom behind the mark, swelling as the mark completes. */
+.splash-glow {
   position: absolute;
-  inset: 0;
+  left: 50%;
+  top: 46%;
+  width: min(760px, 120vw);
+  aspect-ratio: 1;
+  translate: -50% -50%;
   background: radial-gradient(
-    ellipse 55% 45% at 50% 50%,
-    color-mix(in srgb, var(--accent) 14%, transparent) 0%,
-    transparent 70%
+    closest-side,
+    color-mix(in srgb, var(--accent) 24%, transparent),
+    color-mix(in srgb, var(--accent) 7%, transparent) 55%,
+    transparent
   );
-  animation: pulse-bg 2.2s ease-in-out infinite alternate;
+  animation: sp-glow 1400ms 200ms var(--ease-out) both;
+  pointer-events: none;
 }
 
-@keyframes pulse-bg {
-  from {
-    opacity: 0.45;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.splash-logo {
+.splash-stage {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  animation: logo-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  margin-top: -4vh;
 }
 
-@keyframes logo-in {
-  from {
-    opacity: 0;
-    transform: translateY(14px) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-/* ── Mark ─────────────────────────────────────────────────────────────────── */
 .splash-mark {
   position: relative;
-  width: 132px;
-  height: 132px;
-  border-radius: 30px;
-  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent),
-    0 12px 40px -12px color-mix(in srgb, var(--accent) 55%, transparent);
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 14px 32px color-mix(in srgb, var(--accent) 38%, transparent));
 }
 
-.splash-bars {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  width: 88px;
-  height: 64px;
-}
-
-.splash-bar-tick {
-  flex: 1;
-  border-radius: 9999px;
-  background: linear-gradient(to bottom, var(--accent-light, #e879f9), var(--accent, #c026d3));
-  transform-origin: center;
-  animation: tick-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes tick-in {
-  from {
-    transform: scaleY(0.12);
-    opacity: 0;
-  }
-  to {
-    transform: scaleY(1);
-    opacity: 1;
-  }
-}
-
-/* Stroke axis: the vertical line the device actually moves along. */
-.splash-axis {
+/* One ripple out of the mark when it lands, like a pulse leaving a speaker. */
+.splash-ring {
   position: absolute;
-  top: 22px;
-  bottom: 22px;
-  width: 1px;
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--accent) 55%, transparent), transparent);
-  animation: axis-sweep 1.6s 0.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  inset: -6px;
+  border-radius: 34px;
+  border: 1.5px solid color-mix(in srgb, var(--accent-light) 55%, transparent);
+  opacity: 0;
+  animation: sp-ring 1300ms 1000ms var(--ease-out) both;
+  pointer-events: none;
+}
+.splash-ring-2 {
+  animation-delay: 1180ms;
 }
 
-@keyframes axis-sweep {
-  0% {
-    transform: translateY(-30%);
-    opacity: 0;
-  }
-  35% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(30%);
-    opacity: 0;
-  }
+.splash-word {
+  margin: 26px 0 0;
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  display: flex;
+}
+.splash-word span {
+  display: inline-block;
+  animation: sp-letter 620ms var(--ease-out) both;
+}
+.splash-word .is-accent {
+  background: linear-gradient(120deg, var(--accent-light), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
-/* ── Wordmark ─────────────────────────────────────────────────────────────── */
-.splash-title {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 25px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--text, #fff);
-  animation: logo-in 0.6s 0.12s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.splash-title span {
-  color: var(--accent-light, #e879f9);
-}
-
-.splash-sub {
-  font-size: 10px;
-  letter-spacing: 0.26em;
+.splash-tag {
+  margin: 12px 0 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--text-faint, rgba(255, 255, 255, 0.3));
-  animation: logo-in 0.6s 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  color: var(--text-faint);
+  animation: sp-rise 600ms 1150ms var(--ease-out) both;
+}
+.splash-tag span {
+  color: var(--accent);
+  margin: 0 0.3em;
 }
 
-/* ── Loading bar ──────────────────────────────────────────────────────────── */
-.splash-bar-wrap {
-  width: 172px;
+.splash-foot {
+  position: absolute;
+  bottom: 9vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: sp-rise 500ms 400ms var(--ease-out) both;
+}
+.splash-track {
+  width: 168px;
   height: 2px;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
   border-radius: 9999px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
   overflow: hidden;
-  animation: logo-in 0.4s 0.4s both;
 }
-
-.splash-bar {
+.splash-fill {
   height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--accent), var(--accent-light));
-  border-radius: 9999px;
-  animation: bar-fill 1.2s 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent-light));
+  transform-origin: left;
+  transform: scaleX(0);
+  transition-property: transform;
+  transition-timing-function: var(--ease-out);
+}
+.splash-status {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 1.2em;
+}
+.splash-skip {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--text-faint);
+  animation: sp-rise 500ms 1400ms var(--ease-out) both;
 }
 
-@keyframes bar-fill {
-  from {
-    width: 0%;
-  }
-  to {
-    width: 100%;
-  }
+/* A reload in the same session: no choreography, just the mark. */
+.is-quick .splash-glow,
+.is-quick .splash-word span,
+.is-quick .splash-tag,
+.is-quick .splash-foot,
+.is-quick .splash-skip {
+  animation: none;
+}
+.is-quick .splash-ring {
+  display: none;
 }
 
-.splash-enter-active {
-  transition: opacity 0.25s;
-}
+/* ── Leave: fade out while the stage drifts toward the viewer ─────────────── */
 .splash-leave-active {
-  transition: opacity 0.5s ease;
+  transition: opacity 420ms var(--ease-out);
+  pointer-events: none;
 }
-.splash-enter-from,
+.splash-leave-active .splash-stage {
+  transition:
+    transform 420ms var(--ease-out),
+    filter 420ms var(--ease-out);
+}
 .splash-leave-to {
   opacity: 0;
 }
+.splash-leave-to .splash-stage {
+  transform: scale(1.08);
+  filter: blur(6px);
+}
+.is-quick.splash-leave-active {
+  transition-duration: 220ms;
+}
 
-@media (prefers-reduced-motion: reduce) {
-  .splash-axis,
-  .splash-bg {
-    animation: none;
+@keyframes sp-glow {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes sp-ring {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+@keyframes sp-letter {
+  from {
+    opacity: 0;
+    transform: translateY(0.45em);
+    filter: blur(4px);
+  }
+}
+@keyframes sp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
 }
 </style>
