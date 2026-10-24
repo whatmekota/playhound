@@ -1,5 +1,6 @@
 import { useLocalStorage } from '@vueuse/core'
 import { onUnmounted, ref } from 'vue'
+import { desktop } from '~/lib/browserApi'
 
 export type RemoteAction
   = | 'togglePlay' | 'next' | 'prev' | 'random' | 'panic'
@@ -30,8 +31,13 @@ export const RC_PORT = 7072
 export const remoteRoom = useLocalStorage('ph:remote.room', () =>
   Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 8)).join(''))
 
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+
 export function remoteUrl(room: string): string {
-  const host = location.hostname
+  // The desktop window always runs on localhost, which a phone cannot open;
+  // the desktop shell knows this machine's LAN address, so hand out that.
+  const lan = desktop?.lan[0]?.address
+  const host = LOOPBACK.has(location.hostname) && lan ? lan : location.hostname
   return `${location.protocol}//${host}:${location.port}/remote?room=${room}`
 }
 

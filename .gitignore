@@ -9,6 +9,10 @@ dist-ssr
 *.log
 .shots
 
+# desktop app: staging + icons (desktop/build.mjs) and the installers
+.desktop/
+release/
+
 firmware/cyd-face/config.h
 
 firmware/cyd-face/_preview.png

@@ -182,3 +182,20 @@ export const webSerial = {
     }
   },
 }
+
+// ── Desktop shell (Electron) ──────────────────────────────────────────────────
+
+export interface DesktopInfo {
+  version: string
+  port: number
+  dev: boolean
+  /** This machine's IPv4 addresses, physical adapters first. */
+  lan: readonly { name: string, address: string }[]
+}
+
+/**
+ * Set by the desktop app's preload (desktop/preload.cjs); null in a browser.
+ * The desktop window always runs on localhost, so anything that hands a URL
+ * to another device (the phone remote) should take its host from `lan`.
+ */
+export const desktop: DesktopInfo | null = (globalThis as any).playhoundDesktop ?? null

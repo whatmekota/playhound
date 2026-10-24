@@ -12,7 +12,23 @@ rem    7071  EroScripts proxy        \  both live in es-proxy.mjs, which runs
 rem    7072  remote relay (WebSocket) /  in its own minimised window
 rem
 rem  Closing this window shuts the relay down too.
+rem
+rem  If the desktop app has been built (pnpm app:build) or installed, that is
+rem  launched instead: it serves all three ports itself. "start.bat browser"
+rem  forces the browser flow below.
 rem ---------------------------------------------------------------------------
+
+rem  (No goto/labels: this file has LF line endings, and cmd mis-seeks labels in those.)
+set "PH_EXE="
+if exist "%~dp0release\win-unpacked\playhound.exe" set "PH_EXE=%~dp0release\win-unpacked\playhound.exe"
+if not defined PH_EXE if exist "%LOCALAPPDATA%\Programs\playhound\playhound.exe" set "PH_EXE=%LOCALAPPDATA%\Programs\playhound\playhound.exe"
+if /i "%~1"=="browser" set "PH_EXE="
+if defined PH_EXE (
+  echo   starting the desktop app: %PH_EXE%
+  start "" "%PH_EXE%"
+  endlocal
+  exit /b 0
+)
 
 echo.
 echo   time to goon...

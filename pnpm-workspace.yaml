@@ -1,6 +1,11 @@
 shellEmulator: true
 
 trustPolicy: no-downgrade
+# Pulled in by electron-builder. 5.7.2 and 6.3.1 are the 2023 ReDoS
+# backports, published by hand after 7.x had moved to provenance, which is what
+# trips the check — not a takeover. Pinned exactly so nothing else slips past.
+trustPolicyExclude:
+  - 'semver@5.7.2 || 6.3.1'
 
 packages: []
 catalog:
@@ -15,6 +20,10 @@ catalogs:
     unplugin-auto-import: ^21.0.0
     unplugin-vue-components: ^31.0.0
     vite: ^7.3.1
+  desktop:
+    '@resvg/resvg-js': ^2.6.2
+    electron: ^44.9.3
+    electron-builder: ^26.17.0
   dev:
     '@antfu/eslint-config': ^7.6.1
     '@types/node': ^25.3.3
@@ -38,7 +47,11 @@ catalogs:
     three: ^0.184.0
     vue: ^3.5.29
     vue-router: ^5.0.3
+ignoredBuiltDependencies:
+  # Squirrel.Windows support in electron-builder; the app ships as NSIS / portable.
+  - electron-winstaller
 onlyBuiltDependencies:
+  - electron
   - esbuild
   - simple-git-hooks
   - unrs-resolver

@@ -1,19 +1,24 @@
 /**
- * EroScripts proxy server — runs alongside Vite dev server.
+ * EroScripts proxy + phone-remote relay.
  * Forwards requests to discuss.eroscripts.com with the user's _t session cookie,
  * bypassing CORS entirely since the request is made server-side.
  *
- * Usage: node es-proxy.mjs
- * Listens on http://localhost:7071
+ * Usage: node es-proxy.mjs (or pnpm dev:proxy) next to the Vite dev server.
+ * The desktop app (desktop/main.mjs) imports startProxy() and runs both in-process.
+ *   7071  EroScripts / Pixeldrain proxy, loopback only
+ *   7072  remote-control relay (WebSocket), all interfaces
  */
 
 import http from 'node:http'
 import https from 'node:https'
 import os from 'node:os'
+import path from 'node:path'
+import process from 'node:process'
+import { pathToFileURL } from 'node:url'
 import { WebSocketServer } from 'ws'
 
-const PORT = 7071
-const RC_PORT = 7072
+export const PORT = 7071
+export const RC_PORT = 7072
 const TARGET = 'discuss.eroscripts.com'
 
 function makeRequest(hostname, path, reqHeaders, res, depth = 0) {
@@ -73,7 +78,7 @@ function makeRequest(hostname, path, reqHeaders, res, depth = 0) {
   proxyReq.end()
 }
 
-const server = http.createServer((req, res) => {
+function handleProxy(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Accept, X-ES-Cookie, Range')
@@ -169,16 +174,7 @@ const server = http.createServer((req, res) => {
     ...(userCookie ? { Cookie: userCookie } : {}),
   }
   makeRequest(TARGET, req.url, esHeaders, res)
-})
-
-// The EroScripts proxy forwards the user's session cookie, so it stays bound to
-// loopback. The remote-control relay is a separate server on its own port,
-// because that one genuinely has to be reachable from a phone on the LAN.
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[ES Proxy] Running at http://localhost:${PORT}`)
-  console.log(`[ES Proxy] EroScripts → https://${TARGET}`)
-  console.log(`[ES Proxy] Pixeldrain → /pd/:id`)
-})
+}
 
 // ── Remote-control relay ─────────────────────────────────────────────────────
 //
@@ -187,63 +183,69 @@ server.listen(PORT, '127.0.0.1', () => {
 // shows, so nothing secret has to reach this process out of band, and guessing a
 // room is the only way in from the LAN.
 
-const rooms = new Map() // room -> Set<ws>
+function createRelay() {
+  const rooms = new Map() // room -> Set<ws>
 
-const rcServer = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' })
-  res.end('playhound remote relay')
-})
-
-const wss = new WebSocketServer({ server: rcServer, path: '/rc' })
-
-wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, 'http://localhost')
-  const room = url.searchParams.get('room')
-  const role = url.searchParams.get('role') === 'remote' ? 'remote' : 'host'
-
-  if (!room || room.length < 6) {
-    ws.close(1008, 'room required')
-    return
-  }
-
-  if (!rooms.has(room))
-    rooms.set(room, new Set())
-  const peers = rooms.get(room)
-  ws.__room = room
-  ws.__role = role
-  peers.add(ws)
-
-  // Tell both sides who else is present, so the UI can show a real status.
-  const announce = () => {
-    const counts = { hosts: 0, remotes: 0 }
-    for (const p of peers) {
-      if (p.__role === 'host')
-        counts.hosts++
-      else counts.remotes++
-    }
-    const msg = JSON.stringify({ type: 'peers', ...counts })
-    for (const p of peers) {
-      if (p.readyState === 1)
-        p.send(msg)
-    }
-  }
-  announce()
-
-  ws.on('message', (data) => {
-    const text = typeof data === 'string' ? data : data.toString()
-    for (const p of peers) {
-      if (p !== ws && p.readyState === 1)
-        p.send(text)
-    }
+  const rcServer = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('playhound remote relay')
   })
 
-  ws.on('close', () => {
-    peers.delete(ws)
-    if (peers.size === 0)
-      rooms.delete(room)
-    else announce()
+  const wss = new WebSocketServer({ server: rcServer, path: '/rc' })
+  // ws re-emits the http server's errors; listen() below reports a busy port,
+  // and without a listener here the same error would also crash the process.
+  wss.on('error', () => {})
+
+  wss.on('connection', (ws, req) => {
+    const url = new URL(req.url, 'http://localhost')
+    const room = url.searchParams.get('room')
+    const role = url.searchParams.get('role') === 'remote' ? 'remote' : 'host'
+
+    if (!room || room.length < 6) {
+      ws.close(1008, 'room required')
+      return
+    }
+
+    if (!rooms.has(room))
+      rooms.set(room, new Set())
+    const peers = rooms.get(room)
+    ws.__room = room
+    ws.__role = role
+    peers.add(ws)
+
+    // Tell both sides who else is present, so the UI can show a real status.
+    const announce = () => {
+      const counts = { hosts: 0, remotes: 0 }
+      for (const p of peers) {
+        if (p.__role === 'host')
+          counts.hosts++
+        else counts.remotes++
+      }
+      const msg = JSON.stringify({ type: 'peers', ...counts })
+      for (const p of peers) {
+        if (p.readyState === 1)
+          p.send(msg)
+      }
+    }
+    announce()
+
+    ws.on('message', (data) => {
+      const text = typeof data === 'string' ? data : data.toString()
+      for (const p of peers) {
+        if (p !== ws && p.readyState === 1)
+          p.send(text)
+      }
+    })
+
+    ws.on('close', () => {
+      peers.delete(ws)
+      if (peers.size === 0)
+        rooms.delete(room)
+      else announce()
+    })
   })
-})
+  return { server: rcServer, wss }
+}
 
 function lanAddresses() {
   const out = []
@@ -256,9 +258,79 @@ function lanAddresses() {
   return out
 }
 
-rcServer.listen(RC_PORT, '0.0.0.0', () => {
-  console.log(`[Remote] Relay on ws://0.0.0.0:${RC_PORT}/rc`)
-  for (const ip of lanAddresses())
-    console.log(`[Remote]   reachable at ws://${ip}:${RC_PORT}/rc`)
-  console.log('[Remote] Open the Remote panel on the desktop for the phone URL.')
-})
+/**
+ * Listen, but treat a busy port as "someone else already serves this" rather
+ * than crashing: a second playhound, or `pnpm dev:proxy` left running next to
+ * the desktop app, is the usual cause and both serve the same thing.
+ */
+function listen(server, port, host, name, log) {
+  return new Promise((resolve) => {
+    function onListening() {
+      server.off('error', onError)
+      resolve(true)
+    }
+    function onError(err) {
+      server.off('listening', onListening)
+      if (err.code === 'EADDRINUSE')
+        log.warn(`[${name}] port ${port} is already in use; leaving it to whatever holds it`)
+      else
+        log.error(`[${name}] could not listen on ${port}:`, err.message)
+      resolve(false)
+    }
+    server.once('error', onError)
+    server.once('listening', onListening)
+    server.listen(port, host)
+  })
+}
+
+/**
+ * Start the EroScripts proxy and the remote relay.
+ *
+ * `ready` resolves once both have either bound or given up; `close()` stops
+ * whichever did bind, dropping any connected phones.
+ */
+export function startProxy({ log = console } = {}) {
+  const proxy = http.createServer(handleProxy)
+  const relay = createRelay()
+
+  // The EroScripts proxy forwards the user's session cookie, so it stays bound to
+  // loopback. The remote-control relay is a separate server on its own port,
+  // because that one genuinely has to be reachable from a phone on the LAN.
+  const ready = Promise.all([
+    listen(proxy, PORT, '127.0.0.1', 'ES Proxy', log).then((ok) => {
+      if (ok) {
+        log.log(`[ES Proxy] Running at http://localhost:${PORT}`)
+        log.log(`[ES Proxy] EroScripts → https://${TARGET}`)
+        log.log(`[ES Proxy] Pixeldrain → /pd/:id`)
+      }
+      return ok
+    }),
+    listen(relay.server, RC_PORT, '0.0.0.0', 'Remote', log).then((ok) => {
+      if (ok) {
+        log.log(`[Remote] Relay on ws://0.0.0.0:${RC_PORT}/rc`)
+        for (const ip of lanAddresses())
+          log.log(`[Remote]   reachable at ws://${ip}:${RC_PORT}/rc`)
+        log.log('[Remote] Open the Remote panel on the desktop for the phone URL.')
+      }
+      return ok
+    }),
+  ]).then(([proxyUp, relayUp]) => ({ proxy: proxyUp, relay: relayUp }))
+
+  function close() {
+    for (const client of relay.wss.clients)
+      client.terminate()
+    relay.wss.close()
+    relay.server.close()
+    proxy.close()
+  }
+
+  return { ready, close }
+}
+
+// Run directly (`node es-proxy.mjs`): start straight away. Imported — by the
+// desktop main process — the caller decides when.
+const runDirectly = !process.versions.electron
+  && !!process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+if (runDirectly)
+  startProxy()

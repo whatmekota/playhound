@@ -65,6 +65,51 @@ pnpm typecheck
 pnpm lint
 ```
 
+## Desktop app
+
+playhound also runs as a Windows desktop app (Electron, in `desktop/`). It is
+the same app, served the same way, so nothing in `src/` knows the difference.
+
+```bash
+pnpm app          # dev: Electron window on the Vite dev server, with HMR
+pnpm app:build    # vite build + NSIS installer and portable .exe in release/
+pnpm app:dir      # same, but only release/win-unpacked/ (quicker)
+```
+
+- **What it runs.** The built app serves `dist/` on `0.0.0.0:6969` (so the phone
+  can still open `http://<lan-ip>:6969/remote`), runs the EroScripts proxy (:7071)
+  and the remote relay (:7072) in-process, and opens its window on
+  `http://localhost:6969`. No terminal, no `pnpm dev:proxy`.
+- **start.bat** launches the desktop app when it finds one — `release\win-unpacked\`
+  first, then an installed copy — and falls back to the old browser flow
+  otherwise. `start.bat browser` forces the browser flow.
+- **One copy at a time.** Starting it again focuses the open window. If port 6969
+  is held by a playhound dev server, the app uses that; if something else holds
+  it, it says so and quits. A busy 7071/7072 (a stray `pnpm dev:proxy`) is
+  shared, not fatal.
+- **Serial.** Connect works as in Chrome, minus the chooser when there is only
+  one port. With several, a small list asks which one, defaulting to the port
+  used last time.
+- **Library folder.** The remembered folder comes back on launch without the
+  "reconnect" click the browser needs: the app grants its own origin file
+  access on restored handles. Chromium still refuses system folders (AppData,
+  Program Files, Windows, the bare user profile) in the folder picker, so keep
+  the library somewhere ordinary, such as a Videos folder or another drive.
+- **Window.** Size, position and maximised state are remembered; the window
+  opens in the colour of the theme it was closed in. No menu bar. Ctrl+Shift+I
+  or F12 opens DevTools. External links open in the system browser.
+- **Keeps running when hidden.** Background throttling is off, so a minimised
+  window keeps driving the device, and audio may start without a click (the
+  phone remote can resume a session on an untouched desktop).
+- **Data.** The app has its own Chromium profile in `%APPDATA%\playhound`
+  (`playhound-dev` for `pnpm app`), so the browser's library, playlists and
+  settings do not carry over by themselves. Move them once: in the browser, open
+  **Backup** in the right rail and export; in the app, import that file there.
+  Uninstalling leaves the profile alone.
+- **First run.** The build is unsigned, so SmartScreen asks once, and Windows
+  Firewall asks whether playhound may listen on private networks. Allow it, or
+  the phone cannot reach the app.
+
 ## Browser support
 
 Needs a Chromium-based browser: the File System Access API for the library and
