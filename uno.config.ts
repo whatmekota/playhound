@@ -10,6 +10,19 @@ import {
 import { ALL_VIEWS } from './src/lib/views'
 
 export default defineConfig({
+  // Menus, registries and toasts name their icons in plain .ts files. Those go
+  // through Vite's transform like any module, so letting the extractor see
+  // them is enough; without it each such icon needed a safelist entry or a
+  // comment in some .vue file to exist at all.
+  content: {
+    pipeline: {
+      include: [
+        /\.(?:vue|[jt]sx|html)(?:$|\?)/,
+        /src[\\/].*\.ts(?:$|\?)/,
+      ],
+    },
+  },
+
   // UnoCSS only extracts classes from files in the transform pipeline
   // (.vue/.jsx/.html), so icons named in a plain .ts registry are dropped
   // unless they are safelisted here.

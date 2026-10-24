@@ -1,9 +1,16 @@
 <script setup lang="ts">
+import type { PlaylistRow as Row, PlaylistSel as Sel } from '~/components/library/usePlaylistRows'
 import type { MenuItem } from '~/components/ui/menu'
-import type { VideoEntry } from '~/stores/libraryStore'
 import type { Playlist, SmartPlaylist, SmartRule } from '~/stores/playlistStore'
 import { useIntersectionObserver, useLocalStorage } from '@vueuse/core'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onDeactivated, ref, watch } from 'vue'
+import EntryInfoModal from '~/components/library/EntryInfoModal.vue'
+import Equaliser from '~/components/library/Equaliser.vue'
+import IntensityMeter from '~/components/library/IntensityMeter.vue'
+import NewPlaylistModal from '~/components/library/NewPlaylistModal.vue'
+import { useEntryActions } from '~/components/library/useEntryActions'
+import { cleanName, isBuiltinSmart, usePlaylistRows } from '~/components/library/usePlaylistRows'
+import { useScriptSummaries } from '~/components/library/useScriptSummaries'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiContextMenu from '~/components/ui/UiContextMenu.vue'
 import UiEmpty from '~/components/ui/UiEmpty.vue'
@@ -12,6 +19,7 @@ import UiMenu from '~/components/ui/UiMenu.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
 import { toast } from '~/composables/useToast'
 import { effectiveMeta, formatTotal, plural, scriptBadge } from '~/lib/entryInfo'
+import { KEYS } from '~/lib/persist'
 import { ensureDurations, hydrateLibrary, prefetchThumbs, vLazyThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -32,7 +40,6 @@ const ui = useUiStore()
 
 watch(() => library.loadedAt, () => void hydrateLibrary(library.videos, library.loadedAt), { immediate: true })
 
-const byName = computed(() => new Map(library.videos.map(v => [v.name, v])))
 const currentName = computed(() => playback.currentEntry?.name ?? queue.current?.name ?? null)
 
 // Long lists render a page at a time; a sentinel at the bottom pulls in more.
@@ -44,13 +51,25 @@ const renameVal = ref('')
 const renameEl = ref<HTMLInputElement | null>(null)
 
 // ─── Selection ────────────────────────────────────────────────────────────────
-interface Sel { kind: 'list' | 'smart', id: string }
-const sel = useLocalStorage<Sel>('ph:ui.playlists.selected', { kind: 'list', id: 'favorites' })
+const sel = useLocalStorage<Sel>(KEYS.playlistsSelected.key, { kind: 'list', id: 'favorites' })
 
-const activeList = computed<Playlist | null>(() =>
-  sel.value.kind === 'list' ? plStore.playlists.find(p => p.id === sel.value.id) ?? null : null)
-const activeSmart = computed<SmartPlaylist | null>(() =>
-  sel.value.kind === 'smart' ? plStore.smartPlaylists.find(p => p.id === sel.value.id) ?? null : null)
+const {
+  activeList,
+  activeSmart,
+  canEdit,
+  rows,
+  playable,
+  missingCount,
+  activeName,
+  totalDuration,
+  coverFor,
+  playFrom,
+  playAll,
+  shuffleAll,
+  onRowClick,
+  remove,
+  rowEditItems,
+} = usePlaylistRows(sel)
 
 // A deleted or imported-away selection falls back to Favorites.
 watch([activeList, activeSmart], ([l, s]) => {
@@ -66,51 +85,8 @@ function select(kind: Sel['kind'], id: string) {
   sel.value = { kind, id }
 }
 
-const isBuiltinSmart = (id: string) => id.startsWith('smart:')
-const canEdit = computed(() =>
-  activeList.value ? activeList.value.id !== 'favorites' : activeSmart.value ? !isBuiltinSmart(activeSmart.value.id) : false)
-
 // ─── Rows ─────────────────────────────────────────────────────────────────────
-interface Row {
-  key: string
-  /** Index into the playlist's own entries, for reordering and removal. */
-  index: number
-  name: string
-  entry: VideoEntry | null
-}
-
-const rows = computed<Row[]>(() => {
-  if (activeList.value) {
-    return activeList.value.entries.map((pe, index) => ({
-      key: `${pe.videoName}\u0000${pe.addedAt}`,
-      index,
-      name: pe.videoName,
-      entry: byName.value.get(pe.videoName) ?? null,
-    }))
-  }
-  if (activeSmart.value) {
-    return evaluateSmartPlaylist(activeSmart.value, library.videos)
-      .map((entry, index) => ({ key: entry.name, index, name: entry.name, entry }))
-  }
-  return []
-})
-
-/** What can actually play: rows whose file is in the library right now. */
-const playable = computed(() => rows.value.flatMap(r => (r.entry ? [r.entry] : [])))
-const missingCount = computed(() => rows.value.length - playable.value.length)
-const activeName = computed(() => activeList.value?.name ?? activeSmart.value?.name ?? '')
-
-const totalDuration = computed(() => {
-  let secs = 0
-  let unknown = 0
-  for (const e of playable.value) {
-    if (e.duration === null)
-      unknown++
-    else
-      secs += e.duration
-  }
-  return { secs, unknown }
-})
+const scripts = useScriptSummaries()
 
 const shownRows = computed(() => rows.value.slice(0, limit.value))
 const sentinel = ref<HTMLElement | null>(null)
@@ -124,46 +100,15 @@ watch(playable, (list) => {
   void ensureDurations(list.slice(0, 500))
 }, { immediate: true })
 
+// Intensity markers for the rows shown; analysis is cheap and runs in idle
+// time, and stops asking while the view is hidden.
+const shown = ref(true)
+onActivated(() => (shown.value = true))
+onDeactivated(() => (shown.value = false))
+watch([shownRows, shown], ([list, on]) => scripts.want('playlists', on ? list.flatMap(r => (r.entry ? [r.entry] : [])) : []), { immediate: true })
+
 /** Up to four pictures for the cover. */
 const cover = computed(() => playable.value.slice(0, 4).map(e => e.thumbnailUrl).filter((u): u is string => !!u))
-
-function coverFor(entries: { videoName: string }[]): string | null {
-  for (const pe of entries.slice(0, 8)) {
-    const e = byName.value.get(pe.videoName)
-    if (e?.thumbnailUrl)
-      return e.thumbnailUrl
-  }
-  return null
-}
-
-// ─── Play ─────────────────────────────────────────────────────────────────────
-function playFrom(entry: VideoEntry) {
-  void playback.play(entry, playable.value, activeName.value)
-}
-
-function playAll() {
-  if (!playable.value.length)
-    return
-  if (queue.shuffle)
-    queue.setShuffle(false)
-  void playback.play(playable.value[0], playable.value, activeName.value)
-}
-
-function shuffleAll() {
-  const list = playable.value
-  if (!list.length)
-    return
-  if (!queue.shuffle)
-    queue.setShuffle(true)
-  void playback.play(list[Math.floor(Math.random() * list.length)], list, activeName.value)
-}
-
-function onRowClick(row: Row) {
-  if (row.entry)
-    playFrom(row.entry)
-  else
-    toast.warn('That video is not in the library', { detail: row.name, key: 'missing' })
-}
 
 // ─── Create, rename, delete ───────────────────────────────────────────────────
 
@@ -410,37 +355,15 @@ function onDragEnd() {
 }
 
 // ─── Row menu ─────────────────────────────────────────────────────────────────
-const ctx = ref<{ x: number, y: number, items: MenuItem[] } | null>(null)
-
-function remove(row: Row) {
-  if (!activeList.value)
-    return
-  plStore.removeFromPlaylist(activeList.value.id, row.name)
-}
+const actions = useEntryActions({ play: playFrom })
+const { ctx, infoEntry, newPlaylistFor } = actions
 
 function openRowMenu(e: MouseEvent, row: Row) {
-  const items: MenuItem[] = []
-  const entry = row.entry
-  if (entry) {
-    items.push(
-      { label: 'Play from here', icon: 'i-carbon-play-filled-alt', run: () => playFrom(entry) },
-      { label: 'Play next', icon: 'i-carbon-skip-forward', run: () => playback.playNextInQueue(entry) },
-      { label: 'Add to queue', icon: 'i-carbon-list-boxes', run: () => playback.addToQueue(entry) },
-      { separator: true },
-      { label: entry.starred ? 'Unstar' : 'Star', icon: entry.starred ? 'i-carbon-star-filled' : 'i-carbon-star', run: () => library.toggleStar(entry) },
-    )
-  }
-  if (activeList.value) {
-    const pl = activeList.value
-    const last = pl.entries.length - 1
-    items.push(
-      { separator: true },
-      { label: 'Move to top', icon: 'i-carbon-up-to-top', disabled: row.index === 0, run: () => plStore.moveEntry(pl.id, row.index, 0) },
-      { label: 'Move to bottom', icon: 'i-carbon-down-to-bottom', disabled: row.index === last, run: () => plStore.moveEntry(pl.id, row.index, last) },
-      { label: 'Remove from playlist', icon: 'i-carbon-subtract-alt', danger: true, run: () => remove(row) },
-    )
-  }
-  ctx.value = { x: e.clientX, y: e.clientY, items }
+  const edit = rowEditItems(row)
+  if (row.entry)
+    actions.openMenu(e, [row.entry], edit)
+  else if (edit.length)
+    ctx.value = { x: e.clientX, y: e.clientY, items: edit }
 }
 
 function openListMenu(e: MouseEvent, kind: Sel['kind'], id: string) {
@@ -460,8 +383,6 @@ function smartIcon(pl: SmartPlaylist) {
   const t = pl.rules[0]?.type
   return t ? ruleDef(t).icon : 'i-carbon-filter'
 }
-/** Built-in smart playlists carry a symbol in their name; the list shows an icon instead. */
-const cleanName = (name: string) => name.replace(/^[^\p{L}\p{N}]+/u, '') || name
 </script>
 
 <template>
@@ -728,7 +649,7 @@ const cleanName = (name: string) => name.replace(/^[^\p{L}\p{N}]+/u, '') || name
                 @drop.prevent="onDragEnd"
               >
                 <span class="text-[12px] text-fg-faint num center w-6">
-                  <span v-if="row.entry && row.entry.name === currentName" class="eq text-accent-300" :class="player.isPlaying ? '' : 'paused'"><i /><i /><i /></span>
+                  <Equaliser v-if="row.entry && row.entry.name === currentName" class="text-accent-300" :playing="player.isPlaying" />
                   <template v-else>
                     <span class="group-hover:hidden">{{ i + 1 }}</span>
                     <span v-if="row.entry" class="i-carbon-play-filled-alt text-fg hidden group-hover:block" />
@@ -750,6 +671,7 @@ const cleanName = (name: string) => name.replace(/^[^\p{L}\p{N}]+/u, '') || name
                       </span>
                       <span v-else>No script</span>
                       <span v-if="effectiveMeta(row.entry).creator" class="truncate">· {{ effectiveMeta(row.entry).creator }}</span>
+                      <IntensityMeter :summary="scripts.summaryOf(row.entry)" class="ml-0.5" />
                     </template>
                     <span v-else class="text-warn">Not in the library</span>
                   </span>
@@ -816,6 +738,8 @@ const cleanName = (name: string) => name.replace(/^[^\p{L}\p{N}]+/u, '') || name
     </section>
 
     <UiContextMenu v-model="ctx" />
+    <EntryInfoModal v-model="infoEntry" />
+    <NewPlaylistModal v-model="newPlaylistFor" />
   </div>
 </template>
 
@@ -904,30 +828,5 @@ const cleanName = (name: string) => name.replace(/^[^\p{L}\p{N}]+/u, '') || name
 }
 .pl-row.is-dragging {
   opacity: 0.35;
-}
-
-.eq {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 11px;
-}
-.eq i {
-  display: block;
-  width: 3px;
-  height: 100%;
-  border-radius: 1px;
-  background: currentColor;
-  transform-origin: bottom;
-  animation: ph-eq 0.9s ease-in-out infinite;
-}
-.eq i:nth-child(2) {
-  animation-delay: -0.3s;
-}
-.eq i:nth-child(3) {
-  animation-delay: -0.6s;
-}
-.eq.paused i {
-  animation-play-state: paused;
 }
 </style>

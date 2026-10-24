@@ -1,10 +1,17 @@
 <script setup lang="ts">
 import type { MenuItem } from '~/components/ui/menu'
-import type { VideoMeta } from '~/lib/idb'
 import type { VideoEntry } from '~/stores/libraryStore'
-import type { Playlist } from '~/stores/playlistStore'
-import { refDebounced, useElementSize, useLocalStorage, watchDebounced } from '@vueuse/core'
-import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { useLocalStorage, watchDebounced } from '@vueuse/core'
+import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import CardScrub from '~/components/library/CardScrub.vue'
+import EntryInfoModal from '~/components/library/EntryInfoModal.vue'
+import Equaliser from '~/components/library/Equaliser.vue'
+import FilterChips from '~/components/library/FilterChips.vue'
+import IntensityMeter from '~/components/library/IntensityMeter.vue'
+import NewPlaylistModal from '~/components/library/NewPlaylistModal.vue'
+import { useEntryActions } from '~/components/library/useEntryActions'
+import { useLibraryQueryState } from '~/components/library/useLibraryQuery'
+import { useWindowedRows } from '~/components/library/useWindowedRows'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiContextMenu from '~/components/ui/UiContextMenu.vue'
@@ -13,7 +20,6 @@ import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiMenu from '~/components/ui/UiMenu.vue'
-import UiModal from '~/components/ui/UiModal.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
 import UiProgress from '~/components/ui/UiProgress.vue'
 import UiSegmented from '~/components/ui/UiSegmented.vue'
@@ -21,13 +27,12 @@ import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import { toast } from '~/composables/useToast'
 import { effectiveMeta, formatDate, formatSize, plural, scriptBadge } from '~/lib/entryInfo'
-import { videoMetaDb } from '~/lib/idb'
+import { KEYS } from '~/lib/persist'
 import { cancelGenerateAll, generateAllThumbs, hydrateLibrary, thumbBusy, thumbFailed, thumbJob, thumbsFor } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
-import { usePlaylistStore } from '~/stores/playlistStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -37,154 +42,21 @@ const library = useLibraryStore()
 const playback = usePlaybackStore()
 const queue = useQueueStore()
 const player = usePlayerStore()
-const plStore = usePlaylistStore()
 const ui = useUiStore()
 
 const scroller = ref<HTMLElement | null>(null)
 
 // ─── Preferences ──────────────────────────────────────────────────────────────
-type SortKey = 'name' | 'size' | 'date' | 'duration'
-type FilterKey = 'scripted' | 'multi' | 'starred' | 'unscripted'
-
-// Legacy key kept so the saved sort survives the rename.
-const sort = useLocalStorage<{ key: SortKey, asc: boolean }>('ph:library.sort', { key: 'name', asc: true }, { mergeDefaults: true })
-const viewMode = useLocalStorage<'grid' | 'list'>('ph:library.view', 'grid')
+const viewMode = useLocalStorage<'grid' | 'list'>(KEYS.libraryView.key, 'grid')
 /** Minimum card width in px; the grid fits as many columns as that allows. */
-const cardSize = useLocalStorage('ph:library.cardSize', 220)
+const cardSize = useLocalStorage(KEYS.libraryCard.key, 220)
 
-const SORT_LABELS: Record<SortKey, string> = { name: 'Name', size: 'Size', date: 'Date modified', duration: 'Duration' }
-
-function setSort(key: SortKey, asc?: boolean) {
-  if (asc !== undefined)
-    sort.value = { key, asc }
-  else if (sort.value.key === key)
-    sort.value = { key, asc: !sort.value.asc }
-  // Newest and longest first is what anyone sorting by those wants.
-  else
-    sort.value = { key, asc: key === 'name' }
-}
-
-// ─── Search, filters, sort ────────────────────────────────────────────────────
-const search = ref('')
-const query = refDebounced(search, 120)
-const filters = ref(new Set<FilterKey>())
-
-function toggleFilter(f: FilterKey) {
-  const next = new Set(filters.value)
-  if (next.has(f)) {
-    next.delete(f)
-  }
-  else {
-    next.add(f)
-    // Scripted and unscripted cannot both hold.
-    if (f === 'scripted')
-      next.delete('unscripted')
-    if (f === 'unscripted') {
-      next.delete('scripted')
-      next.delete('multi')
-    }
-    if (f === 'multi')
-      next.delete('unscripted')
-  }
-  filters.value = next
-}
-
-function clearFilters() {
-  filters.value = new Set()
-  search.value = ''
-}
-
-const isMulti = (v: VideoEntry) => v.scriptCount > 1 || v.scriptType === 'merged'
-
-const counts = computed(() => {
-  let scripted = 0
-  let multi = 0
-  let starred = 0
-  for (const v of library.videos) {
-    if (v.hasScript)
-      scripted++
-    if (isMulti(v))
-      multi++
-    if (v.starred)
-      starred++
-  }
-  return { scripted, multi, starred, unscripted: library.videos.length - scripted }
-})
-
-const FILTERS: { key: FilterKey, label: string, icon: string }[] = [
-  { key: 'scripted', label: 'Scripted', icon: 'i-carbon-chart-line-smooth' },
-  { key: 'multi', label: 'Multi-axis', icon: 'i-carbon-chart-multi-line' },
-  { key: 'starred', label: 'Starred', icon: 'i-carbon-star' },
-  { key: 'unscripted', label: 'No script', icon: 'i-carbon-subtract-alt' },
-]
-
-const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
-
-const sortedFiltered = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  const f = filters.value
-  const list = library.videos.filter((v) => {
-    if (f.has('scripted') && !v.hasScript)
-      return false
-    if (f.has('unscripted') && v.hasScript)
-      return false
-    // Axis count, so a merged single file counts and alternate takes do not.
-    if (f.has('multi') && !isMulti(v))
-      return false
-    if (f.has('starred') && !v.starred)
-      return false
-    if (q) {
-      if (v.basename.toLowerCase().includes(q))
-        return true
-      const m = effectiveMeta(v)
-      return !!(m.creator?.toLowerCase().includes(q) || m.tags?.some(t => t.includes(q)))
-    }
-    return true
-  })
-  const { key, asc } = sort.value
-  list.sort((a, b) => {
-    let cmp = 0
-    if (key === 'name')
-      cmp = collator.compare(a.basename, b.basename)
-    else if (key === 'size')
-      cmp = a.file.size - b.file.size
-    else if (key === 'date')
-      cmp = (a.file.lastModified ?? 0) - (b.file.lastModified ?? 0)
-    else if (key === 'duration')
-      cmp = (a.duration ?? 0) - (b.duration ?? 0)
-    return asc ? cmp : -cmp
-  })
-  return list
-})
-
-const filtering = computed(() => !!query.value.trim() || filters.value.size > 0)
+// ─── Search, filters, sort (the same machinery as the drawer panel) ───────────
+const lq = useLibraryQueryState(() => library.videos)
+const scripts = lq.scripts
 
 // ─── Now playing ──────────────────────────────────────────────────────────────
 const currentName = computed(() => playback.currentEntry?.name ?? queue.current?.name ?? null)
-
-// ─── Playing ──────────────────────────────────────────────────────────────────
-function playEntry(entry: VideoEntry) {
-  void playback.play(entry, sortedFiltered.value, 'Library')
-}
-
-function playAll() {
-  const list = sortedFiltered.value
-  if (!list.length)
-    return
-  // "Play" means in order, the way every music player treats it.
-  if (queue.shuffle)
-    queue.setShuffle(false)
-  void playback.play(list[0], list, 'Library')
-}
-
-function shuffleAll() {
-  const list = sortedFiltered.value
-  if (!list.length)
-    return
-  if (!queue.shuffle)
-    queue.setShuffle(true)
-  void playback.play(list[Math.floor(Math.random() * list.length)], list, 'Library')
-}
 
 function playList(entries: VideoEntry[], label = 'Selection') {
   if (entries.length)
@@ -198,8 +70,9 @@ let anchor: string | null = null
 const selectedEntries = computed(() => {
   if (!selected.value.size)
     return []
-  return sortedFiltered.value.filter(v => selected.value.has(v.name))
-    .concat(library.videos.filter(v => selected.value.has(v.name) && !sortedFiltered.value.includes(v)))
+  const shown = lq.results.filter(v => selected.value.has(v.name))
+  const shownSet = new Set(shown)
+  return shown.concat(library.videos.filter(v => selected.value.has(v.name) && !shownSet.has(v)))
 })
 
 function toggleSelect(entry: VideoEntry) {
@@ -213,7 +86,7 @@ function toggleSelect(entry: VideoEntry) {
 }
 
 function selectRange(entry: VideoEntry) {
-  const list = sortedFiltered.value
+  const list = lq.results
   const a = anchor ? list.findIndex(v => v.name === anchor) : -1
   const b = list.findIndex(v => v.name === entry.name)
   if (a < 0 || b < 0) {
@@ -232,7 +105,7 @@ function clearSelection() {
 }
 
 function selectAll() {
-  selected.value = new Set(sortedFiltered.value.map(v => v.name))
+  selected.value = new Set(lq.results.map(v => v.name))
 }
 
 function onItemClick(e: MouseEvent, entry: VideoEntry) {
@@ -242,203 +115,20 @@ function onItemClick(e: MouseEvent, entry: VideoEntry) {
     return selectRange(entry)
   if (selected.value.size)
     clearSelection()
-  playEntry(entry)
+  lq.playEntry(entry)
 }
 
-// ─── Stars & playlists ────────────────────────────────────────────────────────
-function setStar(entries: VideoEntry[], on: boolean) {
-  for (const e of entries) {
-    if (e.starred !== on)
-      library.toggleStar(e)
-  }
-  toast(on ? (entries.length === 1 ? 'Starred' : `Starred ${entries.length} videos`) : (entries.length === 1 ? 'Unstarred' : `Unstarred ${entries.length} videos`), {
-    icon: on ? 'i-carbon-star-filled' : 'i-carbon-star',
-    key: 'star',
-  })
-}
-
-function inPlaylist(pl: Playlist, entries: VideoEntry[]) {
-  return entries.every(e => plStore.isInPlaylist(pl.id, e.name))
-}
-
-function togglePlaylist(pl: Playlist, entries: VideoEntry[]) {
-  if (inPlaylist(pl, entries)) {
-    for (const e of entries)
-      plStore.removeFromPlaylist(pl.id, e.name)
-    toast(`Removed from ${pl.name}`, { icon: 'i-carbon-playlist', key: 'playlist' })
-  }
-  else {
-    for (const e of entries)
-      plStore.addToPlaylist(pl.id, e.name)
-    toast(`Added to ${pl.name}`, {
-      detail: entries.length === 1 ? entries[0].basename : plural(entries.length, 'video'),
-      icon: 'i-carbon-playlist',
-      key: 'playlist',
-      action: { label: 'Open', run: () => ui.openView('playlists') },
-    })
-  }
-}
-
-function playlistItems(entries: VideoEntry[]): MenuItem[] {
-  return [
-    ...plStore.playlists.map(pl => ({
-      label: pl.name,
-      icon: pl.id === 'favorites' ? 'i-carbon-favorite' : 'i-carbon-playlist',
-      checked: inPlaylist(pl, entries),
-      run: () => togglePlaylist(pl, entries),
-    })),
-    { separator: true },
-    { label: 'New playlist…', icon: 'i-carbon-add', run: () => askNewPlaylist(entries) },
-  ]
-}
-
-// New playlist from a selection
-const newPl = ref<{ entries: VideoEntry[], name: string } | null>(null)
-const newPlOpen = computed({
-  get: () => !!newPl.value,
-  set: (v) => {
-    if (!v)
-      newPl.value = null
-  },
-})
-const newPlInput = ref<InstanceType<typeof UiInput> | null>(null)
-
-function askNewPlaylist(entries: VideoEntry[]) {
-  newPl.value = { entries, name: '' }
-  void nextTick(() => newPlInput.value?.focus())
-}
-
-function createPlaylist() {
-  if (!newPl.value)
-    return
-  const name = newPl.value.name.trim() || `Playlist ${plStore.playlists.length}`
-  const pl = plStore.createPlaylist(name)
-  for (const e of newPl.value.entries)
-    plStore.addToPlaylist(pl.id, e.name)
-  toast.success(`Created ${name}`, {
-    detail: plural(newPl.value.entries.length, 'video'),
-    icon: 'i-carbon-playlist',
-    action: { label: 'Open', run: () => ui.openView('playlists') },
-  })
-  newPl.value = null
-}
-
-// ─── Context menu ─────────────────────────────────────────────────────────────
-const ctx = ref<{ x: number, y: number, items: MenuItem[] } | null>(null)
+// ─── Actions, context menu, dialogs ───────────────────────────────────────────
+const actions = useEntryActions({ play: e => lq.playEntry(e), playMany: list => playList(list) })
+const { ctx, infoEntry, newPlaylistFor } = actions
 
 function openCtx(e: MouseEvent, entry: VideoEntry) {
   // Right-clicking inside the selection acts on all of it; outside, on that one video.
-  const targets = selected.value.has(entry.name) && selected.value.size > 1 ? selectedEntries.value : [entry]
-  ctx.value = { x: e.clientX, y: e.clientY, items: menuFor(targets, { x: e.clientX, y: e.clientY }) }
+  const many = selected.value.has(entry.name) && selected.value.size > 1
+  actions.openMenu(e, many ? selectedEntries.value : [entry], many ? [{ label: 'Clear selection', icon: 'i-carbon-close', run: clearSelection }] : [])
 }
 
-function menuFor(targets: VideoEntry[], at: { x: number, y: number }): MenuItem[] {
-  const one = targets.length === 1 ? targets[0] : null
-  const allStarred = targets.every(t => t.starred)
-  const items: MenuItem[] = []
-  if (!one)
-    items.push({ heading: true, label: `${targets.length} selected` })
-  items.push(
-    { label: 'Play', icon: 'i-carbon-play-filled-alt', run: () => (one ? playEntry(one) : playList(targets)) },
-    { label: 'Play next', icon: 'i-carbon-skip-forward', run: () => playback.playNextInQueue(targets) },
-    { label: 'Add to queue', icon: 'i-carbon-list-boxes', run: () => playback.addToQueue(targets) },
-    { separator: true },
-    // The menu closes after an item runs, so the playlist list opens on the next tick in its place.
-    { label: 'Add to playlist…', icon: 'i-carbon-playlist', run: () => setTimeout(() => (ctx.value = { ...at, items: [{ heading: true, label: 'Add to playlist' }, ...playlistItems(targets)] })) },
-    { label: allStarred ? 'Unstar' : 'Star', icon: allStarred ? 'i-carbon-star-filled' : 'i-carbon-star', run: () => setStar(targets, !allStarred) },
-  )
-  if (one) {
-    items.push(
-      { separator: true },
-      { label: 'Info & tags…', icon: 'i-carbon-tag-edit', run: () => void openMeta(one) },
-      { label: 'Copy file name', icon: 'i-carbon-copy', run: () => void copyName(one) },
-    )
-  }
-  else {
-    items.push({ separator: true }, { label: 'Clear selection', icon: 'i-carbon-close', run: clearSelection })
-  }
-  return items
-}
-
-async function copyName(entry: VideoEntry) {
-  try {
-    await navigator.clipboard.writeText(entry.name)
-    toast('File name copied', { icon: 'i-carbon-copy', key: 'copy' })
-  }
-  catch {
-    toast.error('Clipboard is not available')
-  }
-}
-
-// ─── Info & tags ──────────────────────────────────────────────────────────────
-const meta = ref<{ entry: VideoEntry, draft: VideoMeta } | null>(null)
-const metaOpen = computed({
-  get: () => !!meta.value,
-  set: (v) => {
-    if (!v)
-      meta.value = null
-  },
-})
-const tagInput = ref('')
-
-async function openMeta(entry: VideoEntry) {
-  let stored: VideoMeta = {}
-  try {
-    stored = await videoMetaDb.get(entry.name) ?? {}
-  }
-  catch {}
-  const draft: VideoMeta = { ...(entry.scriptMeta ?? {}), ...stored }
-  draft.tags = Array.isArray(draft.tags) ? [...draft.tags] : []
-  tagInput.value = ''
-  meta.value = { entry, draft }
-}
-
-function addTag() {
-  if (!meta.value)
-    return
-  for (const raw of tagInput.value.split(',')) {
-    const t = raw.trim().toLowerCase()
-    if (t && !meta.value.draft.tags!.includes(t))
-      meta.value.draft.tags!.push(t)
-  }
-  tagInput.value = ''
-}
-
-function onTagKey(e: KeyboardEvent) {
-  if (e.key === ',' || e.key === 'Enter') {
-    e.preventDefault()
-    addTag()
-  }
-  else if (e.key === 'Backspace' && !tagInput.value && meta.value?.draft.tags?.length) {
-    meta.value.draft.tags.pop()
-  }
-}
-
-async function saveMeta() {
-  if (!meta.value)
-    return
-  addTag()
-  const { entry, draft } = meta.value
-  const clean: VideoMeta = JSON.parse(JSON.stringify(draft))
-  try {
-    await videoMetaDb.set(entry.name, clean)
-    entry.userMeta = clean
-    toast.success('Info saved', { detail: entry.basename, key: 'meta' })
-    meta.value = null
-  }
-  catch {
-    toast.error('Could not save info')
-  }
-}
-
-const allTags = computed(() => {
-  const set = new Set<string>()
-  for (const v of library.videos) {
-    for (const t of effectiveMeta(v).tags ?? [])
-      set.add(t)
-  }
-  return [...set].sort()
-})
+const allSelectedStarred = computed(() => selectedEntries.value.every(e => e.starred))
 
 // ─── Folder ───────────────────────────────────────────────────────────────────
 const rescanning = ref(false)
@@ -455,15 +145,20 @@ async function rescan() {
 }
 
 function showNew() {
-  setSort('date', false)
+  lq.setSort('date', false)
   library.watchNewCount = 0
   scroller.value?.scrollTo({ top: 0, behavior: 'smooth' })
 }
+
+const unanalysed = computed(() => scripts.coverage.total - scripts.coverage.done)
 
 const folderMenu = computed<MenuItem[]>(() => [
   thumbJob.running
     ? { label: 'Stop generating previews', icon: 'i-carbon-stop', run: cancelGenerateAll }
     : { label: 'Generate all previews', icon: 'i-carbon-image', run: () => void generateAllThumbs(library.videos), disabled: !library.hasVideos },
+  scripts.sweeping
+    ? { label: 'Stop analysing scripts', icon: 'i-carbon-stop', run: scripts.cancelAnalyse }
+    : { label: unanalysed.value ? `Analyse all scripts (${unanalysed.value.toLocaleString()})` : 'All scripts analysed', icon: 'i-carbon-chart-average', run: () => void scripts.analyseAll(), disabled: !unanalysed.value },
   { separator: true },
   library.isWatching
     ? { label: 'Stop watching folder', icon: 'i-carbon-view-off', run: library.stopWatching }
@@ -471,83 +166,35 @@ const folderMenu = computed<MenuItem[]>(() => [
   { label: 'Forget folder', icon: 'i-carbon-folder-off', danger: true, run: () => void library.forgetFolder(), disabled: !library.hasVideos && !library.savedFolderName },
 ])
 
-const sortMenu = computed<MenuItem[]>(() => [
-  { heading: true, label: 'Sort by' },
-  ...(Object.keys(SORT_LABELS) as SortKey[]).map(k => ({ label: SORT_LABELS[k], checked: sort.value.key === k, run: () => setSort(k, sort.value.asc) })),
-  { separator: true },
-  { label: 'Ascending', icon: 'i-carbon-sort-ascending', checked: sort.value.asc, run: () => setSort(sort.value.key, true) },
-  { label: 'Descending', icon: 'i-carbon-sort-descending', checked: !sort.value.asc, run: () => setSort(sort.value.key, false) },
-])
-
 // ─── Windowed grid / list ─────────────────────────────────────────────────────
-// Only the rows in view (plus a margin) are rendered, so ten thousand videos
-// cost the same as forty. Rows are absolutely placed inside a spacer of the
-// full height, which keeps the native scrollbar honest.
 const GAP = 16
 const ROW_GAP = 22
 const INFO_H = 46
 const LIST_ROW_H = 48
-const OVERSCAN = 2
 
-const { width: innerW, height: viewH } = useElementSize(scroller)
-const scrollTop = ref(0)
-let scrollRaf = 0
-
-function onScroll() {
-  if (scrollRaf)
-    return
-  scrollRaf = requestAnimationFrame(() => {
-    scrollRaf = 0
-    scrollTop.value = scroller.value?.scrollTop ?? 0
-  })
-}
-
-const cols = computed(() => viewMode.value === 'list' ? 1 : Math.max(1, Math.floor((innerW.value + GAP) / (cardSize.value + GAP))))
-const cardW = computed(() => (innerW.value - GAP * (cols.value - 1)) / cols.value)
-const rowH = computed(() => viewMode.value === 'list' ? LIST_ROW_H : Math.round(cardW.value * 9 / 16 + INFO_H + ROW_GAP))
-const rowCount = computed(() => Math.ceil(sortedFiltered.value.length / cols.value))
-const totalH = computed(() => rowCount.value * rowH.value)
-
-const rows = computed(() => {
-  const h = Math.max(1, rowH.value)
-  const first = Math.max(0, Math.floor(scrollTop.value / h) - OVERSCAN)
-  const last = Math.min(rowCount.value, Math.ceil((scrollTop.value + Math.max(viewH.value, 400)) / h) + OVERSCAN)
-  const list = sortedFiltered.value
-  const out: { index: number, top: number, cells: { entry: VideoEntry, index: number }[] }[] = []
-  for (let r = first; r < last; r++) {
-    const start = r * cols.value
-    out.push({
-      index: r,
-      top: r * h,
-      cells: list.slice(start, start + cols.value).map((entry, j) => ({ entry, index: start + j })),
-    })
-  }
-  return out
+const win = useWindowedRows({
+  scroller,
+  items: () => lq.results,
+  cols: w => viewMode.value === 'list' ? 1 : Math.floor((w + GAP) / (cardSize.value + GAP)),
+  rowH: (w, n) => viewMode.value === 'list' ? LIST_ROW_H : Math.round(((w - GAP * (n - 1)) / n) * 9 / 16 + INFO_H + ROW_GAP),
 })
-
-const visibleEntries = computed(() => rows.value.flatMap(r => r.cells.map(c => c.entry)))
-
-// The scroller is re-created when the body switches between states.
-watch(scroller, el => (scrollTop.value = el?.scrollTop ?? 0))
+const { rows, totalH, cols, onScroll } = win
 
 // A new search or sort starts at the top.
-watch([query, filters, sort], () => scroller.value?.scrollTo({ top: 0 }), { deep: true })
+watch(() => [lq.query, lq.filters, lq.bands, lq.sort], () => win.scrollToTop(), { deep: true })
 
-function locateCurrent() {
-  const i = sortedFiltered.value.findIndex(v => v.name === currentName.value)
-  if (i < 0 || !scroller.value)
-    return
-  const row = Math.floor(i / cols.value)
-  scroller.value.scrollTo({ top: Math.max(0, row * rowH.value - viewH.value / 2 + rowH.value / 2), behavior: 'smooth' })
-}
-const currentInList = computed(() => !!currentName.value && sortedFiltered.value.some(v => v.name === currentName.value))
+const currentIndex = computed(() => currentName.value ? lq.results.findIndex(v => v.name === currentName.value) : -1)
 
 // ─── Background work ──────────────────────────────────────────────────────────
 const active = ref(true)
 
-watchDebounced([visibleEntries, active], () => {
+watchDebounced([win.visible, active, () => lq.scriptAware], () => {
   // While the view is cached but hidden, drop its pending on-screen requests.
-  thumbsFor(active.value ? visibleEntries.value : [])
+  const on = active.value ? win.visible.value : []
+  thumbsFor(on, 'library')
+  // Analyse the scripts of cards in view, except while the order depends on
+  // it: cards would move under the pointer as their numbers arrived.
+  scripts.want('library', lq.scriptAware ? [] : on)
 }, { debounce: 90 })
 
 watch(() => library.loadedAt, () => {
@@ -562,7 +209,7 @@ function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement
   if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
     return
-  if (ui.paletteOpen || ui.settingsOpen || meta.value || newPl.value)
+  if (ui.paletteOpen || ui.settingsOpen || infoEntry.value || newPlaylistFor.value)
     return
   if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
     e.preventDefault()
@@ -593,7 +240,7 @@ function subline(entry: VideoEntry) {
   return [formatSize(entry.file.size), m.creator].filter(Boolean).join(' · ')
 }
 
-const sortLabel = computed(() => SORT_LABELS[sort.value.key].replace(' modified', ''))
+const sweepPct = computed(() => scripts.sweepTotal ? scripts.sweepDone / scripts.sweepTotal : 0)
 
 /** A click on empty space clears the selection, like a file manager. */
 function onBackgroundClick(e: MouseEvent) {
@@ -619,8 +266,8 @@ function onBackgroundClick(e: MouseEvent) {
             <span class="text-fg-faint">·</span>
             <span class="num">{{ plural(library.videos.length, 'video') }}</span>
             <span class="text-fg-faint">·</span>
-            <span class="num">{{ counts.scripted.toLocaleString() }} scripted</span>
-            <span v-if="filtering" class="text-accent-300 num">· {{ sortedFiltered.length.toLocaleString() }} shown</span>
+            <span class="num">{{ lq.counts.scripted.toLocaleString() }} scripted</span>
+            <span v-if="lq.filtering" class="text-accent-300 num">· {{ lq.results.length.toLocaleString() }} shown</span>
             <UiBadge
               v-if="library.isWatching"
               v-tip="'Checking the folder for new videos every 30 seconds'"
@@ -678,7 +325,7 @@ function onBackgroundClick(e: MouseEvent) {
     <div v-if="library.hasVideos" class="px-6 pb-3 flex shrink-0 flex-wrap gap-2 items-center">
       <UiInput
         ref="searchInput"
-        v-model="search"
+        v-model="lq.search"
         icon="i-carbon-search"
         placeholder="Search names, tags, creators"
         clearable
@@ -686,51 +333,32 @@ function onBackgroundClick(e: MouseEvent) {
         @escape="searchInput?.el?.blur()"
       >
         <template #suffix>
-          <UiKbd v-if="!search" class="mr-1.5">
+          <UiKbd v-if="!lq.search" class="mr-1.5">
             /
           </UiKbd>
         </template>
       </UiInput>
 
-      <div class="flex flex-wrap gap-1.5 items-center">
-        <button
-          v-for="f in FILTERS"
-          :key="f.key"
-          type="button"
-          class="chip focusable pressable"
-          :class="filters.has(f.key) ? 'chip-on' : ''"
-          :aria-pressed="filters.has(f.key)"
-          @click="toggleFilter(f.key)"
-        >
-          <span :class="filters.has(f.key) && f.key === 'starred' ? 'i-carbon-star-filled' : f.icon" class="text-[13px]" />
-          {{ f.label }}
-          <span class="text-[11px] num opacity-60">{{ counts[f.key].toLocaleString() }}</span>
-        </button>
-        <Transition name="t-fade">
-          <UiButton v-if="filtering" variant="ghost" size="xs" icon="i-carbon-close" @click="clearFilters">
-            Clear
-          </UiButton>
-        </Transition>
-      </div>
+      <FilterChips :lq="lq" />
 
       <div class="flex-1" />
 
       <UiIconButton
-        v-if="currentInList"
+        v-if="currentIndex >= 0"
         icon="i-carbon-center-circle"
         label="Scroll to now playing"
-        @click="locateCurrent"
+        @click="win.scrollToIndex(currentIndex)"
       />
 
       <UiPopover placement="bottom" align="end" flush>
         <template #trigger="{ toggle, open }">
-          <UiButton variant="ghost" :active="open" :icon="sort.asc ? 'i-carbon-sort-ascending' : 'i-carbon-sort-descending'" @click="toggle">
-            {{ sortLabel }}
+          <UiButton variant="ghost" :active="open" :icon="lq.sort.asc ? 'i-carbon-sort-ascending' : 'i-carbon-sort-descending'" @click="toggle">
+            {{ lq.sortLabel }}
           </UiButton>
         </template>
         <template #default="{ close }">
           <div class="p-1">
-            <UiMenu :items="sortMenu" @done="close" />
+            <UiMenu :items="lq.sortMenu" @done="close" />
           </div>
         </template>
       </UiPopover>
@@ -753,15 +381,15 @@ function onBackgroundClick(e: MouseEvent) {
 
       <div class="mx-1 divider-x" />
 
-      <UiButton variant="primary" icon="i-carbon-play-filled-alt" :disabled="!sortedFiltered.length" @click="playAll">
+      <UiButton variant="primary" icon="i-carbon-play-filled-alt" :disabled="!lq.results.length" @click="lq.playAll()">
         Play all
       </UiButton>
-      <UiIconButton icon="i-carbon-shuffle" label="Shuffle all" variant="solid" :disabled="!sortedFiltered.length" @click="shuffleAll" />
+      <UiIconButton icon="i-carbon-shuffle" label="Shuffle all" variant="solid" :disabled="!lq.results.length" @click="lq.shuffleAll()" />
     </div>
 
-    <!-- Thumbnail generation / scanning progress -->
+    <!-- Thumbnail generation / script analysis / scanning progress -->
     <Transition name="t-collapse">
-      <div v-if="thumbJob.running || (library.scanning && library.hasVideos)">
+      <div v-if="thumbJob.running || scripts.sweeping || (library.scanning && library.hasVideos) || (library.hasVideos && lq.scriptAware && unanalysed > 0)">
         <div class="min-h-0 overflow-hidden">
           <div class="text-[12px] text-fg-muted px-6 pb-3 flex gap-3 items-center">
             <template v-if="thumbJob.running">
@@ -772,10 +400,25 @@ function onBackgroundClick(e: MouseEvent) {
                 Stop
               </UiButton>
             </template>
-            <template v-else>
+            <template v-else-if="scripts.sweeping">
+              <span class="i-carbon-chart-average text-accent-300 shrink-0" />
+              <span class="num shrink-0">Analysing scripts {{ scripts.sweepDone.toLocaleString() }} / {{ scripts.sweepTotal.toLocaleString() }}</span>
+              <UiProgress :value="sweepPct" class="flex-1 max-w-[320px]" />
+              <UiButton variant="ghost" size="xs" @click="scripts.cancelAnalyse()">
+                Stop
+              </UiButton>
+            </template>
+            <template v-else-if="library.scanning">
               <UiSpinner :size="13" />
               <span class="num">Rescanning {{ library.totalFiles.toLocaleString() }} files…</span>
               <UiProgress class="flex-1 max-w-[320px]" />
+            </template>
+            <template v-else>
+              <span class="i-carbon-information text-fg-faint shrink-0" />
+              <span class="num">Intensity is known for {{ scripts.coverage.done.toLocaleString() }} of {{ plural(scripts.coverage.total, 'scripted video') }}; the rest are listed last.</span>
+              <UiButton variant="ghost" size="xs" icon="i-carbon-chart-average" @click="scripts.analyseAll()">
+                Analyse all
+              </UiButton>
             </template>
           </div>
         </div>
@@ -843,14 +486,17 @@ function onBackgroundClick(e: MouseEvent) {
       </div>
 
       <!-- Nothing matches -->
-      <div v-else-if="!sortedFiltered.length" class="center flex-1 min-h-0">
+      <div v-else-if="!lq.results.length" class="center flex-1 min-h-0">
         <UiEmpty
           icon="i-carbon-search"
           title="Nothing matches"
-          :description="query ? `No videos match “${query}” with the current filters.` : 'No videos match the current filters.'"
+          :description="lq.query ? `No videos match “${lq.query}” with the current filters.` : lq.bands.size && !scripts.coverage.done ? 'No scripts have been analysed yet, so none has an intensity.' : 'No videos match the current filters.'"
         >
-          <UiButton icon="i-carbon-close" @click="clearFilters">
+          <UiButton icon="i-carbon-close" @click="lq.clearFilters()">
             Clear search and filters
+          </UiButton>
+          <UiButton v-if="lq.bands.size && unanalysed > 0 && !scripts.sweeping" icon="i-carbon-chart-average" @click="scripts.analyseAll()">
+            Analyse scripts
           </UiButton>
         </UiEmpty>
       </div>
@@ -860,18 +506,20 @@ function onBackgroundClick(e: MouseEvent) {
         <div v-if="viewMode === 'list'" class="list-cols eyebrow mx-6 px-2 border-b border-edge shrink-0 h-8 items-center">
           <span />
           <span />
-          <button type="button" class="sort-head" :class="sort.key === 'name' ? 'text-fg' : ''" @click="setSort('name')">
-            Name<span v-if="sort.key === 'name'" :class="sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />
+          <button type="button" class="sort-head" :class="lq.sort.key === 'name' ? 'text-fg' : ''" @click="lq.setSort('name')">
+            Name<span v-if="lq.sort.key === 'name'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />
           </button>
-          <span>Script</span>
-          <button type="button" class="sort-head justify-end" :class="sort.key === 'duration' ? 'text-fg' : ''" @click="setSort('duration')">
-            <span v-if="sort.key === 'duration'" :class="sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Length
+          <button v-tip="'Sort by intensity'" type="button" class="sort-head" :class="lq.sort.key === 'intensity' ? 'text-fg' : ''" @click="lq.setSort('intensity')">
+            Script<span v-if="lq.sort.key === 'intensity'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />
           </button>
-          <button type="button" class="sort-head justify-end" :class="sort.key === 'size' ? 'text-fg' : ''" @click="setSort('size')">
-            <span v-if="sort.key === 'size'" :class="sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Size
+          <button type="button" class="sort-head justify-end" :class="lq.sort.key === 'duration' ? 'text-fg' : ''" @click="lq.setSort('duration')">
+            <span v-if="lq.sort.key === 'duration'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Length
           </button>
-          <button type="button" class="sort-head col-date justify-end" :class="sort.key === 'date' ? 'text-fg' : ''" @click="setSort('date')">
-            <span v-if="sort.key === 'date'" :class="sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Modified
+          <button type="button" class="sort-head justify-end" :class="lq.sort.key === 'size' ? 'text-fg' : ''" @click="lq.setSort('size')">
+            <span v-if="lq.sort.key === 'size'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Size
+          </button>
+          <button type="button" class="sort-head col-date justify-end" :class="lq.sort.key === 'date' ? 'text-fg' : ''" @click="lq.setSort('date')">
+            <span v-if="lq.sort.key === 'date'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Modified
           </button>
           <span />
         </div>
@@ -893,7 +541,7 @@ function onBackgroundClick(e: MouseEvent) {
                 :style="{ top: `${row.top}px`, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, columnGap: `${GAP}px` }"
               >
                 <div
-                  v-for="{ entry } in row.cells"
+                  v-for="{ item: entry } in row.cells"
                   :key="entry.name"
                   class="card-item group focusable rounded-[var(--radius-md)] cursor-pointer relative"
                   :class="{ 'is-selected': selected.has(entry.name), 'is-current': entry.name === currentName }"
@@ -902,7 +550,7 @@ function onBackgroundClick(e: MouseEvent) {
                   :aria-label="entry.basename"
                   @click="onItemClick($event, entry)"
                   @dblclick="ui.openView('player')"
-                  @keydown.enter="playEntry(entry)"
+                  @keydown.enter="lq.playEntry(entry)"
                   @contextmenu.prevent="openCtx($event, entry)"
                 >
                   <div class="thumb rounded-[var(--radius-md)] bg-surface-800 aspect-video relative overflow-hidden" :class="`kind-${entry.scriptType}`">
@@ -918,10 +566,13 @@ function onBackgroundClick(e: MouseEvent) {
                     </div>
                     <div v-else class="skeleton inset-0 absolute" :class="thumbBusy.has(entry.name) ? '' : 'opacity-60'" />
 
+                    <!-- Hover: scrub through the video by moving across the card -->
+                    <CardScrub :entry="entry" />
+
                     <div class="shade inset-0 absolute" />
 
-                    <!-- Hover: tags and play -->
-                    <div class="opacity-0 center transition-opacity duration-200 inset-0 absolute group-hover:opacity-100">
+                    <!-- Hover: play -->
+                    <div class="hover-play opacity-0 center pointer-events-none transition-opacity duration-200 inset-0 absolute group-hover:opacity-100">
                       <span class="play-btn text-white rounded-full center h-11 w-11">
                         <span class="i-carbon-play-filled-alt text-[20px] ml-0.5" />
                       </span>
@@ -951,9 +602,9 @@ function onBackgroundClick(e: MouseEvent) {
                     </button>
 
                     <!-- Bottom row: playing, script, duration -->
-                    <div class="flex gap-1 items-center bottom-1.5 left-1.5 right-1.5 absolute">
+                    <div class="bottom-row flex gap-1 transition-opacity items-center bottom-1.5 left-1.5 right-1.5 absolute">
                       <span v-if="entry.name === currentName" class="chip-over text-accent-300 gap-1 animate-scale-in">
-                        <span class="eq" :class="player.isPlaying ? '' : 'paused'"><i /><i /><i /></span>
+                        <Equaliser :playing="player.isPlaying" />
                       </span>
                       <span
                         v-if="entry.scriptType !== 'none'"
@@ -984,6 +635,8 @@ function onBackgroundClick(e: MouseEvent) {
                       <span v-if="effectiveMeta(entry).rating" class="text-warn shrink-0">
                         {{ '★'.repeat(effectiveMeta(entry).rating ?? 0) }}
                       </span>
+                      <span class="flex-1" />
+                      <IntensityMeter :summary="scripts.summaryOf(entry)" />
                     </p>
                   </div>
                 </div>
@@ -999,7 +652,7 @@ function onBackgroundClick(e: MouseEvent) {
                 :style="{ top: `${row.top}px`, height: `${LIST_ROW_H}px` }"
               >
                 <div
-                  v-for="{ entry, index } in row.cells"
+                  v-for="{ item: entry, index } in row.cells"
                   :key="entry.name"
                   class="list-cols list-row group px-2 focusable rounded-[var(--radius-sm)] h-full cursor-pointer items-center"
                   :class="{ 'is-selected': selected.has(entry.name), 'is-current': entry.name === currentName }"
@@ -1008,11 +661,11 @@ function onBackgroundClick(e: MouseEvent) {
                   :aria-label="entry.basename"
                   @click="onItemClick($event, entry)"
                   @dblclick="ui.openView('player')"
-                  @keydown.enter="playEntry(entry)"
+                  @keydown.enter="lq.playEntry(entry)"
                   @contextmenu.prevent="openCtx($event, entry)"
                 >
                   <span class="text-[11.5px] text-fg-faint num text-right">
-                    <span v-if="entry.name === currentName" class="eq text-accent-300" :class="player.isPlaying ? '' : 'paused'"><i /><i /><i /></span>
+                    <Equaliser v-if="entry.name === currentName" class="text-accent-300" :playing="player.isPlaying" />
                     <button
                       v-else
                       type="button"
@@ -1037,7 +690,7 @@ function onBackgroundClick(e: MouseEvent) {
                       <span v-if="effectiveMeta(entry).rating" class="text-warn shrink-0">{{ '★'.repeat(effectiveMeta(entry).rating ?? 0) }}</span>
                     </span>
                   </span>
-                  <span>
+                  <span class="flex gap-2 min-w-0 items-center">
                     <UiBadge
                       v-if="entry.scriptType !== 'none'"
                       v-tip="scriptBadge(entry).title"
@@ -1048,6 +701,7 @@ function onBackgroundClick(e: MouseEvent) {
                       {{ scriptBadge(entry).long }}
                     </UiBadge>
                     <span v-else class="text-[11.5px] text-fg-faint">—</span>
+                    <IntensityMeter :summary="scripts.summaryOf(entry)" />
                   </span>
                   <span class="text-[12px] text-fg-muted num text-right">{{ entry.duration ? formatTime(entry.duration) : '' }}</span>
                   <span class="text-[12px] text-fg-muted num text-right">{{ formatSize(entry.file.size) }}</span>
@@ -1096,14 +750,14 @@ function onBackgroundClick(e: MouseEvent) {
             </template>
             <template #default="{ close }">
               <div class="p-1">
-                <UiMenu :items="playlistItems(selectedEntries)" @done="close" />
+                <UiMenu :items="actions.playlistItems(selectedEntries)" @done="close" />
               </div>
             </template>
           </UiPopover>
           <UiIconButton
-            :icon="selectedEntries.every(e => e.starred) ? 'i-carbon-star-filled' : 'i-carbon-star'"
-            :label="selectedEntries.every(e => e.starred) ? 'Unstar' : 'Star'"
-            @click="setStar(selectedEntries, !selectedEntries.every(e => e.starred))"
+            :icon="allSelectedStarred ? 'i-carbon-star-filled' : 'i-carbon-star'"
+            :label="allSelectedStarred ? 'Unstar' : 'Star'"
+            @click="actions.setStar(selectedEntries, !allSelectedStarred)"
           />
           <div class="mx-1 divider-x" />
           <UiButton variant="ghost" size="sm" @click="selectAll">
@@ -1115,173 +769,12 @@ function onBackgroundClick(e: MouseEvent) {
     </div>
 
     <UiContextMenu v-model="ctx" />
-
-    <!-- ══ New playlist ═══════════════════════════════════════════════════════ -->
-    <UiModal v-model:open="newPlOpen" title="New playlist" icon="i-carbon-playlist" width="400px" :subtitle="newPl ? `With ${plural(newPl.entries.length, 'video')}` : ''">
-      <UiInput v-if="newPl" ref="newPlInput" v-model="newPl.name" size="md" placeholder="Playlist name" @enter="createPlaylist" />
-      <template #footer>
-        <UiButton variant="ghost" @click="newPl = null">
-          Cancel
-        </UiButton>
-        <UiButton variant="primary" icon="i-carbon-add" @click="createPlaylist">
-          Create
-        </UiButton>
-      </template>
-    </UiModal>
-
-    <!-- ══ Info & tags ════════════════════════════════════════════════════════ -->
-    <UiModal v-model:open="metaOpen" title="Info & tags" icon="i-carbon-tag-edit" width="520px" :subtitle="meta?.entry.basename">
-      <div v-if="meta" class="flex flex-col gap-4">
-        <!-- Read-only facts -->
-        <div class="flex gap-3">
-          <div class="rounded-[var(--radius-md)] bg-surface-800 shrink-0 h-[90px] w-40 overflow-hidden">
-            <img v-if="meta.entry.thumbnailUrl" :src="meta.entry.thumbnailUrl" class="h-full w-full object-cover" alt="">
-          </div>
-          <dl class="text-[12px] gap-x-3 gap-y-1 grid grid-cols-[auto_1fr] min-w-0">
-            <dt class="text-fg-faint">
-              Length
-            </dt>
-            <dd class="num">
-              {{ formatTime(meta.entry.duration, '—') }}
-            </dd>
-            <dt class="text-fg-faint">
-              Size
-            </dt>
-            <dd class="num">
-              {{ formatSize(meta.entry.file.size) }}
-            </dd>
-            <dt class="text-fg-faint">
-              Modified
-            </dt>
-            <dd>{{ formatDate(meta.entry.file.lastModified) }}</dd>
-            <dt class="text-fg-faint">
-              Script
-            </dt>
-            <dd class="truncate">
-              {{ scriptBadge(meta.entry).long }}<template v-if="meta.entry.channels?.length">
-                · <span class="num">{{ meta.entry.channels.join(' ') }}</span>
-              </template>
-            </dd>
-          </dl>
-        </div>
-        <div v-if="meta.entry.scriptMatches.length" class="px-3 py-2 well flex flex-col gap-1">
-          <div v-for="m in meta.entry.scriptMatches" :key="m.file.name" class="text-[12px] flex gap-2 items-center">
-            <span class="i-carbon-document text-fg-faint shrink-0" />
-            <span class="text-fg-muted flex-1 truncate">{{ m.file.name }}</span>
-            <UiBadge v-if="m.isAlt" size="xs" tone="info">
-              alt · {{ m.altName }}
-            </UiBadge>
-          </div>
-        </div>
-
-        <div class="divider-y" />
-
-        <div class="gap-3 grid grid-cols-2">
-          <UiInput v-model="meta.draft.creator" label="Creator" placeholder="Who made the script" />
-          <UiInput v-model="meta.draft.date" label="Date" placeholder="2024-10-05" />
-          <UiInput v-model="meta.draft.url" label="Source URL" placeholder="https://…" class="col-span-2">
-            <template #suffix>
-              <a
-                v-if="meta.draft.url"
-                v-tip="'Open link'"
-                :href="meta.draft.url"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-fg-faint mr-1.5 rounded center h-5 w-5 hover:text-fg"
-              ><span class="i-carbon-launch text-[13px]" /></a>
-            </template>
-          </UiInput>
-        </div>
-
-        <div class="flex flex-col gap-1">
-          <span class="label">Rating</span>
-          <div class="flex gap-0.5 items-center">
-            <button
-              v-for="n in 5"
-              :key="n"
-              type="button"
-              class="text-[20px] focusable rounded pressable"
-              :class="(meta.draft.rating ?? 0) >= n ? 'text-warn' : 'text-fg-faint hover:text-fg-muted'"
-              :aria-label="`${n} star${n === 1 ? '' : 's'}`"
-              @click="meta.draft.rating = meta.draft.rating === n ? 0 : n"
-            >
-              <span :class="(meta.draft.rating ?? 0) >= n ? 'i-carbon-star-filled' : 'i-carbon-star'" />
-            </button>
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-1">
-          <span class="label">Tags</span>
-          <div class="p-1.5 border border-edge-strong rounded-[var(--radius-sm)] bg-surface-900 flex flex-wrap gap-1 min-h-8 transition-[border-color,box-shadow] items-center focus-within:border-accent/70 focus-within:ring-3 focus-within:ring-accent-soft">
-            <TransitionGroup name="t-pop">
-              <span v-for="tag in meta.draft.tags" :key="tag" class="text-[11.5px] text-accent-300 pl-2 pr-1 rounded-[var(--radius-xs)] bg-accent-soft flex gap-1 h-6 items-center">
-                {{ tag }}
-                <button type="button" class="rounded center h-4 w-4 hover:bg-fg/10" :aria-label="`Remove ${tag}`" @click="meta.draft.tags = meta.draft.tags!.filter(t => t !== tag)">
-                  <span class="i-carbon-close text-[11px]" />
-                </button>
-              </span>
-            </TransitionGroup>
-            <input
-              v-model="tagInput"
-              list="ph-lib-tags"
-              class="text-[12.5px] text-fg px-1 outline-none bg-transparent flex-1 min-w-[120px] placeholder:text-fg-faint"
-              placeholder="Add a tag, Enter or comma"
-              @keydown="onTagKey"
-              @blur="addTag"
-            >
-            <datalist id="ph-lib-tags">
-              <option v-for="t in allTags" :key="t" :value="t" />
-            </datalist>
-          </div>
-        </div>
-
-        <label class="flex flex-col gap-1">
-          <span class="label">Notes</span>
-          <textarea
-            v-model="meta.draft.notes"
-            rows="3"
-            class="text-[12.5px] text-fg px-2.5 py-2 outline-none border border-edge-strong rounded-[var(--radius-sm)] bg-surface-900 resize-none transition-[border-color,box-shadow] placeholder:text-fg-faint focus:border-accent/70 focus:ring-3 focus:ring-accent-soft"
-            placeholder="Personal notes…"
-          />
-        </label>
-      </div>
-      <template #footer>
-        <UiButton variant="ghost" @click="meta = null">
-          Cancel
-        </UiButton>
-        <UiButton variant="primary" icon="i-carbon-checkmark" @click="saveMeta">
-          Save
-        </UiButton>
-      </template>
-    </UiModal>
+    <NewPlaylistModal v-model="newPlaylistFor" />
+    <EntryInfoModal v-model="infoEntry" />
   </div>
 </template>
 
 <style scoped>
-/* ── Filter chips ─────────────────────────────────────────────────────────── */
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  color: var(--text-muted);
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-.chip:hover {
-  color: var(--text);
-  background: color-mix(in srgb, var(--text) 5%, transparent);
-}
-.chip-on,
-.chip-on:hover {
-  color: var(--accent-light);
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  background: var(--accent-soft);
-}
-
 /* ── Grid cards ───────────────────────────────────────────────────────────── */
 .card-item .thumb {
   box-shadow: 0 0 0 1px var(--border);
@@ -1319,6 +812,11 @@ function onBackgroundClick(e: MouseEvent) {
 }
 .card-item:hover .thumb-img {
   transform: scale(1.045);
+}
+/* While scrubbing the frame is the point: the play button and chips step aside. */
+.card-item:has(.scrub.is-on) .hover-play,
+.card-item:has(.scrub.is-on) .bottom-row {
+  opacity: 0;
 }
 /* Over the picture: white on dark is right regardless of theme. */
 .shade {
@@ -1379,7 +877,7 @@ function onBackgroundClick(e: MouseEvent) {
 }
 .list-cols {
   display: grid;
-  grid-template-columns: 28px 64px minmax(0, 1fr) 128px 64px 72px 110px 32px;
+  grid-template-columns: 28px 64px minmax(0, 1fr) 156px 64px 72px 110px 32px;
   column-gap: 12px;
 }
 @container (max-width: 820px) {
@@ -1424,31 +922,5 @@ function onBackgroundClick(e: MouseEvent) {
 }
 .select-box.is-on > span {
   opacity: 1;
-}
-
-/* ── Now-playing equaliser ────────────────────────────────────────────────── */
-.eq {
-  display: inline-flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 11px;
-}
-.eq i {
-  display: block;
-  width: 3px;
-  height: 100%;
-  border-radius: 1px;
-  background: currentColor;
-  transform-origin: bottom;
-  animation: ph-eq 0.9s ease-in-out infinite;
-}
-.eq i:nth-child(2) {
-  animation-delay: -0.3s;
-}
-.eq i:nth-child(3) {
-  animation-delay: -0.6s;
-}
-.eq.paused i {
-  animation-play-state: paused;
 }
 </style>

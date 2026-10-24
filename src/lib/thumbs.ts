@@ -218,12 +218,23 @@ export function prefetchThumbs(entries: VideoEntry[]) {
     void ensureThumb(e)
 }
 
+/** What each windowed list has on screen, so one list scrolling never drops another's requests. */
+const onScreen = new Map<string, VideoEntry[]>()
+
 /**
  * "These are on screen now." Requests their thumbnails and drops any lazy
  * request for something that has scrolled away and not started decoding yet.
+ *
+ * `source` names the list asking (the library view and the drawer panel can
+ * both be showing); an empty list withdraws that list's requests.
  */
-export function thumbsFor(entries: VideoEntry[]) {
-  const keep = new Set(entries.map(e => e.name))
+export function thumbsFor(entries: VideoEntry[], source = 'library') {
+  onScreen.set(source, entries)
+  const keep = new Set<string>()
+  for (const list of onScreen.values()) {
+    for (const e of list)
+      keep.add(e.name)
+  }
   for (let i = waiting.length - 1; i >= 0; i--) {
     const job = waiting[i]
     if (job.lazy && !keep.has(job.entry.name)) {

@@ -186,6 +186,7 @@ declare global {
   const useDebounce: typeof import('@vueuse/core').useDebounce
   const useDebounceFn: typeof import('@vueuse/core').useDebounceFn
   const useDebouncedRefHistory: typeof import('@vueuse/core').useDebouncedRefHistory
+  const useDeviceLatency: typeof import('./src/composables/useVideoSync').useDeviceLatency
   const useDeviceMotion: typeof import('@vueuse/core').useDeviceMotion
   const useDeviceOrientation: typeof import('@vueuse/core').useDeviceOrientation
   const useDevicePixelRatio: typeof import('@vueuse/core').useDevicePixelRatio
@@ -203,6 +204,7 @@ declare global {
   const useEventListener: typeof import('@vueuse/core').useEventListener
   const useEventSource: typeof import('@vueuse/core').useEventSource
   const useEyeDropper: typeof import('@vueuse/core').useEyeDropper
+  const useFaceLink: typeof import('./src/composables/useFaceLink').useFaceLink
   const useFavicon: typeof import('@vueuse/core').useFavicon
   const useFetch: typeof import('@vueuse/core').useFetch
   const useFileDialog: typeof import('@vueuse/core').useFileDialog
@@ -361,6 +363,9 @@ declare global {
   // @ts-ignore
   export type { BeatMode } from './src/composables/useBinauralBeats'
   import('./src/composables/useBinauralBeats')
+  // @ts-ignore
+  export type { FaceLinkSettings } from './src/composables/useFaceLink'
+  import('./src/composables/useFaceLink')
   // @ts-ignore
   export type { GamepadActions } from './src/composables/useGamepad'
   import('./src/composables/useGamepad')
@@ -572,6 +577,7 @@ declare module 'vue' {
     readonly useDebounce: UnwrapRef<typeof import('@vueuse/core')['useDebounce']>
     readonly useDebounceFn: UnwrapRef<typeof import('@vueuse/core')['useDebounceFn']>
     readonly useDebouncedRefHistory: UnwrapRef<typeof import('@vueuse/core')['useDebouncedRefHistory']>
+    readonly useDeviceLatency: UnwrapRef<typeof import('./src/composables/useVideoSync')['useDeviceLatency']>
     readonly useDeviceMotion: UnwrapRef<typeof import('@vueuse/core')['useDeviceMotion']>
     readonly useDeviceOrientation: UnwrapRef<typeof import('@vueuse/core')['useDeviceOrientation']>
     readonly useDevicePixelRatio: UnwrapRef<typeof import('@vueuse/core')['useDevicePixelRatio']>
@@ -589,6 +595,7 @@ declare module 'vue' {
     readonly useEventListener: UnwrapRef<typeof import('@vueuse/core')['useEventListener']>
     readonly useEventSource: UnwrapRef<typeof import('@vueuse/core')['useEventSource']>
     readonly useEyeDropper: UnwrapRef<typeof import('@vueuse/core')['useEyeDropper']>
+    readonly useFaceLink: UnwrapRef<typeof import('./src/composables/useFaceLink')['useFaceLink']>
     readonly useFavicon: UnwrapRef<typeof import('@vueuse/core')['useFavicon']>
     readonly useFetch: UnwrapRef<typeof import('@vueuse/core')['useFetch']>
     readonly useFileDialog: UnwrapRef<typeof import('@vueuse/core')['useFileDialog']>
