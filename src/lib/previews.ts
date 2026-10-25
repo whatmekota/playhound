@@ -41,10 +41,15 @@ export type PreviewPriority = 'now' | 'low'
 const FORMAT = 1
 const FRAME_W = 160
 const FRAME_H = 90
-const MAX_FRAMES = 160
-/** Aim for this many frames; short videos get one every MIN_INTERVAL instead. */
-const TARGET_FRAMES = 120
-const MIN_INTERVAL = 2
+/**
+ * One frame per this many seconds of video. Every frame is a real seek and
+ * decode, so a frame every couple of seconds made a long video take minutes;
+ * for a hover preview, half a minute apart is plenty.
+ */
+const FRAME_EVERY_SEC = 30
+/** Short videos still get this many, so a two-minute clip is not two images. */
+const MIN_FRAMES = 8
+const MAX_FRAMES = 120
 const SHEET_COLS = 10
 /** One seek that never lands (broken index, odd codec) gives up after this. */
 const SEEK_TIMEOUT_MS = 8000
@@ -378,7 +383,7 @@ async function buildStrip(src: PreviewSource, signal: AbortSignal): Promise<Prev
     if (!Number.isFinite(duration) || duration <= 0 || !video.videoWidth)
       throw new Error('no duration')
 
-    const count = Math.max(1, Math.min(MAX_FRAMES, Math.round(duration / Math.max(MIN_INTERVAL, duration / TARGET_FRAMES))))
+    const count = Math.max(1, Math.min(MAX_FRAMES, Math.max(MIN_FRAMES, Math.round(duration / FRAME_EVERY_SEC))))
     const interval = duration / count
     const cols = Math.min(SHEET_COLS, count)
     const rows = Math.ceil(count / cols)
@@ -395,8 +400,9 @@ async function buildStrip(src: PreviewSource, signal: AbortSignal): Promise<Prev
     for (let i = 0; i < count; i++) {
       if (signal.aborted)
         throw abortError()
-      // A frame per idle slice keeps the page responsive while it runs.
-      await whenIdle(1000)
+      // A frame per idle slice keeps the page responsive while it runs, but
+      // never wait long for one: with few frames the whole strip is quick.
+      await whenIdle(150)
       await seekFrame(video, Math.min(duration - 0.05, (i + 0.5) * interval), signal)
       ctx.drawImage(video, r.sx, r.sy, r.sw, r.sh, (i % cols) * FRAME_W, Math.floor(i / cols) * FRAME_H, FRAME_W, FRAME_H)
       previewProgress.done = i + 1
