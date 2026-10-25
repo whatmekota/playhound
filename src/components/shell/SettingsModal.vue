@@ -14,7 +14,7 @@ import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
 import { KEYS } from '~/lib/persist'
-import { buildActivity, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
+import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
@@ -487,9 +487,9 @@ function openBackup() {
                 </div>
 
                 <div class="px-4 py-3 card flex flex-col gap-3" :class="presence.enabled ? '' : 'opacity-60'">
-                  <UiInput v-model="presence.clientId" label="Application ID" placeholder="e.g. 1234567890123456789" mono clearable />
+                  <UiInput v-model="presence.clientId" label="Application ID" :placeholder="DEFAULT_CLIENT_ID" mono clearable />
                   <p class="hint">
-                    From discord.com/developers → your application → General Information. Any application works, including one with a bot; its name is what Discord shows as "Playing …". Never paste a bot token here — it is not needed.
+                    Empty uses playhound's own application. To show a different name, paste another one from discord.com/developers → your application → General Information; its name is what Discord shows as "Playing …". Never paste a bot token here — it is not needed.
                   </p>
                   <p v-if="presence.clientId && !isClientId(presence.clientId)" class="hint text-warn">
                     That doesn't look like an Application ID — it should be a long number.

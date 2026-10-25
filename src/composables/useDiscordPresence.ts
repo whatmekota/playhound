@@ -3,7 +3,7 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { desktop } from '~/lib/browserApi'
 import { KEYS } from '~/lib/persist'
-import { buildActivity, DEFAULT_PRESENCE, isClientId } from '~/lib/presence'
+import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId } from '~/lib/presence'
 import { formatTime } from '~/lib/time'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
@@ -93,7 +93,8 @@ export function useDiscordPresence() {
   let timer: ReturnType<typeof setTimeout> | null = null
 
   function compute() {
-    const settings = { ...s.value, clientId: s.value.clientId.trim() }
+    // Empty means the built-in application (also covers settings saved before it existed).
+    const settings = { ...s.value, clientId: s.value.clientId.trim() || DEFAULT_CLIENT_ID }
     if (!isClientId(settings.clientId))
       return { id: '', activity: null }
     const videoStart = player.videoUrl && player.isPlaying ? Date.now() - player.currentTime * 1000 : null

@@ -31,9 +31,16 @@ export interface PresenceSettings {
   hideWhenIdle: boolean
 }
 
+/**
+ * The owner's own Discord application. An Application ID is public (it is in
+ * every presence it shows), so it can live in the source; presence still
+ * stays off until switched on in Settings.
+ */
+export const DEFAULT_CLIENT_ID = '1563782113008943176'
+
 export const DEFAULT_PRESENCE: PresenceSettings = {
   enabled: false,
-  clientId: '',
+  clientId: DEFAULT_CLIENT_ID,
   mode: 'minimal',
   activityType: 0,
   details: '{{state}} · {{source}}',
