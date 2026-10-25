@@ -578,6 +578,7 @@ const needsOverflow = computed(() => level.value > 0)
       <div ref="rightEl" class="flex gap-1 min-w-0 items-center justify-end">
         <!-- Session: the edge button and the intensity knob -->
         <EdgeBadge />
+        <UiIconButton v-if="hasTrack" icon="i-carbon-rain-drop" label="I came — mark it" kbd="C" size="sm" class="hover:!text-[#f472b6]" @click="sessionActions.came()" />
         <div
           v-if="showStatus"
           v-tip="knobTip"

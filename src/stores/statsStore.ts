@@ -100,9 +100,18 @@ export const useStatsStore = defineStore('stats', () => {
     live.value = null
   }
 
-  function recordFinish(videoName: string, atSeconds: number) {
+  function recordFinish(videoName: string, atSeconds: number): FinishEvent {
     const entry = ensureEntry(videoName)
-    entry.finishEvents.push({ at: atSeconds, ts: Date.now() })
+    const event = { at: atSeconds, ts: Date.now() }
+    entry.finishEvents.push(event)
+    return event
+  }
+
+  /** Take back a finish marked by mistake. */
+  function removeFinish(videoName: string, ts: number) {
+    const entry = stats.value[videoName]
+    if (entry)
+      entry.finishEvents = entry.finishEvents.filter(f => f.ts !== ts)
   }
 
   // ─── Edges ─────────────────────────────────────────────────────────────────
@@ -138,5 +147,5 @@ export const useStatsStore = defineStore('stats', () => {
     daily.value = {}
   }
 
-  return { stats, daily, live, sessionEdges, startSession, endSession, recordFinish, edgesFor, allStats, clearAll }
+  return { stats, daily, live, sessionEdges, startSession, endSession, recordFinish, removeFinish, edgesFor, allStats, clearAll }
 })

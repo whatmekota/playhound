@@ -11,7 +11,7 @@ export type ShellAction
   = | 'bookmark' | 'star' | 'next' | 'prev' | 'random' | 'panic' | 'help'
     | 'view-player' | 'view-library' | 'view-playlists'
     | 'queue' | 'library-panel' | 'device' | 'shuffle' | 'repeat' | 'palette'
-    | 'edge' | 'edge-release' | 'intensity-up' | 'intensity-down' | 'next-peak' | 'finish'
+    | 'edge' | 'edge-release' | 'intensity-up' | 'intensity-down' | 'next-peak' | 'finish' | 'came'
 
 export interface Hotkey {
   /** How the key is written in the cheat sheet. */
@@ -89,6 +89,7 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: '- / =', label: 'Intensity down / up', owner: 'shell', code: 'Equal', action: 'intensity-up' },
       { keys: 'G', label: 'Jump to the next peak', owner: 'shell', code: 'KeyG', action: 'next-peak' },
       { keys: 'Shift + G', label: 'Jump to the finish — the most intense part', owner: 'shell', code: 'KeyG', action: 'finish' },
+      { keys: 'C', label: 'I came — mark it on this video', owner: 'shell', code: 'KeyC', action: 'came' },
     ],
   },
   {

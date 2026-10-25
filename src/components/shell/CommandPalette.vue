@@ -137,6 +137,7 @@ const commands = computed<Item[]>(() => {
     { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
     loaded && { id: 'cmd:next-peak', kind: 'command', label: 'Jump to the next peak', icon: 'i-carbon-skip-forward-outline', keywords: 'good part intense fast chapter', kbd: ['G'], run: () => session.nextPeak() },
     loaded && { id: 'cmd:finish', kind: 'command', label: 'Finish', hint: 'Jump to the most intense part', icon: 'i-carbon-flash', keywords: 'climax end peak best', kbd: ['Shift', 'G'], run: () => session.finish() },
+    loaded && { id: 'cmd:came', kind: 'command', label: 'I came', hint: 'Mark it on this video', icon: 'i-carbon-rain-drop', keywords: 'came cum finished orgasm mark', kbd: ['C'], run: () => session.came() },
     { id: 'cmd:panic', kind: 'command', label: 'Panic', hint: 'Stop everything and cover the screen', icon: 'i-carbon-warning-hex', keywords: 'stop emergency hide boss', kbd: ['Esc'], run: panic },
     { id: 'cmd:settings', kind: 'command', label: 'Open settings', icon: 'i-carbon-settings', keywords: 'preferences options config', run: () => (ui.settingsOpen = true) },
     { id: 'cmd:shortcuts', kind: 'command', label: 'Keyboard shortcuts', icon: 'i-carbon-keyboard', keywords: 'hotkeys keys help cheat sheet', kbd: ['?'], run: () => (ui.shortcutsOpen = true) },

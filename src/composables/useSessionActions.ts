@@ -6,6 +6,7 @@ import { formatTime } from '~/lib/time'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
+import { useStatsStore } from '~/stores/statsStore'
 import { useUiStore } from '~/stores/uiStore'
 import { useScriptAnalysis } from './useScriptAnalysis'
 import { toast } from './useToast'
@@ -39,6 +40,7 @@ export function useSessionActions() {
   const player = usePlayerStore()
   const playback = usePlaybackStore()
   const ui = useUiStore()
+  const stats = useStatsStore()
   const { analysis, source } = useScriptAnalysis()
 
   const chapters = computed(() => chaptersForScript(source.value, player.videoDuration, analysis.value?.peaks, playback.scriptMetadata))
@@ -108,5 +110,22 @@ export function useSessionActions() {
     notify({ icon: 'i-carbon-flag-filled', text: 'Finish', sub: `${c.name} · ${formatTime(c.start / 1000, '0:00')}` }, 'peak')
   }
 
-  return { edge, release, nudgeIntensity, nextPeak, finish, chapters }
+  /**
+   * "I came": mark the moment on this video. It shows on the timeline and
+   * counts in Stats; the toast can take it back after a mis-click.
+   */
+  function came() {
+    const name = videoName.value
+    if (!name || !player.videoUrl)
+      return
+    const event = stats.recordFinish(name, player.currentTime)
+    toast('Marked 💦', {
+      detail: formatTime(event.at, '0:00'),
+      icon: 'i-carbon-rain-drop',
+      key: 'came',
+      action: { label: 'Undo', run: () => stats.removeFinish(name, event.ts) },
+    })
+  }
+
+  return { edge, release, nudgeIntensity, nextPeak, finish, came, chapters }
 }

@@ -320,6 +320,7 @@ function runShellAction(action: ShellAction) {
     case 'intensity-down': session.nudgeIntensity(-KNOB_STEP); break
     case 'next-peak': session.nextPeak(); break
     case 'finish': session.finish(); break
+    case 'came': session.came(); break
   }
 }
 
