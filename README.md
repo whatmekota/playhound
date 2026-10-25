@@ -1,142 +1,253 @@
 # playhound
 
-An audiovisual session engine and funscript video player with TCode/OSR device support.
+A funscript video player and audiovisual session engine for your own library and
+your own hardware: OSR2/SR6 strokers over TCode, Intiface/Buttplug toys, and an
+on-screen emulator when nothing is plugged in.
 
-This is the merge of two previously separate apps — **MWHOPlayer** (funscript video
-player) and **playhound** (binaural/slideshow session engine) — into one. Both halves
-now share a single device output layer, so a session can drive hardware just as a
-script can.
+It plays your videos with their scripts, finds the good parts, follows the music
+when there's no script, and can run a whole session by itself, with binaural
+audio, a hypnotic overlay, a heart-rate monitor and a phone in your other hand
+as the remote.
 
-## What it does
+> [!WARNING]
+> **18+ only.** playhound is made for adult content and drives physical
+> devices. Read [Safety](#safety) before connecting hardware.
 
-**Player** — local video library with automatic funscript matching, playlists,
-bookmarks, an organizer that renames videos and scripts together, watch stats, an
-EroScripts browser and 180° SBS playback.
+---
 
-**Session** — binaural tone generator with a noise layer, a free-placement media
-wall, a beat-synced slideshow, and a session engine that moves through
-entry → build → peak → descent phases, drifting parameters as it goes.
+## Highlights
 
-**Device** — TCode over Web Serial, Buttplug/Intiface, and an on-screen OSR
-emulator. Per-axis range, inversion and resting position, with presets.
+- **Plays scripts properly.** Multi-axis funscripts (`.pitch`, `.roll`, `.twist`,
+  `.surge`, `.sway`, …) are matched to videos automatically. You get latency
+  calibration, a per-video script offset, A–B loops and speed control, and a
+  timeline that shows the script's intensity, chapters, bookmarks and your past
+  edges and finishes.
+- **No script? Use the music.** It finds the beat in the video's soundtrack and
+  strokes in time with it, or writes a real `.funscript` from the whole track
+  that you can save and edit.
+- **Stays in control.** **E** edges: everything backs off for a while and eases
+  back in. An intensity knob scales every source. **G** jumps to the next
+  peak and **Shift+G** to the most intense part. **Esc** is panic.
+- **Programmes.** Plan a session in phases (warm-up, build, edges, peak,
+  cool-down). playhound then picks chapters across your library to match the
+  plan and plays them as a highlight reel.
+- **Session engine.** It can also run without a video: a binaural tone
+  generator with noise, a breathing hypno overlay, a free-form media wall
+  (local files and YouTube) and a beat-synced slideshow, all moving through
+  phases together.
+- **Body in the loop.** A Bluetooth heart-rate monitor can call an edge for you
+  when your rate climbs fast. Vibrators get a strength worked out from the
+  script, the music or the session.
+- **Remotes.** Use a phone over Wi-Fi (big buttons, panic in the thumb zone), a
+  gamepad, or an [ESP32 "Cheap Yellow Display"](firmware/cyd-face) face that
+  watches the session and reacts.
+- **Desktop app.** A Windows build with a frameless window. It keeps driving the
+  device while minimised, remembers your library folder, and can show Discord
+  Rich Presence (off by default).
 
-## Motion sources
+## Getting started
 
-The device is fed by one of four sources, switchable live:
-
-| Source    | Drives the axis from                                    |
-| --------- | ------------------------------------------------------- |
-| `script`  | the loaded funscript, following video playback          |
-| `session` | session intensity — phase sets stroke rate and depth    |
-| `beat`    | the binaural beat, divided down to a usable stroke rate |
-| `manual`  | the rate and depth sliders in the Motion panel          |
-
-The funscript always wins while a script is playing, so the generator never fights
-video sync for the same axis.
-
-### Safety
-
-Generated motion drives real hardware, so the generator is bounded:
-
-- a speed ceiling (`maxSpm`) it can never exceed, whatever the session asks for
-- rate and depth ramp rather than jump — 25 spm/s and 0.4 depth/s by default, so a
-  phase change eases in over a few seconds instead of slamming the axis
-- phase is accumulated rather than recomputed from elapsed time, so changing the
-  rate alters speed without ever jumping position
-- frame delta is clamped, so a backgrounded tab cannot resume with a lurch
-- stopping eases depth to zero and homes the axes
-
-The maths behind these lives in `src/lib/motionMath.ts` and is covered by unit tests.
-
-## Running it
+You need **Node 22+**, **pnpm 10** and a **Chromium-based browser** (Chrome,
+Edge, Brave…). playhound relies on the File System Access API to read your
+library and on Web Serial to talk to TCode devices.
 
 ```bash
+git clone <this repo> playhound
+cd playhound
 pnpm install
-pnpm dev          # http://localhost:6969
-pnpm dev:proxy    # optional: EroScripts/Pixeldrain CORS proxy on :7071
+pnpm dev            # http://localhost:6969
 ```
 
-`dev:proxy` is only needed for the EroScripts panel.
+Open the app, pick your video folder, and it pairs each video with its scripts
+by file name (`Video.mp4` + `Video.funscript` + `Video.roll.funscript` …).
+Nothing is copied or uploaded; the folder is read in place.
+
+On Windows, `start.bat` starts everything at once: the app, the
+EroScripts proxy (`:7071`) and the remote relay (`:7072`). If you've built the
+desktop app, it launches that instead.
+
+### Desktop app (Windows)
 
 ```bash
-pnpm build
-pnpm test
-pnpm typecheck
-pnpm lint
+pnpm app            # Electron window on the dev server, with hot reload
+pnpm app:build      # installer + portable .exe in release/
+pnpm app:dir        # unpacked build only (quicker)
 ```
 
-## Desktop app
+The desktop app is the same code served the same way. It runs the proxy and the
+remote relay in-process and serves the app on your LAN so the phone can reach
+it. It also:
 
-playhound also runs as a Windows desktop app (Electron, in `desktop/`). It is
-the same app, served the same way, so nothing in `src/` knows the difference.
+- remembers the library folder without the browser's "reconnect" click
+- skips the serial-port chooser when there's only one port
+- keeps running at full speed while hidden
+
+It keeps its own profile in `%APPDATA%\playhound`. To bring your browser data
+over, use **Backup → Export** in the browser and **Import** in the app.
+
+The build is unsigned, so SmartScreen asks once. Allow the firewall prompt on
+private networks, or the phone remote can't connect.
+
+## Using it
+
+### Devices
+
+Open the **Device** panel (**D**):
+
+| Output                   | How                                                                                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TCode** (OSR2, SR6, …) | Web Serial. Set each axis's range, inversion and resting position, and save presets.                                                         |
+| **Intiface / Buttplug**  | Connect to Intiface Central. Strokers get linear moves; vibrators, rotators and oscillators get a strength from the source you pick per toy. |
+| **Emulator**             | A 3D OSR on screen, for trying things with nothing plugged in.                                                                               |
+
+**Latency calibration** lines the device up with the picture. A **per-video
+offset** fixes scripts that are a little early or late.
+
+### Motion sources
+
+Exactly one source drives the device at a time, and you can switch live in the
+**Motion** panel:
+
+| Source  | Strokes from                                                                                              |
+| ------- | --------------------------------------------------------------------------------------------------------- |
+| Script  | the loaded funscript, synced to the video                                                                 |
+| Music   | the beat of the video's soundtrack: phase-locked, with half-time and double-time picked to suit the tempo |
+| Session | the session's phase and intensity                                                                         |
+| Beat    | the binaural beat, divided down to a usable rate                                                          |
+| Pulse   | the audible session pulse                                                                                 |
+| Manual  | the rate and depth sliders                                                                                |
+
+A loaded script always wins while it plays, so a generator never fights video
+sync for the same axis.
+
+### Keyboard
+
+Press **?** in the app for the full list and **Ctrl+K** for the command palette.
+The ones you'll use most:
+
+| Key              | Does                                                |
+| ---------------- | --------------------------------------------------- |
+| Space · ← → · F  | play/pause · seek 5 s · fullscreen                  |
+| N · P · R        | next · previous · random scripted video             |
+| , · .            | previous / next chapter of the script               |
+| **E** · Shift+E  | edge (back everything off) · "I'm OK", end the hold |
+| **-** · **=**    | intensity down / up                                 |
+| **G** · Shift+G  | next peak · jump to the finish                      |
+| **C**            | I came: marks it on the video and in Stats          |
+| B · S            | bookmark here · star the video                      |
+| **Esc** or **`** | **panic**: stop everything and cover the screen     |
+
+### Phone remote
+
+Open the **Remote** panel and open the link it gives you on your phone. The
+link carries your computer's LAN address, so the phone must be on the same
+Wi-Fi. The phone gets play/pause, next/previous, edge, intensity and a big panic button,
+and can keep its screen awake.
+
+### Around the app
+
+- **Left nav:** Player, Library, Playlists, Media Wall, Slideshow,
+  EroScripts, Organizer, Stats.
+- **Right rail:** Queue, Scripts, Bookmarks, Device, Motion, Programme, Remote,
+  Face, Binaural, Hypno, Director, Backup. Middle-click a panel icon to pin it.
+- **Library:** search, filter chips, script intensity and speed sparklines,
+  hover-scrub previews, and an **auto-director** that picks the next video
+  to suit the moment.
+- **Organizer:** rename a video and all its scripts together, keeping the
+  axis suffixes.
+- **EroScripts:** browse the forum and resolve download links (needs your own
+  session cookie and the proxy).
+- **Stats:** watch time, plays, finishes and edges, per video and per day.
+- **Themes:** dark, light, Catppuccin and Dracula, plus a choice of logos.
+
+## Safety
+
+playhound moves real hardware, so generated motion is bounded:
+
+- **Speed ceiling.** There's a hard strokes-per-minute limit that nothing can
+  exceed.
+- **Ramping.** Rate and depth ramp instead of jumping, so a phase change eases
+  in over a few seconds.
+- **Phase accumulation.** Phase is accumulated rather than recomputed, so a
+  change of rate never makes the position jump.
+- **Clamped frame delta.** A tab that comes back from the background doesn't
+  lurch.
+- **Stopping.** Depth eases to zero and the axes go home.
+- **Panic** (Esc or `) stops every output at once and covers the screen. Press
+  it again to resume. It works from the keyboard, the phone and the gamepad.
+
+The motion maths lives in `src/lib/motionMath.ts`, `src/lib/edging.ts` and
+`src/lib/musicMotion.ts`, and is covered by unit tests. Still, test new
+settings with the emulator or at low range first.
+
+## Privacy
+
+Everything stays on your machine: library, scripts, stats, playlists, settings.
+There are no accounts, analytics or telemetry. The app talks to the outside
+world only when you use a feature that needs it:
+
+- the **EroScripts** browser and its download hosts
+- **YouTube** tiles on the media wall
+- **Discord Rich Presence**: desktop app only, off by default. Its Minimal mode
+  shows the app and a timer, never what's playing; titles appear only if you
+  write a custom template that asks for them.
+
+The phone remote and the CYD face talk to your own computer over your LAN.
+
+## Development
 
 ```bash
-pnpm app          # dev: Electron window on the Vite dev server, with HMR
-pnpm app:build    # vite build + NSIS installer and portable .exe in release/
-pnpm app:dir      # same, but only release/win-unpacked/ (quicker)
+pnpm dev            # app on :6969 (with --host, for the phone)
+pnpm dev:proxy      # EroScripts proxy + remote relay, if not using start.bat
+pnpm test           # Vitest
+pnpm typecheck      # vue-tsc
+pnpm lint           # ESLint (@antfu/eslint-config); runs on commit too
 ```
 
-- **What it runs.** The built app serves `dist/` on `0.0.0.0:6969` (so the phone
-  can still open `http://<lan-ip>:6969/remote`), runs the EroScripts proxy (:7071)
-  and the remote relay (:7072) in-process, and opens its window on
-  `http://localhost:6969`. No terminal, no `pnpm dev:proxy`.
-- **start.bat** launches the desktop app when it finds one — `release\win-unpacked\`
-  first, then an installed copy — and falls back to the old browser flow
-  otherwise. `start.bat browser` forces the browser flow.
-- **One copy at a time.** Starting it again focuses the open window. If port 6969
-  is held by a playhound dev server, the app uses that; if something else holds
-  it, it says so and quits. A busy 7071/7072 (a stray `pnpm dev:proxy`) is
-  shared, not fatal.
-- **Serial.** Connect works as in Chrome, minus the chooser when there is only
-  one port. With several, a small list asks which one, defaulting to the port
-  used last time.
-- **Library folder.** The remembered folder comes back on launch without the
-  "reconnect" click the browser needs: the app grants its own origin file
-  access on restored handles. Chromium still refuses system folders (AppData,
-  Program Files, Windows, the bare user profile) in the folder picker, so keep
-  the library somewhere ordinary, such as a Videos folder or another drive.
-- **Window.** Size, position and maximised state are remembered; the window
-  opens in the colour of the theme it was closed in. No menu bar. Ctrl+Shift+I
-  or F12 opens DevTools. External links open in the system browser.
-- **Keeps running when hidden.** Background throttling is off, so a minimised
-  window keeps driving the device, and audio may start without a click (the
-  phone remote can resume a session on an untouched desktop).
-- **Data.** The app has its own Chromium profile in `%APPDATA%\playhound`
-  (`playhound-dev` for `pnpm app`), so the browser's library, playlists and
-  settings do not carry over by themselves. Move them once: in the browser, open
-  **Backup** in the right rail and export; in the app, import that file there.
-  Uninstalling leaves the profile alone.
-- **First run.** The build is unsigned, so SmartScreen asks once, and Windows
-  Firewall asks whether playhound may listen on private networks. Allow it, or
-  the phone cannot reach the app.
+**Stack:** Vue 3.5, Vite 7, Pinia, vue-router (file-based), UnoCSS
+(`presetWind4`), Vitest, Electron 44 for the desktop build. Scaffolded from
+[vitesse-lite](https://github.com/antfu-collective/vitesse-lite).
 
-## Browser support
+```text
+src/
+  components/   ui/ primitives · shell/ · player/ · views/ · inspectors/ (right-rail panels)
+  composables/  device links, engines, sync loops (useVideoSync, useMotionEngine, …)
+  stores/       Pinia: playback, queue, library, device, motion, session control, …
+  lib/          pure logic, unit-tested: parsing, motion maths, beat tracking, programmes
+  workers/      soundtrack analysis off the main thread
+  pages/        / (the app) and /remote (the phone)
+desktop/        Electron main process, preload, packaging
+firmware/       ESP32 CYD face (Arduino); protocol in docs/face-protocol.md
+es-proxy.mjs    EroScripts CORS proxy (:7071) and remote relay (:7072)
+test/           Vitest suites
+```
 
-Needs a Chromium-based browser: the File System Access API for the library and
-organizer, and Web Serial for TCode output. Buttplug works anywhere Intiface does.
+Conventions that keep it in one piece:
 
-## Layout
+- **`playbackStore` is the only way to change what plays.** The library, queue,
+  hotkeys, gamepad, phone and programmes all go through it, so they agree on
+  what's next.
+- **Every `localStorage` key is registered** in `src/lib/persist.ts`, with
+  migrations between schema versions. A test fails if one isn't.
+- **Hotkeys live in `src/lib/hotkeys.ts`.** The cheat sheet renders from that
+  list, so a key can't exist without being documented.
+- **Logic that can be pure goes in `src/lib/`** and gets tests. Components and
+  composables wire it to the clock, the DOM and the devices.
+- **UI uses the primitives in `src/components/ui/`** and the theme tokens in
+  `src/styles/main.css`.
 
-- **Left nav** picks what the stage shows: Player, Library, Playlists, Media Wall,
-  Slideshow, EroScripts, Organizer, Stats.
-- **Right rail** opens tool panels in a resizable drawer: Queue, Scripts, Bookmarks,
-  Device, Motion, Remote, Binaural, Hypno, Director, Backup. Middle-click an icon to
-  pin that panel above the active one.
-- **Dock** along the bottom: now playing, transport, timeline, and live device /
-  motion / binaural status.
-- Away from the Player view the video keeps playing as a **mini player** in the corner.
-- **Ctrl K** opens the command palette (views, commands, videos); **?** lists every
-  shortcut.
+## Status
 
-Everything goes through `src/stores/playbackStore.ts`, so the library, playlists,
-queue, hotkeys, gamepad and phone remote all share one idea of what plays next.
-UI primitives live in `src/components/ui/`, design tokens in `src/styles/main.css`.
+This is a personal project, built for and tested on one setup (Windows, Chrome,
+an OSR2). Some things are written but haven't been tried with real hardware yet:
 
-## Stack
+- heart-rate monitors
+- Buttplug vibration
+- the desktop app's Bluetooth chooser
+- Discord presence
 
-Vue 3.5, Vite 7, UnoCSS (`presetWind4`), vue-router 5 with file-based routing,
-Pinia, Vitest, ESLint. Themes are CSS custom properties bound into the UnoCSS theme,
-so `surface-*`, `fg-*`, `accent-*` and the status colours reskin across dark, light,
-catppuccin and dracula.
+Reports and fixes are welcome.
 
-Scaffolded from [vitesse-lite](https://github.com/antfu-collective/vitesse-lite).
+## License
+
+[MIT](LICENSE)

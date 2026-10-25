@@ -18,3 +18,5 @@ firmware/cyd-face/config.h
 firmware/cyd-face/build/
 
 firmware/cyd-face/_preview.png
+
+__pycache__/
