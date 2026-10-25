@@ -12,8 +12,9 @@ import {
   shouldSend,
   stepExpression,
 } from '~/lib/faceState'
-import { sampleEnvelope, speedToIntensity } from '~/lib/funscriptAnalysis'
+import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { KEYS } from '~/lib/persist'
+import { momentIntensity, speedDistribution } from '~/lib/scriptIntensity'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
@@ -93,14 +94,24 @@ function start() {
     const device = useDeviceStore()
     const bp = useButtplug()
 
-    /** Speed of the primary script around the playhead, from the shared analysis. */
+    /** Each script's sorted speeds, kept as long as its shared analysis is. */
+    const distributions = new WeakMap<object, Float64Array>()
+
+    /** How hard the primary script is going around the playhead, against the rest of it. */
     function scriptLevel(): { intensity: number, spm: number } | null {
       const s = scripts.primaryScript ?? scripts.activeScripts[0]
       if (!s || !s.parsed.actions.length)
         return null
       const a = analyseActions(s.parsed.actions, analysisKey(s.filename, s.channel, s.parsed.actions.length))
       const sample = sampleEnvelope(a.envelope, player.currentTime * 1000 + (s.offsetMs ?? 0))
-      return sample ? { intensity: speedToIntensity(sample.speed), spm: sample.spm } : null
+      if (!sample)
+        return null
+      let sorted = distributions.get(a)
+      if (!sorted) {
+        sorted = speedDistribution(a.envelope)
+        distributions.set(a, sorted)
+      }
+      return { intensity: momentIntensity(sample.speed, sorted), spm: sample.spm }
     }
 
     function snapshot(): FaceInputs {

@@ -4,8 +4,11 @@ import {
   busiestStretch,
   intensityBand,
   intensityLevel,
+  momentIntensity,
   scriptProfile,
   speedCurve,
+  speedDistribution,
+  speedRank,
   speedUnits,
 } from '../src/lib/scriptIntensity'
 
@@ -96,5 +99,38 @@ describe('meanSpeedToIntensity', () => {
     expect(meanSpeedToIntensity(2)).toBeLessThan(meanSpeedToIntensity(3.5))
     expect(meanSpeedToIntensity(10)).toBe(1)
     expect(meanSpeedToIntensity(Number.NaN)).toBe(0)
+  })
+})
+
+describe('moment intensity', () => {
+  // A hard script: long steady stretches around 2.8 with short bursts to 5.
+  const hard = env([...Array.from({ length: 80 }, () => 2.8), ...Array.from({ length: 12 }, () => 5), ...Array.from({ length: 8 }, () => 0)])
+  const hardSorted = speedDistribution(hard)
+
+  it('ranks a speed within its own script, ignoring pauses', () => {
+    expect(hardSorted.length).toBe(92)
+    expect(speedRank(0.5, hardSorted)).toBe(0)
+    expect(speedRank(2.8, hardSorted)).toBe(0)
+    expect(speedRank(5, hardSorted)).toBeCloseTo(80 / 92)
+    expect(speedRank(9, hardSorted)).toBe(1)
+    expect(speedRank(3, new Float64Array())).toBe(0)
+  })
+
+  it('keeps a steady stretch of a hard script out of the top mood', () => {
+    // flustered needs 0.82, excited 0.6 (src/lib/faceState.ts)
+    expect(momentIntensity(2.8, hardSorted)).toBeLessThan(0.6)
+    expect(momentIntensity(5, hardSorted)).toBeGreaterThan(0.82)
+  })
+
+  it('does not let the busiest part of a gentle script pass for a hard one', () => {
+    const gentle = speedDistribution(env([...Array.from({ length: 80 }, () => 1.2), ...Array.from({ length: 20 }, () => 1.8)]))
+    const top = momentIntensity(1.8, gentle)
+    expect(top).toBeGreaterThan(momentIntensity(1.2, gentle))
+    expect(top).toBeLessThan(0.82)
+  })
+
+  it('is zero while the script pauses', () => {
+    expect(momentIntensity(0, hardSorted)).toBe(0)
+    expect(momentIntensity(Number.NaN, hardSorted)).toBe(0)
   })
 })

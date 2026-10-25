@@ -80,6 +80,57 @@ export function speedUnits(speed: number): number {
   return Math.round(speed * 100)
 }
 
+/** Below this a stretch counts as a pause, not as slow movement. */
+const MOVING_SPEED = 0.05
+
+/**
+ * The speeds of a script's moving stretches, sorted, so one moment can be
+ * ranked against the rest of the same script. Pauses are left out: a script
+ * that stops a lot should not make every stroke look like its top gear.
+ */
+export function speedDistribution(env: EnvelopeSample[]): Float64Array {
+  const out = new Float64Array(env.filter(s => s.speed > MOVING_SPEED).map(s => s.speed))
+  return out.sort()
+}
+
+/** Share of the script's moving time that goes slower than `speed`, 0-1. */
+export function speedRank(speed: number, sorted: Float64Array): number {
+  if (!sorted.length || !Number.isFinite(speed))
+    return 0
+  let lo = 0
+  let hi = sorted.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (sorted[mid] < speed)
+      lo = mid + 1
+    else
+      hi = mid
+  }
+  return lo / sorted.length
+}
+
+/** How much of `momentIntensity` is the moment's rank within its own script. */
+export const MOMENT_RELATIVE_WEIGHT = 0.6
+
+/**
+ * How intense this moment of a script is, 0-1, for things that react to it
+ * as it plays (the face's mood).
+ *
+ * `speedToIntensity` saturates at 1.8 while a typical script averages about
+ * 2.8, so on its own it pinned most of a library at 1 and the face sat at its
+ * top mood through every steady stretch. Mostly this ranks the moment within
+ * its own script instead, so a steady section reads as the middle and only the
+ * script's real peaks reach the top; the rest is the absolute calibration, so
+ * a gentle script's busiest part is still not a hard script's.
+ */
+export function momentIntensity(speed: number, sorted: Float64Array): number {
+  if (!Number.isFinite(speed) || speed <= MOVING_SPEED)
+    return 0
+  const v = MOMENT_RELATIVE_WEIGHT * speedRank(speed, sorted)
+    + (1 - MOMENT_RELATIVE_WEIGHT) * meanSpeedToIntensity(speed)
+  return Math.min(1, Math.max(0, v))
+}
+
 export interface Stretch {
   startMs: number
   endMs: number
