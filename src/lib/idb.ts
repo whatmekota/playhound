@@ -6,12 +6,13 @@
  *   "vidmeta"   — key: filename, value: VideoMeta (user editable overrides)
  *   "previews"  — key: name|size|mtime, value: PreviewRecord (scrub sprite sheets; a cache)
  *   "soundtracks" — key: name|size|mtime, value: SoundtrackRecord (beat analyses; a cache)
+ *   "chapters"  — key: script name|size|mtime, value: ChapterIndexRecord (per-video chapters; a cache)
  */
 
 // Storage identifier, not a brand string. Renaming it would orphan every
 // user's playlists, video metadata and saved directory handles.
 const DB_NAME = 'mwhoplayer'
-const DB_VERSION = 6
+const DB_VERSION = 7
 let db: IDBDatabase | null = null
 
 function openDB(): Promise<IDBDatabase> {
@@ -39,6 +40,9 @@ function openDB(): Promise<IDBDatabase> {
       // v6: whole-track soundtrack analyses.
       if (!d.objectStoreNames.contains('soundtracks'))
         d.createObjectStore('soundtracks')
+      // v7: the chapter index programmes build highlight reels from.
+      if (!d.objectStoreNames.contains('chapters'))
+        d.createObjectStore('chapters')
     }
     req.onsuccess = () => {
       db = req.result
@@ -292,4 +296,35 @@ export interface SoundtrackRecord {
 export const soundtrackDb = {
   get: (key: string) => idbGet<SoundtrackRecord>('soundtracks', key),
   set: (key: string, value: SoundtrackRecord) => idbSet('soundtracks', key, value),
+}
+
+/**
+ * The chapter index (see lib/chapterIndex). Rebuilt from the scripts on
+ * demand, so a cache and not in BACKUP_STORES. Values are opaque here so this
+ * file does not have to know the record's shape.
+ */
+export const chapterIndexDb = {
+  set: (key: string, value: unknown) => idbSet('chapters', key, value),
+  async all(): Promise<[string, unknown][]> {
+    await openDB()
+    return new Promise((resolve, reject) => {
+      const store = db!.transaction('chapters', 'readonly').objectStore('chapters')
+      const keysReq = store.getAllKeys()
+      const valsReq = store.getAll()
+      valsReq.onsuccess = () => {
+        const keys = keysReq.result ?? []
+        const vals = valsReq.result ?? []
+        resolve(keys.map((k, i) => [String(k), vals[i]]))
+      }
+      valsReq.onerror = () => reject(new Error('IndexedDB read failed: chapters'))
+    })
+  },
+  async clear(): Promise<void> {
+    await openDB()
+    return new Promise((resolve, reject) => {
+      const req = db!.transaction('chapters', 'readwrite').objectStore('chapters').clear()
+      req.onsuccess = () => resolve()
+      req.onerror = () => reject(req.error)
+    })
+  },
 }

@@ -8,6 +8,7 @@ import { formatTime } from '~/lib/time'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { useProgrammeStore } from '~/stores/programmeStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptStore } from '~/stores/scriptStore'
@@ -41,6 +42,7 @@ export function usePresenceContext() {
   const scripts = useScriptStore()
   const device = useDeviceStore()
   const control = useSessionControlStore()
+  const programme = useProgrammeStore()
   const { chapters } = useSessionActions()
 
   return computed<PresenceContext>(() => {
@@ -65,6 +67,8 @@ export function usePresenceContext() {
       heart: heartRate.bpm ?? undefined,
       device: device.connected ? 'Connected' : undefined,
       axes: scripts.activeScripts.length || undefined,
+      programme: programme.status !== 'idle' ? programme.plan?.name : undefined,
+      phase: programme.status !== 'idle' ? programme.currentPhase?.name : undefined,
     }
   })
 }

@@ -72,7 +72,8 @@ const title = computed(() => {
   return name.replace(/\.[^.]+$/, '')
 })
 const axes = computed(() => [...new Set(scriptStore.activeScripts.map(s => s.channel))])
-const canNext = computed(() => queue.hasNext || director.enabled.value)
+// A running programme always has a next clip.
+const canNext = computed(() => !!playback.takeover || queue.hasNext || director.enabled.value)
 
 // Computed strings only notify when the text changes, so the dock re-renders
 // once a second rather than on every timeupdate.

@@ -78,7 +78,8 @@ const title = computed(() => {
   return name.replace(/\.[^.]+$/, '')
 })
 const axes = computed(() => [...new Set(scriptStore.activeScripts.map(s => s.channel))])
-const canNext = computed(() => queue.hasNext || director.enabled.value)
+// A running programme always has a next clip.
+const canNext = computed(() => !!playback.takeover || queue.hasNext || director.enabled.value)
 
 // ─── Media element ───────────────────────────────────────────────────────────
 /** Waiting on data; the spinner only shows if it lasts, so quick seeks do not flash it. */
@@ -546,6 +547,12 @@ async function loadThumb(entry: VideoEntry) {
 }
 
 function handleEnded() {
+  // A running programme decides what comes next; the card would offer the
+  // queue's idea instead and stall the reel for five seconds.
+  if (playback.takeover) {
+    void playback.onEnded()
+    return
+  }
   // Repeat-one and "nothing follows" are the store's call; only a real next
   // video earns the card.
   const choice = queue.repeatMode === 'one' ? null : resolveUpNext()

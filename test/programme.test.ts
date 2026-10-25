@@ -2,10 +2,14 @@ import type { ProgrammePhase } from '../src/lib/programme'
 import { describe, expect, it } from 'vitest'
 import {
   cloneProgramme,
+  EDGE_REST_SHARE,
+  EDGE_WAIT_SEC,
   edgeStateAt,
   edgeTop,
   expandPhase,
   intensityAt,
+  liveEdgeState,
+  livePhase,
   locate,
   MAX_EDGES,
   MAX_PHASE_MINUTES,
@@ -15,7 +19,11 @@ import {
   phaseCeiling,
   phaseIntensityAt,
   phaseSeconds,
+  runShape,
   sampleCurve,
+  sampleShape,
+  shapeAt,
+  shapeBreaks,
   slew,
   switchPoint,
   TEMPLATES,
@@ -368,5 +376,136 @@ describe('normalisation', () => {
     expect(p.everyMin).toBe(1)
     expect(p.tone).toBe(false)
     expect(p.builtin).toBe(false)
+  })
+})
+
+describe('reel settings', () => {
+  it('default to a reel with sane clip bounds, and keep them ordered', () => {
+    const p = normaliseProgramme({ phases: [{ kind: 'peak' }] })!
+    expect(p.reel).toBe(true)
+    expect(p.clipSec).toEqual([20, 180])
+    const q = normaliseProgramme({ reel: false, clipSec: [400, 2], phases: [{ kind: 'peak' }] })!
+    expect(q.reel).toBe(false)
+    expect(q.clipSec[0]).toBeLessThan(q.clipSec[1])
+    expect(q.clipSec[0]).toBeGreaterThanOrEqual(10)
+  })
+
+  it('clone their clip bounds rather than share them', () => {
+    const c = cloneProgramme(TEMPLATES[0])
+    c.clipSec[0] = 99
+    expect(TEMPLATES[0].clipSec[0]).toBe(20)
+  })
+})
+
+describe('timeline overrides', () => {
+  it('replaces a phase length with an override', () => {
+    const phases = [ph({ minutes: 5 }), ph({ minutes: 5 })]
+    expect(timeline(phases, [], [120])[0]).toEqual({ start: 0, end: 120, dur: 120 })
+    expect(timeline(phases, [60], [120])[1].start).toBe(180)
+  })
+})
+
+describe('live edges', () => {
+  const p = ph({ kind: 'peak', minutes: 10, from: 0.5, to: 0.9, edges: 3 })
+  const planned = 600
+  const cycle = 200
+  const rise = cycle * 0.6
+  const hold = cycle * 0.2
+  const rest = 30
+  const calm = 0.5 * EDGE_REST_SHARE
+  const value = (lp: ReturnType<typeof livePhase>, t: number) => shapeAt({ bounds: [{ start: 0, end: lp.dur, dur: lp.dur }], segs: [lp.segs], live: [lp], total: lp.dur }, t)
+
+  it('projects the planned cadence before any edge', () => {
+    const lp = livePhase(p, planned, { at: [], restSec: rest }, 0)
+    expect(lp.pass).toBe(0)
+    expect(lp.dueAt).toBeCloseTo(rise + hold + EDGE_WAIT_SEC)
+    // Two passes that end where the plan expects an edge, then the last pass's climb and hold.
+    expect(lp.dur).toBeCloseTo(2 * (rise + hold + rest) + rise + cycle * 0.4)
+    expect(value(lp, rise + 1)).toBeCloseTo(edgeTop(p, 0, 3), 2)
+  })
+
+  it('ends a pass on a real edge, rests calm, and climbs again from there', () => {
+    const lp = livePhase(p, planned, { at: [90], restSec: rest }, 95)
+    expect(lp.pass).toBe(1)
+    expect(lp.passStart).toBe(90 + rest)
+    const e = liveEdgeState(lp, 95)!
+    expect(e).toMatchObject({ pass: 0, kind: 'retreat' })
+    // Calmer than where the phase began, once the retreat has settled.
+    expect(value(lp, 90 + rest - 1)).toBeLessThan(0.5)
+    expect(value(lp, 90 + rest - 0.001)).toBeCloseTo(calm, 2)
+    // An edge during the climb ends it where it had got to: no jump up first.
+    expect(value(lp, 90)).toBeLessThan(edgeTop(p, 0, 3))
+  })
+
+  it('holds at the top while waiting for an edge, pushing the rest back', () => {
+    const early = livePhase(p, planned, { at: [], restSec: rest }, 0)
+    const late = livePhase(p, planned, { at: [], restSec: rest }, rise + hold + 60)
+    expect(late.dur - early.dur).toBeCloseTo(60)
+    expect(liveEdgeState(late, rise + hold + 59)).toMatchObject({ pass: 0, kind: 'hold' })
+    // It never waits past the deadline.
+    const stuck = livePhase(p, planned, { at: [], restSec: rest }, 10_000)
+    expect(stuck.dur - early.dur).toBeCloseTo(EDGE_WAIT_SEC)
+  })
+
+  it('finishes the phase after the last pass, edged or not', () => {
+    const all = livePhase(p, planned, { at: [100, 300, 500], restSec: rest }, 510)
+    expect(all.pass).toBe(3)
+    expect(all.dur).toBeCloseTo(500 + rest)
+    expect(all.dueAt).toBeNull()
+    // Unedged last pass: holds for its planned time and ends.
+    const two = livePhase(p, planned, { at: [100, 300], restSec: rest }, 400)
+    expect(two.dueAt).toBeNull()
+    expect(two.dur).toBeCloseTo(300 + rest + rise + cycle * 0.4)
+    expect(value(two, two.dur - 1)).toBeCloseTo(0.9, 2)
+  })
+
+  it('freezes a closed phase at its length', () => {
+    const lp = livePhase(p, planned, { at: [100], restSec: rest, closedAt: 150 }, 9999)
+    expect(lp.dur).toBe(150)
+    expect(lp.segs[lp.segs.length - 1].t1).toBeLessThanOrEqual(150)
+    expect(lp.dueAt).toBeNull()
+  })
+
+  it('stays continuous through edges', () => {
+    const lp = livePhase(p, planned, { at: [150, 330], restSec: rest }, 340)
+    let last = value(lp, 0)
+    for (let t = 0.5; t < lp.dur; t += 0.5) {
+      const v = value(lp, t)
+      expect(Math.abs(v - last)).toBeLessThan(0.05)
+      last = v
+    }
+  })
+})
+
+describe('run shape', () => {
+  const phases = [
+    ph({ minutes: 2, from: 0.1, to: 0.4 }),
+    ph({ kind: 'peak', minutes: 10, from: 0.5, to: 0.9, edges: 3 }),
+    ph({ minutes: 2, from: 0.3, to: 0.05 }),
+  ]
+
+  it('is the planned curve without live edges', () => {
+    const s = runShape(phases)
+    expect(s.total).toBe(totalSeconds(phases))
+    for (const t of [0, 30, 200, 500, 800])
+      expect(shapeAt(s, t)).toBeCloseTo(intensityAt(phases, t), 6)
+    expect(sampleShape(s, 10)).toEqual(sampleCurve(phases, 10))
+  })
+
+  it('takes an edged phase length from its edges', () => {
+    const s = runShape(phases, [], [null, { at: [60], restSec: 30 }, null], 200)
+    expect(s.bounds[1].start).toBe(120)
+    expect(s.bounds[2].start).toBe(s.bounds[1].end)
+    expect(s.bounds[1].dur).not.toBe(600)
+    expect(s.live[1]?.pass).toBe(1)
+    expect(s.live[0]).toBeNull()
+  })
+
+  it('lists the turning points of the arc', () => {
+    const b = shapeBreaks(runShape(phases))
+    expect(b).toContain(120)
+    expect(b).toContain(720)
+    expect(b.length).toBeGreaterThan(4)
+    expect([...b].sort((x, y) => x - y)).toEqual(b)
   })
 })

@@ -1,10 +1,11 @@
 /**
  * Programmes: a planned session laid out as phases on one clock.
  *
- * Everything here is pure — timing, the target-intensity curve, edge passes,
- * templates and the sanitiser for stored programmes — so it can be tested
- * without a store, a timer or a video. The runtime that feeds the curve into
- * the audio store and the director lives in ~/stores/programmeStore.
+ * Everything here is pure — timing, the target-intensity curve, edge passes
+ * (planned, and as they actually go when real edges are called), templates
+ * and the sanitiser for stored programmes — so it can be tested without a
+ * store, a timer or a video. The runtime lives in ~/stores/programmeStore and
+ * the clip choice for the highlight reel in ~/lib/reel.
  */
 
 import type { SessionPhase } from '~/stores/audio'
@@ -39,6 +40,15 @@ export interface Programme {
   name: string
   builtin?: boolean
   phases: ProgrammePhase[]
+  /**
+   * Play a highlight reel — the best-fitting chapters of many videos, back to
+   * back — rather than whole videos. Falls back to whole videos (`video`)
+   * while the chapter index is too small.
+   */
+  reel: boolean
+  /** Shortest and longest reel clip, seconds. */
+  clipSec: [number, number]
+  /** When whole videos change. */
   video: VideoSwitch
   /** Minutes between changes when `video` is 'interval'. */
   everyMin: number
@@ -66,6 +76,10 @@ export const KIND_SESSION_PHASE: Record<PhaseKind, Exclude<SessionPhase, 'idle'>
   peak: 'peak',
   cooldown: 'descent',
 }
+
+export const MIN_CLIP_SEC = 10
+export const MAX_CLIP_SEC = 600
+export const DEFAULT_CLIP_SEC: [number, number] = [20, 180]
 
 export const MIN_PHASE_MINUTES = 1
 export const MAX_PHASE_MINUTES = 120
@@ -99,11 +113,13 @@ export function phaseSeconds(p: ProgrammePhase): number {
 /**
  * Start and end of every phase, in programme seconds. `extra` adds seconds to
  * individual phases — that is how "extend" works without rewriting the plan.
+ * `durs` replaces a phase's own length (an edged phase as it actually ran).
  */
-export function timeline(phases: ProgrammePhase[], extra: number[] = []): PhaseBounds[] {
+export function timeline(phases: ProgrammePhase[], extra: number[] = [], durs: (number | null | undefined)[] = []): PhaseBounds[] {
   let t = 0
   return phases.map((p, i) => {
-    const dur = phaseSeconds(p) + Math.max(0, extra[i] ?? 0)
+    const own = durs[i]
+    const dur = (typeof own === 'number' && own > 0 ? own : phaseSeconds(p)) + Math.max(0, extra[i] ?? 0)
     const b = { start: t, end: t + dur, dur }
     t += dur
     return b
@@ -202,7 +218,7 @@ export function expandPhase(p: ProgrammePhase, dur = phaseSeconds(p)): Segment[]
   return segs
 }
 
-function segmentValue(s: Segment, t: number): number {
+export function segmentValue(s: Segment, t: number): number {
   const span = s.t1 - s.t0
   const p = span > 0 ? clamp01((t - s.t0) / span) : 1
   const eased = s.kind === 'retreat' ? easeOut(p) : smoothstep(p)
@@ -226,6 +242,210 @@ export function edgeStateAt(p: ProgrammePhase, t: number, dur = phaseSeconds(p))
   const at = clamp(t, 0, dur)
   const seg = segs.find(s => at < s.t1) ?? segs[segs.length - 1]
   return { pass: seg.pass, of: n, kind: seg.kind }
+}
+
+// ─── Edges as they happen ─────────────────────────────────────────────────────
+
+/**
+ * An edged phase while it runs. Passes end on real edges (the edge button,
+ * the heart-rate guard…) rather than on the clock: each pass climbs, holds at
+ * its top until an edge is called, eases right off for `restSec`, and then the
+ * next pass climbs. A pass nobody edges stops waiting EDGE_WAIT_SEC after its
+ * planned hold and retreats on its own, which the runtime records as an edge.
+ *
+ * The last pass does not wait: it holds at the top for its planned time, as
+ * the plan did, since what follows it is usually the release.
+ */
+export interface LiveEdges {
+  /** Phase seconds at which each pass ended, in order. */
+  at: number[]
+  /** Seconds of calm after an edge before the next pass climbs. */
+  restSec: number
+  /** Set once the phase is over (ran out, or was skipped): its length, frozen. */
+  closedAt?: number
+}
+
+/** How much longer than planned a pass holds at its top waiting for a real edge. */
+export const EDGE_WAIT_SEC = 120
+/**
+ * After a real edge the arc drops below the phase's starting level, to this
+ * share of it, and the next pass climbs from there: an edge is a real step
+ * back, not a dip to where the phase began.
+ */
+export const EDGE_REST_SHARE = 0.6
+
+export interface LivePhase {
+  segs: Segment[]
+  /** The phase's length as things stand: real edges so far, the rest projected. */
+  dur: number
+  /** Index of the pass in progress; `of` once every pass has ended. */
+  pass: number
+  of: number
+  /** Phase seconds the pass in progress started climbing (after the last rest). */
+  passStart: number
+  /** When the pass in progress gives up waiting for an edge; null when it will not wait. */
+  dueAt: number | null
+}
+
+/**
+ * The segments of an edged phase given the edges so far, projecting the
+ * passes still to come at the planned cadence. `now` is phase seconds; the
+ * pass in progress is assumed to be edged no earlier than now, so the
+ * projection never puts an edge in the past. `extra` lengthens the final hold.
+ */
+export function livePhase(p: ProgrammePhase, plannedDur: number, live: LiveEdges, now: number, extra = 0): LivePhase {
+  const n = edgeCount(p)
+  if (n <= 1) {
+    const dur = live.closedAt ?? plannedDur + extra
+    return { segs: expandPhase(p, dur), dur, pass: 0, of: 1, passStart: 0, dueAt: null }
+  }
+  const at = live.closedAt !== undefined ? Math.min(now, live.closedAt) : now
+  const from = clamp01(p.from)
+  const calm = from * EDGE_REST_SHARE
+  const cycle = plannedDur / n
+  const rise = cycle * EDGE_RISE
+  const hold = cycle * EDGE_HOLD
+  const rest = Math.max(0, live.restSec)
+  const segs: Segment[] = []
+  let t = 0
+  let pass = n
+  let passStart = 0
+  let dueAt: number | null = null
+  let end = 0
+  for (let i = 0; i < n; i++) {
+    const top = edgeTop(p, i, n)
+    const last = i === n - 1
+    const riseEnd = t + rise
+    const base = i === 0 ? from : calm
+    let edgeAt = live.at[i]
+    if (edgeAt === undefined) {
+      const current = pass === n
+      if (current) {
+        pass = i
+        passStart = t
+      }
+      if (last) {
+        segs.push({ t0: t, t1: riseEnd, from: base, to: top, kind: 'rise', pass: i })
+        end = riseEnd + cycle * (1 - EDGE_RISE) + extra
+        segs.push({ t0: riseEnd, t1: end, from: top, to: top, kind: 'hold', pass: i })
+        break
+      }
+      const due = riseEnd + hold + EDGE_WAIT_SEC
+      if (current)
+        dueAt = due
+      edgeAt = current ? clamp(at, riseEnd + hold, due) : riseEnd + hold
+    }
+    // An edge called during the climb ends it where it had got to.
+    let peak = top
+    if (edgeAt < riseEnd) {
+      const pr = rise > 0 ? clamp01((edgeAt - t) / rise) : 1
+      peak = base + (top - base) * smoothstep(pr)
+      segs.push({ t0: t, t1: Math.max(t, edgeAt), from: base, to: peak, kind: 'rise', pass: i })
+    }
+    else {
+      segs.push({ t0: t, t1: riseEnd, from: base, to: top, kind: 'rise', pass: i })
+      if (edgeAt > riseEnd)
+        segs.push({ t0: riseEnd, t1: edgeAt, from: top, to: top, kind: 'hold', pass: i })
+    }
+    segs.push({ t0: edgeAt, t1: edgeAt + rest, from: peak, to: calm, kind: 'retreat', pass: i })
+    t = edgeAt + rest
+    end = t
+  }
+  if (pass === n)
+    passStart = t
+  if (live.closedAt !== undefined) {
+    const cut = live.closedAt
+    const kept = segs.filter(sg => sg.t0 < cut).map(sg => (sg.t1 > cut ? { ...sg, t1: cut, to: segmentValue(sg, cut) } : sg))
+    return { segs: kept.length ? kept : segs.slice(0, 1), dur: Math.max(1, cut), pass, of: n, passStart, dueAt: null }
+  }
+  return { segs, dur: Math.max(1, end), pass, of: n, passStart, dueAt }
+}
+
+/** Which pass a live edged phase is in at phase time `t`, and what it is doing. */
+export function liveEdgeState(lp: LivePhase, t: number): { pass: number, of: number, kind: SegmentKind } | null {
+  if (lp.of <= 1 || !lp.segs.length)
+    return null
+  const seg = lp.segs.find(s => t < s.t1) ?? lp.segs[lp.segs.length - 1]
+  return { pass: seg.pass, of: lp.of, kind: seg.kind }
+}
+
+// ─── The run as a whole ───────────────────────────────────────────────────────
+
+/** The run's curve as things stand: phases, extensions and real edges. */
+export interface RunShape {
+  bounds: PhaseBounds[]
+  /** Each phase's segments, phase-relative. */
+  segs: Segment[][]
+  /** The live state of each edged phase, else null. */
+  live: (LivePhase | null)[]
+  total: number
+}
+
+/**
+ * Lay the run out. Edged phases with a `live` entry take their length and
+ * shape from real edges (projected from programme time `t`); the rest are as
+ * planned. Without `live` this is exactly the planned curve.
+ */
+export function runShape(
+  phases: ProgrammePhase[],
+  extra: number[] = [],
+  live: (LiveEdges | null | undefined)[] = [],
+  t = 0,
+): RunShape {
+  const bounds: PhaseBounds[] = []
+  const segs: Segment[][] = []
+  const lives: (LivePhase | null)[] = []
+  let start = 0
+  phases.forEach((p, i) => {
+    const planned = phaseSeconds(p)
+    const ex = Math.max(0, extra[i] ?? 0)
+    const lv = live[i]
+    let dur: number
+    if (lv && edgeCount(p) > 1) {
+      const lp = livePhase(p, planned, lv, Math.max(0, t - start), ex)
+      dur = lp.dur
+      segs.push(lp.segs)
+      lives.push(lp)
+    }
+    else {
+      dur = planned + ex
+      segs.push(expandPhase(p, dur))
+      lives.push(null)
+    }
+    bounds.push({ start, end: start + dur, dur })
+    start += dur
+  })
+  return { bounds, segs, live: lives, total: start }
+}
+
+/** Target intensity at programme time `t` on a run shape. Zero outside it. */
+export function shapeAt(shape: RunShape, t: number): number {
+  if (!shape.bounds.length || t < 0)
+    return 0
+  const loc = locate(shape.bounds, t)
+  if (loc.done)
+    return 0
+  const segs = shape.segs[loc.index]
+  const seg = segs.find(s => loc.inPhase < s.t1) ?? segs[segs.length - 1]
+  return seg ? clamp01(segmentValue(seg, loc.inPhase)) : 0
+}
+
+/** `n` evenly spaced samples of a run shape, for drawing. */
+export function sampleShape(shape: RunShape, n: number): number[] {
+  if (!shape.total || n < 2)
+    return []
+  return Array.from({ length: n }, (_, i) => shapeAt(shape, Math.min(shape.total - 1e-6, (i / (n - 1)) * shape.total)))
+}
+
+/** Programme times where the arc changes character: phase and pass boundaries. */
+export function shapeBreaks(shape: RunShape): number[] {
+  const out = new Set<number>()
+  shape.bounds.forEach((b, i) => {
+    out.add(b.start)
+    for (const s of shape.segs[i])
+      out.add(b.start + s.t0)
+  })
+  return [...out].filter(t => t > 0).sort((a, b) => a - b)
 }
 
 /** Target intensity at programme time `t`. Zero before it starts and after it ends. */
@@ -316,6 +536,8 @@ export const TEMPLATES: Programme[] = [
     id: 'tpl-short',
     name: 'Short',
     builtin: true,
+    reel: true,
+    clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'ended',
     everyMin: 5,
     tone: false,
@@ -330,6 +552,8 @@ export const TEMPLATES: Programme[] = [
     id: 'tpl-classic',
     name: 'Classic',
     builtin: true,
+    reel: true,
+    clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'ended',
     everyMin: 8,
     tone: false,
@@ -344,6 +568,8 @@ export const TEMPLATES: Programme[] = [
     id: 'tpl-edging',
     name: 'Edging',
     builtin: true,
+    reel: true,
+    clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'phase',
     everyMin: 8,
     tone: false,
@@ -364,6 +590,7 @@ export function cloneProgramme(p: Programme, name = `${p.name} copy`): Programme
     id: uid('prog'),
     name,
     builtin: false,
+    clipSec: [p.clipSec[0], p.clipSec[1]],
     phases: p.phases.map(ph => ({ ...ph, id: uid('ph'), beat: ph.beat ? [ph.beat[0], ph.beat[1]] : null })),
   }
 }
@@ -415,11 +642,17 @@ export function normaliseProgramme(raw: unknown): Programme | null {
     .slice(0, MAX_PHASES)
   if (!phases.length)
     return null
+  const clipRaw = Array.isArray(r.clipSec) ? r.clipSec : []
+  const lo = clamp(Math.round(num(clipRaw[0], DEFAULT_CLIP_SEC[0])), MIN_CLIP_SEC, MAX_CLIP_SEC)
+  const hi = clamp(Math.round(num(clipRaw[1], DEFAULT_CLIP_SEC[1])), MIN_CLIP_SEC, MAX_CLIP_SEC)
   return {
     id: typeof r.id === 'string' && r.id ? r.id : uid('prog'),
     name: typeof r.name === 'string' && r.name.trim() ? r.name.slice(0, 60) : 'Programme',
     builtin: false,
     phases,
+    // Programmes saved before reels existed get one: it is what they were for.
+    reel: r.reel !== false,
+    clipSec: [Math.min(lo, hi), Math.max(lo, hi)],
     video: SWITCHES.has(r.video as VideoSwitch) ? r.video as VideoSwitch : 'ended',
     everyMin: clamp(Math.round(num(r.everyMin, 8)), 1, 60),
     tone: r.tone === true,

@@ -37,6 +37,17 @@ export interface PlayerControls {
 /** "Previous" restarts the current video when you are this far into it. */
 const PREV_RESTART_AFTER = 3
 
+/**
+ * Something that, for a while, decides what "next" means instead of the
+ * queue: a programme's highlight reel moves on to its next clip when the
+ * user presses Next or a video ends, rather than to the next queued video.
+ */
+export interface PlaybackTakeover {
+  /** Shown where it helps to say who is choosing ("Programme"). */
+  label: string
+  next: () => Promise<boolean> | boolean
+}
+
 export const usePlaybackStore = defineStore('playback', () => {
   const player = usePlayerStore()
   const queue = useQueueStore()
@@ -55,6 +66,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   const loading = ref(false)
   /** Bumped on every track change, for transitions and now-playing cards. */
   const trackSeq = ref(0)
+  /** Set while something else owns "next" (see PlaybackTakeover). */
+  const takeover = shallowRef<PlaybackTakeover | null>(null)
   /**
    * The loaded main script's `metadata` block, as written (chapters, bookmarks,
    * tags…). Null with no script, so a script-less video never shows the last one's.
@@ -160,6 +173,26 @@ export const usePlaybackStore = defineStore('playback', () => {
     return loadFile(entry.file, entry.scriptMatches, opts)
   }
 
+  /**
+   * Play an entry from `startAt` seconds, slotted in after the current one
+   * like `play` without context. For a clip of a video: the seek is applied
+   * as soon as the new video can take it, before it starts playing. The same
+   * video already loaded just seeks.
+   */
+  async function playAt(entry: VideoEntry, startAt: number) {
+    if (currentEntry.value?.name === entry.name && player.videoUrl && !loading.value) {
+      controls.value?.seek(startAt)
+      controls.value?.play()
+      return
+    }
+    queue.playNow(entry)
+    await loadEntry(entry, { autoplay: true, startAt })
+  }
+
+  function setTakeover(t: PlaybackTakeover | null) {
+    takeover.value = t
+  }
+
   // ── What to play ──────────────────────────────────────────────────────────
   /**
    * Play an entry. With `context`, the queue is rebuilt from that list (the
@@ -244,6 +277,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   }
 
   async function next(): Promise<boolean> {
+    if (takeover.value)
+      return takeover.value.next()
     const picked = directed()
     if (picked) {
       queue.playNow(picked)
@@ -363,10 +398,13 @@ export const usePlaybackStore = defineStore('playback', () => {
     currentFile,
     loading,
     trackSeq,
+    takeover,
     scriptMetadata,
     bindPlayer,
     loadFile,
     loadEntry,
+    playAt,
+    setTakeover,
     play,
     playFile,
     playStream,
