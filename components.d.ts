@@ -21,6 +21,7 @@ declare module 'vue' {
     CommandPalette: typeof import('./src/components/shell/CommandPalette.vue')['default']
     DeviceInspector: typeof import('./src/components/inspectors/DeviceInspector.vue')['default']
     DirectorInspector: typeof import('./src/components/inspectors/DirectorInspector.vue')['default']
+    EdgeBadge: typeof import('./src/components/player/EdgeBadge.vue')['default']
     EntryInfoModal: typeof import('./src/components/library/EntryInfoModal.vue')['default']
     Equaliser: typeof import('./src/components/library/Equaliser.vue')['default']
     EroScriptsView: typeof import('./src/components/views/EroScriptsView.vue')['default']
