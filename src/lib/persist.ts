@@ -57,6 +57,8 @@ export const KEYS = {
   deviceConfig: def('ph:device.config', 'setting', 'Device axes and presets'),
   deviceTransport: def('ph:device.transport', 'setting', 'Device connection type'),
   deviceLatency: def('ph:device.latency', 'setting', 'Device latency compensation'),
+  edgeSettings: def('ph:session.edge', 'setting', 'Edge cooldown and depth'),
+  intensityScale: def('ph:session.intensity', 'setting', 'Intensity knob'),
   motionConfig: def('ph:motion.config', 'setting', 'Motion source and limits'),
   buttplugUrl: def('ph:buttplug.url', 'setting', 'Intiface address'),
   buttplugEnabled: def('ph:buttplug.enabled', 'setting', 'Intiface on/off'),

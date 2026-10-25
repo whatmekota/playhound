@@ -17,6 +17,7 @@ import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
 import { useGamepad } from '~/composables/useGamepad'
+import { useHeartRate } from '~/composables/useHeartRate'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
@@ -24,6 +25,7 @@ import { useScriptPulse } from '~/composables/useScriptPulse'
 import { useSessionAudio } from '~/composables/useSessionAudio'
 import { useSettings } from '~/composables/useSettings'
 import { toast } from '~/composables/useToast'
+import { useVibeSync } from '~/composables/useVibeSync'
 import { useVideoBeat } from '~/composables/useVideoBeat'
 import { desktop, openVideoFile, storage } from '~/lib/browserApi'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
@@ -56,6 +58,8 @@ useMotionEngine()
 useSessionAudio()
 useScriptPulse()
 useVideoBeat()
+useHeartRate()
+useVibeSync()
 
 // Panic needs to reach video, audio and the device at once.
 const { toggle: togglePanic, resume: resumePanic } = useSafety({
