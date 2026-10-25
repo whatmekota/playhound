@@ -12,7 +12,7 @@
 static const int UI_TOP     = 168;          // face never draws at or below this
 static const int BTN_Y      = 176;
 static const int BTN_H      = 58;
-static const int BTN_COUNT  = 5;
+static const int BTN_COUNT  = 6;
 static const int BTN_W      = 320 / BTN_COUNT;
 static const uint32_t HIDE_AFTER_MS = 4500;
 
@@ -28,8 +28,10 @@ struct Button {
 };
 
 // Order runs left to right, with panic parked at the far right where it is
-// hard to hit by accident.
+// hard to hit by accident, and edge at the far left, as far from panic as it
+// gets: it is the one reached for in a hurry.
 static Button BUTTONS[BTN_COUNT] = {
+  { "EDGE", ACT_EDGE,        Rgb{ 40, 110, 150 } },
   { "<<",   ACT_PREV,        Rgb{ 88,  78, 112 } },
   { ">||",  ACT_TOGGLE_PLAY, Rgb{ 96,  60, 160 } },
   { ">>",   ACT_NEXT,        Rgb{ 88,  78, 112 } },
@@ -48,6 +50,7 @@ static uint32_t pressedUntil = 0;
 static bool     wasDown      = false;
 static uint32_t lastTouchAt  = 0;
 static bool     shownPlaying = false;   // play button's last drawn state
+static bool     shownEdging  = false;   // edge button's last drawn state
 
 static int mapClamp(int v, int inLo, int inHi, int outLo, int outHi) {
   if (inHi == inLo)
@@ -66,7 +69,8 @@ static void drawButton(int i) {
   // Play/pause carries state, so it reads as lit while playing.
   const bool lit = held
     || (b.action == ACT_TOGGLE_PLAY && phState.playing)
-    || (b.action == ACT_PANIC && phState.panicked);
+    || (b.action == ACT_PANIC && phState.panicked)
+    || (b.action == ACT_EDGE && phEdging());
 
   const uint16_t bg = lit ? rgb(b.tint) : themePanel();
   const uint16_t fg = lit ? rgb(Rgb{255, 255, 255}) : themeMuted();
@@ -85,6 +89,7 @@ static void drawButton(int i) {
 static void showBar() {
   visible = true;
   shownPlaying = phState.playing;
+  shownEdging = phEdging();
   gfx->fillRect(0, UI_TOP, 320, 240 - UI_TOP, faceBackground());
   for (int i = 0; i < BTN_COUNT; i++)
     drawButton(i);
@@ -111,11 +116,18 @@ bool uiMenuOpen() {
 bool uiTick() {
   const uint32_t now = millis();
 
-  // Keep the play button honest if the desktop changes underneath us.
+  // Keep the stateful buttons honest if the desktop changes underneath us.
   if (visible && phState.playing != shownPlaying) {
     shownPlaying = phState.playing;
     for (int i = 0; i < BTN_COUNT; i++) {
       if (BUTTONS[i].action == ACT_TOGGLE_PLAY)
+        drawButton(i);
+    }
+  }
+  if (visible && phEdging() != shownEdging) {
+    shownEdging = phEdging();
+    for (int i = 0; i < BTN_COUNT; i++) {
+      if (BUTTONS[i].action == ACT_EDGE)
         drawButton(i);
     }
   }

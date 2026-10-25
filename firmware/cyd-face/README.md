@@ -5,16 +5,23 @@ watches a playhound session and hides a control bar behind a tap.
 
 The eyes react to what the desktop is doing:
 
-| state                  | face                                              |
-| ---------------------- | ------------------------------------------------- |
-| no desktop in the room | grey iris, slow blinking, `waiting for playhound` |
-| idle                   | cool blue, wandering gaze                         |
-| playing                | warms toward pink as intensity climbs             |
-| intensity high         | half lidded, gaze drifts up, heart pupils         |
-| motion running         | bobs in time with the stroke rate                 |
-| panicked               | eyes shut, screen dimmed, `shhh`                  |
+| state                  | face                                                  |
+| ---------------------- | ----------------------------------------------------- |
+| no desktop in the room | slow blinking, `waiting for playhound`                |
+| nothing for a while    | sleepy: lids low, slow blinks, `z z z`                |
+| playing                | pupils warm toward crimson as intensity climbs        |
+| focused and up         | the gaze rides the stroke up and down                 |
+| intensity high         | half lidded, heart pupils                             |
+| motion running         | the mouth opens and closes with the stroke rate       |
+| edge called            | lids and gaze drop, `edge - holding 12s`, then easing |
+| panicked               | eyes shut, screen dimmed, `shhh`                      |
+| just after a panic     | small pupils and an "o" mouth for a moment            |
 
-**Tap the top-left corner** for settings. **Tap anywhere else** to reveal `<<` / play-pause / `>>` / `RND` / `STOP`. The first
+The desktop picks the expression (see `docs/face-protocol.md`), so the face and
+the app's Face panel always agree. Status and title sit in a strip across the
+top, clear of the nose and mouth.
+
+**Tap the top-left corner** for settings. **Tap anywhere else** to reveal `EDGE` / `<<` / play-pause / `>>` / `RND` / `STOP`. The first
 tap only reveals — it never fires anything — because the first touch of a board
 sitting on a desk is usually an accident. The bar hides itself after 4.5s, or on
 a tap above it.
@@ -143,8 +150,16 @@ far right — swap the MIN and MAX for that axis rather than changing the rotati
 **Backlight on, screen black.** Almost always `User_Setup.h`: either the pins
 above are wrong or `USE_HSPI_PORT` is missing.
 
-**`[net] joining …` forever.** The ESP32 is 2.4GHz only. A 5GHz-only SSID, or a
-band-steering router handing out a 5GHz BSSID, will never associate.
+**`joining wifi...` on the face.** The serial log says why: `reason 201` means
+the network was not found, and the board then lists the 2.4GHz networks it can
+see. The ESP32 is 2.4GHz only, so a 5GHz-only SSID, or a band-steering router
+handing out a 5GHz BSSID, will never associate. `reason 202` or `15` is a wrong
+password.
+
+**`looking for playhound at …`.** On the network, but nothing answers at
+`PH_HOST:PH_PORT`. Check the desktop's LAN address has not changed (DHCP moves
+it; a reservation on the router stops that), that playhound or `start.bat` is
+running, and that the firewall lets it listen on this network.
 
 **Connects, but `waiting for playhound`.** The socket reached the relay but no
 host is in the room — check the room id matches the desktop's exactly, and that

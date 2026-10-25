@@ -14,5 +14,7 @@ dist-ssr
 release/
 
 firmware/cyd-face/config.h
+# arduino-cli output: the binaries carry the WiFi password from config.h
+firmware/cyd-face/build/
 
 firmware/cyd-face/_preview.png

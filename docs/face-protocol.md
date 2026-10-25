@@ -117,11 +117,11 @@ none flicker at a band edge:
 The firmware can render `expr` as given and use `intensity`/`spm`/`strokePos`
 for continuous motion within an expression (colour warmth, bob rate, gaze).
 
-### Face → app (proposed, not yet sent by the firmware)
+### Face → app
 
 The relay counts a face and a phone the same (`remotes`), so the panel can only
 say "N remotes in the room". To let it say "Face connected", the firmware
-should identify itself:
+identifies itself:
 
 ```text
 {"type":"hello","client":"face","v":1}
@@ -132,16 +132,18 @@ should identify itself:
 every 10 s. The app counts any frame with `"client":"face"` as a sign of life
 and shows the face as connected for 25 s after the last one.
 
-### Firmware checklist
+### What the firmware does with it
 
-1. In `net.cpp` `onMessage`, handle `type == "face"`: copy `expr`, `intensity`,
-   `strokePos`, `spm`, `phase`, `deviceConnected`, `title`, `playing`, `panic`
-   into `PhState` (keep the old value when a field is absent), set
-   `faceSeenAt = millis()`.
-2. Handle `face.bye`: clear `faceSeenAt`.
-3. While `millis() - faceSeenAt < 12000`, ignore `intensity`/`spm`/`phase` from
-   `state` frames (the face frame is fresher), but keep reading `motion` and
-   `audio` from them.
-4. Send `{"type":"hello","client":"face","v":1}` on connect and
-   `{"type":"ping","client":"face"}` every 10 s.
-5. Map `expr` to the face in `face.cpp`; add the `sleepy` and `shocked` looks.
+- `net.cpp` copies each `face` frame into `PhState` and stamps `faceSeenAt`.
+  An absent field keeps its last value, except `title`, which is cleared: it is
+  absent exactly when the user switched it off.
+- While face frames are live (one within 12 s, and no `face.bye`), `state`
+  frames no longer set `intensity`, `spm`, `phase` or `title`; `playing`,
+  `panicked`, `motion`, `audio`, `knob` and `edge` still come from them.
+- `expr` bends the look `face.cpp` already derives from intensity: `sleepy`
+  caps the lids low and slows blinking, `focused` and up follow `strokePos`
+  with the gaze, `excited` drops the squint, `flustered` half-lids and turns
+  on hearts (when hearts are on `auto`), and `shocked` shows small pupils and
+  an "o" mouth. During panic itself the eyes stay shut, as they always have.
+- The edge from `state.edge` lowers the lids and gaze while it holds, shows its
+  countdown as the status line, and lights the bar's EDGE button.

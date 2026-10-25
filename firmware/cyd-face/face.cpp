@@ -59,8 +59,11 @@ static const float PUPIL_H    = 0.92f;
 static const float PUPIL_FLAT = 0.26f;   // fraction of the height that is flat
 static const int   NOTCH_R    = 5;
 
-static const int STATUS_Y = 145;
-static const int TITLE_Y  = 156;
+// Text lives in the strip above the eyes: the eye sprite never reaches higher
+// than y=43 (eyes-only layout, bob included), and below the eyes it would land
+// on the nose and mouth.
+static const int STATUS_Y = 6;
+static const int TITLE_Y  = 18;
 
 // -- Mouth -------------------------------------------------------------------
 // Cat mouth: the omega lip stays put and the opening grows downward from it.
@@ -141,11 +144,14 @@ static char lastTitle[64]  = {0};
 // nothing connected. Porting the face to another host means replacing this
 // function and nothing else.
 struct FaceInput {
-  bool  panicked;
-  bool  moving;
-  float intensity;
-  float spm;
-  bool  showText;
+  bool     panicked;
+  bool     moving;
+  float    intensity;
+  float    spm;
+  bool     showText;
+  FaceExpr expr;        // EXPR_NONE: look follows intensity alone
+  float    strokePos;   // 0..1, or -1 when nothing is stroking
+  bool     edging;      // held back by an edge
 };
 static FaceInput in;
 
@@ -164,17 +170,17 @@ static float approach(float cur, float target, float rate, float dt) {
 static void resolveInput(float dt) {
   switch (settings.mode) {
     case MODE_IDLE:
-      in = { false, false, 0.0f, 0.0f, false };
+      in = { false, false, 0.0f, 0.0f, false, EXPR_NONE, -1.0f, false };
       break;
 
     case MODE_TEASE:
       demoPhase += dt * 0.09f;
-      in = { false, true, 0.42f + 0.12f * sinf(demoPhase * TWO_PI), 46.0f, false };
+      in = { false, true, 0.42f + 0.12f * sinf(demoPhase * TWO_PI), 46.0f, false, EXPR_NONE, -1.0f, false };
       break;
 
     case MODE_HEART:
       demoPhase += dt * 0.16f;
-      in = { false, true, 0.88f + 0.08f * sinf(demoPhase * TWO_PI), 88.0f, false };
+      in = { false, true, 0.88f + 0.08f * sinf(demoPhase * TWO_PI), 88.0f, false, EXPR_NONE, -1.0f, false };
       break;
 
     case MODE_DEMO: {
@@ -184,17 +190,25 @@ static void resolveInput(float dt) {
       if (demoPhase > 1.0f)
         demoPhase -= 1.0f;
       const float t = demoPhase < 0.5f ? demoPhase * 2.0f : (1.0f - demoPhase) * 2.0f;
-      in = { false, true, t, 30.0f + t * 90.0f, false };
+      in = { false, true, t, 30.0f + t * 90.0f, false, EXPR_NONE, -1.0f, false };
       break;
     }
 
-    default:
+    default: {
+      // Face frames carry the intensity of whatever is in charge, a playing
+      // script included; `state` only knows the session's, so without them
+      // it only counts while a video plays.
+      const bool live = phFaceLive();
       in.panicked  = phState.panicked;
-      in.moving    = phState.motion && phState.spm > 1;
-      in.intensity = phState.playing ? clampf(phState.intensity, 0.0f, 1.0f) : 0.0f;
+      in.moving    = phState.spm > 1 && (phState.motion || (live && phState.playing));
+      in.intensity = (live || phState.playing) ? clampf(phState.intensity, 0.0f, 1.0f) : 0.0f;
       in.spm       = phState.spm;
       in.showText  = true;
+      in.expr      = live ? phState.expr : EXPR_NONE;
+      in.strokePos = live ? phState.strokePos : -1.0f;
+      in.edging    = phEdging();
       break;
+    }
   }
 }
 
@@ -203,7 +217,12 @@ static bool heartsOn() {
     return false;
   if (settings.hearts == HEART_ALWAYS)
     return true;
-  return in.intensity > 0.72f && !in.panicked;
+  if (in.panicked)
+    return false;
+  // The app's ladder already has hysteresis; follow it when there is one.
+  if (in.expr != EXPR_NONE)
+    return in.expr == EXPR_FLUSTERED;
+  return in.intensity > 0.72f;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,7 +283,7 @@ static void drawHeart(int cx, int cy, int r, uint16_t c) {
   eye->fillTriangle(cx - 2 * lobe, top, cx + 2 * lobe, top, cx, cy + r, c);
 }
 
-static void drawPupil(int cx, int cy, bool hearts, uint16_t ink, uint16_t sclera) {
+static void drawPupil(int cx, int cy, bool hearts, float scale, uint16_t ink, uint16_t sclera) {
   if (hearts) {
     const int r = (int)(PUPIL_R * 0.66f);
     eye->fillCircle(cx, cy, r, ink);
@@ -273,8 +292,8 @@ static void drawPupil(int cx, int cy, bool hearts, uint16_t ink, uint16_t sclera
   }
 
   // Flat top, straight sides, elliptical bottom.
-  const int rx = (int)(PUPIL_R * PUPIL_W);
-  const int ry = (int)(PUPIL_R * PUPIL_H);
+  const int rx = (int)(PUPIL_R * PUPIL_W * scale);
+  const int ry = (int)(PUPIL_R * PUPIL_H * scale);
   for (int k = 0; k < 2 * ry; k++) {
     const float t = (float)k / (2 * ry - 1);
     int hw;
@@ -290,9 +309,10 @@ static void drawPupil(int cx, int cy, bool hearts, uint16_t ink, uint16_t sclera
   }
 
   // A wedge bitten out of the pupil's top edge.
-  eye->fillTriangle(cx - NOTCH_R, cy - ry - 1,
-                    cx + NOTCH_R, cy - ry - 1,
-                    cx, cy - ry + NOTCH_R + 1, sclera);
+  const int notch = (int)(NOTCH_R * scale + 0.5f);
+  eye->fillTriangle(cx - notch, cy - ry - 1,
+                    cx + notch, cy - ry - 1,
+                    cx, cy - ry + notch + 1, sclera);
 }
 
 /** Two offset lines, because the sprite has no line width. */
@@ -313,8 +333,22 @@ static void drawEye(int bodyCx, bool leftSide) {
   const int bcx = start + BODY_W / 2;
   const float outerSign = leftSide ? -1.0f : 1.0f;
 
-  const float squint = clampf(in.intensity, 0, 1) * 0.34f;
-  const float open   = in.panicked ? 0.0f : clampf(lid - squint, 0.0f, 1.0f);
+  // Intensity narrows the eye; the expression then bends that. `cap` is how
+  // far the lids open at most, so a blink still closes them all the way.
+  float squint = clampf(in.intensity, 0, 1) * 0.34f;
+  float cap = 1.0f;
+  float pupilScale = 1.0f;
+  switch (in.expr) {
+    case EXPR_SLEEPY:    cap = 0.30f; break;
+    case EXPR_FOCUSED:   squint += 0.06f; break;
+    case EXPR_EXCITED:   squint *= 0.35f; break;            // wide open
+    case EXPR_FLUSTERED: cap = 0.70f; break;                // half lidded
+    case EXPR_SHOCKED:   squint = 0.0f; pupilScale = 0.5f; break;
+    default: break;
+  }
+  if (in.edging)
+    cap = fminf(cap, 0.6f);
+  const float open = in.panicked ? 0.0f : clampf(lid * cap - squint, 0.0f, 1.0f);
   const int upOpen = (int)(LID_UP * open);
   const int loOpen = (int)(LID_LO * (0.45f + 0.55f * open));
 
@@ -337,7 +371,7 @@ static void drawEye(int bodyCx, bool leftSide) {
     const int px = start + (int)(pu * (BODY_W - 1)) + (int)(lookX * 7.0f);
     const int py = ECY + PUPIL_DY + (int)(lookY * 5.0f);
     const uint16_t pink = rgb(mix(PUPIL_COOL, PUPIL_HOT, in.intensity));
-    drawPupil(px, py, heartsOn(), pink, SCLERA);
+    drawPupil(px, py, heartsOn(), pupilScale, pink, SCLERA);
   }
 
   // Mask the pupil back inside the lids, then lay the lash on the edge it just
@@ -489,6 +523,16 @@ static void drawMouth(float amount) {
   mouth->pushSprite(MOUTH_X, MOUTH_Y);
 }
 
+/** A small round "o", for the fright after a panic. */
+static void drawMouthOh() {
+  mouth->fillSprite(themeBg());
+  const int cx = MOUTH_W / 2;
+  const int cy = (int)mouthBase(0.5f) + 6;
+  mouth->fillEllipse(cx, cy, 8, 10, themeInk());
+  mouth->fillEllipse(cx, cy + 1, 5, 7, rgb(MOUTH_FILL));
+  mouth->pushSprite(MOUTH_X, MOUTH_Y);
+}
+
 /** Anime nose: a short stroke, leaning steeply rather than lying flat. */
 static void drawNose() {
   const uint16_t INK = themeInk();
@@ -496,24 +540,44 @@ static void drawNose() {
   gfx->drawLine(158, NOSE_Y, 162, NOSE_Y + 7, INK);
 }
 
-/** One line of text below the eyes: what it is connected to and doing. */
+/** One line of text above the eyes: what it is connected to and doing. */
 static void drawStatus() {
   char line[48];
+
+  // "idle" is the session's phase whenever no session runs, even mid-video.
+  const bool noPhase = !phState.phase[0] || strcmp(phState.phase, "idle") == 0;
+  const char *what = noPhase ? (phState.playing ? "playing" : "idle") : phState.phase;
 
   if (!in.showText)
     line[0] = '\0';
   else if (!settings.wifi)
     snprintf(line, sizeof(line), "wifi off");
+  else if (!phState.wifiUp)
+    snprintf(line, sizeof(line), "joining wifi...");
   else if (!phState.connected)
-    snprintf(line, sizeof(line), "connecting...");
+    snprintf(line, sizeof(line), "looking for playhound at %s", PH_HOST);
   else if (!phState.hostSeen)
     snprintf(line, sizeof(line), "waiting for playhound");
   else if (phState.panicked)
     snprintf(line, sizeof(line), "shhh");
-  else if (phState.motion && phState.spm > 0)
-    snprintf(line, sizeof(line), "%s  %.0f spm", phState.phase, phState.spm);
+  else if (phState.edge == EDGE_HOLDING)
+    snprintf(line, sizeof(line), "edge - holding %ds", phState.edgeHold);
+  else if (phState.edge == EDGE_FALLING)
+    snprintf(line, sizeof(line), "edge - backing off");
+  else if (phState.edge == EDGE_REBUILDING)
+    snprintf(line, sizeof(line), "easing back - %ds", phState.edgeRemaining);
+  else if (in.expr == EXPR_SLEEPY)
+    snprintf(line, sizeof(line), "z z z");
+  else if (in.moving && in.spm > 0)
+    snprintf(line, sizeof(line), "%s  %.0f spm", what, in.spm);
   else
-    snprintf(line, sizeof(line), "%s", phState.playing ? "playing" : "idle");
+    snprintf(line, sizeof(line), "%s", what);
+
+  // The knob turned down is worth a glance; at 100% it is just noise.
+  if (in.showText && phState.hostSeen && !phState.panicked && phState.knob < 0.995f) {
+    const size_t n = strlen(line);
+    snprintf(line + n, sizeof(line) - n, "  -  %d%%", (int)(phState.knob * 100.0f + 0.5f));
+  }
 
   if (strcmp(line, lastStatus) == 0)
     return;
@@ -531,7 +595,7 @@ static void drawStatus() {
 /** What is loaded, elided in the middle so both ends stay readable. */
 static void drawTitle() {
   char line[64];
-  if (!in.showText || fullFace() || phState.panicked || !phState.hostSeen)
+  if (!in.showText || phState.panicked || !phState.hostSeen)
     line[0] = '\0';
   else
     snprintf(line, sizeof(line), "%s", phState.title);
@@ -609,10 +673,12 @@ void faceTick() {
   // -- Blinking ------------------------------------------------------------
   if (!in.panicked) {
     if (now > nextBlinkAt) {
-      blinkUntil = now + 110;
+      // Sleepy blinks are rare and slow: a heavy lid, not a flicker.
+      const bool sleepy = in.expr == EXPR_SLEEPY;
+      blinkUntil = now + (sleepy ? 320 : 110);
       const uint32_t base = in.moving
         ? (uint32_t)(2600 - clampf(in.spm, 0, 140) * 12 - t * 700)
-        : 4200;
+        : (sleepy ? 7000 : 4200);
       nextBlinkAt = now + base + random(0, 1600);
     }
     lidTarget = (now < blinkUntil) ? 0.05f : 1.0f;
@@ -631,12 +697,21 @@ void faceTick() {
     const uint32_t calm = in.moving ? 1500 : 2600;
     nextLookAt = now + calm + random(0, 2200);
   }
-  if (in.panicked) {
+  // Once something is going, the eyes ride the stroke up and down. Frames come
+  // ten a second; the quick approach below eases between them.
+  const bool followStroke = in.strokePos >= 0.0f && !in.panicked && !in.edging
+    && (in.expr == EXPR_FOCUSED || in.expr == EXPR_EXCITED || in.expr == EXPR_FLUSTERED);
+  if (followStroke)
+    lookTY = (0.5f - in.strokePos) * 1.6f;    // 1 is the top, and up is negative
+  // Asleep or held back by an edge, the gaze drops.
+  if (in.expr == EXPR_SLEEPY || in.edging)
+    lookTY = 0.6f;
+  if (in.panicked || in.expr == EXPR_SHOCKED) {
     lookTX = 0;
     lookTY = 0;
   }
   lookX = approach(lookX, lookTX, 2.2f, dt);
-  lookY = approach(lookY, clampf(lookTY, -1.0f, 1.0f), 2.2f, dt);
+  lookY = approach(lookY, clampf(lookTY, -1.0f, 1.0f), followStroke ? 9.0f : 2.2f, dt);
 
   // -- Bob -----------------------------------------------------------------
   if (in.moving && in.spm > 1 && !in.panicked) {
@@ -672,7 +747,11 @@ void faceTick() {
 
   if (fullFace()) {
     drawNose();
-    if (mouthAllowed && mouth != nullptr && mouth->created())
-      drawMouth(mouthOpen);
+    if (mouthAllowed && mouth != nullptr && mouth->created()) {
+      if (in.expr == EXPR_SHOCKED && !in.panicked)
+        drawMouthOh();
+      else
+        drawMouth(mouthOpen);
+    }
   }
 }
