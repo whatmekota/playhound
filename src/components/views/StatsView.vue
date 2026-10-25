@@ -31,6 +31,7 @@ const hasAny = computed(() => all.value.length > 0 || Object.keys(stats.daily).l
 const totalMs = computed(() => all.value.reduce((a, s) => a + s.totalWatchedMs, 0) + liveMs.value)
 const totalPlays = computed(() => all.value.reduce((a, s) => a + s.totalPlays, 0))
 const totalFinishes = computed(() => all.value.reduce((a, s) => a + s.finishEvents.length, 0))
+const totalEdges = computed(() => all.value.reduce((a, s) => a + (s.edgeEvents?.length ?? 0), 0))
 const videosWatched = computed(() => all.value.filter(s => s.totalPlays > 0).length)
 
 function dayMs(key: string) {
@@ -254,6 +255,9 @@ function fmtDay(ts: number, long = false) {
           </div>
           <div class="p-4 card">
             <UiStat label="Finishes" :value="totalFinishes" size="lg" />
+          </div>
+          <div class="p-4 card">
+            <UiStat label="Edges" :value="totalEdges" size="lg" :hint="stats.sessionEdges ? `${stats.sessionEdges} this session` : 'Called with E, the gamepad or the phone'" />
           </div>
           <div class="p-4 card">
             <UiStat label="Day streak" :value="streak" :unit="streak === 1 ? 'day' : 'days'" size="lg" hint="Consecutive days with something watched" />

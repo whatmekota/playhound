@@ -11,7 +11,9 @@ import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
+import { heartRate } from '~/composables/useHeartRate'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
+import { KNOB_STEP, useSessionActions } from '~/composables/useSessionActions'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { toast } from '~/composables/useToast'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
@@ -27,7 +29,9 @@ import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useUiStore } from '~/stores/uiStore'
+import EdgeBadge from './EdgeBadge.vue'
 import FunscriptTimeline from './FunscriptTimeline.vue'
 import LoopControls from './LoopControls.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
@@ -55,6 +59,8 @@ const motion = useMotionStore()
 const audio = useAudioStore()
 const director = useAutoDirector()
 const binaural = useBinauralBeats()
+const control = useSessionControlStore()
+const sessionActions = useSessionActions()
 
 const heatmap = useLocalStorage(KEYS.timelineHeatmap.key, true)
 
@@ -132,6 +138,22 @@ function loopChapter(c: Chapter) {
   if (player.currentTime < a || player.currentTime >= b)
     playback.seek(a)
   toast(`Looping ${c.name}`, { detail: `${formatTime(a)} – ${formatTime(b)}`, icon: 'i-carbon-repeat', key: 'loop' })
+}
+
+// ─── Intensity knob ──────────────────────────────────────────────────────────
+const knobModel = computed({
+  get: () => control.intensityScale,
+  set: (v: number) => control.setIntensityScale(v),
+})
+const knobPct = computed(() => Math.round(control.intensityScale * 100))
+const knobTip = {
+  text: 'Intensity — shortens and slows scripts and generated motion, on the same beats. Double-click for full.',
+  kbd: '- / =',
+}
+
+function onKnobWheel(e: WheelEvent) {
+  e.preventDefault()
+  control.nudgeIntensity(e.deltaY < 0 ? KNOB_STEP : -KNOB_STEP)
 }
 
 // ─── Volume ──────────────────────────────────────────────────────────────────
@@ -268,14 +290,15 @@ const scrubCardHalf = computed(() => (scrubStrip.value ? 82 : 48))
 const rightEl = ref<HTMLElement | null>(null)
 const rightW = useElementSize(rightEl).width
 const level = computed(() => {
-  const w = rightW.value
-  if (!w)
+  // A running edge's countdown pill is wider than the idle button.
+  const w = rightW.value - (control.phase !== 'idle' ? 170 : 0)
+  if (!rightW.value)
+    return 0
+  if (w >= 800)
     return 0
   if (w >= 620)
-    return 0
-  if (w >= 450)
     return 1
-  if (w >= 230)
+  if (w >= 300)
     return 2
   return 3
 })
@@ -400,6 +423,9 @@ const needsOverflow = computed(() => level.value > 0)
                 </div>
               </UiPopover>
               <UiIconButton icon="i-carbon-skip-forward-outline" label="Next chapter" kbd="." size="xs" @click="skipChapter(1)" />
+              <div class="mx-1 divider-x" />
+              <UiIconButton icon="i-carbon-fire" label="Next peak" kbd="G" size="xs" @click="sessionActions.nextPeak()" />
+              <UiIconButton icon="i-carbon-flag-filled" label="Finish — the most intense part" kbd="⇧G" size="xs" @click="sessionActions.finish()" />
               <div class="mx-1 divider-x" />
             </div>
 
@@ -549,6 +575,20 @@ const needsOverflow = computed(() => level.value > 0)
 
       <!-- ═══ Tools and status ═══ -->
       <div ref="rightEl" class="flex gap-1 min-w-0 items-center justify-end">
+        <!-- Session: the edge button and the intensity knob -->
+        <EdgeBadge />
+        <div
+          v-if="showStatus"
+          v-tip="knobTip"
+          class="pl-1.5 flex gap-1.5 items-center"
+          @wheel="onKnobWheel"
+        >
+          <span class="i-carbon-meter-alt text-[14px]" :class="knobPct < 100 ? 'text-accent-300' : 'text-fg-muted'" />
+          <UiSlider v-model="knobModel" class="w-16" :min="0.1" :max="1" :step="0.05" :reset="1" hide-value />
+          <span class="text-[11.5px] num text-right w-8" :class="knobPct < 100 ? 'text-accent-300' : 'text-fg-muted'">{{ knobPct }}%</span>
+        </div>
+        <div class="mx-1.5 divider-x" />
+
         <template v-if="showStatus">
           <button
             v-tip="device.connected ? 'Device connected' : 'No device — open the device panel'"
@@ -559,6 +599,18 @@ const needsOverflow = computed(() => level.value > 0)
           >
             <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="device.connected ? 'bg-ok animate-pulse-dot text-ok' : 'bg-fg/25'" />
             <span class="i-carbon-plug text-[14px]" />
+          </button>
+          <!-- Only once a monitor is paired; nothing to show otherwise. -->
+          <button
+            v-if="heartRate.status === 'connected' || heartRate.status === 'reconnecting'"
+            v-tip="heartRate.baseline ? `Heart rate · resting ${Math.round(heartRate.baseline)}` : 'Heart rate'"
+            type="button"
+            class="np-chip num"
+            :class="heartRate.status === 'reconnecting' ? 'opacity-50' : ''"
+            @click="ui.toggleInspector('device')"
+          >
+            <span class="i-carbon-favorite-filled text-[13px] text-danger" :style="heartRate.bpm ? { animation: `np-beat ${60 / heartRate.bpm}s ease-out infinite` } : undefined" />
+            <span>{{ heartRate.bpm ?? '—' }}</span>
           </button>
           <button
             v-tip="`Motion: ${motionLabel}`"
@@ -664,6 +716,17 @@ const needsOverflow = computed(() => level.value > 0)
             </template>
 
             <template v-if="!showStatus">
+              <div class="flex flex-col gap-1.5">
+                <span class="eyebrow">Session</span>
+                <UiSlider
+                  v-model="knobModel"
+                  label="Intensity"
+                  :min="0.1" :max="1" :step="0.05" :reset="1"
+                  :format="v => `${Math.round(v * 100)}%`"
+                  hint="Shortens and slows scripts and generated motion · - / ="
+                />
+              </div>
+              <div class="divider-y" />
               <div class="flex flex-col gap-1">
                 <span class="eyebrow mb-0.5">Status</span>
                 <button type="button" class="np-row" @click="ui.toggleInspector('device')">
@@ -719,6 +782,15 @@ const needsOverflow = computed(() => level.value > 0)
 </template>
 
 <style scoped>
+@keyframes np-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  15% {
+    transform: scale(1.25);
+  }
+}
 .np-chip {
   display: inline-flex;
   align-items: center;

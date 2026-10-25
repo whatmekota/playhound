@@ -2,6 +2,7 @@
 import type { RemoteAction, RemoteState } from '~/composables/useRemoteLink'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRemoteLink } from '~/composables/useRemoteLink'
+import { formatTime } from '~/lib/time'
 
 defineOptions({ name: 'RemotePage' })
 
@@ -42,7 +43,7 @@ function send(action: RemoteAction) {
   if (!online.value)
     return
   link.send({ type: 'cmd', action })
-  navigator.vibrate?.(action === 'panic' ? [40, 30, 60] : 12)
+  navigator.vibrate?.(action === 'panic' ? [40, 30, 60] : action === 'edge' ? [24, 40, 24] : 12)
 }
 
 onMounted(() => {
@@ -52,7 +53,25 @@ onMounted(() => {
 })
 
 const title = computed(() => state.value?.title.replace(/\.[^.]+$/, '') ?? '')
-const intensity = computed(() => Math.round((state.value?.intensity ?? 0) * 100))
+// The knob when the desktop sends one; an older desktop only had the session's.
+const intensity = computed(() => Math.round((state.value?.knob ?? state.value?.intensity ?? 0) * 100))
+
+// ─── Edge ─────────────────────────────────────────────────────────────────────
+const edge = computed(() => state.value?.edge ?? null)
+const edgeActive = computed(() => !!edge.value && edge.value.phase !== 'idle')
+const edgeHolding = computed(() => edge.value?.phase === 'falling' || edge.value?.phase === 'holding')
+/** Ring fill: what is left of the whole edge. */
+const edgeLeft = computed(() => {
+  const e = edge.value
+  return e && e.total > 0 ? Math.max(0, Math.min(1, e.remaining / e.total)) : 0
+})
+const edgeText = computed(() => {
+  const e = edge.value
+  if (!e)
+    return ''
+  return edgeHolding.value ? `Holding ${formatTime(e.hold, '0:00')}` : `Easing back ${formatTime(e.remaining, '0:00')}`
+})
+const RING_C = 2 * Math.PI * 17
 const phase = computed(() => (state.value?.phase && state.value.phase !== 'idle' ? state.value.phase : ''))
 
 // ─── Keep the screen awake ────────────────────────────────────────────────────
@@ -210,6 +229,52 @@ onBeforeUnmount(() => {
         </button>
       </section>
 
+      <!-- ─── Edge: big, near the thumb, above panic ─────────────────────── -->
+      <section class="mx-4 mt-3 flex shrink-0 gap-3" :class="online ? '' : 'opacity-40'">
+        <button
+          type="button"
+          class="rc-edge rounded-[var(--radius-xl)] flex flex-1 gap-3 h-[4.5rem] min-w-0 items-center"
+          :class="edgeActive ? 'is-live px-4' : 'justify-center'"
+          :disabled="!online"
+          :aria-label="edgeActive ? 'Still close: edge again' : 'Edge: back everything off'"
+          @click="send('edge')"
+        >
+          <template v-if="edgeActive && edge">
+            <span class="shrink-0 h-11 w-11 relative">
+              <svg viewBox="0 0 40 40" class="h-full w-full -rotate-90" aria-hidden="true">
+                <circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-opacity="0.2" stroke-width="3" />
+                <circle
+                  class="rc-ring" cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                  :stroke-dasharray="RING_C" :stroke-dashoffset="RING_C * (1 - edgeLeft)"
+                />
+              </svg>
+              <span class="text-[13px] font-semibold num center inset-0 absolute">{{ edge.count }}</span>
+            </span>
+            <span class="text-left flex flex-col min-w-0">
+              <span class="text-[16px] font-semibold num truncate">{{ edgeText }}</span>
+              <span class="text-[12px] opacity-75 truncate">Tap again if still close</span>
+            </span>
+          </template>
+          <template v-else>
+            <span class="i-carbon-temperature-hot text-[24px]" />
+            <span class="text-[17px] font-semibold">Edge</span>
+          </template>
+        </button>
+        <Transition name="t-pop">
+          <button
+            v-if="edgeHolding"
+            type="button"
+            class="rc-round text-ok px-4 rounded-[var(--radius-xl)] flex-col gap-0.5 h-[4.5rem] w-[5.5rem]"
+            :disabled="!online"
+            aria-label="I'm OK: end the hold"
+            @click="send('edgeRelease')"
+          >
+            <span class="i-carbon-checkmark-outline text-[22px]" />
+            <span class="text-[12.5px] font-medium">I’m OK</span>
+          </button>
+        </Transition>
+      </section>
+
       <!-- ─── Intensity ───────────────────────────────────────────────────── -->
       <section class="mx-4 mt-3 p-3 card flex shrink-0 gap-3 items-center" :class="online ? '' : 'opacity-40'">
         <button type="button" class="rc-round h-14 w-14" :disabled="!online" aria-label="Less intense" @click="send('intensityDown')">
@@ -290,6 +355,7 @@ onBeforeUnmount(() => {
 
 .rc-round,
 .rc-tile,
+.rc-edge,
 .rc-panic {
   transition:
     transform var(--dur-fast) var(--ease-out),
@@ -299,6 +365,7 @@ onBeforeUnmount(() => {
 }
 .rc-round:active:not(:disabled),
 .rc-tile:active:not(:disabled),
+.rc-edge:active:not(:disabled),
 .rc-panic:active:not(:disabled) {
   transform: scale(0.94);
 }
@@ -340,5 +407,18 @@ onBeforeUnmount(() => {
 }
 .rc-tile:active:not(:disabled) {
   background: var(--bg-700);
+}
+
+.rc-edge {
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg-850));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+.rc-edge.is-live {
+  background: color-mix(in srgb, var(--warn) 22%, var(--bg-850));
+}
+/* The host sends the countdown once a second; glide between the ticks. */
+.rc-ring {
+  transition: stroke-dashoffset 1s linear;
 }
 </style>

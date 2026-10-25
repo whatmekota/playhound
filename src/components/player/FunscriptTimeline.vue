@@ -24,8 +24,8 @@ import ScrubPreview from './ScrubPreview.vue'
  *
  * Lanes, top to bottom: the script waveform, then (when `heatmap` is on) a
  * band coloured by stroke speed with the stroke-rate curve over it. On top of
- * those sit chapter boundaries, the A–B loop, bookmarks, finish markers and
- * the playhead. Hovering shows a card with the frame there (once the video's
+ * those sit chapter boundaries, the A–B loop, bookmarks, finish and edge
+ * markers and the playhead. Hovering shows a card with the frame there (once the video's
  * preview strip is built), the time and the chapter.
  *
  * `dock` draws in theme colours for the bottom dock; `overlay` draws white
@@ -64,6 +64,9 @@ const hoverTime = computed(() => {
 const videoName = computed(() => player.videoPath?.split(/[\\/]/).pop() ?? null)
 const bookmarks = computed(() => (videoName.value ? bookmarkStore.forVideo(videoName.value) : []))
 const finishes = computed(() => (videoName.value ? statsStore.stats[videoName.value]?.finishEvents ?? [] : []))
+/** Where edges were called in this video, this session and before. */
+const edgeMarks = computed(() => statsStore.edgesFor(videoName.value))
+const edgeCount = computed(() => edgeMarks.value.length)
 const chapters = computed(() => chaptersForScript(source.value, player.videoDuration, analysis.value?.peaks, playback.scriptMetadata))
 const hoverChapter = computed<Chapter | null>(() =>
   chapters.value.length > 1 ? chapterAt(chapters.value, hoverTime.value * 1000) : null)
@@ -371,6 +374,20 @@ function draw(t: number) {
     ctx.fill()
   }
 
+  // ── Edge markers: a hollow ring at the top with a faint stem ──
+  ctx.strokeStyle = p.warn
+  ctx.fillStyle = p.warn
+  ctx.lineWidth = 1.5
+  for (const ed of edgeMarks.value) {
+    const ex = (ed.at / duration) * W
+    ctx.globalAlpha = 0.3
+    ctx.fillRect(ex - 0.5, 9, 1, H - 9)
+    ctx.globalAlpha = 1
+    ctx.beginPath()
+    ctx.arc(ex, 5, 3, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+
   // ── Hover guide ──
   if (hovering.value && drag.value === null) {
     ctx.strokeStyle = p.ink
@@ -405,6 +422,8 @@ watch(
     () => scriptStore.primaryScript?.offsetMs,
     bookmarks,
     finishes,
+    edgeMarks,
+    edgeCount,
     analysis,
     chapters,
     hoverChapter,
@@ -525,6 +544,15 @@ const hoverBookmark = computed(() => {
   if (!w || !d)
     return null
   return bookmarks.value.find(b => Math.abs((b.time / d) * w - hoverX.value) < 6) ?? null
+})
+
+/** An edge marker under the pointer. */
+const hoverEdge = computed(() => {
+  const w = size.value.w
+  const d = player.videoDuration
+  if (!w || !d)
+    return null
+  return edgeMarks.value.find(e => Math.abs((e.at / d) * w - hoverX.value) < 6) ?? null
 })
 
 const entry = computed(() => playback.currentEntry)
@@ -699,7 +727,7 @@ defineExpose({ redraw, playhead: () => playheadT })
           </span>
         </div>
         <div
-          v-if="!showFrame || hoverChapter || (hoverBookmark && drag === null)"
+          v-if="!showFrame || hoverChapter || ((hoverBookmark || hoverEdge) && drag === null)"
           class="text-[11px] font-medium px-2 flex gap-1.5 h-6 whitespace-nowrap items-center"
           :class="showFrame ? 'max-w-40' : 'max-w-60'"
         >
@@ -711,6 +739,10 @@ defineExpose({ redraw, playhead: () => playheadT })
           <template v-if="hoverBookmark && drag === null">
             <span class="i-carbon-bookmark-filled text-[11px] text-warn shrink-0" />
             <span class="truncate">{{ hoverBookmark.label }}</span>
+          </template>
+          <template v-else-if="hoverEdge && drag === null">
+            <span class="i-carbon-temperature-hot text-[11px] text-warn shrink-0" />
+            <span class="truncate">Edged here</span>
           </template>
         </div>
       </div>

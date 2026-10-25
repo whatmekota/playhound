@@ -5,6 +5,20 @@ import { desktop } from '~/lib/browserApi'
 export type RemoteAction
   = | 'togglePlay' | 'next' | 'prev' | 'random' | 'panic'
     | 'motionToggle' | 'intensityUp' | 'intensityDown' | 'audioToggle'
+    | 'edge' | 'edgeRelease'
+
+/** An edge in progress, as the phone needs it to draw a countdown. */
+export interface RemoteEdge {
+  phase: 'idle' | 'falling' | 'holding' | 'rebuilding'
+  /** Whole seconds until fully back to normal. */
+  remaining: number
+  /** Whole seconds of hold left before easing back starts. */
+  hold: number
+  /** Seconds the whole edge lasts, for the ring. */
+  total: number
+  /** Edges called this session. */
+  count: number
+}
 
 export interface RemoteState {
   title: string
@@ -12,7 +26,14 @@ export interface RemoteState {
   panicked: boolean
   motion: boolean
   audio: boolean
+  /** Session intensity (the binaural session's arc), 0–1. */
   intensity: number
+  /**
+   * The intensity knob, 0.1–1: what intensityUp / intensityDown move. Older
+   * hosts did not send it; their buttons moved `intensity` instead.
+   */
+  knob?: number
+  edge?: RemoteEdge
   spm: number
   /** Session phase, so a remote can show what the session is doing. */
   phase: string

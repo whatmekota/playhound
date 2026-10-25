@@ -11,6 +11,7 @@ export type ShellAction
   = | 'bookmark' | 'star' | 'next' | 'prev' | 'random' | 'panic' | 'help'
     | 'view-player' | 'view-library' | 'view-playlists'
     | 'queue' | 'library-panel' | 'device' | 'shuffle' | 'repeat' | 'palette'
+    | 'edge' | 'edge-release' | 'intensity-up' | 'intensity-down' | 'next-peak' | 'finish'
 
 export interface Hotkey {
   /** How the key is written in the cheat sheet. */
@@ -81,6 +82,16 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
     ],
   },
   {
+    title: 'Session',
+    keys: [
+      { keys: 'E', label: 'Edge — back everything off for a while; again if still close', owner: 'shell', code: 'KeyE', action: 'edge' },
+      { keys: 'Shift + E', label: 'I’m OK — end the hold and start easing back', owner: 'shell', code: 'KeyE', action: 'edge-release' },
+      { keys: '- / =', label: 'Intensity down / up', owner: 'shell', code: 'Equal', action: 'intensity-up' },
+      { keys: 'G', label: 'Jump to the next peak', owner: 'shell', code: 'KeyG', action: 'next-peak' },
+      { keys: 'Shift + G', label: 'Jump to the finish — the most intense part', owner: 'shell', code: 'KeyG', action: 'finish' },
+    ],
+  },
+  {
     title: 'Safety',
     keys: [
       { keys: 'Esc  or  `', label: 'Panic — stop everything and cover the screen; again to resume', owner: 'shell', code: 'Escape', action: 'panic' },
@@ -102,3 +113,9 @@ export const SHELL_HOTKEYS: { code: string, shift: boolean, action: ShellAction 
   .map(({ code, action, keys }) => ({ code, action, shift: keys.startsWith('Shift') }))
   // Backquote is a second way to reach panic, easier to hit without looking.
   .concat([{ code: 'Backquote', shift: false, action: 'panic' }])
+  // '- / =' is one row of the sheet but two keys; the keypad works too.
+  .concat([
+    { code: 'Minus', shift: false, action: 'intensity-down' },
+    { code: 'NumpadSubtract', shift: false, action: 'intensity-down' },
+    { code: 'NumpadAdd', shift: false, action: 'intensity-up' },
+  ])

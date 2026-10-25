@@ -7,6 +7,7 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const KNOB_STEP: typeof import('./src/composables/useSessionActions').KNOB_STEP
   const MIN_H: typeof import('./src/composables/wallGeometry').MIN_H
   const MIN_W: typeof import('./src/composables/wallGeometry').MIN_W
   const MOVE_EDGES: typeof import('./src/composables/wallGeometry').MOVE_EDGES
@@ -55,6 +56,9 @@ declare global {
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const h: typeof import('vue').h
+  const heartRate: typeof import('./src/composables/useHeartRate').heartRate
+  const heartSparkline: typeof import('./src/composables/useHeartRate').heartSparkline
+  const heartTimeline: typeof import('./src/composables/useHeartRate').heartTimeline
   const holdToast: typeof import('./src/composables/useToast').holdToast
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
   const inject: typeof import('vue').inject
@@ -68,6 +72,7 @@ declare global {
   const isReadonly: typeof import('vue').isReadonly
   const isRef: typeof import('vue').isRef
   const isShallow: typeof import('vue').isShallow
+  const isStrengthToy: typeof import('./src/composables/useButtplug').isStrengthToy
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
   const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
@@ -94,6 +99,7 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const outputsOf: typeof import('./src/composables/useButtplug').outputsOf
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const pickMediaFiles: typeof import('./src/composables/useMediaDrop').pickMediaFiles
   const provide: typeof import('vue').provide
@@ -118,6 +124,7 @@ declare global {
   const resizeRect: typeof import('./src/composables/wallGeometry').resizeRect
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
+  const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
   const shallowReactive: typeof import('vue').shallowReactive
@@ -222,6 +229,7 @@ declare global {
   const useGamepad: typeof import('./src/composables/useGamepad').useGamepad
   const useGamepadStatus: typeof import('./src/composables/useGamepadStatus').useGamepadStatus
   const useGeolocation: typeof import('@vueuse/core').useGeolocation
+  const useHeartRate: typeof import('./src/composables/useHeartRate').useHeartRate
   const useId: typeof import('vue').useId
   const useIdle: typeof import('@vueuse/core').useIdle
   const useIdleChrome: typeof import('./src/composables/useIdleChrome').useIdleChrome
@@ -289,6 +297,7 @@ declare global {
   const useScroll: typeof import('@vueuse/core').useScroll
   const useScrollLock: typeof import('@vueuse/core').useScrollLock
   const useSerialPort: typeof import('./src/composables/useSerialPort').useSerialPort
+  const useSessionActions: typeof import('./src/composables/useSessionActions').useSessionActions
   const useSessionAudio: typeof import('./src/composables/useSessionAudio').useSessionAudio
   const useSessionEngine: typeof import('./src/composables/useSessionEngine').useSessionEngine
   const useSessionStorage: typeof import('@vueuse/core').useSessionStorage
@@ -332,6 +341,7 @@ declare global {
   const useUserMedia: typeof import('@vueuse/core').useUserMedia
   const useVModel: typeof import('@vueuse/core').useVModel
   const useVModels: typeof import('@vueuse/core').useVModels
+  const useVibeSync: typeof import('./src/composables/useVibeSync').useVibeSync
   const useVibrate: typeof import('@vueuse/core').useVibrate
   const useVideoBeat: typeof import('./src/composables/useVideoBeat').useVideoBeat
   const useVideoSync: typeof import('./src/composables/useVideoSync').useVideoSync
@@ -370,20 +380,29 @@ declare global {
   export type { BeatMode } from './src/composables/useBinauralBeats'
   import('./src/composables/useBinauralBeats')
   // @ts-ignore
+  export type { ToyOutputs } from './src/composables/useButtplug'
+  import('./src/composables/useButtplug')
+  // @ts-ignore
   export type { FaceLinkSettings } from './src/composables/useFaceLink'
   import('./src/composables/useFaceLink')
   // @ts-ignore
   export type { GamepadActions } from './src/composables/useGamepad'
   import('./src/composables/useGamepad')
   // @ts-ignore
+  export type { HeartStatus, HeartTimelinePoint } from './src/composables/useHeartRate'
+  import('./src/composables/useHeartRate')
+  // @ts-ignore
   export type { MediaKind } from './src/composables/useMediaDrop'
   import('./src/composables/useMediaDrop')
   // @ts-ignore
-  export type { RemoteAction, RemoteState } from './src/composables/useRemoteLink'
+  export type { RemoteAction, RemoteEdge, RemoteState } from './src/composables/useRemoteLink'
   import('./src/composables/useRemoteLink')
   // @ts-ignore
   export type { ScriptAnalysis } from './src/composables/useScriptAnalysis'
   import('./src/composables/useScriptAnalysis')
+  // @ts-ignore
+  export type { SessionNotice } from './src/composables/useSessionActions'
+  import('./src/composables/useSessionActions')
   // @ts-ignore
   export type { SessionArc, EdgeConfig } from './src/composables/useSessionEngine'
   import('./src/composables/useSessionEngine')
@@ -407,6 +426,7 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly KNOB_STEP: UnwrapRef<typeof import('./src/composables/useSessionActions')['KNOB_STEP']>
     readonly MIN_H: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_H']>
     readonly MIN_W: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_W']>
     readonly MOVE_EDGES: UnwrapRef<typeof import('./src/composables/wallGeometry')['MOVE_EDGES']>
@@ -455,6 +475,9 @@ declare module 'vue' {
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
+    readonly heartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartRate']>
+    readonly heartSparkline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartSparkline']>
+    readonly heartTimeline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartTimeline']>
     readonly holdToast: UnwrapRef<typeof import('./src/composables/useToast')['holdToast']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
@@ -468,6 +491,7 @@ declare module 'vue' {
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
+    readonly isStrengthToy: UnwrapRef<typeof import('./src/composables/useButtplug')['isStrengthToy']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
@@ -494,6 +518,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly outputsOf: UnwrapRef<typeof import('./src/composables/useButtplug')['outputsOf']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly pickMediaFiles: UnwrapRef<typeof import('./src/composables/useMediaDrop')['pickMediaFiles']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
@@ -518,6 +543,7 @@ declare module 'vue' {
     readonly resizeRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['resizeRect']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
+    readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
@@ -622,6 +648,7 @@ declare module 'vue' {
     readonly useGamepad: UnwrapRef<typeof import('./src/composables/useGamepad')['useGamepad']>
     readonly useGamepadStatus: UnwrapRef<typeof import('./src/composables/useGamepadStatus')['useGamepadStatus']>
     readonly useGeolocation: UnwrapRef<typeof import('@vueuse/core')['useGeolocation']>
+    readonly useHeartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['useHeartRate']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useIdle: UnwrapRef<typeof import('@vueuse/core')['useIdle']>
     readonly useIdleChrome: UnwrapRef<typeof import('./src/composables/useIdleChrome')['useIdleChrome']>
@@ -689,6 +716,7 @@ declare module 'vue' {
     readonly useScroll: UnwrapRef<typeof import('@vueuse/core')['useScroll']>
     readonly useScrollLock: UnwrapRef<typeof import('@vueuse/core')['useScrollLock']>
     readonly useSerialPort: UnwrapRef<typeof import('./src/composables/useSerialPort')['useSerialPort']>
+    readonly useSessionActions: UnwrapRef<typeof import('./src/composables/useSessionActions')['useSessionActions']>
     readonly useSessionAudio: UnwrapRef<typeof import('./src/composables/useSessionAudio')['useSessionAudio']>
     readonly useSessionEngine: UnwrapRef<typeof import('./src/composables/useSessionEngine')['useSessionEngine']>
     readonly useSessionStorage: UnwrapRef<typeof import('@vueuse/core')['useSessionStorage']>
@@ -732,6 +760,7 @@ declare module 'vue' {
     readonly useUserMedia: UnwrapRef<typeof import('@vueuse/core')['useUserMedia']>
     readonly useVModel: UnwrapRef<typeof import('@vueuse/core')['useVModel']>
     readonly useVModels: UnwrapRef<typeof import('@vueuse/core')['useVModels']>
+    readonly useVibeSync: UnwrapRef<typeof import('./src/composables/useVibeSync')['useVibeSync']>
     readonly useVibrate: UnwrapRef<typeof import('@vueuse/core')['useVibrate']>
     readonly useVideoBeat: UnwrapRef<typeof import('./src/composables/useVideoBeat')['useVideoBeat']>
     readonly useVideoSync: UnwrapRef<typeof import('./src/composables/useVideoSync')['useVideoSync']>

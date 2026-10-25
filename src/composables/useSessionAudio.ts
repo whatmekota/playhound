@@ -1,5 +1,6 @@
 import { watch } from 'vue'
 import { MAX_BEAT_HZ, useAudioStore } from '~/stores/audio'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { useSessionEngine } from './useSessionEngine'
 
@@ -13,6 +14,16 @@ export function useSessionAudio() {
   const audio = useAudioStore()
   const binaural = useBinauralBeats()
   const session = useSessionEngine()
+  const control = useSessionControlStore()
+
+  /**
+   * How much an edge has taken out of the sound, in steps of 2%: the hold
+   * moves every frame, the audio graph only needs to hear about it when it
+   * has moved enough to matter (its own ramps smooth the rest).
+   */
+  const holdStep = () => Math.round(control.holdBack * 50) / 50
+  /** Pulse depth follows the knob and the edge, like every other stimulus. */
+  const pulseScale = () => Math.round(control.effectiveIntensity * 50) / 50
 
   /** Session pulse rate in Hz, either following intensity or held manually. */
   function pulseHz(): number {
@@ -33,7 +44,7 @@ export function useSessionAudio() {
       return
     binaural.setPulse(
       pulseHz(),
-      audio.pulseEnabled.value ? audio.pulseDepth.value : 0,
+      audio.pulseEnabled.value ? audio.pulseDepth.value * pulseScale() : 0,
     )
   }
 
@@ -82,9 +93,16 @@ export function useSessionAudio() {
   })
 
   watch(
-    [audio.pulseEnabled, audio.pulseCpm, audio.pulseDepth, audio.pulseFollowsSession, audio.intensity, audio.scriptDrive, audio.musicDrive],
+    [audio.pulseEnabled, audio.pulseCpm, audio.pulseDepth, audio.pulseFollowsSession, audio.intensity, audio.scriptDrive, audio.musicDrive, pulseScale],
     pushPulse,
   )
+
+  // An edge eases the tone down with everything else, never to silence: a
+  // sudden quiet is its own kind of jolt.
+  watch(holdStep, (h) => {
+    if (audio.isPlaying.value)
+      binaural.setVolume(audio.volume.value * (1 - 0.6 * h))
+  })
 
   watch(
     [audio.breathEnabled, audio.breathPeriod, audio.breathInhaleRatio, audio.noiseEnabled],

@@ -9,6 +9,7 @@ import UiSpinner from '~/components/ui/UiSpinner.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useLoopSection } from '~/composables/useLoopSection'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
+import { sessionNotice, useSessionActions } from '~/composables/useSessionActions'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { useVideoSync } from '~/composables/useVideoSync'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
@@ -22,7 +23,9 @@ import { usePlayerStore } from '~/stores/playerStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useUiStore } from '~/stores/uiStore'
+import EdgeBadge from './EdgeBadge.vue'
 import FunscriptTimeline from './FunscriptTimeline.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import SbsViewer from './SbsViewer.vue'
@@ -49,6 +52,12 @@ const safety = useSafetyStore()
 const director = useAutoDirector()
 const { attach, start, stop, onSeeked } = useVideoSync()
 const { checkLoop } = useLoopSection()
+const control = useSessionControlStore()
+const sessionActions = useSessionActions()
+const knobModel = computed({
+  get: () => control.intensityScale,
+  set: (v: number) => control.setIntensityScale(v),
+})
 
 const rootEl = ref<HTMLDivElement | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
@@ -410,6 +419,13 @@ function skipChapter(dir: -1 | 1) {
     sub: `${c.index + 1} of ${chapters.value.length} · ${formatTime(c.start / 1000, '0:00')}`,
   })
 }
+
+// Session controls (knob nudges, peak jumps) report here while the player
+// is what is on screen; elsewhere they toast.
+watch(sessionNotice, (n) => {
+  if (n)
+    showOsd(n.icon, n.text, { sub: n.sub, level: n.level })
+})
 
 // ─── Scrub previews ──────────────────────────────────────────────────────────
 // The playing video's strip is built first, but not straight away: the
@@ -842,6 +858,14 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         </div>
       </Transition>
 
+      <!-- A running edge: countdown and "I'm OK", clear of the title -->
+      <div
+        class="vp-edge pointer-events-auto right-4 absolute z-30"
+        :class="chromeVisible ? 'top-[68px]' : 'top-4'"
+      >
+        <EdgeBadge variant="overlay" />
+      </div>
+
       <!-- Ended, nothing next: offer a replay -->
       <Transition name="t-pop">
         <button
@@ -881,6 +905,22 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               <UiSlider v-model="volumeModel" class="w-24" hide-value />
             </div>
 
+            <!-- Session: the dock is not there to use in fullscreen -->
+            <div class="ml-2 flex gap-1.5 items-center">
+              <UiIconButton
+                icon="i-carbon-temperature-hot"
+                label="Edge — back everything off"
+                kbd="E"
+                variant="glass"
+                size="md"
+                :active="control.phase !== 'idle'"
+                @click="sessionActions.edge('ui')"
+              />
+              <span class="i-carbon-meter-alt text-[15px] text-white/70" aria-hidden="true" />
+              <UiSlider v-model="knobModel" class="w-20" :min="0.1" :max="1" :step="0.05" :reset="1" hide-value />
+              <span class="text-[12px] text-white/75 num w-9">{{ Math.round(control.intensityScale * 100) }}%</span>
+            </div>
+
             <span class="text-[12.5px] text-white/85 num ml-2">
               {{ timeText }} <span class="text-white/45">/ {{ durationText }}</span>
             </span>
@@ -889,6 +929,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               <UiIconButton icon="i-carbon-skip-back-outline" label="Previous chapter" kbd="," variant="glass" size="sm" @click="skipChapter(-1)" />
               <span class="text-[12px] text-white/75 px-1 max-w-40 truncate">{{ currentChapter?.name }}</span>
               <UiIconButton icon="i-carbon-skip-forward-outline" label="Next chapter" kbd="." variant="glass" size="sm" @click="skipChapter(1)" />
+              <UiIconButton icon="i-carbon-fire" label="Next peak" kbd="G" variant="glass" size="sm" @click="sessionActions.nextPeak()" />
+              <UiIconButton icon="i-carbon-flag-filled" label="Finish — the most intense part" kbd="⇧G" variant="glass" size="sm" @click="sessionActions.finish()" />
             </div>
 
             <div class="flex-1" />
@@ -1190,6 +1232,10 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
   100% {
     opacity: 0.15;
   }
+}
+
+.vp-edge {
+  transition: top var(--dur-slow) var(--ease-out);
 }
 
 .vp-osd {

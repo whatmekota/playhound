@@ -9,6 +9,7 @@ import {
 import { MAX_BEAT_HZ, useAudioStore } from '~/stores/audio'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { analyseActions, analysisKey } from './useScriptAnalysis'
 
@@ -53,6 +54,7 @@ export function useScriptPulse() {
   const player = usePlayerStore()
   const script = useScriptStore()
   const { setPulse, getPulseClock } = useBinauralBeats()
+  const control = useSessionControlStore()
 
   /** The axis the beat is derived from — the primary stroke script. */
   const source = computed(() => script.primaryScript ?? script.activeScripts[0] ?? null)
@@ -122,7 +124,9 @@ export function useScriptPulse() {
     // so the pulse slides into step instead of clicking.
     const err = phaseError(clock.phase, target.phase)
     const bend = Math.max(-MAX_BEND, Math.min(MAX_BEND, err * PHASE_GAIN))
-    setPulse(target.rateHz * (1 + bend), audio.pulseEnabled.value ? audio.pulseDepth.value : 0, 0.2)
+    // Same knob and edge hold-back as everything else that stimulates.
+    const depth = audio.pulseEnabled.value ? audio.pulseDepth.value * control.effectiveIntensity : 0
+    setPulse(target.rateHz * (1 + bend), depth, 0.2)
 
     locked.value = Math.abs(err) < 0.05
   }

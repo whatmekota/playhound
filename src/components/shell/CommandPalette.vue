@@ -3,6 +3,7 @@ import type { AnyViewId } from '~/lib/views'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, nextTick, ref, watch } from 'vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
+import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
 import { formatTime } from '~/lib/time'
 import { ALL_VIEWS } from '~/lib/views'
@@ -27,6 +28,7 @@ import { useUiStore } from '~/stores/uiStore'
 const emit = defineEmits<{ openFile: [] }>()
 
 const ui = useUiStore()
+const session = useSessionActions()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
 const queue = useQueueStore()
@@ -132,6 +134,9 @@ const commands = computed<Item[]>(() => {
     { id: 'cmd:open-file', kind: 'command', label: 'Open video file…', icon: 'i-carbon-document-video', keywords: 'file open single', run: () => emit('openFile') },
     library.needsReconnect && !!library.savedFolderName && { id: 'cmd:reconnect', kind: 'command', label: `Reconnect “${library.savedFolderName}”`, icon: 'i-carbon-connect', keywords: 'folder permission restore library', run: () => void library.reconnect() },
     library.isWatching && { id: 'cmd:rescan', kind: 'command', label: 'Rescan library folder', icon: 'i-carbon-renew', keywords: 'refresh reload scan', run: () => void library.rescan() },
+    { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
+    loaded && { id: 'cmd:next-peak', kind: 'command', label: 'Jump to the next peak', icon: 'i-carbon-skip-forward-outline', keywords: 'good part intense fast chapter', kbd: ['G'], run: () => session.nextPeak() },
+    loaded && { id: 'cmd:finish', kind: 'command', label: 'Finish', hint: 'Jump to the most intense part', icon: 'i-carbon-flash', keywords: 'climax end peak best', kbd: ['Shift', 'G'], run: () => session.finish() },
     { id: 'cmd:panic', kind: 'command', label: 'Panic', hint: 'Stop everything and cover the screen', icon: 'i-carbon-warning-hex', keywords: 'stop emergency hide boss', kbd: ['Esc'], run: panic },
     { id: 'cmd:settings', kind: 'command', label: 'Open settings', icon: 'i-carbon-settings', keywords: 'preferences options config', run: () => (ui.settingsOpen = true) },
     { id: 'cmd:shortcuts', kind: 'command', label: 'Keyboard shortcuts', icon: 'i-carbon-keyboard', keywords: 'hotkeys keys help cheat sheet', kbd: ['?'], run: () => (ui.shortcutsOpen = true) },

@@ -22,6 +22,7 @@ import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
+import { KNOB_STEP, useSessionActions } from '~/composables/useSessionActions'
 import { useSessionAudio } from '~/composables/useSessionAudio'
 import { useSettings } from '~/composables/useSettings'
 import { toast } from '~/composables/useToast'
@@ -38,6 +39,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSafetyStore } from '~/stores/safetyStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -51,6 +53,8 @@ const stats = useStatsStore()
 const bookmarks = useBookmarkStore()
 const safety = useSafetyStore()
 const hypno = useHypnoStore()
+const sessionControl = useSessionControlStore()
+const session = useSessionActions()
 
 // Instantiate these once at the shell level so they keep running whichever
 // view or inspector happens to be open.
@@ -76,9 +80,34 @@ const transport = {
   panic: () => togglePanic(),
 }
 // Gamepad: transport on the buttons, stroke rate or position on the sticks.
-useGamepad(transport)
+useGamepad({
+  ...transport,
+  edge: () => session.edge('gamepad'),
+  nudgeIntensity: d => session.nudgeIntensity(d),
+  nextPeak: () => session.nextPeak(),
+})
 // Phone remote, when switched on in the Remote inspector.
-useRemoteHost(transport)
+useRemoteHost({
+  ...transport,
+  edge: () => session.edge('remote'),
+  release: () => session.release(),
+  nudgeIntensity: d => sessionControl.nudgeIntensity(d),
+})
+
+// ─── Session control ─────────────────────────────────────────────────────────
+// The edge envelope is a function of the clock; advance it every frame, here,
+// since the shell is the one thing that always runs. Idle frames write the
+// same values back, which Vue ignores.
+let controlRaf = 0
+function controlLoop() {
+  sessionControl.tick()
+  controlRaf = requestAnimationFrame(controlLoop)
+}
+onMounted(() => (controlRaf = requestAnimationFrame(controlLoop)))
+onBeforeUnmount(() => cancelAnimationFrame(controlRaf))
+// Panic cancels a running edge outright: on resume things come back as they
+// were, not halfway through a hold nobody remembers calling.
+watch(() => safety.panicked, p => p && sessionControl.reset())
 
 // Device axes and motion settings have to be in place before anything moves,
 // not only once their inspector has been opened.
@@ -283,6 +312,12 @@ function runShellAction(action: ShellAction) {
     case 'library-panel': ui.toggleInspector('library-panel'); break
     case 'device': ui.toggleInspector('device'); break
     case 'palette': ui.paletteOpen = !ui.paletteOpen; break
+    case 'edge': session.edge('key'); break
+    case 'edge-release': session.release(); break
+    case 'intensity-up': session.nudgeIntensity(KNOB_STEP); break
+    case 'intensity-down': session.nudgeIntensity(-KNOB_STEP); break
+    case 'next-peak': session.nextPeak(); break
+    case 'finish': session.finish(); break
   }
 }
 
@@ -374,7 +409,10 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
         >
           <VideoPlayer :mini="mini" @expand="ui.openView('player')" @close-mini="closeMini">
             <template #overlay>
-              <HypnoOverlay v-if="hypno.enabled && !mini" />
+              <!-- Fades back with an edge, like everything else that stimulates. -->
+              <div v-if="hypno.enabled && !mini" class="inset-0 absolute" :style="{ opacity: 1 - sessionControl.holdBack }">
+                <HypnoOverlay />
+              </div>
             </template>
           </VideoPlayer>
           <Transition name="t-fade">

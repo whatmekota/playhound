@@ -1,13 +1,18 @@
 import type { Ref } from 'vue'
+import type { FunscriptAction } from '~/lib/funscriptParser'
+import type { ScaledScript } from '~/lib/scriptScale'
 import { useLocalStorage } from '@vueuse/core'
 import { onUnmounted, ref } from 'vue'
 import { advanceTwistPhase, estimateVelocity, synthAxes, synthTargets } from '~/lib/axisSynth'
-import { interpolatePosition, nextActionAt } from '~/lib/funscriptParser'
+import { nextActionAt } from '~/lib/funscriptParser'
 import { clampLatency } from '~/lib/latency'
 import { KEYS } from '~/lib/persist'
+import { backOff, intensityParams, sampleScaled, scaleScript } from '~/lib/scriptScale'
 import { calcInterval } from '~/lib/tcodeEncoder'
 import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
+import { useButtplug } from './useButtplug'
 import { useTCode } from './useTCode'
 
 let latency: Ref<number> | null = null
@@ -28,11 +33,44 @@ export function useDeviceLatency(): Ref<number> {
   return latency
 }
 
+/**
+ * Each script's gentler version for the current knob setting, built once per
+ * script per knob change rather than per frame. Keyed by the actions array,
+ * so a reloaded or edited script simply misses and is rebuilt.
+ */
+const scaledCache = new WeakMap<FunscriptAction[], { knob: number, scaled: ScaledScript }>()
+
+function scaledFor(actions: FunscriptAction[], knob: number): ScaledScript {
+  const hit = scaledCache.get(actions)
+  if (hit && hit.knob === knob)
+    return hit.scaled
+  const scaled = scaleScript(actions, intensityParams(knob))
+  scaledCache.set(actions, { knob, scaled })
+  return scaled
+}
+
+/**
+ * Channels whose position is a level rather than a place (vibration,
+ * suction): turning these down means toward zero, not toward a centre.
+ */
+function isLevelChannel(channel: string): boolean {
+  return channel[0] === 'V' || channel[0] === 'A'
+}
+
 export function useVideoSync() {
+  const control = useSessionControlStore()
   const scriptStore = useScriptStore()
   const latencyMs = useDeviceLatency()
   const motion = useMotionStore()
   const { sendPosition, homeAllAxes } = useTCode()
+  const bp = useButtplug()
+  /**
+   * Buttplug linear strokers take "go to P over D ms" rather than a stream of
+   * positions, so the stroke is sent once per script action, aimed at the
+   * next one. Nothing called sendLinear before, so Intiface strokers never
+   * moved. NaN means "send on the next frame" (start, seek).
+   */
+  let bpSegmentAt = Number.NaN
 
   let rafId: number | null = null
   let videoEl: HTMLVideoElement | null = null
@@ -97,6 +135,7 @@ export function useVideoSync() {
     if (syncing.value)
       return
     syncing.value = true
+    bpSegmentAt = Number.NaN
     tick()
   }
 
@@ -109,6 +148,23 @@ export function useVideoSync() {
       rafId = null
     }
     homeAllAxes(500)
+  }
+
+  /**
+   * Where a script puts an axis at `ms`, after the intensity knob and any
+   * running edge. The knob reshapes the script (shorter, slower strokes on
+   * the same beats); the edge's hold then shrinks every stroke toward its
+   * centre, smoothly, frame by frame.
+   */
+  function positionAt(channel: string, actions: FunscriptAction[], ms: number): number {
+    const knob = control.intensityScale
+    const hold = control.holdBack
+    if (isLevelChannel(channel)) {
+      const { pos } = sampleScaled(scaledFor(actions, 1), ms)
+      return pos * Math.max(0, Math.min(1, knob)) * (1 - hold)
+    }
+    const { pos, centre } = sampleScaled(scaledFor(actions, knob), ms)
+    return hold > 0 ? backOff(pos, centre, hold) : pos
   }
 
   function tick() {
@@ -132,7 +188,7 @@ export function useVideoSync() {
         continue
 
       const adjustedMs = timeMs + (offsetMs ?? 0) + lead
-      const pos = interpolatePosition(actions, adjustedMs)
+      const pos = positionAt(channel, actions, adjustedMs)
       const nextAt = nextActionAt(actions, adjustedMs)
       const interval = calcInterval(nextAt, adjustedMs, speed)
       sendPosition(channel, pos, interval)
@@ -140,6 +196,10 @@ export function useVideoSync() {
       if (channel === 'L0') {
         strokePos = pos
         strokeInterval = interval
+        if (nextAt !== null && nextAt !== bpSegmentAt) {
+          bpSegmentAt = nextAt
+          void bp.sendLinear(positionAt(channel, actions, nextAt), Math.max(0, (nextAt - adjustedMs) / speed))
+        }
       }
     }
 
@@ -152,6 +212,7 @@ export function useVideoSync() {
   }
 
   function onSeeked() {
+    bpSegmentAt = Number.NaN
     // After seek, immediately send current position without waiting for next RAF
     if (!videoEl || !syncing.value)
       return
@@ -161,7 +222,9 @@ export function useVideoSync() {
     for (const script of scriptStore.activeScripts) {
       const { channel, parsed, offsetMs } = script
       const adjustedMs = timeMs + (offsetMs ?? 0) + lead
-      const pos = interpolatePosition(parsed.actions, adjustedMs)
+      if (parsed.actions.length === 0)
+        continue
+      const pos = positionAt(channel, parsed.actions, adjustedMs)
       const nextAt = nextActionAt(parsed.actions, adjustedMs)
       const interval = calcInterval(nextAt, adjustedMs, speed)
       sendPosition(channel, pos, interval)

@@ -1,10 +1,12 @@
-import type { RemoteAction, RemoteState } from './useRemoteLink'
+import type { RemoteAction, RemoteEdge, RemoteState } from './useRemoteLink'
 import { watch } from 'vue'
+import { EDGE_FALL_SEC } from '~/lib/edging'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { remoteEnabled } from '~/stores/remoteStore'
 import { useSafetyStore } from '~/stores/safetyStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useFaceLink } from './useFaceLink'
 import { remoteRoom, useRemoteLink } from './useRemoteLink'
 import { useRemoteStatus } from './useRemoteStatus'
@@ -19,11 +21,18 @@ export function useRemoteHost(actions: {
   prev: () => void
   random: () => void
   panic: () => void
+  /** Call an edge from the phone. */
+  edge?: () => void
+  /** "I'm OK": end the hold early. */
+  release?: () => void
+  /** Move the intensity knob. */
+  nudgeIntensity?: (delta: number) => void
 }) {
   const player = usePlayerStore()
   const motion = useMotionStore()
   const audio = useAudioStore()
   const safety = useSafetyStore()
+  const ctl = useSessionControlStore()
 
   function apply(action: RemoteAction) {
     switch (action) {
@@ -56,14 +65,49 @@ export function useRemoteHost(actions: {
         if (!safety.panicked)
           audio.isPlaying.value = !audio.isPlaying.value
         break
+      // The phone's +/- used to nudge the session intensity, which the
+      // session arc then overwrote at its next step. They are the intensity
+      // knob now: it scales scripts and generated motion, and it sticks.
       case 'intensityUp':
-        audio.intensity.value = Math.min(1, audio.intensity.value + 0.05)
+        nudge(0.05)
         break
       case 'intensityDown':
-        audio.intensity.value = Math.max(0, audio.intensity.value - 0.05)
+        nudge(-0.05)
+        break
+      // Edging is allowed even while panicked: it only ever turns things down.
+      case 'edge':
+        if (actions.edge)
+          actions.edge()
+        else
+          ctl.edge('remote')
+        break
+      case 'edgeRelease':
+        if (actions.release)
+          actions.release()
+        else
+          ctl.release()
         break
     }
     pushState()
+  }
+
+  function nudge(delta: number) {
+    if (actions.nudgeIntensity)
+      actions.nudgeIntensity(delta)
+    else
+      ctl.nudgeIntensity(delta)
+  }
+
+  function edgeState(): RemoteEdge {
+    const { cooldownSec, rebuildSec } = ctl.settings
+    const holding = ctl.phase === 'falling' || ctl.phase === 'holding'
+    return {
+      phase: ctl.phase,
+      remaining: Math.ceil(ctl.remainingSec),
+      hold: holding ? Math.max(0, Math.ceil(ctl.remainingSec - rebuildSec)) : 0,
+      total: EDGE_FALL_SEC + cooldownSec + rebuildSec,
+      count: ctl.edges.length,
+    }
   }
 
   const status = useRemoteStatus()
@@ -84,6 +128,8 @@ export function useRemoteHost(actions: {
       motion: motion.enabled,
       audio: audio.isPlaying.value,
       intensity: audio.intensity.value,
+      knob: ctl.intensityScale,
+      edge: edgeState(),
       spm: motion.currentSpm,
       phase: audio.phase.value,
     }
@@ -106,6 +152,13 @@ export function useRemoteHost(actions: {
   // Keep the phone honest about what the desktop is doing.
   watch(
     () => [player.isPlaying, player.videoPath, motion.enabled, audio.isPlaying.value, safety.panicked, audio.phase.value],
+    pushState,
+  )
+
+  // The edge countdown ticks every frame too; once a second is plenty for a
+  // phone to draw it.
+  watch(
+    () => [ctl.phase, Math.ceil(ctl.remainingSec), ctl.edges.length, ctl.intensityScale],
     pushState,
   )
 

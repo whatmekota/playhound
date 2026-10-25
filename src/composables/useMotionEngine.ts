@@ -14,6 +14,7 @@ import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { useTCode } from './useTCode'
 import { getBeatGrid, isBeatReady } from './useVideoBeat'
@@ -33,6 +34,28 @@ const subdivision = createSubdivisionHold()
 /** TCode interval hint: how long the device should take to reach the position. */
 const SEND_INTERVAL_MS = 40
 
+const TAU = Math.PI * 2
+
+/**
+ * Musical slow-down for the music source: strokes per beat are halved rather
+ * than scaled, so a held-back stroke still lands on the beat.
+ */
+function musicDivisor(rateFactor: number): number {
+  if (rateFactor >= 0.75)
+    return 1
+  if (rateFactor >= 0.375)
+    return 2
+  if (rateFactor >= 0.1875)
+    return 4
+  return 8
+}
+
+/** Signed shortest distance between two 0–1 phases. */
+function phaseError(from: number, to: number): number {
+  const d = (to - from) % 1
+  return d > 0.5 ? d - 1 : d < -0.5 ? d + 1 : d
+}
+
 export function useMotionEngine() {
   const motion = useMotionStore()
   const audio = useAudioStore()
@@ -40,6 +63,7 @@ export function useMotionEngine() {
   const script = useScriptStore()
   const { sendPosition, homeAllAxes } = useTCode()
   const { getPulseClock } = useBinauralBeats()
+  const control = useSessionControlStore()
 
   /**
    * The funscript wins whenever a script is actually playing — the generator
@@ -143,10 +167,21 @@ export function useMotionEngine() {
     const dt = clamp((ts - lastTs) / 1000, 0, 0.1)
     lastTs = ts
 
+    // The intensity knob and an edge's hold both turn generated motion down:
+    // depth fully, rate more gently for the knob (a slow shallow stroke reads
+    // as gentler than a fast shallow one, a crawl does not) and fully for the
+    // hold. The existing ramps make every change smooth.
+    const knob = clamp(control.intensityScale, 0.1, 1)
+    const hold = 1 - clamp(control.holdBack, 0, 1)
+    const depthFactor = knob * hold
+    const rateFactor = (0.6 + 0.4 * knob) * hold
+    const divisor = motion.source === 'music' ? musicDivisor(rateFactor) : 1
+
     // Ramp toward the targets rather than snapping — this is the main
     // hardware-safety guard alongside the maxSpm ceiling.
-    const wantSpm = clamp(targetSpm(), 0, motion.maxSpm)
-    const wantDepth = clamp(targetDepth(), 0, 1)
+    const rawSpm = targetSpm()
+    const wantSpm = clamp(motion.source === 'music' ? rawSpm / divisor : rawSpm * rateFactor, 0, motion.maxSpm)
+    const wantDepth = clamp(targetDepth() * depthFactor, 0, 1)
     spm = rampToward(spm, wantSpm, motion.spmRampPerSec, dt)
     depth = rampToward(depth, wantDepth, motion.depthRampPerSec, dt)
 
@@ -155,7 +190,7 @@ export function useMotionEngine() {
       // gets nudged, or a switch of subdivision, eases in over a stroke or two
       // and the rate never exceeds the ceiling while catching up.
       const grid = getBeatGrid()
-      const k = motion.musicStrokesPerBeat || 1
+      const k = (motion.musicStrokesPerBeat || 1) / divisor
       if (grid) {
         const strokes = grid.beats * k
         musicPhase = steerPhase(musicPhase, strokes - Math.floor(strokes), Math.max(spm, 1) / 60, dt, {
@@ -169,18 +204,28 @@ export function useMotionEngine() {
       // integrating our own, so the stroke is in step with what is heard —
       // but only while that clock runs under the ceiling. Copying a faster
       // clock's phase used to bypass maxSpm entirely.
+      // Slowed by the knob or an edge, it lets go of the clock and steers
+      // after it instead, then locks again once back in step — copying the
+      // clock's phase straight away would jump the stroke.
       const locked = motion.source === 'pulse' ? getPulseClock() : null
-      if (locked && locked.rateHz * 60 <= motion.maxSpm)
-        phase = locked.phase * Math.PI * 2
-      else
+      if (locked && locked.rateHz * 60 <= motion.maxSpm) {
+        const own = phase / TAU
+        if ((rateFactor >= 0.999 && Math.abs(phaseError(own, locked.phase)) < 0.03) || depth < 0.02)
+          phase = locked.phase * TAU
+        else
+          phase = steerPhase(own, locked.phase, locked.rateHz * rateFactor, dt, { maxRateHz: motion.maxSpm / 60 }) * TAU
+      }
+      else {
         phase = advancePhase(phase, spm, dt)
+      }
     }
 
     // Direct control bypasses the oscillator entirely: the stick *is* the
     // position. Still ramped, so a flick of the thumb cannot snap the axis.
     let pos: number
     if (motion.source === 'manual' && motion.manualMode === 'direct') {
-      const want = applyDepth(motion.gamepadPosition, motion.center, 1)
+      const full = applyDepth(motion.gamepadPosition, motion.center, 1)
+      const want = motion.center + (full - motion.center) * depthFactor
       // Limit travel speed to the same ceiling the oscillator obeys.
       const maxTravelPerSec = (motion.maxSpm / 60) * 2
       pos = rampToward(motion.currentPos, want, maxTravelPerSec, dt)
@@ -190,7 +235,10 @@ export function useMotionEngine() {
       pos = applyDepth(unit, motion.center, depth)
     }
 
-    sendPosition('L0', pos, SEND_INTERVAL_MS)
+    // Turned down, give the device a little longer to reach each point, so
+    // the gentler motion is also a softer one.
+    const interval = Math.round(SEND_INTERVAL_MS * (1 + 0.5 * (1 - depthFactor)))
+    sendPosition('L0', pos, interval)
 
     if (motion.secondaryAxes) {
       // Offset rotations so they read as a related motion, not a copy of L0.
@@ -204,12 +252,12 @@ export function useMotionEngine() {
         0.5,
         depth * motion.secondaryDepth,
       )
-      sendPosition('R0', twist, SEND_INTERVAL_MS)
-      sendPosition('R1', roll, SEND_INTERVAL_MS)
+      sendPosition('R0', twist, interval)
+      sendPosition('R1', roll, interval)
     }
 
     if (motion.vibrateFromIntensity)
-      sendPosition('V0', clamp(audio.intensity.value, 0, 1), SEND_INTERVAL_MS)
+      sendPosition('V0', clamp(audio.intensity.value * depthFactor, 0, 1), interval)
 
     motion.currentSpm = spm
     motion.currentDepth = depth

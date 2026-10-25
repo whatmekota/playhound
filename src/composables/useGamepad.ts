@@ -16,7 +16,13 @@ const BUTTON = {
   LB: 4,
   RB: 5,
   START: 9,
+  UP: 12,
+  DOWN: 13,
+  RIGHT: 15,
 } as const
+
+/** Knob step per d-pad press. */
+const KNOB_STEP = 0.05
 
 export interface GamepadActions {
   next: () => void
@@ -24,6 +30,12 @@ export interface GamepadActions {
   random: () => void
   togglePlay: () => void
   panic: () => void
+  /** X: call an edge. */
+  edge?: () => void
+  /** D-pad up / down: the intensity knob. */
+  nudgeIntensity?: (delta: number) => void
+  /** D-pad right: jump to the next peak. */
+  nextPeak?: () => void
 }
 
 /**
@@ -83,6 +95,16 @@ export function useGamepad(actions: GamepadActions) {
           actions.random()
         if (pressed(pad.buttons, BUTTON.B))
           motion.enabled = !motion.enabled
+        // X is the easiest face button to find without looking, after A,
+        // which is already play/pause.
+        if (pressed(pad.buttons, BUTTON.X))
+          actions.edge?.()
+        if (pressed(pad.buttons, BUTTON.UP))
+          actions.nudgeIntensity?.(KNOB_STEP)
+        if (pressed(pad.buttons, BUTTON.DOWN))
+          actions.nudgeIntensity?.(-KNOB_STEP)
+        if (pressed(pad.buttons, BUTTON.RIGHT))
+          actions.nextPeak?.()
       }
 
       prevButtons = pad.buttons.map(b => b.pressed)

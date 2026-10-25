@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useSessionControlStore } from './sessionControlStore'
 
 export interface FinishEvent {
   at: number // seconds into video
@@ -11,6 +12,8 @@ export interface VideoStat {
   totalPlays: number
   totalWatchedMs: number
   finishEvents: FinishEvent[]
+  /** Edges called while this video played; absent in older data. */
+  edgeEvents?: FinishEvent[]
   lastPlayedAt: number
 }
 
@@ -102,6 +105,30 @@ export const useStatsStore = defineStore('stats', () => {
     entry.finishEvents.push({ at: atSeconds, ts: Date.now() })
   }
 
+  // ─── Edges ─────────────────────────────────────────────────────────────────
+  // Whoever calls an edge — a key, the phone, a heart-rate guard, a programme
+  // — goes through the session control log, so follow that rather than ask
+  // every caller to report here too.
+  const control = useSessionControlStore()
+  let edgesSeen = control.edges.length
+  watch(() => control.edges.length, (n) => {
+    if (n < edgesSeen)
+      edgesSeen = 0 // the log was cleared
+    for (const e of control.edges.slice(edgesSeen, n)) {
+      if (e.videoName && e.videoTime !== null)
+        (ensureEntry(e.videoName).edgeEvents ??= []).push({ at: e.videoTime, ts: e.at })
+    }
+    edgesSeen = n
+  })
+
+  /** Edges called since the app started (or the log was cleared). */
+  const sessionEdges = computed(() => control.edges.length)
+
+  /** Every edge ever logged on a video, for timeline markers and the stats view. */
+  function edgesFor(videoName: string | null | undefined): FinishEvent[] {
+    return videoName ? stats.value[videoName]?.edgeEvents ?? [] : []
+  }
+
   function allStats(): VideoStat[] {
     return Object.values(stats.value).sort((a, b) => b.lastPlayedAt - a.lastPlayedAt)
   }
@@ -111,5 +138,5 @@ export const useStatsStore = defineStore('stats', () => {
     daily.value = {}
   }
 
-  return { stats, daily, live, startSession, endSession, recordFinish, allStats, clearAll }
+  return { stats, daily, live, sessionEdges, startSession, endSession, recordFinish, edgesFor, allStats, clearAll }
 })
