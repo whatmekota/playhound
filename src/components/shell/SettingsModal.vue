@@ -9,8 +9,11 @@ import UiKbd from '~/components/ui/UiKbd.vue'
 import UiModal from '~/components/ui/UiModal.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
+import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/composables/useDiscordPresence'
 import { toast } from '~/composables/useToast'
+import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
+import { buildActivity, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
@@ -25,19 +28,65 @@ import BrandMark from './BrandMark.vue'
  */
 const ui = useUiStore()
 const theme = useThemeStore()
+
+// ── Discord ─────────────────────────────────────────────────────────────────
+const presence = usePresenceSettings()
+const presenceCtx = usePresenceContext()
+/** Rendered as if switched on, so the preview shows what would be sent. */
+const previewActivity = computed(() => buildActivity(
+  { ...presence.value, enabled: true, clientId: '000000000000000000', hideWhenIdle: false },
+  presenceCtx.value,
+  { sessionStart: Date.now(), videoStart: Date.now() },
+))
+const MODE_OPTIONS: { value: 'minimal' | 'custom', label: string }[] = [
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'custom', label: 'Custom' },
+]
+const VERB_OPTIONS: { value: 0 | 2 | 3, label: string }[] = [
+  { value: 0, label: 'Playing' },
+  { value: 3, label: 'Watching' },
+  { value: 2, label: 'Listening' },
+]
+const VERB_LABEL: Record<number, string> = { 0: 'Playing', 2: 'Listening to', 3: 'Watching' }
+const TIMER_OPTIONS: { value: 'session' | 'video' | 'none', label: string }[] = [
+  { value: 'session', label: 'Session' },
+  { value: 'video', label: 'Video' },
+  { value: 'none', label: 'None' },
+]
+const PRESENCE_LABEL: Record<string, string> = {
+  'off': 'Not showing anything',
+  'connecting': 'Connecting to Discord…',
+  'connected': 'Showing on Discord',
+  'no-discord': 'Discord is not running — will connect when it starts',
+  'error': 'Discord refused the update',
+}
+const PRESENCE_DOT: Record<string, string> = {
+  'off': 'bg-fg/25',
+  'connecting': 'bg-warn animate-pulse-dot text-warn',
+  'connected': 'bg-ok',
+  'no-discord': 'bg-fg/25',
+  'error': 'bg-danger',
+}
+function placeholderText(key: string) {
+  return `{{${key}}}`
+}
+function addPlaceholder(key: string) {
+  presence.value.state = `${presence.value.state} ${placeholderText(key)}`.trim()
+}
 const safety = useSafetyStore()
 const library = useLibraryStore()
 
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
 
-type SectionId = 'appearance' | 'startup' | 'safety' | 'library' | 'keyboard' | 'about'
+type SectionId = 'appearance' | 'startup' | 'safety' | 'library' | 'keyboard' | 'discord' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
   { id: 'startup', label: 'Startup', icon: 'i-carbon-rocket' },
   { id: 'safety', label: 'Safety', icon: 'i-carbon-security' },
   { id: 'library', label: 'Library', icon: 'i-carbon-folder' },
   { id: 'keyboard', label: 'Keyboard', icon: 'i-carbon-keyboard' },
+  { id: 'discord', label: 'Discord', icon: 'i-carbon-logo-discord' },
   { id: 'about', label: 'About', icon: 'i-carbon-information' },
 ]
 const section = ref<SectionId>('appearance')
@@ -397,6 +446,91 @@ function openBackup() {
                   <span class="flex gap-1"><UiKbd v-for="k in row.keys" :key="k">{{ k }}</UiKbd></span>
                 </div>
               </div>
+            </template>
+
+            <!-- Discord Rich Presence -->
+            <template v-else-if="section === 'discord'">
+              <div v-if="!desktop?.presence" class="hint px-4 py-3 card">
+                Rich Presence needs the desktop app: a browser tab cannot talk to the Discord client.
+              </div>
+              <template v-else>
+                <div class="px-4 py-3 card flex flex-col gap-3">
+                  <UiSwitch
+                    v-model="presence.enabled"
+                    label="Show what I'm doing on Discord"
+                    hint="Off by default. Your friends see it on your profile."
+                  />
+                  <div class="flex gap-2 items-center">
+                    <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="PRESENCE_DOT[presenceStatus.status]" />
+                    <span class="text-[12px] text-fg-muted">{{ PRESENCE_LABEL[presenceStatus.status] }}<template v-if="presenceStatus.detail"> · {{ presenceStatus.detail }}</template></span>
+                  </div>
+                </div>
+
+                <div class="px-4 py-3 card flex flex-col gap-3" :class="presence.enabled ? '' : 'opacity-60'">
+                  <UiInput v-model="presence.clientId" label="Application ID" placeholder="e.g. 1234567890123456789" mono clearable />
+                  <p class="hint">
+                    From discord.com/developers → your application → General Information. Any application works, including one with a bot; its name is what Discord shows as "Playing …". Never paste a bot token here — it is not needed.
+                  </p>
+                  <p v-if="presence.clientId && !isClientId(presence.clientId)" class="hint text-warn">
+                    That doesn't look like an Application ID — it should be a long number.
+                  </p>
+
+                  <UiField label="What to show">
+                    <UiSegmented v-model="presence.mode" :options="MODE_OPTIONS" size="xs" />
+                  </UiField>
+                  <p v-if="presence.mode === 'minimal'" class="hint">
+                    Just the app, its image and a timer — nothing about what is playing.
+                  </p>
+                  <template v-else>
+                    <UiInput v-model="presence.details" label="First line" :placeholder="DEFAULT_PRESENCE.details" />
+                    <UiInput v-model="presence.state" label="Second line" :placeholder="DEFAULT_PRESENCE.state" />
+                    <div class="flex flex-wrap gap-1">
+                      <button
+                        v-for="ph in PRESENCE_PLACEHOLDERS"
+                        :key="ph.key"
+                        v-tip="`${ph.label} — e.g. ${ph.example}`"
+                        type="button"
+                        class="text-[11px] text-fg-muted font-mono px-1.5 rounded-[var(--radius-xs)] bg-fg/6 h-5 hover:text-fg hover:bg-fg/10"
+                        @click="addPlaceholder(ph.key)"
+                      >
+                        {{ placeholderText(ph.key) }}
+                      </button>
+                    </div>
+                    <p class="hint">
+                      Click a placeholder to add it to the second line. A part with nothing to show (no tempo, no edges yet) drops out with its separator.
+                    </p>
+                  </template>
+
+                  <UiField label="Status verb">
+                    <UiSegmented v-model="presence.activityType" :options="VERB_OPTIONS" size="xs" />
+                  </UiField>
+                  <UiField label="Timer">
+                    <UiSegmented v-model="presence.timer" :options="TIMER_OPTIONS" size="xs" />
+                  </UiField>
+                  <UiSwitch v-model="presence.hideWhenIdle" size="sm" label="Hide while nothing is playing" />
+                  <div class="gap-2 grid grid-cols-2">
+                    <UiInput v-model="presence.largeImageKey" label="Image asset name" placeholder="logo" mono />
+                    <UiInput v-model="presence.largeImageText" label="Image hover text" placeholder="playhound" />
+                  </div>
+                  <p class="hint">
+                    Upload the logo under your application's Rich Presence → Art Assets and use that asset's name here.
+                  </p>
+                </div>
+
+                <!-- What friends will see, rendered from the live session. -->
+                <div class="px-4 py-3 card flex flex-col gap-2">
+                  <span class="eyebrow">Preview</span>
+                  <div class="p-3 rounded-[var(--radius-md)] bg-[#232428] flex gap-3 items-center">
+                    <BrandMark :size="56" :tongue="false" />
+                    <div class="text-[12.5px] leading-snug flex flex-col min-w-0">
+                      <span class="text-[#f2f3f5] font-semibold truncate">{{ VERB_LABEL[presence.activityType] }} your app</span>
+                      <span v-if="previewActivity?.details" class="text-[#b5bac1] truncate">{{ previewActivity.details }}</span>
+                      <span v-if="previewActivity?.state" class="text-[#b5bac1] truncate">{{ previewActivity.state }}</span>
+                      <span v-if="previewActivity?.startTimestamp" class="text-[#b5bac1] num">00:42 elapsed</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
             </template>
 
             <!-- About -->

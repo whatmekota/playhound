@@ -22,6 +22,7 @@ catalogs:
     vite: ^7.3.1
   desktop:
     '@resvg/resvg-js': ^2.6.2
+    '@xhayper/discord-rpc': ^1.5.1
     electron: ^44.9.3
     electron-builder: ^26.17.0
   dev:

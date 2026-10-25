@@ -39,6 +39,7 @@
     "@unocss/eslint-plugin": "catalog:dev",
     "@vitejs/plugin-vue": "catalog:build",
     "@vue/test-utils": "catalog:dev",
+    "@xhayper/discord-rpc": "catalog:desktop",
     "electron": "catalog:desktop",
     "electron-builder": "catalog:desktop",
     "eslint": "catalog:dev",

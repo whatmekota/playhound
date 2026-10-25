@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron'
 import { startProxy } from '../es-proxy.mjs'
 import { setupBluetooth, setupDevices } from './devices.mjs'
+import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
 import { probe, serveStatic } from './serve.mjs'
 
 /**
@@ -129,6 +130,13 @@ else {
 
 let proxy = null
 let server = null
+/** Last presence status, so a page that loads later can still show it. */
+let presenceStatus = { status: 'off', detail: undefined }
+const presence = createPresence((status, detail) => {
+  presenceStatus = { status, detail }
+  if (win && !win.isDestroyed())
+    win.webContents.send('ph:presence:status', presenceStatus)
+})
 
 async function boot() {
   Menu.setApplicationMenu(null)
@@ -151,6 +159,7 @@ async function boot() {
       // Only the frameless main window draws a title bar; the phone-preview
       // popup has a native frame and gets null here.
       window: win && event.sender === win.webContents ? windowState() : null,
+      presence: win && event.sender === win.webContents ? presenceStatus : null,
     }
   })
   ipcMain.on('ph:win', (event, action) => {
@@ -168,6 +177,15 @@ async function boot() {
     else if (action === 'close') {
       win.close()
     }
+  })
+  // Discord Rich Presence: the page decides what to show, this owns the pipe.
+  // Only the main window may set it, and its payload is sanitised regardless.
+  ipcMain.on('ph:presence', (event, payload) => {
+    if (!fromMainWindow(event))
+      return
+    const id = payload?.clientId
+    const activity = sanitiseActivity(payload?.activity)
+    presence.set(validClientId(id) ? id : '', activity)
   })
   ipcMain.on('ph:bg', (_event, color) => {
     const hex = toHex(color)
@@ -364,6 +382,7 @@ function openExternal(target) {
 
 app.on('window-all-closed', () => app.quit())
 app.on('will-quit', () => {
+  presence.dispose()
   proxy?.close()
   server?.close()
 })

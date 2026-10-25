@@ -16,6 +16,7 @@ import SplashScreen from '~/components/shell/SplashScreen.vue'
 import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
+import { useDiscordPresence } from '~/composables/useDiscordPresence'
 import { useGamepad } from '~/composables/useGamepad'
 import { useHeartRate } from '~/composables/useHeartRate'
 import { useMotionEngine } from '~/composables/useMotionEngine'
@@ -64,6 +65,7 @@ useScriptPulse()
 useVideoBeat()
 useHeartRate()
 useVibeSync()
+useDiscordPresence()
 
 // Panic needs to reach video, audio and the device at once.
 const { toggle: togglePanic, resume: resumePanic } = useSafety({

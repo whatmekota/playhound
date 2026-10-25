@@ -45,6 +45,41 @@ const windowApi = winState
     })
   : null
 
+// ── Discord Rich Presence (main window only) ────────────────────────────────
+// The page decides what to show; the main process owns the connection.
+
+let presenceStatus = info.presence ? { ...info.presence } : null
+const presenceListeners = new Set()
+if (presenceStatus) {
+  ipcRenderer.on('ph:presence:status', (_event, s) => {
+    presenceStatus = { status: String(s?.status ?? 'off'), detail: s?.detail ? String(s.detail) : undefined }
+    for (const cb of presenceListeners) {
+      try {
+        cb({ ...presenceStatus })
+      }
+      catch (err) {
+        console.error('[playhound] presence listener failed', err)
+      }
+    }
+  })
+}
+
+const presenceApi = presenceStatus
+  ? Object.freeze({
+      /** Show `activity` for Discord application `clientId`, or clear with null. */
+      set: (clientId, activity) => ipcRenderer.send('ph:presence', { clientId: String(clientId ?? ''), activity: activity ?? null }),
+      /** { status, detail } right now: off | connecting | connected | no-discord | error. */
+      status: () => ({ ...presenceStatus }),
+      /** Calls `cb({ status, detail })` on every change; returns an unsubscribe. */
+      onStatus: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        presenceListeners.add(cb)
+        return () => void presenceListeners.delete(cb)
+      },
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -56,6 +91,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   dev: info.dev,
   lan: Object.freeze(info.lan.map(a => Object.freeze({ ...a }))),
   window: windowApi,
+  presence: presenceApi,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

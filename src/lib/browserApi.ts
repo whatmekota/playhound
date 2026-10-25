@@ -196,6 +196,31 @@ export interface DesktopInfo {
    * (TitleBar.vue). Null in any other desktop window.
    */
   window: DesktopWindow | null
+  /** Discord Rich Presence, owned by the main process. Null in any other desktop window. */
+  presence: DesktopPresence | null
+}
+
+export type PresenceStatus = 'off' | 'connecting' | 'connected' | 'no-discord' | 'error'
+
+/** What Rich Presence accepts; the main process sanitises it again. */
+export interface PresenceActivity {
+  /** 0 Playing, 2 Listening to, 3 Watching. */
+  type?: 0 | 2 | 3
+  details?: string
+  state?: string
+  startTimestamp?: number
+  endTimestamp?: number
+  largeImageKey?: string
+  largeImageText?: string
+  smallImageKey?: string
+  smallImageText?: string
+}
+
+export interface DesktopPresence {
+  /** Show `activity` for Discord application `clientId`, or clear (and disconnect) with null. */
+  set: (clientId: string, activity: PresenceActivity | null) => void
+  status: () => { status: PresenceStatus, detail?: string }
+  onStatus: (cb: (s: { status: PresenceStatus, detail?: string }) => void) => () => void
 }
 
 export interface DesktopWindowState {
