@@ -5,7 +5,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron'
 import { startProxy } from '../es-proxy.mjs'
-import { setupDevices } from './devices.mjs'
+import { setupBluetooth, setupDevices } from './devices.mjs'
 import { probe, serveStatic } from './serve.mjs'
 
 /**
@@ -294,6 +294,16 @@ function createWindow(url) {
     win.on(ev, pushState)
 
   const wc = win.webContents
+
+  // Web Bluetooth (the heart-rate monitor) picks its device per window.
+  setupBluetooth(wc, {
+    origin: appOrigin,
+    lastDevice: () => state.bluetoothDevice,
+    rememberDevice: (id) => {
+      state.bluetoothDevice = id
+      saveState()
+    },
+  })
 
   // External links go to the system browser. Our own pages (the remote's
   // "preview on this machine") open as a small phone-sized window.

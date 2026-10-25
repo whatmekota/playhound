@@ -1,7 +1,8 @@
 import { BrowserWindow, dialog } from 'electron'
 
 /**
- * Permissions, serial port choice and the File System Access prompts.
+ * Permissions, serial port and Bluetooth device choice, and the File System
+ * Access prompts.
  *
  * Chrome answers these with its own permission bubbles and port chooser;
  * Electron has none of that UI and leaves every decision to the app. The app
@@ -65,6 +66,20 @@ export function setupDevices(ses, { origin, lastPort, rememberPort }) {
       .catch(() => callback(''))
   })
 
+  // Web Bluetooth pairing that needs a yes (Windows and Linux; macOS asks on
+  // its own). Heart-rate straps rarely do, but a watch sometimes will.
+  if (typeof ses.setBluetoothPairingHandler === 'function') {
+    ses.setBluetoothPairingHandler((details, callback) => {
+      if (!details.frame || !ours(details.frame.url)) {
+        callback({ confirmed: false })
+        return
+      }
+      confirmPairing(details)
+        .then(callback)
+        .catch(() => callback({ confirmed: false }))
+    })
+  }
+
   // Chrome refuses some folders outright (the profile root, Windows, AppData)
   // and shows its own explanation; here that explanation has to come from us.
   ses.on('file-system-access-restricted', async (_event, details, callback) => {
@@ -80,6 +95,139 @@ export function setupDevices(ses, { origin, lastPort, rememberPort }) {
       noLink: true,
     })
     callback(response === 0 ? 'tryAgain' : 'deny')
+  })
+}
+
+async function confirmPairing(details) {
+  const win = BrowserWindow.getFocusedWindow() ?? undefined
+  if (details.pairingKind === 'providePin') {
+    // Electron has no text prompt to ask for one; pairing in Windows'
+    // Bluetooth settings first does the same job.
+    await dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'playhound',
+      message: 'This device wants a PIN',
+      detail: 'Pair it in Windows Settings > Bluetooth & devices first, then connect again here.',
+      buttons: ['OK'],
+      noLink: true,
+    })
+    return { confirmed: false }
+  }
+  const { response } = await dialog.showMessageBox(win, {
+    type: 'question',
+    title: 'playhound',
+    message: 'Pair with this Bluetooth device?',
+    detail: details.pairingKind === 'confirmPin' ? `Check the device shows ${details.pin}.` : undefined,
+    buttons: ['Pair', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  })
+  return { confirmed: response === 0 }
+}
+
+/** How long to listen before deciding, once something has turned up. */
+const BT_SETTLE_MS = 2500
+/** And in all, before saying nothing was found. */
+const BT_SCAN_MS = 10_000
+
+/**
+ * Choose a device for navigator.bluetooth.requestDevice().
+ *
+ * Chrome shows a live list that fills in as devices advertise; Electron
+ * instead fires 'select-bluetooth-device' again and again with whatever has
+ * been seen so far, until the app calls back exactly once. So: the device
+ * used last time is taken the moment it shows up; otherwise listen for a
+ * short while after the first one appears, then take the only one or ask
+ * with a native list. The page's filter (heart_rate) has already been
+ * applied, so everything listed is a monitor.
+ *
+ * Only our own page gets a choice; anything else is cancelled.
+ *
+ * @param {Electron.WebContents} wc
+ * @param {object} opts
+ * @param {string} opts.origin
+ * @param {() => string | undefined} opts.lastDevice  deviceId picked last time
+ * @param {(deviceId: string) => void} opts.rememberDevice
+ */
+export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
+  /** @type {null | { callback: (id: string) => void, seen: Map<string, Electron.BluetoothDevice>, startedAt: number, settle: any, limit: any, deciding: boolean }} */
+  let pending = null
+
+  function finish(id) {
+    if (!pending)
+      return
+    clearTimeout(pending.settle)
+    clearTimeout(pending.limit)
+    const { callback } = pending
+    pending = null
+    if (id)
+      rememberDevice(id)
+    callback(id)
+  }
+
+  async function decide() {
+    if (!pending || pending.deciding)
+      return
+    pending.deciding = true
+    clearTimeout(pending.settle)
+    clearTimeout(pending.limit)
+    const list = [...pending.seen.values()]
+    const win = BrowserWindow.fromWebContents(wc) ?? undefined
+    if (!list.length) {
+      await dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'playhound',
+        message: 'No heart-rate monitor found',
+        detail: 'Make sure it is awake and broadcasting heart rate (on a watch that usually means starting a workout with heart-rate sharing on), and that it is not connected to a phone app.',
+        buttons: ['OK'],
+        noLink: true,
+      })
+      finish('')
+      return
+    }
+    if (list.length === 1) {
+      finish(list[0].deviceId)
+      return
+    }
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'playhound',
+      message: 'Which heart-rate monitor?',
+      // Command links on Windows: the second line is the small print.
+      buttons: [...list.map(d => `${d.deviceName || 'Unnamed device'}\n${d.deviceId}`), 'Cancel'],
+      defaultId: 0,
+      cancelId: list.length,
+    })
+    finish(list[response]?.deviceId ?? '')
+  }
+
+  wc.on('select-bluetooth-device', (event, deviceList, callback) => {
+    event.preventDefault()
+    if (originOf(wc.getURL()) !== origin) {
+      callback('')
+      return
+    }
+    // A request the page gave up on never called back; do not inherit it.
+    if (pending && Date.now() - pending.startedAt > BT_SCAN_MS + 60_000)
+      pending = null
+    if (!pending) {
+      pending = { callback, seen: new Map(), startedAt: Date.now(), settle: null, limit: null, deciding: false }
+      pending.limit = setTimeout(() => void decide(), BT_SCAN_MS)
+    }
+    pending.callback = callback
+    for (const d of deviceList)
+      pending.seen.set(d.deviceId, d)
+    if (pending.deciding)
+      return
+
+    const last = lastDevice()
+    if (last && pending.seen.has(last)) {
+      finish(last)
+      return
+    }
+    if (pending.seen.size && !pending.settle)
+      pending.settle = setTimeout(() => void decide(), BT_SETTLE_MS)
   })
 }
 

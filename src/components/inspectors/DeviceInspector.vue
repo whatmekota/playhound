@@ -5,14 +5,16 @@
 </script>
 
 <script setup lang="ts">
+import type { ButtplugClientDevice } from 'buttplug'
 import type { MenuItem } from '~/components/ui/menu'
+import type { VibeCurve, VibeSettings } from '~/lib/vibeMap'
 import type { AxisConfig, DevicePreset } from '~/stores/deviceStore'
 import { useLocalStorage } from '@vueuse/core'
-import { OutputType } from 'buttplug'
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import LatencyCalibrateModal from '~/components/device/LatencyCalibrateModal.vue'
 import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
-import { useButtplug } from '~/composables/useButtplug'
+import { isStrengthToy, outputsOf, useButtplug } from '~/composables/useButtplug'
+import { useHeartRate } from '~/composables/useHeartRate'
 import { useSerialPort } from '~/composables/useSerialPort'
 import { useSettings } from '~/composables/useSettings'
 import { axisOutput, useTCode } from '~/composables/useTCode'
@@ -21,7 +23,9 @@ import { useDeviceLatency } from '~/composables/useVideoSync'
 import { webSerial } from '~/lib/browserApi'
 import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
 import { serialLog } from '~/lib/serialLog'
+import { VIBE_SOURCES } from '~/lib/vibeMap'
 import { useDeviceStore } from '~/stores/deviceStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useUiStore } from '~/stores/uiStore'
 
 let hydrated = false
@@ -156,16 +160,126 @@ async function disconnectBp() {
   toast('Disconnected from Intiface', { icon: 'i-carbon-bluetooth-off', key: 'bp' })
 }
 
-function deviceKinds(d: (typeof bp.devices.value)[number]) {
+function deviceKinds(d: ButtplugClientDevice) {
+  const o = outputsOf(d)
   const out: string[] = []
-  try {
-    if (d.hasOutput(OutputType.HwPositionWithDuration))
-      out.push('Linear')
-    if (d.hasOutput(OutputType.Vibrate))
-      out.push('Vibe')
-  }
-  catch {}
+  if (o.linear)
+    out.push('Linear')
+  if (o.vibrate)
+    out.push('Vibe')
+  if (o.rotate)
+    out.push('Rotate')
+  if (o.oscillate)
+    out.push('Oscillate')
   return out
+}
+
+// ─── Vibration (Buttplug strength toys) ───────────────────────────────────────
+const session = useSessionControlStore()
+const vibeOpen = ref<number | null>(null)
+function toggleVibe(d: ButtplugClientDevice) {
+  vibeOpen.value = vibeOpen.value === d.index ? null : d.index
+}
+const VIBE_CURVES: { value: VibeCurve, label: string, title: string }[] = [
+  { value: 'gentle', label: 'Gentle', title: 'Low levels stay low; only busy parts get strong' },
+  { value: 'linear', label: 'Linear', title: 'Straight through' },
+  { value: 'punchy', label: 'Punchy', title: 'Even quiet parts are clearly felt' },
+]
+function sourceLabel(d: ButtplugClientDevice) {
+  return VIBE_SOURCES.find(s => s.value === bp.vibeFor(d).source)?.label ?? ''
+}
+function setVibe(d: ButtplugClientDevice, patch: Partial<VibeSettings>) {
+  bp.setVibe(d, patch)
+}
+const levelOf = (d: ButtplugClientDevice) => bp.levels[d.index] ?? 0
+/** Strength floors and ceilings keep a sliver apart, like axis ranges. */
+function setVibeMin(d: ButtplugClientDevice, v: number) {
+  setVibe(d, { min: Math.min(v, bp.vibeFor(d).max - MIN_SPAN) })
+}
+function setVibeMax(d: ButtplugClientDevice, v: number) {
+  setVibe(d, { max: Math.max(v, bp.vibeFor(d).min + MIN_SPAN) })
+}
+
+// ─── Heart rate ───────────────────────────────────────────────────────────────
+const hr = useHeartRate()
+const heart = hr.heartRate
+const heartOpen = ref(heart.status === 'connected' || heart.status === 'reconnecting' || !!hr.savedDevice.value)
+const amazfitOpen = ref(false)
+const heartBusy = computed(() => heart.status === 'connecting')
+const heartLinked = computed(() => heart.status === 'connected' || heart.status === 'reconnecting')
+
+const heartSummary = computed(() => {
+  if (heart.status === 'connected')
+    return heart.bpm !== null ? `${heart.bpm} bpm` : 'Waiting…'
+  if (heart.status === 'reconnecting')
+    return 'Reconnecting'
+  if (heart.status === 'unsupported')
+    return 'Unavailable'
+  return 'Off'
+})
+
+const heartDetail = computed(() => {
+  switch (heart.status) {
+    case 'unsupported':
+      return 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app.'
+    case 'connecting':
+      return 'Pick the monitor in the dialog'
+    case 'connected':
+      if (heart.contact === false)
+        return `${heart.deviceName} · no skin contact`
+      return heart.bpm === null ? `${heart.deviceName} · waiting for the first beat` : (heart.deviceName ?? '')
+    case 'reconnecting':
+      return `Lost ${heart.deviceName ?? 'the monitor'}, trying again…`
+    case 'lost':
+      return `${heart.deviceName ?? 'The monitor'} stopped answering`
+    default:
+      return hr.savedDevice.value ? `Last used: ${hr.savedDevice.value.name}` : 'Strap, arm band or a watch that broadcasts heart rate'
+  }
+})
+
+/** Polyline points for the last two minutes, scaled to the visible range. */
+const SPARK_W = 160
+const SPARK_H = 40
+const spark = computed(() => {
+  const pts = hr.heartSparkline.value
+  if (pts.length < 2)
+    return null
+  const base = heart.baseline
+  let lo = Math.min(...pts, base ?? Infinity)
+  let hi = Math.max(...pts, base ?? -Infinity)
+  // Never zoom in so far that a two-beat wobble fills the box.
+  if (hi - lo < 12) {
+    const mid = (hi + lo) / 2
+    lo = mid - 6
+    hi = mid + 6
+  }
+  const y = (v: number) => SPARK_H - 3 - ((v - lo) / (hi - lo)) * (SPARK_H - 6)
+  const step = SPARK_W / 119
+  const x0 = SPARK_W - (pts.length - 1) * step
+  const line = pts.map((v, i) => `${(x0 + i * step).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+  return {
+    line,
+    area: `${x0.toFixed(1)},${SPARK_H} ${line} ${SPARK_W},${SPARK_H}`,
+    base: base === null ? null : y(base),
+  }
+})
+
+/** One heartbeat per beat, when there is one to show. */
+const beatStyle = computed(() =>
+  heart.status === 'connected' && heart.bpm ? { animationDuration: `${(60 / heart.bpm).toFixed(3)}s` } : undefined)
+
+const guard = hr.guard
+const guardSummary = computed(() =>
+  `Edges at ${guard.value.aboveRestBpm}+ above resting, climbing ${guard.value.riseBpm} in 15 s`)
+
+async function connectHeart() {
+  await hr.connect()
+  if (heart.error)
+    toast.error('Heart-rate monitor', { detail: heart.error, key: 'heart' })
+}
+async function disconnectHeart() {
+  await hr.disconnect()
+  toast('Heart-rate monitor disconnected', { icon: 'i-carbon-favorite', key: 'heart' })
 }
 
 // ─── Connection hero ──────────────────────────────────────────────────────────
@@ -549,7 +663,7 @@ const logOpen = ref(false)
 
           <p v-if="!bp.connected.value" class="hint">
             Open Intiface Central and press Start Server first. Linear strokers follow the stroke axis with its range;
-            vibrators take the position as intensity.
+            vibrators follow the script's speed by default — pick another source per toy once connected.
           </p>
 
           <template v-else>
@@ -578,13 +692,91 @@ const logOpen = ref(false)
                 <div
                   v-for="d in bp.devices.value"
                   :key="d.index"
-                  class="px-2 rounded-[var(--radius-sm)] bg-surface-850 flex gap-2 h-8 items-center"
+                  class="rounded-[var(--radius-sm)] bg-surface-850 transition-shadow duration-200"
+                  :class="vibeOpen === d.index ? 'ring-1 ring-edge' : ''"
                 >
-                  <span class="text-ok rounded-full bg-ok shrink-0 h-1.5 w-1.5" />
-                  <span class="text-[12.5px] text-fg flex-1 truncate">{{ d.name }}</span>
-                  <UiBadge v-for="k in deviceKinds(d)" :key="k" size="xs" :tone="k === 'Linear' ? 'info' : 'accent'">
-                    {{ k }}
-                  </UiBadge>
+                  <component
+                    :is="isStrengthToy(d) ? 'button' : 'div'"
+                    :type="isStrengthToy(d) ? 'button' : undefined"
+                    class="px-2 text-left rounded-[var(--radius-sm)] flex gap-2 h-8 w-full items-center"
+                    :class="isStrengthToy(d) ? 'focusable hover:bg-fg/4' : ''"
+                    :aria-expanded="isStrengthToy(d) ? vibeOpen === d.index : undefined"
+                    @click="isStrengthToy(d) && toggleVibe(d)"
+                  >
+                    <span
+                      v-if="isStrengthToy(d)"
+                      class="i-carbon-chevron-right text-[11px] text-fg-faint shrink-0 transition-transform duration-200"
+                      :class="vibeOpen === d.index ? 'rotate-90' : ''"
+                    />
+                    <span v-else class="text-ok rounded-full bg-ok shrink-0 h-1.5 w-1.5" />
+                    <span class="text-[12.5px] text-fg flex-1 min-w-0 truncate">{{ d.name }}</span>
+                    <!-- Live strength: what was last sent to the motor -->
+                    <span
+                      v-if="isStrengthToy(d)"
+                      v-tip="`${sourceLabel(d)} · ${pct(levelOf(d))}`"
+                      class="rounded-full bg-surface-700 shrink-0 h-1.5 w-12 relative overflow-hidden"
+                    >
+                      <span
+                        class="rounded-full bg-accent h-full transition-[width] duration-100 ease-out left-0 top-0 absolute"
+                        :style="{ width: pct(levelOf(d)) }"
+                      />
+                    </span>
+                    <UiBadge v-for="k in deviceKinds(d)" :key="k" size="xs" :tone="k === 'Linear' ? 'info' : 'accent'">
+                      {{ k }}
+                    </UiBadge>
+                  </component>
+
+                  <Transition name="t-collapse">
+                    <div v-if="vibeOpen === d.index && isStrengthToy(d)">
+                      <div class="min-h-0 overflow-hidden">
+                        <div class="px-2.5 pb-2.5 pt-1 flex flex-col gap-2.5">
+                          <UiSelect
+                            :model-value="bp.vibeFor(d).source"
+                            label="Vibration source"
+                            :options="VIBE_SOURCES"
+                            @update:model-value="v => setVibe(d, { source: v })"
+                          />
+                          <div class="gap-2 grid grid-cols-2">
+                            <UiSlider
+                              :model-value="bp.vibeFor(d).min"
+                              label="Floor"
+                              :format="pct"
+                              :reset="0.1"
+                              @update:model-value="v => setVibeMin(d, v)"
+                            />
+                            <UiSlider
+                              :model-value="bp.vibeFor(d).max"
+                              label="Ceiling"
+                              :format="pct"
+                              :reset="1"
+                              @update:model-value="v => setVibeMax(d, v)"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-1">
+                            <span class="label">Curve</span>
+                            <UiSegmented
+                              :model-value="bp.vibeFor(d).curve"
+                              :options="VIBE_CURVES"
+                              size="xs"
+                              block
+                              @update:model-value="v => setVibe(d, { curve: v })"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-1">
+                            <div class="flex items-baseline justify-between">
+                              <span class="label">Now</span>
+                              <span class="text-[11.5px] text-fg num">{{ pct(levelOf(d)) }}</span>
+                            </div>
+                            <UiProgress :value="levelOf(d)" />
+                          </div>
+                          <p class="hint">
+                            Scaled by session intensity ({{ pct(session.effectiveIntensity) }} now), so the knob and an edge turn it down too.
+                            Stops on pause and panic.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </Transition>
                 </div>
               </TransitionGroup>
               <div v-if="!bp.deviceCount.value" class="text-[12px] text-fg-faint px-2 py-3 text-center">
@@ -735,6 +927,202 @@ const logOpen = ref(false)
             </div>
           </Transition>
         </div>
+      </div>
+    </UiSection>
+
+    <!-- ─── Heart rate ────────────────────────────────────────────────────── -->
+    <UiSection
+      v-model:open="heartOpen"
+      title="Heart rate"
+      icon="i-carbon-favorite"
+      collapsible
+      :live="heart.status === 'connected'"
+      :summary="heartSummary"
+    >
+      <div class="flex gap-3 items-center">
+        <div
+          class="rounded-[var(--radius-md)] center shrink-0 h-11 w-11 transition-colors duration-300"
+          :class="heartLinked ? 'bg-danger/12 text-danger' : 'bg-surface-800 text-fg-faint'"
+        >
+          <span
+            class="text-[20px]"
+            :class="[heartLinked ? 'i-carbon-favorite-filled' : 'i-carbon-favorite', beatStyle ? 'hr-beat' : '']"
+            :style="beatStyle"
+          />
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex gap-1 items-baseline">
+            <Transition name="t-fade" mode="out-in">
+              <span :key="heart.bpm === null ? 'none' : 'bpm'" class="text-[22px] text-fg leading-none font-semibold num">
+                {{ heart.bpm ?? '—' }}
+              </span>
+            </Transition>
+            <span class="text-[11.5px] text-fg-faint">bpm</span>
+          </div>
+          <p class="hint mt-1 truncate">
+            {{ heartDetail }}
+          </p>
+        </div>
+        <svg
+          v-if="spark"
+          :viewBox="`0 0 ${SPARK_W} ${SPARK_H}`"
+          class="text-danger shrink-0 h-10 w-24 animate-fade-in"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <polygon :points="spark.area" fill="currentColor" opacity="0.12" />
+          <line
+            v-if="spark.base !== null"
+            x1="0"
+            :x2="SPARK_W"
+            :y1="spark.base"
+            :y2="spark.base"
+            stroke="currentColor"
+            stroke-opacity="0.35"
+            stroke-dasharray="3 3"
+            vector-effect="non-scaling-stroke"
+          />
+          <polyline
+            :points="spark.line"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linejoin="round"
+            vector-effect="non-scaling-stroke"
+          />
+        </svg>
+      </div>
+
+      <div v-if="heart.status === 'connected'" class="gap-2 grid grid-cols-3 animate-fade-in">
+        <UiStat size="sm" label="Resting" :value="heart.baseline ?? '…'" :hint="heart.baseline === null ? 'Learning, about a minute' : undefined" />
+        <UiStat
+          size="sm"
+          label="Above rest"
+          :value="heart.baseline === null || heart.bpm === null ? '—' : `${heart.bpm - heart.baseline > 0 ? '+' : ''}${heart.bpm - heart.baseline}`"
+        />
+        <UiStat size="sm" label="Arousal" :value="pct(heart.arousal)" :tone="heart.arousal > 0.66 ? 'danger' : heart.arousal > 0.33 ? 'warn' : 'fg'" />
+      </div>
+
+      <div class="flex gap-1.5 items-center">
+        <UiButton
+          v-if="!heartLinked"
+          :variant="heart.status === 'lost' ? 'secondary' : 'primary'"
+          icon="i-carbon-bluetooth"
+          :loading="heartBusy"
+          :disabled="!hr.supported"
+          @click="connectHeart"
+        >
+          {{ heartBusy ? 'Searching…' : 'Connect monitor' }}
+        </UiButton>
+        <UiButton v-if="heart.status === 'lost'" variant="primary" icon="i-carbon-renew" @click="hr.reconnect()">
+          Try again
+        </UiButton>
+        <UiButton v-if="heartLinked" variant="secondary" icon="i-carbon-close" @click="disconnectHeart">
+          Disconnect
+        </UiButton>
+        <UiButton
+          v-if="hr.savedDevice.value && !heartLinked"
+          size="xs"
+          variant="ghost"
+          icon="i-carbon-trash-can"
+          class="ml-auto"
+          @click="hr.forget()"
+        >
+          Forget
+        </UiButton>
+      </div>
+
+      <div
+        v-if="heart.error"
+        class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20 animate-fade-in"
+      >
+        <span class="i-carbon-error-filled text-[14px] mt-px shrink-0" />
+        <span class="min-w-0">{{ heart.error }}</span>
+      </div>
+
+      <div class="divider-x" />
+
+      <UiSwitch
+        v-model="guard.enabled"
+        size="sm"
+        tone="danger"
+        label="Edge when it spikes"
+        :hint="guard.enabled ? guardSummary : 'Calls an edge when your heart rate climbs fast above resting'"
+      />
+      <Transition name="t-collapse">
+        <div v-if="guard.enabled">
+          <div class="min-h-0 overflow-hidden">
+            <div class="pt-0.5 flex flex-col gap-2.5">
+              <UiSlider
+                v-model="guard.aboveRestBpm"
+                label="Above resting"
+                :min="8"
+                :max="50"
+                :step="1"
+                unit=" bpm"
+                :reset="20"
+                tone="danger"
+                hint="Only fire once this far over your resting rate"
+              />
+              <UiSlider
+                v-model="guard.riseBpm"
+                label="Climb"
+                :min="4"
+                :max="30"
+                :step="1"
+                unit=" bpm / 15 s"
+                :reset="10"
+                tone="danger"
+                hint="…and only while rising at least this fast"
+              />
+              <div class="gap-2 grid grid-cols-2">
+                <UiSlider v-model="guard.hysteresisBpm" label="Re-arm below" :min="2" :max="20" :step="1" unit=" bpm" :reset="6" />
+                <UiSlider v-model="guard.refractorySec" label="Then wait" :min="15" :max="300" :step="5" unit=" s" :reset="60" />
+              </div>
+              <p class="hint">
+                After firing it waits until your rate drops back under the threshold by the re-arm margin, and at least the wait time, before it can fire again.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <div class="flex flex-col">
+        <button
+          type="button"
+          class="text-[11.5px] text-fg-faint px-1 focusable rounded-[var(--radius-sm)] flex gap-1.5 h-6 transition-colors items-center hover:text-fg-muted"
+          :aria-expanded="amazfitOpen"
+          @click="amazfitOpen = !amazfitOpen"
+        >
+          <span class="i-carbon-chevron-right text-[11px] transition-transform duration-200" :class="amazfitOpen ? 'rotate-90' : ''" />
+          <span>Using an Amazfit / Zepp watch</span>
+        </button>
+        <Transition name="t-collapse">
+          <div v-if="amazfitOpen">
+            <div class="min-h-0 overflow-hidden">
+              <div class="text-[12px] text-fg-muted leading-relaxed pl-1 pt-1.5 flex flex-col gap-2">
+                <p>
+                  Any monitor that broadcasts the standard Bluetooth heart-rate service works: chest straps and arm bands
+                  (Polar, Garmin, Wahoo, Coospo…) need no setup at all. Watches only do it when told to.
+                </p>
+                <p>
+                  Zepp OS calls it <span class="text-fg">Heart rate push</span>. Amazfit lists it for Zepp OS 3 and newer
+                  (GTR 4, GTS 4, Balance, Active, T-Rex…); the <span class="text-fg">GTS 4 Mini</span> is not on those lists and
+                  runs an older Zepp OS, so it may not have it — check your firmware:
+                </p>
+                <ol class="pl-4 list-decimal flex flex-col gap-1">
+                  <li>On the watch, open <span class="text-fg">Workout</span>, scroll to its <span class="text-fg">Settings</span> and look for <span class="text-fg">Heart rate push</span> (or <span class="text-fg">Push heart rate</span>). Turn it on.</li>
+                  <li>If it is not there, look in the Zepp app under <span class="text-fg">Profile › GTS 4 Mini</span> for <span class="text-fg">Discoverable</span> and <span class="text-fg">Heart rate sharing</span> (older Amazfit firmware put it there).</li>
+                  <li>Start a workout (Free training or Indoor walking). Most models only broadcast while one is running.</li>
+                  <li>Press <span class="text-fg">Connect monitor</span> here and pick the watch.</li>
+                </ol>
+                <p>
+                  If neither setting exists, the watch keeps its heart rate to the Zepp app and cannot be used here; a cheap chest strap can.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Transition>
       </div>
     </UiSection>
 
@@ -913,6 +1301,29 @@ const logOpen = ref(false)
 </template>
 
 <style scoped>
+/* lub-dub, once per beat; the duration is set from the live rate */
+.hr-beat {
+  animation: hr-beat 1s ease-out infinite;
+}
+@keyframes hr-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  12% {
+    transform: scale(1.18);
+  }
+  24% {
+    transform: scale(1);
+  }
+  36% {
+    transform: scale(1.1);
+  }
+  52% {
+    transform: scale(1);
+  }
+}
+
 .conn-glow {
   background: radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--ok) 10%, transparent), transparent 60%);
 }
