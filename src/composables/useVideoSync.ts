@@ -163,8 +163,12 @@ export function useVideoSync() {
       const { pos } = sampleScaled(scaledFor(actions, 1), ms)
       return pos * Math.max(0, Math.min(1, knob)) * (1 - hold)
     }
-    const { pos, centre } = sampleScaled(scaledFor(actions, knob), ms)
-    return hold > 0 ? backOff(pos, centre, hold) : pos
+    const { pos } = sampleScaled(scaledFor(actions, knob), ms)
+    // An edge settles the device toward the middle of its range. Shrinking
+    // toward each stroke's own centre kept it travelling between strokes
+    // whose centres differ, so a "held" script still moved ~40% of its range.
+    // The ramp in/out is smooth (see edging.ts), so this never jumps.
+    return hold > 0 ? backOff(pos, 0.5, hold) : pos
   }
 
   function tick() {
