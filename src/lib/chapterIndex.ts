@@ -271,7 +271,10 @@ export async function buildIndex(sources: IndexSource[], busy: () => boolean = (
     for (const src of todo) {
       if (cancelled)
         break
-      await whenIdle(1000)
+      // Short cap: with the player and motion loops running the page is rarely
+      // idle, and a 1 s wait per script made a 600-video library take ~10 min.
+      // Each script is still its own slice (~45 ms), so the page stays responsive.
+      await whenIdle(50)
       // Never compete with a video that is loading.
       for (let waited = 0; busy() && !isCancelled() && waited < 150; waited++)
         await new Promise(r => setTimeout(r, 400))

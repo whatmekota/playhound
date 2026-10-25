@@ -13,6 +13,7 @@ import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/compo
 import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
+import { KEYS } from '~/lib/persist'
 import { buildActivity, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
@@ -28,6 +29,15 @@ import BrandMark from './BrandMark.vue'
  */
 const ui = useUiStore()
 const theme = useThemeStore()
+
+// ── Playback ────────────────────────────────────────────────────────────────
+const upNextDelay = useLocalStorage<number>(KEYS.upNextDelay.key, 5)
+const UPNEXT_OPTIONS: { value: number, label: string }[] = [
+  { value: 0, label: 'Instant' },
+  { value: 3, label: '3 s' },
+  { value: 5, label: '5 s' },
+  { value: 10, label: '10 s' },
+]
 
 // ── Discord ─────────────────────────────────────────────────────────────────
 const presence = usePresenceSettings()
@@ -79,9 +89,10 @@ const library = useLibraryStore()
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
 
-type SectionId = 'appearance' | 'startup' | 'safety' | 'library' | 'keyboard' | 'discord' | 'about'
+type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'keyboard' | 'discord' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
+  { id: 'playback', label: 'Playback', icon: 'i-carbon-play-outline' },
   { id: 'startup', label: 'Startup', icon: 'i-carbon-rocket' },
   { id: 'safety', label: 'Safety', icon: 'i-carbon-security' },
   { id: 'library', label: 'Library', icon: 'i-carbon-folder' },
@@ -320,6 +331,15 @@ function openBackup() {
 
               <div class="px-4 py-3 card">
                 <UiSwitch v-model="ui.navExpanded" label="Sidebar labels" hint="Show view names next to the icons in the left bar" />
+              </div>
+            </template>
+
+            <!-- Playback -->
+            <template v-else-if="section === 'playback'">
+              <div class="px-4 py-3 card flex flex-col gap-3">
+                <UiField label="Before the next video" hint="How long the Up next card waits when a video ends. Instant skips the card.">
+                  <UiSegmented v-model="upNextDelay" :options="UPNEXT_OPTIONS" size="xs" />
+                </UiField>
               </div>
             </template>
 

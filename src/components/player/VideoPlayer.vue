@@ -518,7 +518,12 @@ function onKeyDown(e: KeyboardEvent) {
 }
 
 // ─── End of video: "Up next" ─────────────────────────────────────────────────
-const UPNEXT_MS = 5000
+/**
+ * Seconds the "Up next" card waits before playing on; 0 skips the card and
+ * plays the next video straight away. Settings → Playback, or the card's own
+ * "always skip" link.
+ */
+const upNextDelay = useLocalStorage<number>(KEYS.upNextDelay.key, 5)
 const upNextThumb = ref<string | null>(null)
 const upNextLeft = ref(5)
 let upNextTimer: ReturnType<typeof setTimeout> | undefined
@@ -561,18 +566,27 @@ function handleEnded() {
     void playback.onEnded()
     return
   }
+  const delayMs = Math.max(0, upNextDelay.value) * 1000
+  if (delayMs === 0) {
+    // Instant: no card, straight on — exactly what "Play now" would do.
+    if (choice.directed)
+      void playback.play(choice.entry)
+    else
+      void playback.next()
+    return
+  }
   upNext.value = { ...choice, key: ++upNextSeq }
   upNextThumb.value = choice.entry.thumbnailUrl
   void loadThumb(choice.entry).then((url) => {
     if (upNext.value?.entry === choice.entry)
       upNextThumb.value = url
   })
-  const deadline = Date.now() + UPNEXT_MS
-  upNextLeft.value = Math.ceil(UPNEXT_MS / 1000)
+  const deadline = Date.now() + delayMs
+  upNextLeft.value = Math.ceil(delayMs / 1000)
   clearInterval(upNextTick)
   upNextTick = setInterval(() => (upNextLeft.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))), 200)
   clearTimeout(upNextTimer)
-  upNextTimer = setTimeout(commitUpNext, UPNEXT_MS)
+  upNextTimer = setTimeout(commitUpNext, delayMs)
 }
 
 function clearUpNextTimers() {
@@ -1131,7 +1145,14 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               </div>
             </div>
           </div>
-          <div class="mt-4 flex gap-2 justify-end">
+          <div class="mt-4 flex gap-2 items-center justify-end">
+            <button
+              type="button"
+              class="text-[12px] text-white/55 mr-auto underline-offset-2 hover:text-white hover:underline"
+              @click="upNextDelay = 0; commitUpNext()"
+            >
+              Always skip the countdown
+            </button>
             <UiButton variant="ghost" size="sm" class="!text-white/80 hover:!text-white hover:!bg-white/12" @click="cancelUpNext">
               Cancel
             </UiButton>

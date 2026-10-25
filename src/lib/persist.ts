@@ -60,6 +60,7 @@ export const KEYS = {
   edgeSettings: def('ph:session.edge', 'setting', 'Edge cooldown and depth'),
   intensityScale: def('ph:session.intensity', 'setting', 'Intensity knob'),
   discord: def('ph:discord', 'setting', 'Discord Rich Presence'),
+  upNextDelay: def('ph:player.upNextDelay', 'setting', 'Countdown before the next video'),
   motionConfig: def('ph:motion.config', 'setting', 'Motion source and limits'),
   buttplugUrl: def('ph:buttplug.url', 'setting', 'Intiface address'),
   buttplugEnabled: def('ph:buttplug.enabled', 'setting', 'Intiface on/off'),
