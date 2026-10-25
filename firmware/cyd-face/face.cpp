@@ -283,7 +283,7 @@ static void drawHeart(int cx, int cy, int r, uint16_t c) {
   eye->fillTriangle(cx - 2 * lobe, top, cx + 2 * lobe, top, cx, cy + r, c);
 }
 
-static void drawPupil(int cx, int cy, bool hearts, float scale, uint16_t ink, uint16_t sclera) {
+static void drawPupil(int cx, int cy, bool hearts, float scale, bool sparkle, uint16_t ink, uint16_t sclera) {
   if (hearts) {
     const int r = (int)(PUPIL_R * 0.66f);
     eye->fillCircle(cx, cy, r, ink);
@@ -313,6 +313,13 @@ static void drawPupil(int cx, int cy, bool hearts, float scale, uint16_t ink, ui
   eye->fillTriangle(cx - notch, cy - ry - 1,
                     cx + notch, cy - ry - 1,
                     cx, cy - ry + notch + 1, sclera);
+
+  // Anime shine: a big catchlight up and in, a small one down and out. It is
+  // what makes an open eye read as delighted rather than just open.
+  if (sparkle) {
+    eye->fillCircle(cx - rx / 3, cy - ry / 4, rx / 4 + 1, sclera);
+    eye->fillCircle(cx + rx / 3, cy + ry / 3, 2, sclera);
+  }
 }
 
 /** Two offset lines, because the sprite has no line width. */
@@ -333,17 +340,20 @@ static void drawEye(int bodyCx, bool leftSide) {
   const int bcx = start + BODY_W / 2;
   const float outerSign = leftSide ? -1.0f : 1.0f;
 
-  // Intensity narrows the eye; the expression then bends that. `cap` is how
-  // far the lids open at most, so a blink still closes them all the way.
+  // Without an expression from the app, intensity narrows the eye. With one,
+  // the expression sets the lids outright: nudging the intensity look by a
+  // few pixels made every mood read the same from across the room. `cap` is
+  // how far the lids open at most, so a blink still closes them all the way.
   float squint = clampf(in.intensity, 0, 1) * 0.34f;
   float cap = 1.0f;
   float pupilScale = 1.0f;
+  bool sparkle = false;
   switch (in.expr) {
-    case EXPR_SLEEPY:    cap = 0.30f; break;
-    case EXPR_FOCUSED:   squint += 0.06f; break;
-    case EXPR_EXCITED:   squint *= 0.35f; break;            // wide open
-    case EXPR_FLUSTERED: cap = 0.70f; break;                // half lidded
-    case EXPR_SHOCKED:   squint = 0.0f; pupilScale = 0.5f; break;
+    case EXPR_SLEEPY:    squint = 0.0f; cap = 0.30f; break;
+    case EXPR_FOCUSED:   squint = 0.0f; cap = 0.62f; break;                  // narrowed, intent
+    case EXPR_EXCITED:   squint = 0.0f; sparkle = true; break;               // wide and shining
+    case EXPR_FLUSTERED: squint = 0.0f; cap = 0.55f; break;                  // half lidded, hearts, blush
+    case EXPR_SHOCKED:   squint = 0.0f; pupilScale = 0.45f; break;           // wide, tiny pupils
     default: break;
   }
   if (in.edging)
@@ -369,9 +379,9 @@ static void drawEye(int bodyCx, bool leftSide) {
   if (upOpen > 8) {
     const float pu = leftSide ? (1.0f - PUPIL_S) : PUPIL_S;
     const int px = start + (int)(pu * (BODY_W - 1)) + (int)(lookX * 7.0f);
-    const int py = ECY + PUPIL_DY + (int)(lookY * 5.0f);
+    const int py = ECY + PUPIL_DY + (int)(lookY * 9.0f);
     const uint16_t pink = rgb(mix(PUPIL_COOL, PUPIL_HOT, in.intensity));
-    drawPupil(px, py, heartsOn(), pupilScale, pink, SCLERA);
+    drawPupil(px, py, heartsOn(), pupilScale, sparkle, pink, SCLERA);
   }
 
   // Mask the pupil back inside the lids, then lay the lash on the edge it just
@@ -533,6 +543,36 @@ static void drawMouthOh() {
   mouth->pushSprite(MOUTH_X, MOUTH_Y);
 }
 
+// -1 unknown (the screen was repainted), else whether the blush is on screen.
+static int blushShown = -1;
+static const Rgb BLUSH { 236, 112, 146 };
+
+/**
+ * Anime blush: three short slanted strokes on each cheek, just under the eye
+ * sprite. Drawn straight to the panel and only when it changes, since nothing
+ * else ever paints there.
+ */
+static void drawBlush(bool on) {
+  if (blushShown == (int)on)
+    return;
+  blushShown = on;
+
+  const int y0 = eyeCy() - ECY + EYE_H + 4;   // below the sprite, bob included
+  const int half = BODY_W / 2 + EYE_GAP / 2;
+  for (int side = -1; side <= 1; side += 2) {
+    const int cx = 160 + side * (half + 8);   // a little outboard of each eye
+    gfx->fillRect(cx - 17, y0 - 1, 36, 12, themeBg());
+    if (!on)
+      continue;
+    const uint16_t c = rgb(BLUSH);
+    for (int k = 0; k < 3; k++) {
+      const int x = cx - 13 + k * 9;
+      gfx->drawLine(x, y0 + 9, x + 6, y0, c);
+      gfx->drawLine(x + 1, y0 + 9, x + 7, y0, c);
+    }
+  }
+}
+
 /** Anime nose: a short stroke, leaning steeply rather than lying flat. */
 static void drawNose() {
   const uint16_t INK = themeInk();
@@ -592,13 +632,52 @@ static void drawStatus() {
   gfx->drawString(line, 160, STATUS_Y, 1);
 }
 
+/**
+ * The title as font 1 can draw it. The built-in font is ASCII only, so a
+ * Japanese title came out as a row of garbage; keep the ASCII parts, and if
+ * that leaves nothing worth reading, show nothing.
+ */
+static void asciiTitle(const char *src, char *dst, size_t size) {
+  size_t n = 0;
+  int letters = 0;
+  bool space = true;   // swallow leading spaces
+  for (const char *p = src; *p && n + 1 < size; p++) {
+    const unsigned char c = (unsigned char)*p;
+    if (c >= 0x80 || c < 0x20) {
+      // A run of foreign characters becomes one space.
+      if (!space) {
+        dst[n++] = ' ';
+        space = true;
+      }
+      continue;
+    }
+    if (c == ' ' && space)
+      continue;
+    dst[n++] = (char)c;
+    space = c == ' ';
+    if (isalnum(c))
+      letters++;
+  }
+  // Trim trailing spaces and the separators a dropped part leaves behind.
+  while (n > 0 && strchr(" -_.,|:~", dst[n - 1]))
+    n--;
+  dst[n] = '\0';
+  size_t lead = 0;
+  while (dst[lead] && strchr(" -_.,|:~", dst[lead]))
+    lead++;
+  if (lead)
+    memmove(dst, dst + lead, n - lead + 1);
+  if (letters < 3)
+    dst[0] = '\0';
+}
+
 /** What is loaded, elided in the middle so both ends stay readable. */
 static void drawTitle() {
   char line[64];
   if (!in.showText || phState.panicked || !phState.hostSeen)
     line[0] = '\0';
   else
-    snprintf(line, sizeof(line), "%s", phState.title);
+    asciiTitle(phState.title, line, sizeof(line));
 
   if (strcmp(line, lastTitle) == 0)
     return;
@@ -651,6 +730,7 @@ void faceBegin(TFT_eSPI *tft) {
 void faceInvalidate() {
   lastStatus[0] = '\0';
   lastTitle[0] = '\0';
+  blushShown = -1;
 }
 
 void faceShowMouth(bool on) {
@@ -702,7 +782,7 @@ void faceTick() {
   const bool followStroke = in.strokePos >= 0.0f && !in.panicked && !in.edging
     && (in.expr == EXPR_FOCUSED || in.expr == EXPR_EXCITED || in.expr == EXPR_FLUSTERED);
   if (followStroke)
-    lookTY = (0.5f - in.strokePos) * 1.6f;    // 1 is the top, and up is negative
+    lookTY = (0.5f - in.strokePos) * 2.0f;    // 1 is the top, and up is negative
   // Asleep or held back by an edge, the gaze drops.
   if (in.expr == EXPR_SLEEPY || in.edging)
     lookTY = 0.6f;
@@ -744,6 +824,7 @@ void faceTick() {
 
   drawEye(160 - (BODY_W / 2 + EYE_GAP / 2), true);
   drawEye(160 + (BODY_W / 2 + EYE_GAP / 2), false);
+  drawBlush(in.expr == EXPR_FLUSTERED && !in.panicked);
 
   if (fullFace()) {
     drawNose();

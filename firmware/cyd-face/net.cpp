@@ -131,7 +131,14 @@ static void applyState(JsonObjectConst s) {
 static void applyFace(JsonDocument &d) {
   phState.playing  = d["playing"] | phState.playing;
   phState.panicked = d["panic"]   | phState.panicked;
-  phState.expr     = parseExpr(d["expr"] | "calm");
+
+  // One line per change of mood, so the serial log shows the face is
+  // following without flooding it ten times a second.
+  const char *exprName = d["expr"] | "calm";
+  const FaceExpr expr = parseExpr(exprName);
+  if (expr != phState.expr)
+    Serial.printf("[face] %s, intensity %.2f\n", exprName, (float)(d["intensity"] | 0.0f));
+  phState.expr = expr;
 
   if (d["intensity"].is<float>())
     phState.intensity = d["intensity"].as<float>();
@@ -150,6 +157,8 @@ static void applyFace(JsonDocument &d) {
 }
 
 static void faceGone() {
+  if (phState.faceSeenAt != 0)
+    Serial.println(F("[face] stream ended, following state frames"));
   phState.faceSeenAt = 0;
   phState.expr = EXPR_NONE;
   phState.strokePos = -1.0f;
