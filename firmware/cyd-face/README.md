@@ -10,8 +10,9 @@ The eyes react to what the desktop is doing:
 | no desktop in the room | slow blinking, `waiting for playhound`                |
 | nothing for a while    | sleepy: lids low, slow blinks, `z z z`                |
 | playing                | pupils warm toward crimson as intensity climbs        |
-| focused and up         | the gaze rides the stroke up and down                 |
-| intensity high         | half lidded, heart pupils                             |
+| focused                | eyes narrowed, the gaze rides the stroke up and down  |
+| excited                | wide open, sparkles in the pupils                     |
+| flustered              | half lidded, heart pupils, blush on the cheeks        |
 | motion running         | the mouth opens and closes with the stroke rate       |
 | edge called            | lids and gaze drop, `edge - holding 12s`, then easing |
 | panicked               | eyes shut, screen dimmed, `shhh`                      |
