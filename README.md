@@ -47,12 +47,16 @@ as the remote.
 
 ## Getting started
 
+**Just want to use it on Windows?** Download the installer or the portable .exe
+from [Releases](https://github.com/whatmekota/playhound/releases) and skip to
+[Using it](#using-it). The rest of this section runs it from source.
+
 You need **Node 22+**, **pnpm 10** and a **Chromium-based browser** (Chrome,
 Edge, Brave…). playhound relies on the File System Access API to read your
 library and on Web Serial to talk to TCode devices.
 
 ```bash
-git clone <this repo> playhound
+git clone https://github.com/whatmekota/playhound
 cd playhound
 pnpm install
 pnpm dev            # http://localhost:6969
@@ -67,6 +71,8 @@ EroScripts proxy (`:7071`) and the remote relay (`:7072`). If you've built the
 desktop app, it launches that instead.
 
 ### Desktop app (Windows)
+
+Building it yourself:
 
 ```bash
 pnpm app            # Electron window on the dev server, with hot reload
