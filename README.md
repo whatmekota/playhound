@@ -1,4 +1,17 @@
-# playhound
+<p align="center">
+  <img src="public/logos/sly-grin.svg" alt="playhound logo: a magenta face with a sly grin" width="128" height="128">
+</p>
+
+<h1 align="center">playhound</h1>
+
+<p align="center">
+  <a href="https://github.com/whatmekota/playhound/releases/latest"><img src="https://img.shields.io/github/v/release/whatmekota/playhound?style=flat&colorA=18181B&colorB=d946ef&label=release" alt="Latest release"></a>
+  <a href="https://github.com/whatmekota/playhound/releases"><img src="https://img.shields.io/github/downloads/whatmekota/playhound/total?style=flat&colorA=18181B&colorB=d946ef" alt="Downloads"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/whatmekota/playhound?style=flat&colorA=18181B&colorB=d946ef" alt="License: MIT"></a>
+  <a href="https://github.com/whatmekota/playhound/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/whatmekota/playhound/test.yml?branch=master&style=flat&colorA=18181B&label=tests" alt="Tests"></a>
+  <a href="#getting-started"><img src="https://img.shields.io/badge/runs_on-Windows_%7C_Chromium-d946ef?style=flat&labelColor=18181B" alt="Windows app or Chromium browser"></a>
+  <a href="#safety"><img src="https://img.shields.io/badge/18%2B-only-a21caf?style=flat&labelColor=18181B" alt="18+ only"></a>
+</p>
 
 A funscript video player and audiovisual session engine for your own library and
 your own hardware: OSR2/SR6 strokers over TCode, Intiface/Buttplug toys, and an
