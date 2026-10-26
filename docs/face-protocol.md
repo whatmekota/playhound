@@ -45,7 +45,7 @@ Frames the board already handles keep working exactly as before:
   "spm": 92,
   "phase": "idle",
   "deviceConnected": true,
-  "title": "Heart Pie Dancehall"
+  "title": "Example Video"
 }
 ```
 

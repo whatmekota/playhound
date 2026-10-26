@@ -132,7 +132,9 @@ describe('chapter lookup', () => {
 })
 
 describe('real script', () => {
-  const file = 'X:/the/funscripts/Sanae & Reimu After School Show - Heart Pie Dancehall.funscript'
+  // A dance script that eases in, dances, then stops for its last few seconds.
+  // Point PH_REAL_SCRIPT at one to run this; it is skipped otherwise.
+  const file = process.env.PH_REAL_SCRIPT ?? ''
 
   it.skipIf(!existsSync(file))('cuts a dance script into a few plain sections', () => {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as { actions: { at: number, pos: number }[] }

@@ -18,7 +18,7 @@
 
 // The machine running playhound, and the relay port from es-proxy.mjs.
 // Must be the LAN address, not localhost — this board is a different machine.
-#define PH_HOST         "192.168.0.192"
+#define PH_HOST         "192.168.1.20"
 #define PH_PORT         7072
 
 // Room id from the Remote panel. Open it on the desktop; the pairing URL ends

@@ -1107,12 +1107,12 @@ const logOpen = ref(false)
                 </p>
                 <p>
                   Zepp OS calls it <span class="text-fg">Heart rate push</span>. Amazfit lists it for Zepp OS 3 and newer
-                  (GTR 4, GTS 4, Balance, Active, T-Rex…); the <span class="text-fg">GTS 4 Mini</span> is not on those lists and
-                  runs an older Zepp OS, so it may not have it — check your firmware:
+                  (GTR 4, GTS 4, Balance, Active, T-Rex…); older or smaller models may not have it, so check your
+                  firmware:
                 </p>
                 <ol class="pl-4 list-decimal flex flex-col gap-1">
                   <li>On the watch, open <span class="text-fg">Workout</span>, scroll to its <span class="text-fg">Settings</span> and look for <span class="text-fg">Heart rate push</span> (or <span class="text-fg">Push heart rate</span>). Turn it on.</li>
-                  <li>If it is not there, look in the Zepp app under <span class="text-fg">Profile › GTS 4 Mini</span> for <span class="text-fg">Discoverable</span> and <span class="text-fg">Heart rate sharing</span> (older Amazfit firmware put it there).</li>
+                  <li>If it is not there, look in the Zepp app under <span class="text-fg">Profile ›</span> your watch for <span class="text-fg">Discoverable</span> and <span class="text-fg">Heart rate sharing</span> (older Amazfit firmware put it there).</li>
                   <li>Start a workout (Free training or Indoor walking). Most models only broadcast while one is running.</li>
                   <li>Press <span class="text-fg">Connect monitor</span> here and pick the watch.</li>
                 </ol>
