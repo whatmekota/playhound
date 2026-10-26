@@ -27,6 +27,41 @@ tap only reveals — it never fires anything — because the first touch of a bo
 sitting on a desk is usually an accident. The bar hides itself after 4.5s, or on
 a tap above it.
 
+## What you need
+
+- **An ESP32-2432S028R**, the "Cheap Yellow Display": a 2.8" 320×240 touch
+  screen with an ESP32 on the back, around $10–15. Both the original micro-USB
+  board and the USB-C one work (the author's is USB-C). Revisions disagree about
+  colour inversion and channel order; if the colours look wrong, see
+  [Panel quirks](#panel-quirks).
+- **A USB cable that carries data** (micro-USB or USB-C, to match the board),
+  not a charge-only one.
+- **2.4GHz Wi-Fi** on the same network as the computer running playhound. The
+  ESP32 cannot see 5GHz networks.
+- Optional: a printable case and stand. [The original model](https://www.thingiverse.com/thing:6310957) is for the
+  micro-USB board; [this remix](https://www.thingiverse.com/thing:6406058) fits the USB-C board (no lid) and is
+  the one the author uses.
+
+## Building it
+
+1. Install the [Arduino IDE](https://www.arduino.cc/en/software) (2.x).
+2. Add ESP32 support: **File › Preferences › Additional boards manager URLs**,
+   add `https://espressif.github.io/arduino-esp32/package_esp32_index.json`,
+   then install **esp32 by Espressif Systems** from the Boards Manager.
+3. Install the four [libraries](#libraries) from the Library Manager.
+4. Set up TFT_eSPI for the CYD as described in [TFT_eSPI setup](#tft_espi-setup).
+   This is the step that decides whether the screen shows anything.
+5. Copy `config.example.h` to `config.h` and fill in your Wi-Fi, the computer's
+   LAN address and the room id (see [Configuration](#configuration)).
+6. Plug the board in, pick **ESP32 Dev Module** and its COM port, and upload.
+   If no port appears, install the CH340 USB driver.
+7. In playhound, switch on the **Remote** panel, then **Drive the face** in the
+   **Face** panel. The face's top line goes from `joining wifi...` to `looking
+for playhound at …` to the current status once it is connected.
+
+If it gets stuck, the top line says where, and [Troubleshooting](#troubleshooting)
+covers each case.
+
 ## Settings
 
 Five rows, tapped to cycle, saved to NVS so they survive a power cut.
@@ -61,9 +96,11 @@ uses. `es-proxy.mjs` listens on `0.0.0.0:7072`, so:
 ws://<your-pc>:7072/rc?room=<room id>&role=remote
 ```
 
-Nothing has to change on the desktop beyond enabling the Remote panel — the
-board sends the same `{type:"cmd",action:…}` frames the phone does, and receives
-the same `{type:"state",…}` pushes.
+On the desktop, enable the Remote panel, and **Drive the face** in the Face
+panel. The board sends the same `{type:"cmd",action:…}` frames the phone does
+and receives the same `{type:"state",…}` pushes. With **Drive the face** on it
+also gets the richer `face` frames (see `docs/face-protocol.md`) that carry its
+expressions; without them it falls back to the plain state.
 
 ## Libraries
 

@@ -150,6 +150,22 @@ link carries your computer's LAN address, so the phone must be on the same
 Wi-Fi. The phone gets play/pause, next/previous, edge, intensity and a big panic button,
 and can keep its screen awake.
 
+### The face (optional)
+
+A little screen for the desk that watches the session: it changes mood as
+things heat up, follows the strokes with its eyes, shows edges and their
+countdown, and hides a control bar (edge, previous, play/pause, next, random,
+panic) behind a tap.
+
+It runs on an **ESP32-2432S028R** ("Cheap Yellow Display", about $10–15; the
+micro-USB and USB-C versions both work) and needs 2.4GHz Wi-Fi on the same
+network as the computer. For a case and stand, print [the original
+model](https://www.thingiverse.com/thing:6310957) (micro-USB board) or [its USB-C remix](https://www.thingiverse.com/thing:6406058) (no lid).
+
+Building it takes the Arduino IDE, four libraries and a short config file; the
+steps are in [firmware/cyd-face](firmware/cyd-face/README.md#building-it). Then
+switch on the **Remote** panel and **Drive the face** in the **Face** panel.
+
 ### Around the app
 
 - **Left nav:** Player, Library, Playlists, Media Wall, Slideshow,
