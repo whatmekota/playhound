@@ -116,7 +116,7 @@ static Pose pose(const KerfusFrame &f) {
   switch (e) {
     case EXPR_SLEEPY:    p.eyes = EYES_SLEEP; p.browDy = 6; p.blinks = false; break;
     case EXPR_FOCUSED:   p.eyes = EYES_LID; p.browDy = 4; p.browTilt = 14; break;
-    case EXPR_EXCITED:   p.eyes = EYES_WINK; p.browDy = -3; break;
+    case EXPR_EXCITED:   p.eyes = EYES_WINK; p.browDy = -3; p.blinks = false; break;   // the open eye of a wink holds still
     case EXPR_FLUSTERED: p.eyes = EYES_SQUEEZE; p.blush = true; p.blinks = false; break;
     case EXPR_SHOCKED:   p.pupil = 0.5f; p.browDy = -7; p.mouth = MOUTH_O; break;
     default: break;

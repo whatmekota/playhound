@@ -116,7 +116,7 @@ export function kerfusPose(i: KerfusInput): KerfusPose {
     case 'focused':
       return { ...base, eyes: 'lid', browDy: 4, browTilt: 14, followStroke: true }
     case 'excited':
-      return { ...base, eyes: 'wink', browDy: -3, followStroke: true }
+      return { ...base, eyes: 'wink', browDy: -3, followStroke: true, blinks: false } // a winking eye blinking reads oddly
     case 'flustered':
       return { ...base, eyes: 'squeeze', blush: true, blinks: false }
     case 'shocked':

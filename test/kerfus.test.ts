@@ -9,6 +9,7 @@ describe('kerfusPose', () => {
       .map(expr => kerfusPose({ ...base, expr }).eyes)
     expect(eyes).toEqual(['ring', 'lid', 'wink', 'squeeze', 'sleep', 'ring'])
     expect(kerfusPose({ ...base, expr: 'shocked' }).mouth).toBe('o')
+    expect(kerfusPose({ ...base, expr: 'excited' }).blinks).toBe(false)
   })
 
   it('lets panic and an edge override the expression', () => {
