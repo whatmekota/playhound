@@ -10,6 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/whatmekota/playhound?style=flat&colorA=18181B&colorB=d946ef" alt="License: MIT"></a>
   <a href="https://github.com/whatmekota/playhound/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/whatmekota/playhound/test.yml?branch=master&style=flat&colorA=18181B&label=tests" alt="Tests"></a>
   <a href="#getting-started"><img src="https://img.shields.io/badge/runs_on-Windows_%7C_Chromium-d946ef?style=flat&labelColor=18181B" alt="Windows app or Chromium browser"></a>
+  <a href="https://whatmekota.github.io/playhound/"><img src="https://img.shields.io/badge/try_it-in_your_browser-d946ef?style=flat&labelColor=18181B" alt="Try it in your browser"></a>
   <a href="#safety"><img src="https://img.shields.io/badge/18%2B-only-a21caf?style=flat&labelColor=18181B" alt="18+ only"></a>
 </p>
 
@@ -63,6 +64,12 @@ as the remote.
 **Just want to use it on Windows?** Download the installer or the portable .exe
 from [Releases](https://github.com/whatmekota/playhound/releases) and skip to
 [Using it](#using-it). The rest of this section runs it from source.
+
+**Just want a look?** [Try it in your browser](https://whatmekota.github.io/playhound/) (Chrome, Edge or
+another Chromium browser). It opens your own folders and drives Web Serial and
+Intiface devices like the real thing; nothing is uploaded. The EroScripts
+browser, the phone remote and the CYD face need playhound running on your own
+machine, so they don't work there.
 
 You need **Node 22+**, **pnpm 10** and a **Chromium-based browser** (Chrome,
 Edge, Brave…). playhound relies on the File System Access API to read your

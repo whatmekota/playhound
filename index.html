@@ -19,7 +19,7 @@
           var logo = localStorage.getItem('ph:ui.logo')
           var tongue = localStorage.getItem('ph:ui.logoTongue') === '1' ? '-tongue' : ''
           if (/^[a-z-]+$/.test(logo || ''))
-            document.querySelector('link[rel="icon"]').setAttribute('href', '/logos/' + logo + tongue + '.svg')
+            document.querySelector('link[rel="icon"]').setAttribute('href', '%BASE_URL%logos/' + logo + tongue + '.svg')
           if (!BG[t]) t = 'dark'
           var root = document.documentElement
           root.setAttribute('data-theme', t)
