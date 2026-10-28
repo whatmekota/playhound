@@ -27,6 +27,22 @@ as the remote.
 > **18+ only.** playhound is made for adult content and drives physical
 > devices. Read [Safety](#safety) before connecting hardware.
 
+## Try it now, no install
+
+**[Open playhound in your browser](https://whatmekota.github.io/playhound/)** (Chrome, Edge or another
+Chromium browser), then:
+
+1. Click **Open a folder** and pick a folder of videos with their funscripts,
+   or drop one video and its script onto the page.
+2. Open the **Emulator** (the cube in the right rail) to watch what a stroker
+   would do, and the **Motion** panel to see the rate and the sources.
+3. Press **E** to edge, **G** to jump to the next peak, **?** for every key and
+   **Ctrl+K** for everything else.
+
+Your videos stay on your computer: the page reads them in place and nothing is
+uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound/releases) for the full thing
+([what's different](#three-ways-to-run-it)).
+
 ---
 
 ## Highlights
@@ -61,15 +77,29 @@ as the remote.
 
 ## Getting started
 
-**Just want to use it on Windows?** Download the installer or the portable .exe
-from [Releases](https://github.com/whatmekota/playhound/releases) and skip to
-[Using it](#using-it). The rest of this section runs it from source.
+### Three ways to run it
 
-**Just want a look?** [Try it in your browser](https://whatmekota.github.io/playhound/) (Chrome, Edge or
-another Chromium browser). It opens your own folders and drives Web Serial and
-Intiface devices like the real thing; nothing is uploaded. The EroScripts
-browser, the phone remote and the CYD face need playhound running on your own
-machine, so they don't work there.
+|                                                             | [Browser](https://whatmekota.github.io/playhound/) | [Windows app](https://github.com/whatmekota/playhound/releases) | From source |
+| ----------------------------------------------------------- | :------------------------------------------------: | :-------------------------------------------------------------: | :---------: |
+| Your library, the player, programmes, the session engine    |                         ✓                          |                                ✓                                |      ✓      |
+| TCode devices (Web Serial), heart-rate monitors (Bluetooth) |                         ✓                          |                                ✓                                |      ✓      |
+| Intiface / Buttplug toys                                    |                        ✓\*                         |                                ✓                                |      ✓      |
+| EroScripts browser, phone remote, CYD face                  |                                                    |                                ✓                                |      ✓      |
+| Remembers your library folder without a click               |                                                    |                                ✓                                |             |
+| Keeps driving the device while minimised                    |                                                    |                                ✓                                |             |
+| Discord Rich Presence                                       |                                                    |                                ✓                                |             |
+
+\*With Intiface Central running on the same computer; not yet tested from the
+hosted page.
+
+- **Browser:** nothing to install, a good way to see if you like it. Your
+  library, settings and stats are kept by that browser; **Backup → Export**
+  moves them to the Windows app later.
+- **Windows app:** the installer or the portable .exe from
+  [Releases](https://github.com/whatmekota/playhound/releases). Then skip to [Using it](#using-it).
+- **From source:** for other systems, or to change things. Read on.
+
+### From source
 
 You need **Node 22+**, **pnpm 10** and a **Chromium-based browser** (Chrome,
 Edge, Brave…). playhound relies on the File System Access API to read your
