@@ -7,12 +7,14 @@
 export {}
 declare global {
   const EffectScope: typeof import('vue').EffectScope
+  const FACE_CHANNEL: typeof import('./src/composables/useFaceScreen').FACE_CHANNEL
   const KNOB_STEP: typeof import('./src/composables/useSessionActions').KNOB_STEP
   const MIN_H: typeof import('./src/composables/wallGeometry').MIN_H
   const MIN_W: typeof import('./src/composables/wallGeometry').MIN_W
   const MOVE_EDGES: typeof import('./src/composables/wallGeometry').MOVE_EDGES
   const PHASE_TRANSITIONS: typeof import('./src/composables/useSlideshowEngine').PHASE_TRANSITIONS
   const RC_PORT: typeof import('./src/composables/useRemoteLink').RC_PORT
+  const SCREEN_PING_MS: typeof import('./src/composables/useFaceScreen').SCREEN_PING_MS
   const STREAM_PROXY: typeof import('./src/composables/useStreams').STREAM_PROXY
   const StreamError: typeof import('./src/composables/useStreams').StreamError
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
@@ -51,6 +53,8 @@ declare global {
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
   const extendRef: typeof import('@vueuse/core').extendRef
+  const faceScreenOpen: typeof import('./src/composables/useFaceScreen').faceScreenOpen
+  const faceScreenSettings: typeof import('./src/composables/useFaceScreen').faceScreenSettings
   const getAnalysedGrid: typeof import('./src/composables/useSoundtrack').getAnalysedGrid
   const getBeatClock: typeof import('./src/composables/useVideoBeat').getBeatClock
   const getBeatGrid: typeof import('./src/composables/useVideoBeat').getBeatGrid
@@ -62,6 +66,7 @@ declare global {
   const heartSparkline: typeof import('./src/composables/useHeartRate').heartSparkline
   const heartTimeline: typeof import('./src/composables/useHeartRate').heartTimeline
   const holdToast: typeof import('./src/composables/useToast').holdToast
+  const hostFaceScreens: typeof import('./src/composables/useFaceScreen').hostFaceScreens
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
   const inject: typeof import('vue').inject
   const injectLocal: typeof import('@vueuse/core').injectLocal
@@ -102,6 +107,7 @@ declare global {
   const onUnmounted: typeof import('vue').onUnmounted
   const onUpdated: typeof import('vue').onUpdated
   const onWatcherCleanup: typeof import('vue').onWatcherCleanup
+  const openFaceWindow: typeof import('./src/composables/useFaceScreen').openFaceWindow
   const outputsOf: typeof import('./src/composables/useButtplug').outputsOf
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const pickMediaFiles: typeof import('./src/composables/useMediaDrop').pickMediaFiles
@@ -109,6 +115,7 @@ declare global {
   const presenceStatus: typeof import('./src/composables/useDiscordPresence').presenceStatus
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
+  const publishFaceFrame: typeof import('./src/composables/useFaceScreen').publishFaceFrame
   const reactify: typeof import('@vueuse/core').reactify
   const reactifyObject: typeof import('@vueuse/core').reactifyObject
   const reactive: typeof import('vue').reactive
@@ -397,6 +404,9 @@ declare global {
   export type { FaceLinkSettings } from './src/composables/useFaceLink'
   import('./src/composables/useFaceLink')
   // @ts-ignore
+  export type { FaceScreenMsg, FaceScreenSettings } from './src/composables/useFaceScreen'
+  import('./src/composables/useFaceScreen')
+  // @ts-ignore
   export type { GamepadActions } from './src/composables/useGamepad'
   import('./src/composables/useGamepad')
   // @ts-ignore
@@ -440,12 +450,14 @@ declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
+    readonly FACE_CHANNEL: UnwrapRef<typeof import('./src/composables/useFaceScreen')['FACE_CHANNEL']>
     readonly KNOB_STEP: UnwrapRef<typeof import('./src/composables/useSessionActions')['KNOB_STEP']>
     readonly MIN_H: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_H']>
     readonly MIN_W: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_W']>
     readonly MOVE_EDGES: UnwrapRef<typeof import('./src/composables/wallGeometry')['MOVE_EDGES']>
     readonly PHASE_TRANSITIONS: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['PHASE_TRANSITIONS']>
     readonly RC_PORT: UnwrapRef<typeof import('./src/composables/useRemoteLink')['RC_PORT']>
+    readonly SCREEN_PING_MS: UnwrapRef<typeof import('./src/composables/useFaceScreen')['SCREEN_PING_MS']>
     readonly STREAM_PROXY: UnwrapRef<typeof import('./src/composables/useStreams')['STREAM_PROXY']>
     readonly StreamError: UnwrapRef<typeof import('./src/composables/useStreams')['StreamError']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
@@ -484,6 +496,8 @@ declare module 'vue' {
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
+    readonly faceScreenOpen: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenOpen']>
+    readonly faceScreenSettings: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenSettings']>
     readonly getAnalysedGrid: UnwrapRef<typeof import('./src/composables/useSoundtrack')['getAnalysedGrid']>
     readonly getBeatClock: UnwrapRef<typeof import('./src/composables/useVideoBeat')['getBeatClock']>
     readonly getBeatGrid: UnwrapRef<typeof import('./src/composables/useVideoBeat')['getBeatGrid']>
@@ -495,6 +509,7 @@ declare module 'vue' {
     readonly heartSparkline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartSparkline']>
     readonly heartTimeline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartTimeline']>
     readonly holdToast: UnwrapRef<typeof import('./src/composables/useToast')['holdToast']>
+    readonly hostFaceScreens: UnwrapRef<typeof import('./src/composables/useFaceScreen')['hostFaceScreens']>
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
@@ -535,6 +550,7 @@ declare module 'vue' {
     readonly onUnmounted: UnwrapRef<typeof import('vue')['onUnmounted']>
     readonly onUpdated: UnwrapRef<typeof import('vue')['onUpdated']>
     readonly onWatcherCleanup: UnwrapRef<typeof import('vue')['onWatcherCleanup']>
+    readonly openFaceWindow: UnwrapRef<typeof import('./src/composables/useFaceScreen')['openFaceWindow']>
     readonly outputsOf: UnwrapRef<typeof import('./src/composables/useButtplug')['outputsOf']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly pickMediaFiles: UnwrapRef<typeof import('./src/composables/useMediaDrop')['pickMediaFiles']>
@@ -542,6 +558,7 @@ declare module 'vue' {
     readonly presenceStatus: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['presenceStatus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
+    readonly publishFaceFrame: UnwrapRef<typeof import('./src/composables/useFaceScreen')['publishFaceFrame']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
     readonly reactifyObject: UnwrapRef<typeof import('@vueuse/core')['reactifyObject']>
     readonly reactive: UnwrapRef<typeof import('vue')['reactive']>

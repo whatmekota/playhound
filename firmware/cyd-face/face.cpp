@@ -1,4 +1,5 @@
 #include "face.h"
+#include "kerfus.h"
 #include "net.h"
 #include "palette.h"
 #include "settings.h"
@@ -707,21 +708,46 @@ uint16_t faceBackground() {
   return themeBg();
 }
 
+// The style whose sprites are allocated. Only one style's are at a time: the
+// board has no PSRAM, and the two together would be ~56KB of heap.
+static uint8_t activeStyle = 0xFF;
+
+static bool kerfusStyle() {
+  return settings.style == STYLE_KERFUS;
+}
+
+/** Swap sprites when the style changes in the menu, and start from a clean screen. */
+static void ensureStyle() {
+  if (activeStyle == settings.style)
+    return;
+  activeStyle = settings.style;
+
+  if (kerfusStyle()) {
+    eye->deleteSprite();
+    mouth->deleteSprite();
+    kerfusBegin(gfx);
+  }
+  else {
+    kerfusEnd();
+    // 160x80 at 16bpp is 25KB on the heap. Comfortable on a board with no
+    // PSRAM, but worth saying out loud if it ever fails.
+    eye->createSprite(EYE_W, EYE_H);
+    mouth->createSprite(MOUTH_W, MOUTH_H);
+    if (!eye->created() || !mouth->created())
+      Serial.println(F("[face] sprite allocation failed"));
+  }
+  gfx->fillScreen(themeBg());
+  faceInvalidate();
+}
+
 void faceBegin(TFT_eSPI *tft) {
   gfx = tft;
 
-  // 160x138 at 16bpp is ~44KB on the heap. Comfortable on a board with no
-  // PSRAM, but worth saying out loud if it ever fails.
   eye = new TFT_eSprite(tft);
   eye->setColorDepth(16);
-  eye->createSprite(EYE_W, EYE_H);
-
   mouth = new TFT_eSprite(tft);
   mouth->setColorDepth(16);
-  mouth->createSprite(MOUTH_W, MOUTH_H);
-
-  if (!eye->created() || !mouth->created())
-    Serial.println(F("[face] sprite allocation failed"));
+  ensureStyle();
 
   nextBlinkAt = millis() + 1200;
   nextLookAt  = millis() + 900;
@@ -738,7 +764,10 @@ void faceShowMouth(bool on) {
 }
 
 void faceTick() {
-  if (eye == nullptr || !eye->created())
+  if (eye == nullptr)
+    return;
+  ensureStyle();
+  if (!kerfusStyle() && !eye->created())
     return;
 
   const uint32_t now = millis();
@@ -821,6 +850,24 @@ void faceTick() {
 
   drawStatus();
   drawTitle();
+
+  if (kerfusStyle()) {
+    KerfusFrame f;
+    f.panicked  = in.panicked;
+    f.edging    = in.edging;
+    f.expr      = in.expr;
+    f.intensity = in.intensity;
+    f.hearts    = settings.hearts;
+    f.full      = fullFace();
+    f.lid       = lid;
+    f.lookX     = lookX;
+    f.lookY     = lookY;
+    f.bob       = bob;
+    f.mouthOpen = mouthOpen;
+    f.barUp     = !mouthAllowed;
+    kerfusDraw(f);
+    return;
+  }
 
   drawEye(160 - (BODY_W / 2 + EYE_GAP / 2), true);
   drawEye(160 + (BODY_W / 2 + EYE_GAP / 2), false);

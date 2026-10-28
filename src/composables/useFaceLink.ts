@@ -21,7 +21,9 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useButtplug } from './useButtplug'
+import { faceScreenOpen, hostFaceScreens, publishFaceFrame } from './useFaceScreen'
 import { useRemoteStatus } from './useRemoteStatus'
 import { analyseActions, analysisKey } from './useScriptAnalysis'
 import { axisOutput } from './useTCode'
@@ -59,6 +61,8 @@ const lastSentAt = ref(0)
 const faceSeenAt = ref(0)
 const now = ref(0)
 const previewers = ref(0)
+/** A face window (useFaceScreen) is open and listening. */
+const screenOpen = ref(false)
 
 let lastSent: FaceMessage | null = null
 let expr: ExprState = initialExprState(0)
@@ -93,6 +97,7 @@ function start() {
     const safety = useSafetyStore()
     const device = useDeviceStore()
     const bp = useButtplug()
+    const ctl = useSessionControlStore()
 
     /** Each script's sorted speeds, kept as long as its shared analysis is. */
     const distributions = new WeakMap<object, Float64Array>()
@@ -148,6 +153,11 @@ function start() {
       const msg = buildFaceMessage(input, expr.expr, cfg.value.signals)
       preview.value = msg
 
+      // A face window gets every frame: it is local, so there is nothing to save.
+      screenOpen.value = faceScreenOpen(t)
+      if (screenOpen.value)
+        publishFaceFrame(buildFaceMessage(input, expr.expr), ctl.phase === 'falling' || ctl.phase === 'holding')
+
       const send = status.send.value
       if (!cfg.value.enabled || !send || !audience.value)
         return
@@ -161,7 +171,10 @@ function start() {
     }
 
     let timer: ReturnType<typeof setInterval> | null = null
-    const wanted = computed(() => cfg.value.enabled || previewers.value > 0)
+    hostFaceScreens(() => {
+      screenOpen.value = true
+    })
+    const wanted = computed(() => cfg.value.enabled || previewers.value > 0 || screenOpen.value)
     watch(wanted, (on) => {
       if (on && timer === null) {
         expr = initialExprState(performance.now())
@@ -257,6 +270,7 @@ export function useFaceLink() {
     lastSentAt,
     now,
     faceSeen,
+    screenOpen,
     relayConnected: status.connected,
     peers: status.peers,
     watchPreview,

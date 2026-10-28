@@ -33,6 +33,7 @@ declare module 'vue' {
     InspectorDrawer: typeof import('./src/components/shell/InspectorDrawer.vue')['default']
     InspectorRail: typeof import('./src/components/shell/InspectorRail.vue')['default']
     IntensityMeter: typeof import('./src/components/library/IntensityMeter.vue')['default']
+    KerfusFace: typeof import('./src/components/face/KerfusFace.vue')['default']
     LatencyCalibrateModal: typeof import('./src/components/device/LatencyCalibrateModal.vue')['default']
     LibraryInspector: typeof import('./src/components/inspectors/LibraryInspector.vue')['default']
     LibraryRow: typeof import('./src/components/library/LibraryRow.vue')['default']

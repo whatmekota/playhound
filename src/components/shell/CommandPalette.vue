@@ -3,6 +3,7 @@ import type { AnyViewId } from '~/lib/views'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, nextTick, ref, watch } from 'vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
+import { openFaceWindow } from '~/composables/useFaceScreen'
 import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
 import { formatTime } from '~/lib/time'
@@ -105,6 +106,7 @@ const commands = computed<Item[]>(() => {
       run: () => playback.togglePlay(),
     },
     { id: 'cmd:play-link', kind: 'command', label: 'Play a link…', hint: 'Pixeldrain, Gofile, MEGA, Iwara and more', icon: 'i-carbon-link', keywords: 'url stream pixeldrain gofile mega iwara rule34video pmvhaven pornhub twitter yt-dlp paste', run: () => { ui.playLinkOpen = true } },
+    { id: 'cmd:face-window', kind: 'command', label: 'Open face window', hint: 'Kerfus on a second screen', icon: 'i-carbon-screen', keywords: 'kerfus face cat second monitor screen display', run: openFaceWindow },
     { id: 'cmd:next', kind: 'command', label: 'Next video', icon: 'i-carbon-skip-forward', keywords: 'skip forward', kbd: ['N'], run: () => void playback.next() },
     loaded && { id: 'cmd:prev', kind: 'command', label: 'Previous video', icon: 'i-carbon-skip-back', keywords: 'back restart', kbd: ['P'], run: () => void playback.prev() },
     has && { id: 'cmd:random', kind: 'command', label: 'Random scripted video', icon: 'i-carbon-shuffle', keywords: 'surprise any', kbd: ['R'], run: () => {

@@ -45,8 +45,18 @@ enum FaceLayout : uint8_t {
   FACE_LAYOUT_COUNT,
 };
 
+// Which face: the anime eyes this was drawn for first, or Kerfus, the cat
+// robot (BellaBot) in one colour on black.
+enum FaceStyle : uint8_t {
+  STYLE_ANIME,
+  STYLE_KERFUS,
+  STYLE_COUNT,
+};
+
 struct Settings {
   uint8_t mode   = MODE_AUTO;
+  uint8_t style  = STYLE_ANIME;
+  uint8_t kcolor = 0;          // Kerfus colour, see kerfusColorName()
   uint8_t layout = FACE_FULL;
   uint8_t hearts = HEART_AUTO;
   uint8_t theme  = THEME_LIGHT;

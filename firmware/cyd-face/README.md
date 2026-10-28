@@ -64,13 +64,15 @@ covers each case.
 
 ## Settings
 
-Five rows, tapped to cycle, saved to NVS so they survive a power cut.
+Seven rows, tapped to cycle, saved to NVS so they survive a power cut.
 
 | row    | values                             |                                                              |
 | ------ | ---------------------------------- | ------------------------------------------------------------ |
 | mode   | auto / idle / tease / heart / demo | `auto` follows playhound; the rest drive the face themselves |
+| style  | anime / kerfus                     | see **Kerfus** below                                         |
+| face   | full / eyes                        | eyes only, or with the nose, mouth (and whiskers)            |
 | hearts | auto / always / never              | `auto` means hearts once intensity passes 0.72               |
-| theme  | light / dark                       | see **Themes** below                                         |
+| theme  | light / dark                       | see **Themes** below; with Kerfus this row is its colour     |
 | bright | dim / mid / full                   |                                                              |
 | wifi   | on / off                           | takes effect immediately, no reboot                          |
 
@@ -86,6 +88,29 @@ what `light` reproduces. On a dark background a black lash is invisible: the eye
 becomes a white silhouette with bites cut out of it, and the spikes outside the
 eye vanish entirely. `dark` therefore does not simply invert — it lifts the lash
 off the background to a dark violet so the shape still reads.
+
+## Kerfus
+
+The second style is the cat robot face: Pudu's BellaBot, known as Kerfuś from
+Polish shops and as the Kerfur in Voices of the Void. It is drawn in one
+colour (blue, cyan, pink or green) on a dot-matrix black, and wears the
+robot's own expressions:
+
+| state     | Kerfus                                   |
+| --------- | ---------------------------------------- |
+| calm      | ring eyes, the pupils wandering          |
+| focused   | heavy lids, the gaze riding the stroke   |
+| excited   | a wink: `O <`                            |
+| flustered | `> <` with a blush                       |
+| sleepy    | closed, curved lines                     |
+| shocked   | small pupils, raised brows, an "o" mouth |
+| edge      | sad bars with a tear and a frown         |
+| panicked  | eyes shut and the whole face dimmed      |
+
+The mouth opens with the stroke rate, as the anime face's does. The app can
+show the same face on a second monitor (**Face** panel → **Open face window**),
+with no board at all. The drawing is shared with `src/lib/kerfus.ts`; change
+both together.
 
 ## How it connects
 

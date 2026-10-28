@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { FaceExpression, FaceSignals } from '~/lib/faceState'
+import type { KerfusColor } from '~/lib/kerfus'
 import { computed, ref } from 'vue'
+import KerfusFace from '~/components/face/KerfusFace.vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
@@ -9,10 +11,13 @@ import UiSection from '~/components/ui/UiSection.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useFaceLink } from '~/composables/useFaceLink'
+import { faceScreenSettings, openFaceWindow } from '~/composables/useFaceScreen'
 import { RC_PORT, remoteRoom } from '~/composables/useRemoteLink'
 import { toast } from '~/composables/useToast'
 import { FACE_RATE_MAX, FACE_RATE_MIN } from '~/lib/faceState'
+import { KERFUS_COLORS } from '~/lib/kerfus'
 import { remoteEnabled } from '~/stores/remoteStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 
 const face = useFaceLink()
 face.watchPreview()
@@ -84,6 +89,12 @@ const gazeY = computed(() => {
 
 const json = computed(() => (msg.value ? JSON.stringify(msg.value, null, 2) : ''))
 const bytes = computed(() => (json.value ? new TextEncoder().encode(JSON.stringify(msg.value)).length : 0))
+
+// ─── Screen face ─────────────────────────────────────────────────────────────
+const screen = faceScreenSettings()
+const ctl = useSessionControlStore()
+const edging = computed(() => ctl.phase === 'falling' || ctl.phase === 'holding')
+const COLORS = Object.entries(KERFUS_COLORS) as [KerfusColor, string][]
 
 // ─── Sending ─────────────────────────────────────────────────────────────────
 const SIGNALS: { key: keyof FaceSignals, label: string, hint: string }[] = [
@@ -250,6 +261,38 @@ function turnOnRelay() {
         <div class="skeleton rounded-[var(--radius-sm)] h-4" />
         <div class="skeleton rounded-[var(--radius-sm)] h-24" />
       </div>
+    </UiSection>
+
+    <!-- ─── Screen face: Kerfus in a window of its own ───────────────────── -->
+    <UiSection title="Screen face" icon="i-carbon-screen" :live="face.screenOpen.value" :summary="face.screenOpen.value ? 'open' : undefined">
+      <div class="rounded-[var(--radius-lg)] bg-black flex h-[96px] items-center justify-center overflow-hidden">
+        <KerfusFace class="h-full" :msg="msg" :edging="edging" :color="screen.color" />
+      </div>
+      <p class="hint">
+        Kerfus, in a window you can put on a second monitor. It follows the session straight from this window, with no relay
+        or board needed. The desktop app opens it full screen on your other display.
+      </p>
+      <div class="flex gap-2 items-center">
+        <UiButton size="sm" variant="primary" icon="i-carbon-launch" @click="openFaceWindow">
+          Open face window
+        </UiButton>
+        <div class="ml-auto flex gap-1.5" role="radiogroup" aria-label="Colour">
+          <button
+            v-for="[name, hex] in COLORS"
+            :key="name"
+            v-tip="name"
+            type="button"
+            role="radio"
+            :aria-checked="screen.color === name"
+            :aria-label="name"
+            class="focusable rounded-full h-5 w-5 transition-shadow"
+            :class="screen.color === name ? 'ring-2 ring-fg ring-offset-2 ring-offset-surface-850' : 'opacity-70 hover:opacity-100'"
+            :style="{ background: hex }"
+            @click="screen.color = name"
+          />
+        </div>
+      </div>
+      <UiSwitch v-model="screen.led" size="sm" label="Dot-matrix look" hint="Draw it as an LED panel, like the robot's screen" />
     </UiSection>
 
     <!-- ─── What and how often ────────────────────────────────────────────── -->

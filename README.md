@@ -84,7 +84,8 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   yt-dlp, which playhound fetches for you if you want it.
 - **Remotes.** Use a phone over Wi-Fi (big buttons, panic in the thumb zone), a
   gamepad, or an [ESP32 "Cheap Yellow Display"](firmware/cyd-face) face that
-  watches the session and reacts.
+  watches the session and reacts. The face also comes as Kerfus, the cat robot,
+  and can fill a second monitor instead of a board.
 - **Desktop app.** A Windows build with a frameless window. It keeps driving the
   device while minimised, remembers your library folder, and can show Discord
   Rich Presence (off by default).
@@ -248,6 +249,11 @@ model](https://www.thingiverse.com/thing:6310957) (micro-USB board) or [its USB-
 Building it takes the Arduino IDE, four libraries and a short config file; the
 steps are in [firmware/cyd-face](firmware/cyd-face/README.md#building-it). Then
 switch on the **Remote** panel and **Drive the face** in the **Face** panel.
+
+The board has two faces, the original anime eyes and [Kerfus](firmware/cyd-face/README.md#kerfus),
+the cat robot. No board? **Face** panel → **Open face window** (or Ctrl+K →
+_Open face window_) shows Kerfus in a window of its own. The desktop app puts
+it full screen on your second display, and it needs no relay or setup.
 
 ### Around the app
 

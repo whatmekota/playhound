@@ -71,6 +71,7 @@ export const KEYS = {
   remoteRoom: def('ph:remote.room', 'setting', 'Phone remote pairing'),
   remoteEnabled: def('ph:remote.enabled', 'setting', 'Phone remote on/off'),
   faceLink: def('ph:face.link', 'setting', 'CYD face link'),
+  faceScreen: def('ph:face.screen', 'setting', 'Screen face'),
   directorEnabled: def('ph:director.enabled', 'setting', 'Director on/off'),
   panicOnBlur: def('ph:safety.panicOnBlur', 'setting', 'Panic when the window loses focus'),
   idleStopMinutes: def('ph:safety.idleStopMinutes', 'setting', 'Idle device stop'),

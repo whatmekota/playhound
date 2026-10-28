@@ -273,6 +273,32 @@ function fromMainWindow(event) {
     && !!frame && frame === win.webContents.mainFrame && isOurs(frame.url)
 }
 
+/**
+ * The face window (/face): full screen on a display other than the main
+ * window's when there is one, since a second monitor is what it is for, and a
+ * plain window otherwise.
+ */
+function faceWindowOptions() {
+  const here = win ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay()
+  const other = screen.getAllDisplays().find(d => d.id !== here.id)
+  const area = (other ?? here).workArea
+  const width = Math.min(960, area.width)
+  const height = Math.min(600, area.height)
+  return {
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height,
+    fullscreen: !!other,
+    frame: true,
+    autoHideMenuBar: true,
+    backgroundColor: '#000000',
+    title: 'playhound face',
+    icon: iconPath(),
+    webPreferences: { sandbox: true, contextIsolation: true },
+  }
+}
+
 function windowState() {
   return { maximized: !!win?.isMaximized(), fullScreen: !!win?.isFullScreen() }
 }
@@ -348,6 +374,8 @@ function createWindow(url) {
   // External links go to the system browser. Our own pages (the remote's
   // "preview on this machine") open as a small phone-sized window.
   wc.setWindowOpenHandler(({ url: target }) => {
+    if (isOurs(target) && new URL(target).pathname.endsWith('/face'))
+      return { action: 'allow', overrideBrowserWindowOptions: faceWindowOptions() }
     if (isOurs(target)) {
       return {
         action: 'allow',
