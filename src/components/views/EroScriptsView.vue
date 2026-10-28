@@ -131,6 +131,8 @@ function forgetCookie() {
 /** A TypeError from fetch means nothing answered on the proxy port. */
 const proxyDown = ref(false)
 const error = ref<string | null>(null)
+/** The last error was the forum treating us as logged out. */
+const needsSession = ref(false)
 
 async function apiFetch(path: string) {
   const res = await fetch(`${PROXY}${path}`, {
@@ -140,9 +142,16 @@ async function apiFetch(path: string) {
     },
   })
   proxyDown.value = false
+  needsSession.value = false
   if (!res.ok) {
-    throw new Error(res.status === 403
-      ? 'EroScripts refused the request — the session cookie may have expired'
+    // Free Scripts is hidden from logged-out visitors, and Discourse says so
+    // with a 404 rather than a 403: an expired cookie looks like a dead link.
+    const loggedOut = res.status === 403 || (res.status === 404 && /\/c\/|\/latest\.json|\/top\.json|\/tags\//.test(path))
+    needsSession.value = loggedOut
+    throw new Error(loggedOut
+      ? sessionCookie.value
+        ? 'EroScripts treats you as logged out: the session cookie has expired. Paste a fresh one'
+        : 'Free Scripts is only shown to logged-in members: add your EroScripts session cookie'
       : res.status === 502 || res.status === 504
         ? 'Could not reach EroScripts. If it is blocked on your network, set a proxy in Settings → Network'
         : `EroScripts answered HTTP ${res.status}`)
@@ -816,8 +825,8 @@ onBeforeUnmount(() => {
                 <div class="mb-4 px-3 py-2 border border-danger/25 rounded-[var(--radius-md)] bg-danger/8 flex gap-3 items-center">
                   <span class="i-carbon-warning-filled text-danger shrink-0" />
                   <span class="text-[12.5px] text-fg flex-1">{{ error }}</span>
-                  <UiButton v-if="!sessionCookie" size="xs" icon="i-carbon-key" @click="openCookie">
-                    Set session
+                  <UiButton v-if="!sessionCookie || needsSession" size="xs" icon="i-carbon-key" @click="openCookie">
+                    {{ sessionCookie ? 'New session' : 'Set session' }}
                   </UiButton>
                   <UiButton size="xs" variant="ghost" @click="reload">
                     Retry
