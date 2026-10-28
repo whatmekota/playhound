@@ -198,6 +198,15 @@ export interface DesktopInfo {
   window: DesktopWindow | null
   /** Discord Rich Presence, owned by the main process. Null in any other desktop window. */
   presence: DesktopPresence | null
+  /** The app's own EroScripts session. Null in any other desktop window, and in older builds. */
+  eroscripts?: DesktopEroScripts | null
+}
+
+export interface DesktopEroScripts {
+  status: () => Promise<{ signedIn: boolean } | null>
+  login: () => Promise<void>
+  logout: () => Promise<void>
+  onChange: (cb: (s: { signedIn: boolean }) => void) => () => void
 }
 
 export type PresenceStatus = 'off' | 'connecting' | 'connected' | 'no-discord' | 'error'

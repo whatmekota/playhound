@@ -14,6 +14,7 @@ import https from 'node:https'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { Readable } from 'node:stream'
 import { pathToFileURL } from 'node:url'
 import { WebSocketServer } from 'ws'
 import { resolve as resolveLink } from './server/hosts.mjs'
@@ -183,6 +184,45 @@ function handleProxy(req, res) {
   })
 }
 
+// The desktop app's own forum session (see desktop/main.mjs): a Chromium
+// fetch that keeps its cookies, so Discourse's token rotation is handled the
+// way a browser handles it. Null when running from source.
+let esFetch = null
+
+/**
+ * Fetch a forum path through the app's session and stream it back. The body
+ * arrives decompressed, so the encoding and length headers are dropped.
+ */
+async function viaSession(path, reqHeaders, res) {
+  try {
+    const headers = {
+      'Accept': reqHeaders.accept ?? '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': 'https://discuss.eroscripts.com/',
+    }
+    if (reqHeaders.range)
+      headers.Range = reqHeaders.range
+    const upstream = await esFetch(`https://${TARGET}${path}`, { headers, redirect: 'follow' })
+    const skip = new Set(['access-control-allow-origin', 'x-frame-options', 'content-security-policy', 'set-cookie', 'content-encoding', 'content-length', 'transfer-encoding'])
+    const fwd = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges' }
+    for (const [k, v] of upstream.headers) {
+      if (!skip.has(k.toLowerCase()))
+        fwd[k] = v
+    }
+    res.writeHead(upstream.status, fwd)
+    if (!upstream.body)
+      return res.end()
+    Readable.fromWeb(upstream.body).on('error', () => res.destroy()).pipe(res)
+  }
+  catch (err) {
+    console.error('[ES Proxy] Session fetch failed:', err?.message)
+    if (!res.headersSent) {
+      res.writeHead(502)
+      res.end(JSON.stringify({ error: err?.message ?? 'Could not reach EroScripts' }))
+    }
+  }
+}
+
 function handleEroScripts(req, res) {
   const userCookie = req.headers['x-es-cookie'] ?? ''
 
@@ -266,6 +306,11 @@ function handleEroScripts(req, res) {
   }
 
   // ── EroScripts proxy: everything else ─────────────────────────────────────
+  // No pasted cookie and the desktop app's own session available: use it.
+  if (!userCookie && esFetch) {
+    void viaSession(req.url, req.headers, res)
+    return
+  }
   const esHeaders = {
     'Accept-Language': 'en-US,en;q=0.9',
     'Referer': 'https://discuss.eroscripts.com/',
@@ -389,7 +434,9 @@ function listen(server, port, host, name, log) {
  * `ready` resolves once both have either bound or given up; `close()` stops
  * whichever did bind, dropping any connected phones.
  */
-export function startProxy({ log = console, binDir, browserFetch, onProxy } = {}) {
+export function startProxy({ log = console, binDir, browserFetch, onProxy, forumFetch } = {}) {
+  if (forumFetch)
+    esFetch = forumFetch
   if (binDir)
     setBinDir(binDir)
   if (browserFetch)

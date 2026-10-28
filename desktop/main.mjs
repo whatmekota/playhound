@@ -164,6 +164,60 @@ async function applyProxy(ses, proxy) {
   }
 }
 
+// ── EroScripts sign-in ───────────────────────────────────────────────────────
+// The app keeps its own forum session in a persistent partition, signed into
+// through the forum's own login page. Sharing a pasted _t cookie with the
+// browser could not work for long: Discourse swaps the token every few
+// minutes, and whichever side triggered the swap left the other logged out.
+const ES_PARTITION = 'persist:eroscripts'
+const ES_URL = 'https://discuss.eroscripts.com'
+const esSession = () => session.fromPartition(ES_PARTITION)
+let esLoginWin = null
+
+async function esSignedIn() {
+  try {
+    return (await esSession().cookies.get({ url: ES_URL, name: '_t' })).length > 0
+  }
+  catch {
+    return false
+  }
+}
+
+function esNotify(signedIn) {
+  win?.webContents.send('ph:es:session', { signedIn: !!signedIn })
+}
+
+function openEsLogin() {
+  if (esLoginWin && !esLoginWin.isDestroyed()) {
+    esLoginWin.focus()
+    return
+  }
+  esLoginWin = new BrowserWindow({
+    parent: win ?? undefined,
+    width: 520,
+    height: 760,
+    title: 'Sign in to EroScripts',
+    autoHideMenuBar: true,
+    backgroundColor: '#24262b',
+    icon: iconPath(),
+    webPreferences: { partition: ES_PARTITION, sandbox: true, contextIsolation: true },
+  })
+  // Signed in once the forum hands out its session cookie: say so and close.
+  const onCookie = (_event, cookie, _cause, removed) => {
+    if (cookie.name !== '_t' || removed)
+      return
+    esNotify(true)
+    setTimeout(() => esLoginWin?.close(), 900)
+  }
+  esSession().cookies.on('changed', onCookie)
+  esLoginWin.on('closed', () => {
+    esSession().cookies.off('changed', onCookie)
+    esLoginWin = null
+    void esSignedIn().then(esNotify)
+  })
+  void esLoginWin.loadURL(`${ES_URL}/login`)
+}
+
 async function resolverFetch() {
   const ses = session.fromPartition('resolver')
   await applyProxy(ses, envProxy())
@@ -218,6 +272,17 @@ async function boot() {
     const activity = sanitiseActivity(payload?.activity)
     presence.set(validClientId(id) ? id : '', activity)
   })
+  ipcMain.handle('ph:es:status', async event => (fromMainWindow(event) ? { signedIn: await esSignedIn() } : null))
+  ipcMain.handle('ph:es:login', (event) => {
+    if (fromMainWindow(event))
+      openEsLogin()
+  })
+  ipcMain.handle('ph:es:logout', async (event) => {
+    if (!fromMainWindow(event))
+      return
+    await esSession().clearStorageData()
+    esNotify(false)
+  })
   ipcMain.on('ph:bg', (_event, color) => {
     const hex = toHex(color)
     if (!hex || hex === state.bg)
@@ -237,13 +302,17 @@ async function boot() {
     // Chromium. They get their own throwaway session, routed through the same
     // HTTP(S)_PROXY the rest of the resolvers use.
     browserFetch: await resolverFetch(),
+    // Forum requests without a pasted cookie go through the app's own session.
+    forumFetch: (url, init) => esSession().fetch(url, init),
     // Settings → Network changed the proxy (null: back to the environment's or none).
     onProxy: (proxy) => {
       void applyProxy(session.fromPartition('resolver'), proxy)
       void applyProxy(session.defaultSession, proxy)
+      void applyProxy(esSession(), proxy)
     },
   })
   await applyProxy(session.defaultSession, envProxy())
+  await applyProxy(esSession(), envProxy())
 
   let url = DEV ? DEV_URL : APP_URL
   if (!DEV) {

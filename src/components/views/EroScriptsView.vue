@@ -10,6 +10,7 @@ import { downloadPost, downloads } from '~/composables/usePostDownload'
 import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
+import { desktop } from '~/lib/browserApi'
 import { classifyPostScripts, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -129,6 +130,48 @@ function forgetCookie() {
   cookieOpen.value = false
 }
 
+// The desktop app signs in with a session of its own (the forum's own login
+// page, in a window of the app). A pasted cookie is the same session as the
+// browser's, and the two log each other out as Discourse swaps the token.
+const esApp = desktop?.eroscripts ?? null
+/** Signed in through the app: the proxy then uses that session, and no cookie is sent. */
+const appSignedIn = ref(false)
+const signedIn = computed(() => appSignedIn.value || !!sessionCookie.value)
+/** The cookie to send, if any: none once the app has its own session. */
+const cookieHeader = computed((): Record<string, string> => {
+  if (appSignedIn.value || !sessionCookie.value)
+    return {}
+  return { 'X-ES-Cookie': sessionCookie.value }
+})
+let offEsChange: (() => void) | null = null
+onMounted(() => {
+  if (!esApp)
+    return
+  void esApp.status().then((s) => {
+    appSignedIn.value = !!s?.signedIn
+  })
+  offEsChange = esApp.onChange((st) => {
+    const was = appSignedIn.value
+    appSignedIn.value = st.signedIn
+    if (st.signedIn && !was) {
+      cookieOpen.value = false
+      toast.success('Signed in to EroScripts', { icon: 'i-carbon-checkmark', key: 'es-session' })
+      void reload()
+    }
+  })
+})
+onBeforeUnmount(() => offEsChange?.())
+
+function signInHere() {
+  void esApp?.login()
+}
+async function signOutHere() {
+  await esApp?.logout()
+  appSignedIn.value = false
+  cookieOpen.value = false
+  toast('Signed out of EroScripts', { icon: 'i-carbon-logout', key: 'es-session' })
+}
+
 // ─── Proxy ────────────────────────────────────────────────────────────────────
 /** A TypeError from fetch means nothing answered on the proxy port. */
 const proxyDown = ref(false)
@@ -140,7 +183,7 @@ async function apiFetch(path: string) {
   const res = await fetch(`${PROXY}${path}`, {
     headers: {
       Accept: 'application/json',
-      ...(sessionCookie.value ? { 'X-ES-Cookie': sessionCookie.value } : {}),
+      ...cookieHeader.value,
     },
   })
   proxyDown.value = false
@@ -151,9 +194,9 @@ async function apiFetch(path: string) {
     const loggedOut = res.status === 403 || (res.status === 404 && /\/c\/|\/latest\.json|\/top\.json|\/tags\//.test(path))
     needsSession.value = loggedOut
     throw new Error(loggedOut
-      ? sessionCookie.value
-        ? 'EroScripts treats you as logged out: the session cookie has expired. Paste a fresh one'
-        : 'Free Scripts is only shown to logged-in members: add your EroScripts session cookie'
+      ? signedIn.value
+        ? 'EroScripts treats you as logged out: the session has expired. Sign in again'
+        : 'Free Scripts is only shown to logged-in members: sign in to EroScripts'
       : res.status === 502 || res.status === 504
         ? 'Could not reach EroScripts. If it is blocked on your network, set a proxy in Settings → Network'
         : `EroScripts answered HTTP ${res.status}`)
@@ -171,7 +214,7 @@ function fail(e: any, fallback: string) {
 /** Proxy-aware fetch for script and file URLs: only the proxy gets the cookie. */
 function proxyFetch(url: string) {
   return fetch(url, {
-    headers: url.startsWith(PROXY) && sessionCookie.value ? { 'X-ES-Cookie': sessionCookie.value } : {},
+    headers: url.startsWith(PROXY) ? cookieHeader.value : {},
   })
 }
 
@@ -796,9 +839,9 @@ onBeforeUnmount(() => {
       </div>
       <div class="flex shrink-0 gap-1.5 items-center">
         <UiButton size="md" variant="ghost" icon="i-carbon-key" @click="openCookie">
-          {{ sessionCookie ? 'Session' : 'Sign in' }}
-          <UiBadge :tone="sessionCookie ? 'ok' : 'warn'" size="xs" dot>
-            {{ sessionCookie ? 'set' : 'needed' }}
+          {{ signedIn ? 'Session' : 'Sign in' }}
+          <UiBadge :tone="signedIn ? 'ok' : 'warn'" size="xs" dot>
+            {{ appSignedIn ? 'signed in' : sessionCookie ? 'cookie' : 'needed' }}
           </UiBadge>
         </UiButton>
         <UiIconButton icon="i-carbon-renew" label="Refresh" size="md" :disabled="busy" @click="reload" />
@@ -912,8 +955,8 @@ onBeforeUnmount(() => {
                 <div class="mb-4 px-3 py-2 border border-danger/25 rounded-[var(--radius-md)] bg-danger/8 flex gap-3 items-center">
                   <span class="i-carbon-warning-filled text-danger shrink-0" />
                   <span class="text-[12.5px] text-fg flex-1">{{ error }}</span>
-                  <UiButton v-if="!sessionCookie || needsSession" size="xs" icon="i-carbon-key" @click="openCookie">
-                    {{ sessionCookie ? 'New session' : 'Set session' }}
+                  <UiButton v-if="!signedIn || needsSession" size="xs" icon="i-carbon-key" @click="openCookie">
+                    {{ signedIn ? 'Sign in again' : 'Sign in' }}
                   </UiButton>
                   <UiButton size="xs" variant="ghost" @click="reload">
                     Retry
@@ -1324,24 +1367,75 @@ onBeforeUnmount(() => {
     <!-- Session cookie -->
     <UiModal v-model:open="cookieOpen" title="EroScripts session" subtitle="Lets the proxy fetch posts and files as you." icon="i-carbon-key" width="480px">
       <div class="flex flex-col gap-4">
-        <ol class="text-[12.5px] text-fg-muted leading-relaxed flex flex-col gap-1.5">
-          <li class="flex gap-2.5">
-            <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">1</span>
-            <span>Open <button type="button" class="text-accent-300 hover:underline" @click="openExternal(BASE)">discuss.eroscripts.com</button> and log in.</span>
-          </li>
-          <li class="flex gap-2.5">
-            <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">2</span>
-            <span>Press <UiKbd>F12</UiKbd> → Application → Cookies → <code class="text-[12px] font-mono">discuss.eroscripts.com</code>.</span>
-          </li>
-          <li class="flex gap-2.5">
-            <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">3</span>
-            <span>Copy the value of <code class="text-[12px] font-mono">_t</code> and paste it here. The <code class="text-[12px] font-mono">_t=</code> prefix is optional.</span>
-          </li>
-        </ol>
-        <UiInput v-model="cookieDraft" mono size="md" placeholder="Paste the _t value" autofocus @enter="saveCookie" />
-        <p class="hint">
-          Stored in this browser only. It expires after about a month; come back here when posts stop loading.
-        </p>
+        <div v-if="esApp" class="p-3 card flex flex-col gap-2.5">
+          <div class="flex gap-3 items-center">
+            <span class="rounded-[var(--radius-md)] center shrink-0 h-9 w-9" :class="appSignedIn ? 'bg-ok/12 text-ok' : 'bg-accent-soft text-accent-300'">
+              <span :class="appSignedIn ? 'i-carbon-checkmark-outline' : 'i-carbon-login'" class="text-[18px]" />
+            </span>
+            <div class="flex flex-1 flex-col min-w-0">
+              <span class="text-[13px] text-fg font-medium">{{ appSignedIn ? 'Signed in' : 'Sign in to EroScripts' }}</span>
+              <span class="hint">{{ appSignedIn ? 'playhound has its own session, separate from your browser.' : 'Opens the forum login page in a window of the app.' }}</span>
+            </div>
+            <UiButton v-if="appSignedIn" size="sm" variant="ghost" @click="signOutHere">
+              Sign out
+            </UiButton>
+            <UiButton v-else size="sm" variant="primary" icon="i-carbon-login" @click="signInHere">
+              Sign in
+            </UiButton>
+          </div>
+          <p v-if="!appSignedIn" class="hint">
+            The app keeps a session of its own and refreshes it like a browser does, so it stays signed in and never
+            logs your browser out. A pasted cookie is your browser's session, and the forum ends up logging one of
+            the two out.
+          </p>
+        </div>
+        <details v-if="esApp">
+          <summary class="text-[12px] text-fg-muted cursor-pointer select-none hover:text-fg">
+            Or paste a session cookie instead
+          </summary>
+          <div class="pt-3 flex flex-col gap-4">
+            <ol class="text-[12.5px] text-fg-muted leading-relaxed flex flex-col gap-1.5">
+              <li class="flex gap-2.5">
+                <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">1</span>
+                <span>Open <button type="button" class="text-accent-300 hover:underline" @click="openExternal(BASE)">discuss.eroscripts.com</button> and log in.</span>
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">2</span>
+                <span>Press <UiKbd>F12</UiKbd> → Application → Cookies → <code class="text-[12px] font-mono">discuss.eroscripts.com</code>.</span>
+              </li>
+              <li class="flex gap-2.5">
+                <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">3</span>
+                <span>Copy the value of <code class="text-[12px] font-mono">_t</code> and paste it here. The <code class="text-[12px] font-mono">_t=</code> prefix is optional.</span>
+              </li>
+            </ol>
+            <UiInput v-model="cookieDraft" mono size="md" placeholder="Paste the _t value" :autofocus="!esApp" @enter="saveCookie" />
+            <p class="hint">
+              Stored on this computer only. It can expire at any time, since the forum replaces it as your browser
+              uses it; come back here when posts stop loading.
+            </p>
+          </div>
+        </details>
+        <template v-else>
+          <ol class="text-[12.5px] text-fg-muted leading-relaxed flex flex-col gap-1.5">
+            <li class="flex gap-2.5">
+              <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">1</span>
+              <span>Open <button type="button" class="text-accent-300 hover:underline" @click="openExternal(BASE)">discuss.eroscripts.com</button> and log in.</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">2</span>
+              <span>Press <UiKbd>F12</UiKbd> → Application → Cookies → <code class="text-[12px] font-mono">discuss.eroscripts.com</code>.</span>
+            </li>
+            <li class="flex gap-2.5">
+              <span class="text-[11px] text-accent-300 font-semibold rounded-full bg-accent-soft center shrink-0 h-5 w-5">3</span>
+              <span>Copy the value of <code class="text-[12px] font-mono">_t</code> and paste it here. The <code class="text-[12px] font-mono">_t=</code> prefix is optional.</span>
+            </li>
+          </ol>
+          <UiInput v-model="cookieDraft" mono size="md" placeholder="Paste the _t value" :autofocus="!esApp" @enter="saveCookie" />
+          <p class="hint">
+            Stored on this computer only. It can expire at any time, since the forum replaces it as your browser
+            uses it; come back here when posts stop loading.
+          </p>
+        </template>
       </div>
       <template #footer>
         <UiButton v-if="sessionCookie" variant="ghost" class="mr-auto" @click="forgetCookie">
@@ -1351,7 +1445,7 @@ onBeforeUnmount(() => {
           Cancel
         </UiButton>
         <UiButton variant="primary" :disabled="!cookieDraft.trim()" @click="saveCookie">
-          Save
+          Save cookie
         </UiButton>
       </template>
     </UiModal>

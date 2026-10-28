@@ -80,6 +80,39 @@ const presenceApi = presenceStatus
     })
   : null
 
+// ── EroScripts sign-in (main window only) ───────────────────────────────────
+// The app's own forum session; the main process opens the login window.
+const esListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:es:session', (_event, s) => {
+    for (const cb of esListeners) {
+      try {
+        cb({ signedIn: !!s?.signedIn })
+      }
+      catch (err) {
+        console.error('[playhound] EroScripts session listener failed', err)
+      }
+    }
+  })
+}
+const eroscriptsApi = winState
+  ? Object.freeze({
+      /** { signedIn } of the app's own forum session. */
+      status: () => ipcRenderer.invoke('ph:es:status'),
+      /** Open the forum's login page in a window of the app. */
+      login: () => ipcRenderer.invoke('ph:es:login'),
+      /** Forget the app's forum session. */
+      logout: () => ipcRenderer.invoke('ph:es:logout'),
+      /** Calls `cb({ signedIn })` when signing in or out; returns an unsubscribe. */
+      onChange: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        esListeners.add(cb)
+        return () => void esListeners.delete(cb)
+      },
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -92,6 +125,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   lan: Object.freeze(info.lan.map(a => Object.freeze({ ...a }))),
   window: windowApi,
   presence: presenceApi,
+  eroscripts: eroscriptsApi,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the
