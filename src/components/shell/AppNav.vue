@@ -30,7 +30,23 @@ onMounted(() => {
   measure()
   document.fonts?.ready.then(measure)
 })
-watch(() => [ui.view, ui.navExpanded], () => nextTick(measure))
+watch(() => ui.view, () => nextTick(measure))
+
+// Expanding or collapsing animates the group headings' height for 200ms and
+// the nav's width for 300ms, which moves every item after a single
+// measurement: keep measuring each frame until it has all settled.
+let followUntil = 0
+function follow() {
+  measure()
+  if (performance.now() < followUntil)
+    requestAnimationFrame(follow)
+}
+watch(() => ui.navExpanded, () => {
+  const running = performance.now() < followUntil
+  followUntil = performance.now() + 450
+  if (!running)
+    requestAnimationFrame(follow)
+})
 
 /** The player icon shows a live equaliser while something is playing. */
 const playing = computed(() => player.isPlaying)
