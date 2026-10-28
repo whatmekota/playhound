@@ -211,17 +211,39 @@ The ones you'll use most:
 | B · S            | bookmark here · star the video                      |
 | **Esc** or **`** | **panic**: stop everything and cover the screen     |
 
-### Streaming from links
+### The EroScripts browser
 
-Open a post in the **EroScripts** view and its video links are resolved as soon
-as it loads: pick a video (a folder can hold several) and a quality, then
-**Play** or **Play + scripts**. Anywhere else, **Ctrl+K → Play a link…** takes
-any link you paste.
+The **EroScripts** view browses the forum's Free Scripts from inside the app, and
+turns a post into something you can play: its video, its scripts, together.
 
-The scripts come with the video because they are in the same post: their names
-don't have to match the video's, which on file hosts they rarely do. Each
-script's axis is read from its siblings (`Song.roll` next to `Song`), and a post
-with several videos gives each one the set whose name fits it best.
+**Browsing.** Latest, Top and Hot, filtered by tag, or search; as a grid of
+covers or a compact list. Star a post to keep it under **Saved**, with your
+own data (Backup carries it), and come back to it later.
+
+**Signing in.** The forum only shows Free Scripts to members, so the view needs
+your session: the key button walks you through copying the `_t` cookie from
+your browser. It is kept on this computer and only ever sent to the forum,
+through the local proxy. When it expires, the view says so and asks for a fresh
+one.
+
+**A post** shows its scripts with the axis each one drives (`L0`, `R1`…).
+Save any of them, or load one onto whatever is playing.
+Scripts inside a Pixeldrain folder are found too. Its video links are resolved
+as soon as it opens: pick a video (a folder can hold several) and a quality,
+then:
+
+- **Play with N scripts** (or **Play + scripts** on one source) streams the
+  video with the post's scripts loaded. Their names don't have to match the
+  video's, which on file hosts they rarely do: each script's axis is read from
+  its siblings (`Song.roll` next to `Song`), and a post with several videos
+  gives each one the set whose name fits it best.
+- **Download** saves the video and those scripts into your library folder (or
+  a folder you pick once), all under the video's name, so the library pairs
+  them the moment they land: `Name.mp4`, `Name.funscript`,
+  `Name.roll.funscript`. Nothing is overwritten: a name that is taken gets
+  ` (2)`. HLS sources (some Pornhub videos) can play but not be saved yet.
+
+Anywhere else, **Ctrl+K → Play a link…** takes any link you paste.
 
 | Host                                                   | Tried and working | How                                                                                                                                             |
 | ------------------------------------------------------ | :---------------: | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -231,19 +253,10 @@ with several videos gives each one the set whose name fits it best.
 | X                                                      |                   | yt-dlp, but age-restricted posts only show video to logged-in users                                                                             |
 | rule34.xxx, Bunkr                                      |         ✗         | rule34.xxx sits behind a Cloudflare check, and yt-dlp has no Bunkr support                                                                      |
 
-**Download** next to a source saves the video and the post's scripts into your
-library folder (or a folder you pick once), all under the video's name, so the
-library pairs them the moment they land: `Name.mp4`, `Name.funscript`,
-`Name.roll.funscript`. Nothing is overwritten: a name that is taken gets
-` (2)`. HLS sources (some Pornhub videos) can play but not be saved yet.
-
-Star a post to keep it under **Saved**, with the rest of your own data (Backup
-carries it): open it later to stream the video again or download it.
-
-Streams go through the small local proxy the Windows app runs (or
-`start.bat` / `pnpm dev:proxy` from source). If some of these sites are blocked
-where you are, put an HTTP proxy in **Settings → Network**: the forum,
-streaming and yt-dlp all go through it. Left empty, playhound uses
+Everything goes through the small local proxy the Windows app runs (or
+`start.bat` / `pnpm dev:proxy` from source). If the forum or one of these sites
+is blocked where you are, put an HTTP proxy in **Settings → Network**: the
+forum, streaming and yt-dlp all go through it. Left empty, playhound uses
 `HTTPS_PROXY` from your system if it is set. Anonymous MEGA has a transfer
 quota per connection.
 
@@ -286,8 +299,9 @@ it full screen on your second display, and it needs no relay or setup.
   to suit the moment.
 - **Organizer:** rename a video and all its scripts together, keeping the
   axis suffixes.
-- **EroScripts:** browse the forum and resolve download links (needs your own
-  session cookie and the proxy).
+- **EroScripts:** browse Free Scripts, play a post's video with its scripts,
+  download both under one name, save posts for later (see
+  [The EroScripts browser](#the-eroscripts-browser)).
 - **Stats:** watch time, plays, finishes and edges, per video and per day.
 - **Themes:** dark, light, Catppuccin and Dracula, plus a choice of logos.
 
