@@ -44,7 +44,7 @@ catalogs:
     vue-tsc: ^3.2.5
   frontend:
     '@vueuse/core': ^14.2.1
-    buttplug: ^4.0.0
+    buttplug: ^5.0.2
     hls.js: 1.7.3
     osr-emu: ^0.7.0
     pinia: ^3.0.3
