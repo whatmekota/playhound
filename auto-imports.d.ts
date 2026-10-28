@@ -6,6 +6,7 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const DownloadJob: typeof import('./src/composables/usePostDownload').DownloadJob
   const EffectScope: typeof import('vue').EffectScope
   const FACE_CHANNEL: typeof import('./src/composables/useFaceScreen').FACE_CHANNEL
   const KNOB_STEP: typeof import('./src/composables/useSessionActions').KNOB_STEP
@@ -51,6 +52,8 @@ declare global {
   const definePage: typeof import('vue-router/experimental').definePage
   const defineStore: typeof import('pinia').defineStore
   const dismissToast: typeof import('./src/composables/useToast').dismissToast
+  const downloadPost: typeof import('./src/composables/usePostDownload').downloadPost
+  const downloads: typeof import('./src/composables/usePostDownload').downloads
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
   const extendRef: typeof import('@vueuse/core').extendRef
@@ -425,6 +428,9 @@ declare global {
   export type { NetProxyInfo } from './src/composables/useNetProxy'
   import('./src/composables/useNetProxy')
   // @ts-ignore
+  export type { DownloadRequest } from './src/composables/usePostDownload'
+  import('./src/composables/usePostDownload')
+  // @ts-ignore
   export type { RemoteAction, RemoteEdge, RemoteState } from './src/composables/useRemoteLink'
   import('./src/composables/useRemoteLink')
   // @ts-ignore
@@ -458,6 +464,7 @@ import { UnwrapRef } from 'vue'
 declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
+    readonly DownloadJob: UnwrapRef<typeof import('./src/composables/usePostDownload')['DownloadJob']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly FACE_CHANNEL: UnwrapRef<typeof import('./src/composables/useFaceScreen')['FACE_CHANNEL']>
     readonly KNOB_STEP: UnwrapRef<typeof import('./src/composables/useSessionActions')['KNOB_STEP']>
@@ -503,6 +510,8 @@ declare module 'vue' {
     readonly definePage: UnwrapRef<typeof import('vue-router/experimental')['definePage']>
     readonly defineStore: UnwrapRef<typeof import('pinia')['defineStore']>
     readonly dismissToast: UnwrapRef<typeof import('./src/composables/useToast')['dismissToast']>
+    readonly downloadPost: UnwrapRef<typeof import('./src/composables/usePostDownload')['downloadPost']>
+    readonly downloads: UnwrapRef<typeof import('./src/composables/usePostDownload')['downloads']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>

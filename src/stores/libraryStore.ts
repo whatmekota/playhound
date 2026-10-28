@@ -331,6 +331,33 @@ export const useLibraryStore = defineStore('library', () => {
     clear()
   }
 
+  /**
+   * The library folder, writable, for saving downloads into. Must be called
+   * from a click: the first time it shows the browser's permission prompt.
+   * Null without a folder, or when the user says no.
+   */
+  async function writableFolder(): Promise<FileSystemDirectoryHandle | null> {
+    let handle: FileSystemDirectoryHandle | null | undefined = watchedHandle
+    if (!handle) {
+      try {
+        handle = await handleDb.get(HANDLE_KEY)
+      }
+      catch {}
+    }
+    const h = handle as any
+    if (!h || !('queryPermission' in h))
+      return null
+    try {
+      let perm = await h.queryPermission({ mode: 'readwrite' })
+      if (perm !== 'granted')
+        perm = await h.requestPermission({ mode: 'readwrite' })
+      return perm === 'granted' ? handle! : null
+    }
+    catch {
+      return null
+    }
+  }
+
   async function rescan() {
     if (!watchedHandle)
       return
@@ -388,6 +415,7 @@ export const useLibraryStore = defineStore('library', () => {
     reconnect,
     forgetFolder,
     rescan,
+    writableFolder,
     startWatching,
     stopWatching,
   }

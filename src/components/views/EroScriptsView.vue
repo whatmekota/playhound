@@ -6,6 +6,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { useFunscript } from '~/composables/useFunscript'
+import { downloadPost, downloads } from '~/composables/usePostDownload'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
 import { classifyPostScripts, scriptsForVideo } from '~/lib/postScripts'
@@ -608,6 +609,29 @@ function scriptsFor(topic: ESTopic, link: VideoLink): { entry: FunscriptEntry, s
   return picked.map(p => ({ entry: all.find(e => e.filename === p.filename)!, suffix: p.suffix }))
 }
 
+/**
+ * The scripts' files, in the order given. A free Pixeldrain account gets one
+ * download at a time, so those go one by one with a pause to let the
+ * connection close; the rest in parallel.
+ */
+async function fetchScriptsInOrder(entries: FunscriptEntry[], onEach?: () => void): Promise<File[]> {
+  const out: File[] = Array.from({ length: entries.length })
+  await Promise.all(entries.map(async (e, i) => {
+    if (!isPd(e.url)) {
+      out[i] = await fetchScript(e)
+      onEach?.()
+    }
+  }))
+  const pd = entries.map((e, i) => [e, i] as const).filter(([e]) => isPd(e.url))
+  for (const [k, [e, i]] of pd.entries()) {
+    out[i] = await fetchScript(e)
+    onEach?.()
+    if (k < pd.length - 1)
+      await wait(300)
+  }
+  return out
+}
+
 async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
   const chosen = withScripts ? scriptsFor(topic, link) : []
   const entries = chosen.map(c => c.entry)
@@ -619,32 +643,14 @@ async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
       throw new Error(link.state === 'needs-ytdlp' ? 'This site needs yt-dlp — get it from the source below' : (link.error ?? 'No stream for this source'))
 
     if (entries.length) {
-      // A free Pixeldrain account gets one download at a time, so those go one
-      // by one with a pause to let the connection close; the rest in parallel.
-      const files: File[] = []
-      const step = () => {
+      job.value.step = `Downloading scripts · 0 of ${entries.length}`
+      const files = await fetchScriptsInOrder(entries, () => {
         job.value!.done++
         job.value!.step = `Downloading scripts · ${job.value!.done} of ${entries.length}`
-      }
-      job.value.step = `Downloading scripts · 0 of ${entries.length}`
-      const suffixes: string[] = []
-      files.push(...await Promise.all(chosen.filter(c => !isPd(c.entry.url)).map(async (c) => {
-        const f = await fetchScript(c.entry)
-        step()
-        return f
-      })))
-      suffixes.push(...chosen.filter(c => !isPd(c.entry.url)).map(c => c.suffix))
-      const pd = chosen.filter(c => isPd(c.entry.url))
-      for (const [i, c] of pd.entries()) {
-        files.push(await fetchScript(c.entry))
-        suffixes.push(c.suffix)
-        step()
-        if (i < pd.length - 1)
-          await wait(300)
-      }
-      await loadScriptFiles(files, '', suffixes)
+      })
+      await loadScriptFiles(files, '', chosen.map(c => c.suffix))
       // Let Pixeldrain release the download slot before the video asks for one.
-      if (pd.length && link.host.id === 'pixeldrain')
+      if (entries.some(e => isPd(e.url)) && link.host.id === 'pixeldrain')
         await wait(500)
     }
 
@@ -666,6 +672,52 @@ async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
       if (job.value?.topicId === topic.id)
         job.value = null
     }, 600)
+  }
+}
+
+// ─── Saving ───────────────────────────────────────────────────────────────────
+const dlKey = (link: VideoLink) => `${link.originalUrl}#${link.item}`
+const dlJob = (link: VideoLink) => downloads.get(dlKey(link))
+const dlActive = (link: VideoLink) => ['scripts', 'video'].includes(dlJob(link)?.phase ?? '')
+function dlTip(topic: ESTopic, link: VideoLink) {
+  if (chosenSource(link)?.kind === 'hls')
+    return 'This source streams in pieces (HLS), which cannot be saved as one file yet'
+  return scriptsFor(topic, link).length ? 'Save the video and its scripts, all under the video\'s name' : 'Save the video'
+}
+
+/** Save the video with its scripts, all under the video's name, so the library pairs them. */
+async function download(topic: ESTopic, link: VideoLink) {
+  const source = chosenSource(link)
+  if (!source || dlActive(link))
+    return
+  const chosen = scriptsFor(topic, link)
+  const title = chosenTitle(link, topic.title)
+  const key = dlKey(link)
+  const job = await downloadPost({
+    key,
+    title,
+    source,
+    scripts: chosen.map(c => ({ filename: c.entry.filename, base: '', suffix: c.suffix })),
+    fetchScripts: async () => {
+      const files = await fetchScriptsInOrder(chosen.map(c => c.entry))
+      if (chosen.some(c => isPd(c.entry.url)) && link.host.id === 'pixeldrain')
+        await wait(500)
+      return files
+    },
+  })
+  if (job.phase === 'done') {
+    toast.success(chosen.length ? `Saved with ${chosen.length} script${chosen.length === 1 ? '' : 's'}` : 'Saved', {
+      detail: `${title} · in ${job.folder}`,
+      icon: 'i-carbon-download',
+      key: `es-dl-${key}`,
+    })
+    downloads.delete(key)
+  }
+  else if (job.error === 'Cancelled') {
+    downloads.delete(key)
+  }
+  else {
+    toast.error('Could not save that', { detail: job.error, key: `es-dl-${key}` })
   }
 }
 
@@ -1114,9 +1166,38 @@ onBeforeUnmount(() => {
                     >
                       Play + scripts
                     </UiButton>
+                    <UiButton
+                      v-if="vl.state === 'ready'"
+                      v-tip="dlTip(openTopic, vl)"
+                      size="xs"
+                      variant="ghost"
+                      icon="i-carbon-download"
+                      :disabled="dlActive(vl) || chosenSource(vl)?.kind === 'hls'"
+                      @click="download(openTopic, vl)"
+                    >
+                      Download
+                    </UiButton>
                     <UiButton size="xs" variant="ghost" icon-right="i-carbon-launch" class="ml-auto" @click="openExternal(vl.originalUrl)">
                       Open
                     </UiButton>
+                  </div>
+
+                  <!-- Saving -->
+                  <div v-if="dlJob(vl)" class="px-2.5 py-2 border-t border-edge flex flex-col gap-1.5">
+                    <div class="text-[11.5px] flex gap-2 items-center">
+                      <span class="flex-1 truncate" :class="dlJob(vl)!.phase === 'error' ? 'text-danger' : 'text-fg-muted'">
+                        <template v-if="dlJob(vl)!.phase === 'scripts'">Fetching the scripts…</template>
+                        <template v-else-if="dlJob(vl)!.phase === 'video'">
+                          Saving to {{ dlJob(vl)!.folder }} · <span class="num">{{ fmtSize(dlJob(vl)!.received) }}<template v-if="dlJob(vl)!.total"> of {{ fmtSize(dlJob(vl)!.total!) }}</template></span>
+                        </template>
+                        <template v-else-if="dlJob(vl)!.phase === 'error'">{{ dlJob(vl)!.error }}</template>
+                      </span>
+                      <UiButton v-if="dlActive(vl)" size="xs" variant="ghost" @click="dlJob(vl)!.cancel()">
+                        Cancel
+                      </UiButton>
+                      <UiIconButton v-else icon="i-carbon-close" label="Dismiss" size="xs" @click="downloads.delete(dlKey(vl))" />
+                    </div>
+                    <UiProgress v-if="dlActive(vl)" :value="dlJob(vl)!.phase === 'video' && dlJob(vl)!.total ? dlJob(vl)!.received / dlJob(vl)!.total! : undefined" />
                   </div>
                 </div>
               </section>
