@@ -220,11 +220,14 @@ turns a post into something you can play: its video, its scripts, together.
 covers or a compact list. Star a post to keep it under **Saved**, with your
 own data (Backup carries it), and come back to it later.
 
-**Signing in.** The forum only shows Free Scripts to members, so the view needs
-your session: the key button walks you through copying the `_t` cookie from
-your browser. It is kept on this computer and only ever sent to the forum,
-through the local proxy. When it expires, the view says so and asks for a fresh
-one.
+**Signing in.** The forum only shows Free Scripts to members. In the Windows
+app, **Sign in** opens the forum's own login page in a window of the app, and
+playhound keeps a session of its own, refreshed the way a browser refreshes
+it, so it stays signed in and never logs your browser out. From source, paste
+your browser's `_t` cookie instead (the dialog shows where to find it): it is
+kept on this computer and only sent to the forum through the local proxy, but
+it is your browser's session, and the forum replaces it often, so expect to
+paste it again now and then.
 
 **A post** shows its scripts with the axis each one drives (`L0`, `R1`…).
 Save any of them, or load one onto whatever is playing.
