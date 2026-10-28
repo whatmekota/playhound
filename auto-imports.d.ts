@@ -85,6 +85,9 @@ declare global {
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
   const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
+  const netProxy: typeof import('./src/composables/useNetProxy').netProxy
+  const netProxyError: typeof import('./src/composables/useNetProxy').netProxyError
+  const netProxyInfo: typeof import('./src/composables/useNetProxy').netProxyInfo
   const nextTick: typeof import('vue').nextTick
   const number: typeof import('./src/composables/useTCode').number
   const onActivated: typeof import('vue').onActivated
@@ -131,6 +134,7 @@ declare global {
   const refManualReset: typeof import('@vueuse/core').refManualReset
   const refThrottled: typeof import('@vueuse/core').refThrottled
   const refWithControl: typeof import('@vueuse/core').refWithControl
+  const refreshNetProxy: typeof import('./src/composables/useNetProxy').refreshNetProxy
   const refreshYtdlp: typeof import('./src/composables/useStreams').refreshYtdlp
   const releaseToast: typeof import('./src/composables/useToast').releaseToast
   const remoteRoom: typeof import('./src/composables/useRemoteLink').remoteRoom
@@ -146,6 +150,7 @@ declare global {
   const shallowReadonly: typeof import('vue').shallowReadonly
   const shallowRef: typeof import('vue').shallowRef
   const snapRect: typeof import('./src/composables/wallGeometry').snapRect
+  const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
   const storeToRefs: typeof import('pinia').storeToRefs
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
@@ -417,6 +422,9 @@ declare global {
   export type { MediaKind } from './src/composables/useMediaDrop'
   import('./src/composables/useMediaDrop')
   // @ts-ignore
+  export type { NetProxyInfo } from './src/composables/useNetProxy'
+  import('./src/composables/useNetProxy')
+  // @ts-ignore
   export type { RemoteAction, RemoteEdge, RemoteState } from './src/composables/useRemoteLink'
   import('./src/composables/useRemoteLink')
   // @ts-ignore
@@ -529,6 +537,9 @@ declare module 'vue' {
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
+    readonly netProxy: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxy']>
+    readonly netProxyError: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxyError']>
+    readonly netProxyInfo: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxyInfo']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly number: UnwrapRef<typeof import('./src/composables/useTCode')['number']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
@@ -575,6 +586,7 @@ declare module 'vue' {
     readonly refManualReset: UnwrapRef<typeof import('@vueuse/core')['refManualReset']>
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
+    readonly refreshNetProxy: UnwrapRef<typeof import('./src/composables/useNetProxy')['refreshNetProxy']>
     readonly refreshYtdlp: UnwrapRef<typeof import('./src/composables/useStreams')['refreshYtdlp']>
     readonly releaseToast: UnwrapRef<typeof import('./src/composables/useToast')['releaseToast']>
     readonly remoteRoom: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteRoom']>
@@ -590,6 +602,7 @@ declare module 'vue' {
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
+    readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
