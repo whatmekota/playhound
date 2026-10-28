@@ -138,6 +138,20 @@ const presence = createPresence((status, detail) => {
     win.webContents.send('ph:presence:status', presenceStatus)
 })
 
+/** A fetch on Chromium's network stack, through HTTP(S)_PROXY if one is set. */
+async function resolverFetch() {
+  const ses = session.fromPartition('resolver')
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
+  if (proxy) {
+    try {
+      await ses.setProxy({ proxyRules: new URL(proxy).host, proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>' })
+    }
+    catch (err) {
+      console.warn('[playhound] Ignoring an unreadable HTTP(S)_PROXY:', err.message)
+    }
+  }
+  return (url, init) => ses.fetch(url, init)
+}
 async function boot() {
   Menu.setApplicationMenu(null)
 
@@ -198,7 +212,15 @@ async function boot() {
 
   // Relay + EroScripts proxy. A busy port only means another copy (usually
   // `pnpm dev:proxy`) is already serving it, which is just as good.
-  proxy = startProxy({ log: console })
+  proxy = startProxy({
+    log: console,
+    // yt-dlp, when the user lets playhound fetch it, lives with the app's data.
+    binDir: path.join(app.getPath('userData'), 'bin'),
+    // Some stream APIs sit behind Cloudflare, which turns Node away but not
+    // Chromium. They get their own throwaway session, routed through the same
+    // HTTP(S)_PROXY the rest of the resolvers use.
+    browserFetch: await resolverFetch(),
+  })
 
   let url = DEV ? DEV_URL : APP_URL
   if (!DEV) {

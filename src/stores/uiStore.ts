@@ -55,6 +55,8 @@ export const useUiStore = defineStore('ui', () => {
   const paletteOpen = ref(false)
   const shortcutsOpen = ref(false)
   const settingsOpen = ref(false)
+  /** "Play a link…": paste a link to stream. */
+  const playLinkOpen = ref(false)
   /** A file is being dragged over the window. */
   const dragging = ref(false)
 
@@ -162,6 +164,7 @@ export const useUiStore = defineStore('ui', () => {
     paletteOpen,
     shortcutsOpen,
     settingsOpen,
+    playLinkOpen,
     dragging,
     drawerOpen,
     onPlayer,

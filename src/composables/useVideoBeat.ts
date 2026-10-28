@@ -75,8 +75,14 @@ let videoEl: HTMLVideoElement | null = null
 let videoSrc = ''
 
 function playingVideo(): HTMLVideoElement | null {
-  if (videoEl?.isConnected && (!videoSrc || videoEl.src === videoSrc))
+  if (videoEl?.isConnected && (!videoSrc || videoEl.src === videoSrc || videoEl.hasAttribute('data-ph-main')))
     return videoEl
+  // The player marks its own <video>; with an HLS stream its src is a blob.
+  const main = document.querySelector<HTMLVideoElement>('video[data-ph-main]')
+  if (main) {
+    videoEl = main
+    return main
+  }
   const all = Array.from(document.querySelectorAll('video'))
   videoEl = all.find(v => v.src === videoSrc) ?? all[0] ?? null
   return videoEl
@@ -350,7 +356,7 @@ export function useVideoBeat() {
         stop()
         return
       }
-      const el = document.querySelector('video')
+      const el = document.querySelector<HTMLVideoElement>('video[data-ph-main]') ?? document.querySelector('video')
       if (el)
         start(el)
     },

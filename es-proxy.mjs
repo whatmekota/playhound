@@ -16,6 +16,10 @@ import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { WebSocketServer } from 'ws'
+import { resolve as resolveLink } from './server/hosts.mjs'
+import { register, serveMedia } from './server/media.mjs'
+import { setBrowserFetch } from './server/net.mjs'
+import { install as installYtdlp, setBinDir, status as ytdlpStatus } from './server/ytdlp.mjs'
 
 export const PORT = 7071
 export const RC_PORT = 7072
@@ -78,13 +82,76 @@ function makeRequest(hostname, path, reqHeaders, res, depth = 0) {
   proxyReq.end()
 }
 
+// The stream endpoints fetch whatever link they are given and can install
+// yt-dlp, so only the app itself (served from localhost) may call them; a page
+// elsewhere on the web could otherwise use the proxy through the browser.
+// A <video> element sends no Origin at all, which is fine for /media.
+const APP_ORIGIN = /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/
+
+function sendJson(res, status, body) {
+  if (!res.headersSent)
+    res.writeHead(status, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(body))
+}
+
+/** /resolve, /media and /ytdlp. Returns true when it handled the request. */
+async function handleStreams(req, res) {
+  const url = new URL(req.url, 'http://localhost')
+  const isMedia = url.pathname.startsWith('/media/')
+  if (!isMedia && !['/resolve', '/ytdlp/status', '/ytdlp/install'].includes(url.pathname))
+    return false
+  const origin = req.headers.origin
+  if (origin ? !APP_ORIGIN.test(origin) : !isMedia) {
+    sendJson(res, 403, { error: 'Only playhound itself may use this' })
+    return true
+  }
+  if (isMedia)
+    return serveMedia(req, res)
+
+  try {
+    if (url.pathname === '/ytdlp/status') {
+      sendJson(res, 200, await ytdlpStatus())
+    }
+    else if (url.pathname === '/ytdlp/install') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'POST only' })
+      }
+      else {
+        await installYtdlp()
+        sendJson(res, 200, await ytdlpStatus())
+      }
+    }
+    else {
+      // /resolve?url=…: swap each source's target for a /media URL on this proxy.
+      const out = await resolveLink(url.searchParams.get('url') ?? '')
+      for (const item of out.items)
+        item.sources = item.sources.map(({ target, ...src }) => ({ ...src, url: `http://localhost:${PORT}/media/${register(target)}` }))
+      sendJson(res, 200, out)
+    }
+  }
+  catch (err) {
+    sendJson(res, err?.code === 'needs-ytdlp' ? 424 : 502, { error: err?.message ?? 'Could not resolve', code: err?.code ?? null })
+  }
+  return true
+}
+
 function handleProxy(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Accept, X-ES-Cookie, Range')
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
+  handleStreams(req, res).then((handled) => {
+    if (!handled)
+      handleEroScripts(req, res)
+  }, (err) => {
+    console.error('[ES Proxy] Stream error:', err?.message)
+    if (!res.headersSent) { res.writeHead(500); res.end() }
+  })
+}
+
+function handleEroScripts(req, res) {
   const userCookie = req.headers['x-es-cookie'] ?? ''
 
   // ── Pixeldrain resolve: /pd-resolve/:fileId — returns {url} JSON ─────────
@@ -289,7 +356,11 @@ function listen(server, port, host, name, log) {
  * `ready` resolves once both have either bound or given up; `close()` stops
  * whichever did bind, dropping any connected phones.
  */
-export function startProxy({ log = console } = {}) {
+export function startProxy({ log = console, binDir, browserFetch } = {}) {
+  if (binDir)
+    setBinDir(binDir)
+  if (browserFetch)
+    setBrowserFetch(browserFetch)
   const proxy = http.createServer(handleProxy)
   const relay = createRelay()
 
@@ -301,7 +372,7 @@ export function startProxy({ log = console } = {}) {
       if (ok) {
         log.log(`[ES Proxy] Running at http://localhost:${PORT}`)
         log.log(`[ES Proxy] EroScripts → https://${TARGET}`)
-        log.log(`[ES Proxy] Pixeldrain → /pd/:id`)
+        log.log(`[ES Proxy] Pixeldrain → /pd/:id · streams → /resolve?url=…`)
       }
       return ok
     }),

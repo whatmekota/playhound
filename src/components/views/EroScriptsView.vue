@@ -3,10 +3,12 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 </script>
 
 <script setup lang="ts">
+import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { useFunscript } from '~/composables/useFunscript'
+import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
-import { usePlaybackStore } from '~/stores/playbackStore'
+import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -43,21 +45,18 @@ interface ESPost {
   link_counts?: { url: string, title?: string }[]
 }
 
-type Platform = 'pixeldrain' | 'iwara' | 'pmvhaven' | 'hanime1' | 'pornhub' | 'rule34video' | 'twitter' | 'gofile' | 'mega' | 'other'
-
 interface PdFile { id: string, name: string, size: number, mime_type: string }
 
 interface VideoLink {
-  platform: Platform
-  label: string
+  host: StreamHost
   originalUrl: string
-  streamUrl: string | null
-  resolving: boolean
   title?: string
+  state: 'idle' | 'resolving' | 'ready' | 'error' | 'needs-ytdlp'
   error?: string
-  pdId?: string
-  pdFolder?: boolean
-  pdFolderFiles?: PdFile[]
+  /** Resolved videos (a folder gives several), each with its qualities. */
+  items: StreamItem[]
+  item: number
+  source: number
 }
 
 defineOptions({ name: 'EroScriptsView' })
@@ -78,11 +77,9 @@ const BASE = 'https://discuss.eroscripts.com'
 const PROXY = 'http://localhost:7071'
 const SCRIPTS_PATH = '/c/scripts/free-scripts/14/l'
 const SCRIPTS_TAG_BASE = '/tags/c/scripts/free-scripts/14'
-const VIDEO_RE = /\.(?:mp4|mkv|webm|mov|avi)/i
 
 const { loadScriptFiles } = useFunscript()
 const player = usePlayerStore()
-const playback = usePlaybackStore()
 const ui = useUiStore()
 
 function lsGet(key: string) {
@@ -365,161 +362,81 @@ function toProxyUrl(url: string): string {
   }
 }
 
-const PLATFORMS: { re: RegExp, platform: Platform, label: string, error?: string }[] = [
-  { re: /iwara\.tv\/video/i, platform: 'iwara', label: 'Iwara' },
-  { re: /pmvhaven\.com\/video/i, platform: 'pmvhaven', label: 'PMVHaven' },
-  { re: /gofile\.io\/[df]\//i, platform: 'gofile', label: 'Gofile' },
-  { re: /mega\.nz\//i, platform: 'mega', label: 'MEGA', error: 'MEGA encrypts in the browser — open it there' },
-  { re: /(?:twitter\.com|x\.com)\/.+\/status\//i, platform: 'twitter', label: 'X / Twitter', error: 'No public API — open it in the browser' },
-  { re: /rule34video\.com\/videos\//i, platform: 'rule34video', label: 'Rule34Video', error: 'Blocked by CORS — open it in the browser' },
-  { re: /hanime1\.me\/watch/i, platform: 'hanime1', label: 'Hanime1', error: 'Blocked by CORS — open it in the browser' },
-  { re: /pornhub\.com\/view_video/i, platform: 'pornhub', label: 'Pornhub', error: 'No public API — open it in the browser' },
-]
-
 function detectVideoLinks(html: string): VideoLink[] {
   const div = document.createElement('div')
   div.innerHTML = html
   const hrefs = [...new Set(Array.from(div.querySelectorAll('a[href]'), a => (a as HTMLAnchorElement).href))]
   const links: VideoLink[] = []
   for (const href of hrefs) {
-    // Pixeldrain files stream through the proxy (/pd-stream/ for video, /pd/ for scripts).
-    const pdU = href.match(/pixeldrain\.com\/u\/([A-Z0-9]+)/i)
-    if (pdU) {
-      links.push({ platform: 'pixeldrain', label: 'Pixeldrain', originalUrl: href, streamUrl: `${PROXY}/pd-stream/${pdU[1]}`, resolving: false })
-      continue
-    }
-    const pdL = href.match(/pixeldrain\.com\/l\/([A-Z0-9]+)/i)
-    if (pdL) {
-      links.push({ platform: 'pixeldrain', label: 'Pixeldrain folder', originalUrl: href, streamUrl: null, resolving: false, pdId: pdL[1], pdFolder: true })
-      continue
-    }
-    const known = PLATFORMS.find(p => p.re.test(href))
-    if (known)
-      links.push({ platform: known.platform, label: known.label, originalUrl: href, streamUrl: null, resolving: false, error: known.error })
+    const host = detectStreamHost(href)
+    if (host)
+      links.push({ host, originalUrl: href, state: 'idle', items: [], item: 0, source: 0 })
   }
   return links
 }
 
-const BROWSER_ONLY = new Set<Platform>(['mega', 'twitter', 'pornhub', 'hanime1', 'rule34video'])
-const browserOnly = (v: VideoLink) => BROWSER_ONLY.has(v.platform)
-const canResolve = (v: VideoLink) => ['iwara', 'pmvhaven', 'gofile'].includes(v.platform) || (v.platform === 'pixeldrain' && !!v.pdFolder)
+/** The source a link would play right now. */
+const chosenSource = (v: VideoLink): StreamSource | null => v.items[v.item]?.sources[v.source] ?? null
+const chosenTitle = (v: VideoLink, fallback: string) => (v.items.length > 1 ? v.items[v.item]?.title : null) ?? v.title ?? v.items[0]?.title ?? fallback
 
+/** Ask the proxy to turn the link into streams. Safe to call repeatedly. */
 async function resolveVideoLink(link: VideoLink) {
-  if (link.streamUrl || link.resolving || link.error)
+  if (link.state === 'resolving' || link.state === 'ready')
     return
-  link.resolving = true
+  link.state = 'resolving'
+  link.error = undefined
   try {
-    if (link.pdFolder)
-      await resolvePixeldrainFolder(link)
-    else if (link.platform === 'iwara')
-      await resolveIwara(link)
-    else if (link.platform === 'pmvhaven')
-      await resolvePmvhaven(link)
-    else if (link.platform === 'gofile')
-      await resolveGofile(link)
-    else
-      link.error = 'No direct stream — open it in the browser'
+    const r = await resolveStream(link.originalUrl)
+    link.items = r.items
+    link.item = 0
+    link.source = 0
+    link.title ??= r.items.length === 1 ? r.items[0].title.replace(/\.[a-z0-9]{2,4}$/i, '') : undefined
+    link.state = 'ready'
   }
   catch (e: any) {
     link.error = e?.message ?? 'Could not resolve'
-  }
-  finally {
-    link.resolving = false
+    link.state = e instanceof StreamError && e.code === 'needs-ytdlp' ? 'needs-ytdlp' : 'error'
   }
 }
 
-async function resolvePixeldrainFolder(link: VideoLink) {
-  if (!link.pdId) {
-    link.error = 'No folder id'
-    return
-  }
-  // The list API is public; no proxy or cookie needed.
-  const res = await fetch(`https://pixeldrain.com/api/list/${link.pdId}`)
-  if (!res.ok) {
-    link.error = `Pixeldrain answered HTTP ${res.status}`
-    return
-  }
-  const files: PdFile[] = (await res.json()).files ?? []
-  if (!files.length) {
-    link.error = 'The folder is empty'
-    return
-  }
-  link.pdFolderFiles = files
-  link.label = `Pixeldrain folder · ${files.length} files`
-  const video = files.find(f => VIDEO_RE.test(f.name))
-  if (video)
-    choosePdFile(link, video)
-  else
-    link.error = 'No video in the folder'
+function retryLink(link: VideoLink) {
+  link.state = 'idle'
+  void resolveVideoLink(link)
 }
 
-function choosePdFile(link: VideoLink, f: PdFile) {
-  link.streamUrl = `${PROXY}/pd-stream/${f.id}`
-  link.title = f.name.replace(/\.[^.]+$/, '')
+function chooseItem(link: VideoLink, i: number) {
+  link.item = i
+  link.source = 0
 }
 
-async function resolveIwara(link: VideoLink) {
-  const id = link.originalUrl.match(/\/videos?\/([A-Z0-9]+)/i)?.[1]
-  if (!id) {
-    link.error = 'Could not read the Iwara video id'
-    return
+/** Fetch yt-dlp (on the user's say-so) and try the link again. */
+async function getYtdlp(link: VideoLink) {
+  try {
+    await installYtdlp()
+    toast.success('yt-dlp is ready', { detail: ytdlp.value?.version ?? undefined, icon: 'i-carbon-checkmark' })
+    link.state = 'idle'
+    await resolveVideoLink(link)
   }
-  const info = await fetch(`https://api.iwara.tv/video/${id}`).then(r => r.json())
-  link.title = info?.title
-  const fileRes = await fetch(`https://api.iwara.tv/video/${id}/file`, {
-    headers: { 'X-Version': info?.fileUrl?.split('?')[1] ?? '' },
-  })
-  if (!fileRes.ok) {
-    link.error = 'Iwara blocked the request (CORS)'
-    return
+  catch (e: any) {
+    toast.error('Could not get yt-dlp', { detail: e?.message })
   }
-  const files = await fileRes.json() as any[]
-  const best = files.sort((a, b) => (b.height ?? 0) - (a.height ?? 0))[0]
-  if (best?.src?.download)
-    link.streamUrl = best.src.download
-  else
-    link.error = 'No stream URL found'
 }
 
-async function resolvePmvhaven(link: VideoLink) {
-  const slug = link.originalUrl.match(/pmvhaven\.com\/video\/([^/?#]+)/)?.[1]
-  if (!slug) {
-    link.error = 'Could not read the PMVHaven slug'
+/** Pixeldrain folders often hold the scripts too: add any .funscript inside. */
+async function addPixeldrainFolderScripts(topic: ESTopic, link: VideoLink) {
+  const id = link.originalUrl.match(/pixeldrain\.com\/l\/([A-Z0-9]+)/i)?.[1]
+  if (!id)
     return
+  try {
+    // The list API is public; no proxy or cookie needed.
+    const files: PdFile[] = (await fetch(`https://pixeldrain.com/api/list/${id}`).then(r => r.json())).files ?? []
+    for (const sf of files.filter(f => /\.funscript$/i.test(f.name))) {
+      const url = `${PROXY}/pd/${sf.id}`
+      if (!topic.funscriptUrls!.some(e => e.url === url))
+        topic.funscriptUrls!.push({ url, filename: sf.name, axis: guessAxisFromFilename(sf.name), axisDetected: true })
+    }
   }
-  const data = await fetch(`https://pmvhaven.com/api/v2/videoInput?video=${encodeURIComponent(slug)}&mode=InitVideo`).then(r => r.json())
-  link.title = data?.title
-  const source = (data?.video?.sources as any[] ?? [])[0]
-  if (source?.src)
-    link.streamUrl = source.src
-  else
-    link.error = 'No stream URL in the response'
-}
-
-async function resolveGofile(link: VideoLink) {
-  const id = link.originalUrl.match(/gofile\.io\/[df]\/([A-Z0-9]+)/i)?.[1]
-  if (!id) {
-    link.error = 'Could not read the Gofile id'
-    return
-  }
-  const acc = await fetch('https://api.gofile.io/accounts', { method: 'POST' }).then(r => r.json())
-  const token = acc?.data?.token
-  if (!token) {
-    link.error = 'Could not get a Gofile token'
-    return
-  }
-  const data = await fetch(`https://api.gofile.io/contents/${id}?wt=4fd6sg89d7s6&token=${token}`).then(r => r.json())
-  if (data?.status !== 'ok') {
-    link.error = 'Gofile: not found or private'
-    return
-  }
-  link.title = data?.data?.name
-  const children = Object.values(data?.data?.children ?? {}) as any[]
-  const vid = children.find(c => c.type === 'file' && /\.(?:mp4|mkv|webm|mov)/i.test(c.name))
-  if (vid?.link)
-    link.streamUrl = vid.link
-  else
-    link.error = 'No video in the Gofile folder'
+  catch {}
 }
 
 // ─── Topic detail ─────────────────────────────────────────────────────────────
@@ -573,16 +490,14 @@ async function loadDetail(topic: ESTopic) {
         vl.title = lc.title!.replace(/\s*~\s*\w+$/, '').replace(/\.[a-z0-9]{2,4}$/i, '').trim()
     }
 
-    // Pixeldrain folders often hold the scripts too, so resolve them straight
-    // away and add any .funscript inside to the list.
-    for (const fl of topic.videoLinks.filter(v => v.pdFolder)) {
-      void resolveVideoLink(fl).then(() => {
-        for (const sf of fl.pdFolderFiles?.filter(f => /\.funscript$/i.test(f.name)) ?? []) {
-          const url = `${PROXY}/pd/${sf.id}`
-          if (!topic.funscriptUrls!.some(e => e.url === url))
-            topic.funscriptUrls!.push({ url, filename: sf.name, axis: guessAxisFromFilename(sf.name), axisDetected: true })
-        }
-      })
+    // Hosts with a resolver of our own are resolved straight away (it only
+    // reads metadata); yt-dlp ones wait for a click so a post does not start
+    // a handful of processes. Pixeldrain folders may hold the scripts too.
+    for (const vl of topic.videoLinks) {
+      if (!vl.host.ytdlp)
+        void resolveVideoLink(vl)
+      if (vl.host.id === 'pixeldrain')
+        void addPixeldrainFolderScripts(topic, vl)
     }
   }
   catch (e) {
@@ -599,10 +514,13 @@ function openDetail(topic: ESTopic) {
   void loadDetail(topic)
 }
 
-/** The source "Play" uses: the first that streams, else the first we could resolve. */
+/** The link "Play" uses: one that is ready, else one that may still work. */
 const primarySource = computed(() => {
   const links = openTopic.value?.videoLinks ?? []
-  return links.find(v => v.streamUrl) ?? links.find(v => canResolve(v) && !v.error) ?? null
+  return links.find(v => v.state === 'ready')
+    ?? links.find(v => v.state !== 'error' && !v.host.ytdlp)
+    ?? links.find(v => v.state !== 'error')
+    ?? null
 })
 
 // ─── Downloads & playback ─────────────────────────────────────────────────────
@@ -658,10 +576,10 @@ async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
   const entries = withScripts ? (topic.funscriptUrls ?? []) : []
   job.value = { topicId: topic.id, step: 'Finding the stream', done: 0, total: entries.length + 1 }
   try {
-    if (!link.streamUrl && !link.error)
-      await resolveVideoLink(link)
-    if (!link.streamUrl)
-      throw new Error(link.error ?? 'No stream for this source')
+    await resolveVideoLink(link)
+    const source = chosenSource(link)
+    if (!source)
+      throw new Error(link.state === 'needs-ytdlp' ? 'This site needs yt-dlp — get it from the source below' : (link.error ?? 'No stream for this source'))
 
     if (entries.length) {
       // A free Pixeldrain account gets one download at a time, so those go one
@@ -686,15 +604,15 @@ async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
       }
       await loadScriptFiles(files, topic.title)
       // Let Pixeldrain release the download slot before the video asks for one.
-      if (pd.length && link.streamUrl.startsWith(`${PROXY}/pd`))
+      if (pd.length && link.host.id === 'pixeldrain')
         await wait(500)
     }
 
     job.value.step = 'Opening the stream'
-    await playback.playStream(link.title ?? topic.title, link.streamUrl)
+    await playSource(chosenTitle(link, topic.title), source)
     job.value.done = job.value.total
     toast.success(entries.length ? `Playing with ${entries.length} script${entries.length === 1 ? '' : 's'}` : 'Playing', {
-      detail: link.title ?? topic.title,
+      detail: chosenTitle(link, topic.title),
       icon: 'i-carbon-play-filled-alt',
       key: 'es-play',
       action: ui.onPlayer ? undefined : { label: 'Open player', run: () => ui.openView('player') },
@@ -718,19 +636,6 @@ const fmtNum = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(
 const fmtSize = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : `${(b / (1 << 20)).toFixed(1)} MB`)
 const postUrl = (t: ESTopic) => `${BASE}/t/${t.slug}/${t.id}`
 const openExternal = (url: string) => window.open(url, '_blank', 'noopener')
-
-const PLATFORM_ICON: Record<Platform, string> = {
-  pixeldrain: 'i-carbon-cloud',
-  iwara: 'i-carbon-video',
-  pmvhaven: 'i-carbon-music',
-  hanime1: 'i-carbon-video',
-  pornhub: 'i-carbon-video',
-  rule34video: 'i-carbon-video',
-  twitter: 'i-carbon-logo-x',
-  gofile: 'i-carbon-box',
-  mega: 'i-carbon-cloud',
-  other: 'i-carbon-link',
-}
 
 /** Covers that fail to load fall back to the placeholder instead of a broken image. */
 const brokenCovers = reactive(new Set<number>())
@@ -1073,7 +978,7 @@ onBeforeUnmount(() => {
                     {{ openTopic.funscriptUrls.length ? `Play with ${openTopic.funscriptUrls.length} script${openTopic.funscriptUrls.length === 1 ? '' : 's'}` : 'Play video' }}
                   </UiButton>
                   <p class="hint text-center">
-                    from {{ primarySource.title || primarySource.label }}
+                    from {{ primarySource.title || primarySource.host.label }}
                   </p>
                 </template>
                 <p v-else-if="openTopic.funscriptUrls.length" class="hint">
@@ -1090,62 +995,77 @@ onBeforeUnmount(() => {
                 <div v-for="vl in openTopic.videoLinks" :key="vl.originalUrl" class="card overflow-hidden">
                   <div class="p-2.5 flex gap-2.5 items-center">
                     <div class="text-fg-muted rounded-[var(--radius-md)] bg-surface-800 center shrink-0 h-8 w-8">
-                      <span :class="PLATFORM_ICON[vl.platform]" class="text-[16px]" />
+                      <span :class="vl.host.icon" class="text-[16px]" />
                     </div>
                     <div class="flex flex-1 flex-col min-w-0">
-                      <span class="text-[12.5px] text-fg font-medium truncate">{{ vl.title || vl.label }}</span>
-                      <span v-if="vl.title" class="text-[11px] text-fg-faint truncate">{{ vl.label }}</span>
+                      <span class="text-[12.5px] text-fg font-medium truncate">{{ vl.title || vl.host.label }}</span>
+                      <span v-if="vl.title || vl.items.length > 1" class="text-[11px] text-fg-faint truncate">
+                        {{ vl.host.label }}<template v-if="vl.items.length > 1"> · {{ vl.items.length }} videos</template>
+                      </span>
                     </div>
-                    <UiBadge v-if="vl.streamUrl" tone="ok" size="xs" dot>
+                    <UiBadge v-if="vl.state === 'ready'" tone="ok" size="xs" dot>
                       Streams
                     </UiBadge>
-                    <UiBadge v-else-if="vl.resolving" tone="info" size="xs">
+                    <UiBadge v-else-if="vl.state === 'resolving'" tone="info" size="xs">
                       <UiSpinner :size="9" /> Resolving
                     </UiBadge>
-                    <UiBadge v-else-if="browserOnly(vl)" size="xs" icon="i-carbon-launch">
-                      Browser only
+                    <UiBadge v-else-if="vl.state === 'needs-ytdlp'" size="xs" icon="i-carbon-download">
+                      Needs yt-dlp
                     </UiBadge>
-                    <UiBadge v-else-if="vl.error" tone="danger" size="xs">
+                    <UiBadge v-else-if="vl.state === 'error'" tone="danger" size="xs">
                       Failed
                     </UiBadge>
                   </div>
-                  <p v-if="vl.error && !browserOnly(vl)" class="text-[11.5px] text-danger px-2.5 pb-2 -mt-1">
+                  <p v-if="vl.state === 'error'" class="text-[11.5px] text-danger px-2.5 pb-2 -mt-1">
                     {{ vl.error }}
                   </p>
+                  <p v-else-if="vl.state === 'needs-ytdlp'" class="hint px-2.5 pb-2 -mt-1">
+                    {{ vl.host.label }} streams through yt-dlp, a free open-source downloader. playhound can fetch the official release (about 20 MB) and keep it up to date.
+                  </p>
 
-                  <!-- Pixeldrain folder contents -->
-                  <div v-if="vl.pdFolderFiles?.length" class="px-1.5 pb-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                  <!-- A folder: pick which video -->
+                  <div v-if="vl.items.length > 1" class="px-1.5 pb-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
                     <button
-                      v-for="f in vl.pdFolderFiles"
-                      :key="f.id"
+                      v-for="(it, i) in vl.items"
+                      :key="i"
                       type="button"
-                      class="text-[11.5px] px-2 text-left focusable rounded-[var(--radius-sm)] flex gap-2 h-7 transition-colors items-center disabled:cursor-default"
-                      :class="vl.streamUrl === `${PROXY}/pd-stream/${f.id}` ? 'bg-accent-soft text-fg' : VIDEO_RE.test(f.name) ? 'text-fg-muted hover:bg-fg/5 hover:text-fg' : 'text-fg-faint'"
-                      :disabled="!VIDEO_RE.test(f.name)"
-                      @click="choosePdFile(vl, f)"
+                      class="text-[11.5px] px-2 text-left focusable rounded-[var(--radius-sm)] flex gap-2 h-7 transition-colors items-center"
+                      :class="vl.item === i ? 'bg-accent-soft text-fg' : 'text-fg-muted hover:bg-fg/5 hover:text-fg'"
+                      @click="chooseItem(vl, i)"
                     >
-                      <span :class="VIDEO_RE.test(f.name) ? 'i-carbon-video' : /\.funscript$/i.test(f.name) ? 'i-carbon-chart-line' : 'i-carbon-document-blank'" class="shrink-0" />
-                      <span v-tip="f.name" class="flex-1 truncate">{{ f.name }}</span>
-                      <span class="num shrink-0">{{ fmtSize(f.size) }}</span>
-                      <span v-if="vl.streamUrl === `${PROXY}/pd-stream/${f.id}`" class="i-carbon-checkmark text-accent-300 shrink-0" />
+                      <span class="i-carbon-video shrink-0" />
+                      <span v-tip="it.title" class="flex-1 truncate">{{ it.title }}</span>
+                      <span v-if="it.size" class="num shrink-0">{{ fmtSize(it.size) }}</span>
+                      <span v-if="vl.item === i" class="i-carbon-checkmark text-accent-300 shrink-0" />
+                    </button>
+                  </div>
+
+                  <!-- Qualities -->
+                  <div v-if="(vl.items[vl.item]?.sources.length ?? 0) > 1" class="px-2.5 pb-2 flex flex-wrap gap-1">
+                    <button
+                      v-for="(src, i) in vl.items[vl.item].sources"
+                      :key="i"
+                      type="button"
+                      class="text-[11px] font-mono px-1.5 focusable rounded-[var(--radius-xs)] h-5 transition-colors"
+                      :class="vl.source === i ? 'bg-accent-soft text-fg' : 'bg-fg/6 text-fg-muted hover:text-fg hover:bg-fg/10'"
+                      @click="vl.source = i"
+                    >
+                      {{ src.label }}
                     </button>
                   </div>
 
                   <div class="px-2.5 py-2 border-t border-edge flex flex-wrap gap-1.5 items-center">
-                    <UiButton
-                      v-if="canResolve(vl) && !vl.streamUrl && !vl.error"
-                      size="xs"
-                      icon="i-carbon-flash"
-                      :loading="vl.resolving"
-                      @click="resolveVideoLink(vl)"
-                    >
-                      Resolve
+                    <UiButton v-if="vl.state === 'idle' || vl.state === 'error'" size="xs" icon="i-carbon-flash" @click="retryLink(vl)">
+                      {{ vl.state === 'error' ? 'Retry' : 'Resolve' }}
                     </UiButton>
-                    <UiButton v-if="vl.streamUrl" size="xs" icon="i-carbon-play" :disabled="!!job" @click="play(openTopic, vl, false)">
+                    <UiButton v-if="vl.state === 'needs-ytdlp'" size="xs" icon="i-carbon-download" :loading="!!ytdlp?.installing" @click="getYtdlp(vl)">
+                      Get yt-dlp
+                    </UiButton>
+                    <UiButton v-if="vl.state === 'ready'" size="xs" icon="i-carbon-play" :disabled="!!job" @click="play(openTopic, vl, false)">
                       Play
                     </UiButton>
                     <UiButton
-                      v-if="vl.streamUrl && openTopic.funscriptUrls.length"
+                      v-if="vl.state === 'ready' && openTopic.funscriptUrls.length"
                       size="xs"
                       variant="subtle"
                       icon="i-carbon-play-filled-alt"

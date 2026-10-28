@@ -10,6 +10,7 @@ import CommandPalette from '~/components/shell/CommandPalette.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
 import InspectorRail from '~/components/shell/InspectorRail.vue'
 import PanicCover from '~/components/shell/PanicCover.vue'
+import PlayLinkModal from '~/components/shell/PlayLinkModal.vue'
 import SettingsModal from '~/components/shell/SettingsModal.vue'
 import ShortcutsModal from '~/components/shell/ShortcutsModal.vue'
 import SplashScreen from '~/components/shell/SplashScreen.vue'
@@ -434,6 +435,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <CommandPalette @open-file="openSingleVideo" />
     <ShortcutsModal />
     <SettingsModal />
+    <PlayLinkModal />
 
     <!-- Floating windows over whichever view is open -->
     <OsrEmulator v-if="ui.isFloatingOpen('emulator')" />

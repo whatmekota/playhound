@@ -13,6 +13,8 @@ export const usePlayerStore = defineStore('player', () => {
   // Video state
   const videoPath = ref<string | null>(null)
   const videoUrl = ref<string | null>(null)
+  /** 'hls' when videoUrl is an HLS playlist, which the player plays with hls.js. */
+  const videoKind = ref<'file' | 'hls'>('file')
   const videoDuration = ref(0) // seconds
   const currentTime = ref(0) // seconds
   const isPlaying = ref(false)
@@ -60,9 +62,10 @@ export const usePlayerStore = defineStore('player', () => {
   })
 
   // Actions
-  function setVideo(path: string, url: string) {
+  function setVideo(path: string, url: string, kind: 'file' | 'hls' = 'file') {
     videoPath.value = path
     videoUrl.value = url
+    videoKind.value = kind
     currentTime.value = 0
     videoDuration.value = 0
     isPlaying.value = false
@@ -93,6 +96,7 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   return {
+    videoKind,
     videoPath,
     videoUrl,
     videoDuration,

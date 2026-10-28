@@ -36,6 +36,10 @@ const running = ref(false)
 
 /** The playing <video>, for a playhead finer than timeupdate's four a second. */
 function findVideo(src: string | null): HTMLVideoElement | null {
+  // The player marks its own <video>; with an HLS stream its src is a blob.
+  const main = document.querySelector<HTMLVideoElement>('video[data-ph-main]')
+  if (main)
+    return main
   const all = Array.from(document.querySelectorAll('video'))
   return (src ? all.find(v => v.src === src) : null) ?? null
 }
@@ -66,7 +70,7 @@ function setup() {
 
   let video: HTMLVideoElement | null = null
   function playheadMs(): number {
-    if (!video?.isConnected || video.src !== player.videoUrl)
+    if (!video?.isConnected || (!video.hasAttribute('data-ph-main') && video.src !== player.videoUrl))
       video = findVideo(player.videoUrl)
     const t = video ? video.currentTime : player.currentTime
     return t * 1000

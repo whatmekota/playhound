@@ -78,6 +78,10 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 - **Body in the loop.** A Bluetooth heart-rate monitor can call an edge for you
   when your rate climbs fast. Vibrators get a strength worked out from the
   script, the music or the session.
+- **Streams straight from the post.** Pixeldrain, Gofile, MEGA, Iwara,
+  Rule34Video and PMVHaven links play without downloading anything first, with
+  seeking and a quality choice; X, Pornhub, Hanime1 and many more go through
+  yt-dlp, which playhound fetches for you if you want it.
 - **Remotes.** Use a phone over Wi-Fi (big buttons, panic in the thumb zone), a
   gamepad, or an [ESP32 "Cheap Yellow Display"](firmware/cyd-face) face that
   watches the session and reacts.
@@ -95,6 +99,7 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 | TCode devices (Web Serial), heart-rate monitors (Bluetooth) |                         ✓                          |                                ✓                                |      ✓      |
 | Intiface / Buttplug toys                                    |                        ✓\*                         |                                ✓                                |      ✓      |
 | EroScripts browser, phone remote, CYD face                  |                                                    |                                ✓                                |      ✓      |
+| Streaming from file hosts and yt-dlp sites                  |                                                    |                                ✓                                |      ✓      |
 | Remembers your library folder without a click               |                                                    |                                ✓                                |             |
 | Keeps driving the device while minimised                    |                                                    |                                ✓                                |             |
 | Discord Rich Presence                                       |                                                    |                                ✓                                |             |
@@ -202,6 +207,24 @@ The ones you'll use most:
 | **C**            | I came: marks it on the video and in Stats          |
 | B · S            | bookmark here · star the video                      |
 | **Esc** or **`** | **panic**: stop everything and cover the screen     |
+
+### Streaming from links
+
+Open a post in the **EroScripts** view and its video links are resolved as soon
+as it loads: pick a video (a folder can hold several) and a quality, then
+**Play** or **Play + scripts**. Anywhere else, **Ctrl+K → Play a link…** takes
+any link you paste.
+
+| Host                                                    | How                                                                                                                                             |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pixeldrain, Gofile, MEGA, Iwara, Rule34Video, PMVHaven  | playhound's own resolvers; MEGA is decrypted as it streams                                                                                      |
+| X, Pornhub, Hanime1, rule34.xyz/xxx, Bunkr and the rest | [yt-dlp](https://github.com/yt-dlp/yt-dlp): the first time a link needs it, playhound offers to fetch the official release and keeps it updated |
+
+Streams go through the small local proxy the Windows app runs (or
+`start.bat` / `pnpm dev:proxy` from source), which also follows your
+`HTTP(S)_PROXY` if you have one. Anonymous MEGA has a transfer quota per
+connection, and some sites (age-restricted posts on X, for one) only show
+video to logged-in users.
 
 ### Phone remote
 

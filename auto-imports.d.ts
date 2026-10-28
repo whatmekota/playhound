@@ -13,6 +13,8 @@ declare global {
   const MOVE_EDGES: typeof import('./src/composables/wallGeometry').MOVE_EDGES
   const PHASE_TRANSITIONS: typeof import('./src/composables/useSlideshowEngine').PHASE_TRANSITIONS
   const RC_PORT: typeof import('./src/composables/useRemoteLink').RC_PORT
+  const STREAM_PROXY: typeof import('./src/composables/useStreams').STREAM_PROXY
+  const StreamError: typeof import('./src/composables/useStreams').StreamError
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
   const analyseSoundtrack: typeof import('./src/composables/useSoundtrack').analyseSoundtrack
@@ -63,6 +65,7 @@ declare global {
   const ignorableWatch: typeof import('@vueuse/core').ignorableWatch
   const inject: typeof import('vue').inject
   const injectLocal: typeof import('@vueuse/core').injectLocal
+  const installYtdlp: typeof import('./src/composables/useStreams').installYtdlp
   const isAnalysedGridReady: typeof import('./src/composables/useSoundtrack').isAnalysedGridReady
   const isBeatReady: typeof import('./src/composables/useVideoBeat').isBeatReady
   const isDark: typeof import('./src/composables/dark').isDark
@@ -102,6 +105,7 @@ declare global {
   const outputsOf: typeof import('./src/composables/useButtplug').outputsOf
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const pickMediaFiles: typeof import('./src/composables/useMediaDrop').pickMediaFiles
+  const playSource: typeof import('./src/composables/useStreams').playSource
   const presenceStatus: typeof import('./src/composables/useDiscordPresence').presenceStatus
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
@@ -119,12 +123,14 @@ declare global {
   const refManualReset: typeof import('@vueuse/core').refManualReset
   const refThrottled: typeof import('@vueuse/core').refThrottled
   const refWithControl: typeof import('@vueuse/core').refWithControl
+  const refreshYtdlp: typeof import('./src/composables/useStreams').refreshYtdlp
   const releaseToast: typeof import('./src/composables/useToast').releaseToast
   const remoteRoom: typeof import('./src/composables/useRemoteLink').remoteRoom
   const remoteUrl: typeof import('./src/composables/useRemoteLink').remoteUrl
   const resizeRect: typeof import('./src/composables/wallGeometry').resizeRect
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
+  const resolveStream: typeof import('./src/composables/useStreams').resolveStream
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
@@ -374,6 +380,7 @@ declare global {
   const watchTriggerable: typeof import('@vueuse/core').watchTriggerable
   const watchWithFilter: typeof import('@vueuse/core').watchWithFilter
   const whenever: typeof import('@vueuse/core').whenever
+  const ytdlp: typeof import('./src/composables/useStreams').ytdlp
 }
 // for type re-export
 declare global {
@@ -417,6 +424,9 @@ declare global {
   export type { SoundtrackStatus, SoundtrackState } from './src/composables/useSoundtrack'
   import('./src/composables/useSoundtrack')
   // @ts-ignore
+  export type { StreamError } from './src/composables/useStreams'
+  import('./src/composables/useStreams')
+  // @ts-ignore
   export type { ToastKind, Toast, ToastOptions } from './src/composables/useToast'
   import('./src/composables/useToast')
   // @ts-ignore
@@ -436,6 +446,8 @@ declare module 'vue' {
     readonly MOVE_EDGES: UnwrapRef<typeof import('./src/composables/wallGeometry')['MOVE_EDGES']>
     readonly PHASE_TRANSITIONS: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['PHASE_TRANSITIONS']>
     readonly RC_PORT: UnwrapRef<typeof import('./src/composables/useRemoteLink')['RC_PORT']>
+    readonly STREAM_PROXY: UnwrapRef<typeof import('./src/composables/useStreams')['STREAM_PROXY']>
+    readonly StreamError: UnwrapRef<typeof import('./src/composables/useStreams')['StreamError']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
     readonly analyseSoundtrack: UnwrapRef<typeof import('./src/composables/useSoundtrack')['analyseSoundtrack']>
@@ -486,6 +498,7 @@ declare module 'vue' {
     readonly ignorableWatch: UnwrapRef<typeof import('@vueuse/core')['ignorableWatch']>
     readonly inject: UnwrapRef<typeof import('vue')['inject']>
     readonly injectLocal: UnwrapRef<typeof import('@vueuse/core')['injectLocal']>
+    readonly installYtdlp: UnwrapRef<typeof import('./src/composables/useStreams')['installYtdlp']>
     readonly isAnalysedGridReady: UnwrapRef<typeof import('./src/composables/useSoundtrack')['isAnalysedGridReady']>
     readonly isBeatReady: UnwrapRef<typeof import('./src/composables/useVideoBeat')['isBeatReady']>
     readonly isDark: UnwrapRef<typeof import('./src/composables/dark')['isDark']>
@@ -525,6 +538,7 @@ declare module 'vue' {
     readonly outputsOf: UnwrapRef<typeof import('./src/composables/useButtplug')['outputsOf']>
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly pickMediaFiles: UnwrapRef<typeof import('./src/composables/useMediaDrop')['pickMediaFiles']>
+    readonly playSource: UnwrapRef<typeof import('./src/composables/useStreams')['playSource']>
     readonly presenceStatus: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['presenceStatus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
@@ -542,12 +556,14 @@ declare module 'vue' {
     readonly refManualReset: UnwrapRef<typeof import('@vueuse/core')['refManualReset']>
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
+    readonly refreshYtdlp: UnwrapRef<typeof import('./src/composables/useStreams')['refreshYtdlp']>
     readonly releaseToast: UnwrapRef<typeof import('./src/composables/useToast')['releaseToast']>
     readonly remoteRoom: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteRoom']>
     readonly remoteUrl: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteUrl']>
     readonly resizeRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['resizeRect']>
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
+    readonly resolveStream: UnwrapRef<typeof import('./src/composables/useStreams')['resolveStream']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>
@@ -797,5 +813,6 @@ declare module 'vue' {
     readonly watchTriggerable: UnwrapRef<typeof import('@vueuse/core')['watchTriggerable']>
     readonly watchWithFilter: UnwrapRef<typeof import('@vueuse/core')['watchWithFilter']>
     readonly whenever: UnwrapRef<typeof import('@vueuse/core')['whenever']>
+    readonly ytdlp: UnwrapRef<typeof import('./src/composables/useStreams')['ytdlp']>
   }
 }

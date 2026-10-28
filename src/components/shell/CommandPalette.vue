@@ -104,6 +104,7 @@ const commands = computed<Item[]>(() => {
       kbd: ['Space'],
       run: () => playback.togglePlay(),
     },
+    { id: 'cmd:play-link', kind: 'command', label: 'Play a link…', hint: 'Pixeldrain, Gofile, MEGA, Iwara and more', icon: 'i-carbon-link', keywords: 'url stream pixeldrain gofile mega iwara rule34video pmvhaven pornhub twitter yt-dlp paste', run: () => { ui.playLinkOpen = true } },
     { id: 'cmd:next', kind: 'command', label: 'Next video', icon: 'i-carbon-skip-forward', keywords: 'skip forward', kbd: ['N'], run: () => void playback.next() },
     loaded && { id: 'cmd:prev', kind: 'command', label: 'Previous video', icon: 'i-carbon-skip-back', keywords: 'back restart', kbd: ['P'], run: () => void playback.prev() },
     has && { id: 'cmd:random', kind: 'command', label: 'Random scripted video', icon: 'i-carbon-shuffle', keywords: 'surprise any', kbd: ['R'], run: () => {

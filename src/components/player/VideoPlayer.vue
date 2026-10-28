@@ -135,6 +135,32 @@ function onMediaEnded() {
   handleEnded()
 }
 
+// HLS streams (what yt-dlp gives for some sites) need hls.js: Chrome cannot
+// play an .m3u8 by itself. Loaded only when one plays, so it costs nothing
+// otherwise. Everything else still sets the <video>'s src as usual.
+let hls: { destroy: () => void } | null = null
+function dropHls() {
+  hls?.destroy()
+  hls = null
+}
+watch([videoEl, () => player.videoUrl, () => player.videoKind], async ([el, url, kind]) => {
+  dropHls()
+  if (!el || !url || kind !== 'hls')
+    return
+  const { default: Hls } = await import('hls.js')
+  if (videoEl.value !== el || player.videoUrl !== url)
+    return
+  if (!Hls.isSupported()) {
+    el.src = url
+    return
+  }
+  const h = new Hls({ enableWorker: true })
+  h.loadSource(url)
+  h.attachMedia(el)
+  hls = h
+})
+onBeforeUnmount(dropHls)
+
 // Re-attach the sync every time the <video> element is created; it is v-if'd
 // on the URL, so each load is a new node.
 watch(videoEl, (el) => {
@@ -702,7 +728,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       ref="videoEl"
       class="h-full w-full inset-0 absolute object-contain"
       :class="player.sbs180 ? 'invisible' : ''"
-      :src="player.videoUrl"
+      :src="player.videoKind === 'hls' ? undefined : player.videoUrl"
+      data-ph-main
       :muted="player.isMuted"
       preload="metadata"
       playsinline

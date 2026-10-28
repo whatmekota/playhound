@@ -221,7 +221,7 @@ export const usePlaybackStore = defineStore('playback', () => {
    * the script store — the caller loads them first, since there is no folder to
    * auto-detect from. The queue is left alone: a stream is not a library entry.
    */
-  async function playStream(name: string, url: string) {
+  async function playStream(name: string, url: string, kind: 'file' | 'hls' = 'file') {
     ++loadToken
     loading.value = false
     if (player.videoUrl?.startsWith('blob:'))
@@ -229,7 +229,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     // Clearing first makes the same URL count as a change, so the <video> reloads.
     player.setVideo('', '')
     await nextTick()
-    player.setVideo(name, url)
+    player.setVideo(name, url, kind)
     player.clearLoop()
     currentEntry.value = null
     currentFile.value = null
