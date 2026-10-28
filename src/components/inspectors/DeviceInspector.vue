@@ -533,7 +533,7 @@ const logOpen = ref(false)
 <template>
   <UiPanel>
     <!-- ─── Connection ─────────────────────────────────────────────────────── -->
-    <section class="p-3 card flex flex-col gap-3 relative overflow-hidden">
+    <section class="p-3 card flex shrink-0 flex-col gap-3 relative overflow-hidden">
       <div
         class="conn-glow pointer-events-none transition-opacity duration-500 inset-0 absolute"
         :class="status.tone === 'ok' ? 'opacity-100' : 'opacity-0'"

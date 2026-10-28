@@ -594,7 +594,7 @@ const PAD_MAP = [
     </UiSection>
 
     <!-- ─── Safety ────────────────────────────────────────────────────────── -->
-    <section class="card relative overflow-hidden !border-warn/25">
+    <section class="card shrink-0 relative overflow-hidden !border-warn/25">
       <div class="safety-stripe w-[3px] bottom-0 left-0 top-0 absolute" />
       <header class="pl-3.5 pr-3 flex gap-2 h-10 items-center">
         <span class="i-carbon-security text-[15px] text-warn shrink-0" />
