@@ -7,7 +7,7 @@ import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { useFunscript } from '~/composables/useFunscript'
 import { downloadPost, downloads } from '~/composables/usePostDownload'
-import { isSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
+import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
 import { classifyPostScripts, scriptsForVideo } from '~/lib/postScripts'
@@ -22,8 +22,8 @@ interface ESTopic {
   id: number
   title: string
   slug: string
-  views: number
-  like_count: number
+  views: number | null
+  like_count: number | null
   created_at: string
   category_id: number
   tags: (string | ESTag)[]
@@ -286,7 +286,20 @@ async function doSearch() {
 }
 
 /** Saved posts, newest saved first, in the shape the lists draw. */
-const savedTopics = computed<ESTopic[]>(() => savedPosts.value.map(p => ({ ...p })))
+// One reactive topic per saved post, kept across changes to the list, so an
+// opened post loads in place (loadDetail writes to it) and stays loaded.
+const savedTopicCache = new Map<number, ESTopic>()
+const savedTopics = computed<ESTopic[]>(() => savedPosts.value.map((p) => {
+  let t = savedTopicCache.get(p.id)
+  if (!t) {
+    t = reactive({ ...p }) as ESTopic
+    savedTopicCache.set(p.id, t)
+  }
+  else {
+    Object.assign(t, { title: p.title, image_url: p.image_url, like_count: p.like_count, views: p.views })
+  }
+  return t
+}))
 const items = computed(() => (searching.value ? searchResults.value : sort.value === 'saved' ? savedTopics.value : topics.value))
 
 function toggleSave(t: ESTopic) {
@@ -475,6 +488,12 @@ async function loadDetail(topic: ESTopic) {
   topic.loading = true
   try {
     const data = await apiFetch(`/t/${topic.slug}/${topic.id}.json`)
+    // A post saved from search results lacks its cover and counts: take them now.
+    topic.image_url ??= data?.image_url ?? null
+    topic.like_count ??= data?.like_count ?? null
+    topic.views ??= data?.views ?? null
+    if (isSaved(topic.id))
+      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views })
     const first: ESPost | undefined = data?.post_stream?.posts?.[0]
     if (!first) {
       topic.funscriptUrls = []
@@ -539,8 +558,10 @@ async function loadDetail(topic: ESTopic) {
 }
 
 function openDetail(topic: ESTopic) {
-  openTopic.value = topic
-  void loadDetail(topic)
+  // Through the reactive proxy, so what loadDetail fills in shows up.
+  const t = reactive(topic) as ESTopic
+  openTopic.value = t
+  void loadDetail(t)
 }
 
 /** The link "Play" uses: one that is ready, else one that may still work. */
@@ -976,8 +997,8 @@ onBeforeUnmount(() => {
                   <span :class="isSaved(t.id) ? 'i-carbon-star-filled text-warn' : 'i-carbon-star'" class="text-[14px]" />
                 </span>
                 <div class="text-[11px] text-white px-2 py-1.5 bg-[linear-gradient(to_top,rgba(0,0,0,0.7),transparent)] opacity-0 flex gap-2.5 transition-opacity bottom-0 left-0 right-0 absolute group-hover:opacity-100">
-                  <span class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
-                  <span class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
+                  <span v-if="t.like_count != null" class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
+                  <span v-if="t.views != null" class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
                 </div>
               </div>
               <div class="px-0.5 flex flex-col gap-1 min-w-0">
@@ -1021,8 +1042,8 @@ onBeforeUnmount(() => {
                 </p>
                 <div class="text-[11.5px] text-fg-faint flex gap-3 items-center">
                   <span>{{ fmtDate(t.created_at) }}</span>
-                  <span class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
-                  <span class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
+                  <span v-if="t.like_count != null" class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
+                  <span v-if="t.views != null" class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
                   <span class="flex gap-1 min-w-0">
                     <UiBadge v-for="tag in (t.tags ?? []).slice(0, 4)" :key="tagName(tag)" size="xs">{{ tagName(tag) }}</UiBadge>
                   </span>
@@ -1083,8 +1104,8 @@ onBeforeUnmount(() => {
               </h2>
               <div class="text-[12px] text-fg-muted flex flex-wrap gap-x-4 gap-y-1 items-center">
                 <span class="flex gap-1.5 items-center"><span class="i-carbon-calendar" />{{ fmtDate(openTopic.created_at) }}</span>
-                <span class="flex gap-1.5 items-center"><span class="i-carbon-favorite" />{{ fmtNum(openTopic.like_count) }}</span>
-                <span class="flex gap-1.5 items-center"><span class="i-carbon-view" />{{ fmtNum(openTopic.views) }}</span>
+                <span v-if="openTopic.like_count != null" class="flex gap-1.5 items-center"><span class="i-carbon-favorite" />{{ fmtNum(openTopic.like_count) }}</span>
+                <span v-if="openTopic.views != null" class="flex gap-1.5 items-center"><span class="i-carbon-view" />{{ fmtNum(openTopic.views) }}</span>
               </div>
               <div v-if="openTopic.tags?.length" class="flex flex-wrap gap-1">
                 <UiBadge v-for="tag in openTopic.tags" :key="tagName(tag)" size="xs">

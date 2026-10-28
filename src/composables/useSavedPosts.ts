@@ -16,8 +16,9 @@ export interface SavedPost {
   image_url: string | null
   tags: string[]
   created_at: string
-  like_count: number
-  views: number
+  /** Unknown for a post starred from search results, until it is opened. */
+  like_count: number | null
+  views: number | null
   category_id: number
   savedAt: number
 }
@@ -30,8 +31,8 @@ interface TopicLike {
   image_url: string | null
   tags: (string | { name: string })[]
   created_at: string
-  like_count: number
-  views: number
+  like_count?: number | null
+  views?: number | null
   category_id: number
 }
 
@@ -56,10 +57,27 @@ export function toggleSaved(t: TopicLike): boolean {
     image_url: t.image_url,
     tags: (t.tags ?? []).map(x => (typeof x === 'string' ? x : x.name)),
     created_at: t.created_at,
-    like_count: t.like_count,
-    views: t.views,
+    like_count: t.like_count ?? null,
+    views: t.views ?? null,
     category_id: t.category_id,
     savedAt: Date.now(),
   }, ...savedPosts.value]
   return true
+}
+
+/** Fill in what a saved post was missing (a cover, counts) once it has been opened. */
+export function refreshSaved(id: number, fresh: Partial<Pick<SavedPost, 'image_url' | 'like_count' | 'views' | 'title'>>) {
+  const i = savedPosts.value.findIndex(p => p.id === id)
+  if (i < 0)
+    return
+  const p = savedPosts.value[i]
+  const next = {
+    ...p,
+    image_url: fresh.image_url ?? p.image_url,
+    like_count: fresh.like_count ?? p.like_count,
+    views: fresh.views ?? p.views,
+    title: fresh.title ?? p.title,
+  }
+  if (JSON.stringify(next) !== JSON.stringify(p))
+    savedPosts.value = savedPosts.value.map((x, k) => (k === i ? next : x))
 }
