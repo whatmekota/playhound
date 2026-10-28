@@ -6,7 +6,6 @@
 // biome-ignore lint: disable
 export {}
 declare global {
-  const DownloadJob: typeof import('./src/composables/usePostDownload').DownloadJob
   const EffectScope: typeof import('vue').EffectScope
   const FACE_CHANNEL: typeof import('./src/composables/useFaceScreen').FACE_CHANNEL
   const KNOB_STEP: typeof import('./src/composables/useSessionActions').KNOB_STEP
@@ -428,7 +427,7 @@ declare global {
   export type { NetProxyInfo } from './src/composables/useNetProxy'
   import('./src/composables/useNetProxy')
   // @ts-ignore
-  export type { DownloadRequest } from './src/composables/usePostDownload'
+  export type { DownloadJob, DownloadRequest } from './src/composables/usePostDownload'
   import('./src/composables/usePostDownload')
   // @ts-ignore
   export type { RemoteAction, RemoteEdge, RemoteState } from './src/composables/useRemoteLink'
@@ -464,7 +463,6 @@ import { UnwrapRef } from 'vue'
 declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
-    readonly DownloadJob: UnwrapRef<typeof import('./src/composables/usePostDownload')['DownloadJob']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly FACE_CHANNEL: UnwrapRef<typeof import('./src/composables/useFaceScreen')['FACE_CHANNEL']>
     readonly KNOB_STEP: UnwrapRef<typeof import('./src/composables/useSessionActions')['KNOB_STEP']>

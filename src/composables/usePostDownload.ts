@@ -24,8 +24,11 @@ export interface DownloadJob {
   cancel: () => void
 }
 
+// No comma on the export line: unplugin-auto-import's scanner splits there and
+// took `DownloadJob` for a second exported value.
+type Jobs = Map<string, DownloadJob>
 /** Running and finished downloads, by the key the caller gives (one per video link). */
-export const downloads = reactive(new Map<string, DownloadJob>())
+export const downloads = reactive<Jobs>(new Map())
 
 const DOWNLOADS_KEY = 'downloadsDir'
 
