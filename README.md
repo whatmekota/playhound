@@ -384,12 +384,10 @@ Conventions that keep it in one piece:
 ## Status
 
 This is a personal project, built for and tested on one setup (Windows, Chrome,
-an OSR2). Some things are written but haven't been tried with real hardware yet:
+an OSR2). Two things are written but haven't been tried with real hardware yet:
 
-- heart-rate monitors
-- Buttplug vibration
-- the desktop app's Bluetooth chooser
-- Discord presence
+- vibrators through Intiface
+- the Handy
 
 Reports and fixes are welcome.
 
