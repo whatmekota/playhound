@@ -23,6 +23,10 @@ when there's no script, and can run a whole session by itself, with binaural
 audio, a hypnotic overlay, a heart-rate monitor and a phone in your other hand
 as the remote.
 
+<p align="center">
+  <a href="https://whatmekota.github.io/playhound/"><img src="docs/screenshot.webp" alt="playhound playing a dance video with four script axes: the Scripts panel shows stroke, twist, roll and pitch, the floating 3D emulator shows the stroker, and the timeline below shows the script's speed" width="100%"></a>
+</p>
+
 > [!WARNING]
 > **18+ only.** playhound is made for adult content and drives physical
 > devices. Read [Safety](#safety) before connecting hardware.
