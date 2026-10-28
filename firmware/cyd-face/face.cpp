@@ -863,7 +863,6 @@ void faceTick() {
     f.lookX     = lookX;
     f.lookY     = lookY;
     f.bob       = bob;
-    f.mouthOpen = mouthOpen;
     f.barUp     = !mouthAllowed;
     kerfusDraw(f);
     return;

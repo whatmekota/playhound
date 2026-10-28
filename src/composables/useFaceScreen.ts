@@ -21,7 +21,7 @@ const SCREEN_ALIVE_MS = 5000
 export const SCREEN_PING_MS = 2000
 
 export type FaceScreenMsg
-  = | { type: 'hello' | 'ping' | 'bye' }
+  = | { type: 'hello' | 'ping' | 'bye' | 'close' }
     | { type: 'frame', msg: FaceMessage, edging: boolean }
 
 export interface FaceScreenSettings {
@@ -70,11 +70,22 @@ export function publishFaceFrame(msg: FaceMessage, edging: boolean) {
   channel?.postMessage({ type: 'frame', msg, edging } satisfies FaceScreenMsg)
 }
 
+/** Ask any open face window to close itself. */
+export function closeFaceWindow() {
+  channel?.postMessage({ type: 'close' } satisfies FaceScreenMsg)
+  screenSeenAt.value = 0
+}
+
 /**
  * Open the face window. The desktop app puts it full screen on a second
  * display when there is one; a browser opens a popup to drag there.
+ *
+ * `noopener` matters: a popup that can reach its opener shares its renderer
+ * process, and a face drawn full screen on a second monitor then competes
+ * with the player for the same thread. Without the opener it gets a process
+ * of its own, and the BroadcastChannel reaches it all the same.
  */
 export function openFaceWindow() {
   const url = new URL(`${import.meta.env.BASE_URL}face`, location.href).href
-  window.open(url, 'playhound-face', 'popup,width=960,height=600')
+  window.open(url, 'playhound-face', 'popup,noopener,width=960,height=600')
 }

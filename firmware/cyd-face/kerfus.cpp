@@ -270,14 +270,6 @@ static void drawFace(const KerfusFrame &f, const Pose &p, int grow, bool core) {
     case MOUTH_W:
       halfRing(160 - MOUTH_GAP, MOUTH_Y, MOUTH_R, MOUTH_T, true, grow, ink);
       halfRing(160 + MOUTH_GAP, MOUTH_Y, MOUTH_R, MOUTH_T, true, grow, ink);
-      if (f.mouthOpen > 0.04f) {
-        // The tongue under the cusp: a parabola hanging off y 134.
-        const float d = (4 + 22 * f.mouthOpen) / 2;
-        for (int dy = 0; dy <= (int)d; dy++) {
-          const int w = (int)(9 * sqrtf(fmaxf(0.0f, 1 - dy / d))) + grow;
-          spr->drawFastHLine(160 - w, sy(MOUTH_Y + 6 + dy), 2 * w + 1, ink);
-        }
-      }
       break;
     case MOUTH_M:
       halfRing(160 - MOUTH_GAP, MOUTH_Y + MOUTH_R, MOUTH_R, MOUTH_T, false, grow, ink);

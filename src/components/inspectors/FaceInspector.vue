@@ -11,7 +11,7 @@ import UiSection from '~/components/ui/UiSection.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useFaceLink } from '~/composables/useFaceLink'
-import { faceScreenSettings, openFaceWindow } from '~/composables/useFaceScreen'
+import { closeFaceWindow, faceScreenSettings, openFaceWindow } from '~/composables/useFaceScreen'
 import { RC_PORT, remoteRoom } from '~/composables/useRemoteLink'
 import { toast } from '~/composables/useToast'
 import { FACE_RATE_MAX, FACE_RATE_MIN } from '~/lib/faceState'
@@ -273,7 +273,10 @@ function turnOnRelay() {
         or board needed. The desktop app opens it full screen on your other display.
       </p>
       <div class="flex gap-2 items-center">
-        <UiButton size="sm" variant="primary" icon="i-carbon-launch" @click="openFaceWindow">
+        <UiButton v-if="face.screenOpen.value" size="sm" icon="i-carbon-close" @click="closeFaceWindow">
+          Close face window
+        </UiButton>
+        <UiButton v-else size="sm" variant="primary" icon="i-carbon-launch" @click="openFaceWindow">
           Open face window
         </UiButton>
         <div class="ml-auto flex gap-1.5" role="radiogroup" aria-label="Colour">

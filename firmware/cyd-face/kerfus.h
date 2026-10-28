@@ -27,7 +27,6 @@ struct KerfusFrame {
   float    lookX;       // -1..1
   float    lookY;       // -1..1, up is negative
   float    bob;         // px
-  float    mouthOpen;   // 0..1
   bool     barUp;       // the control bar holds the bottom rows
 };
 

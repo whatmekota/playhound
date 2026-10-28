@@ -7,9 +7,14 @@ import { KERFUS as K, KERFUS_BLUSH, KERFUS_BOX, KERFUS_COLORS, kerfusPose } from
 /**
  * The Kerfus face, drawn from the same frames the CYD gets.
  *
- * The animation (blinks, a wandering gaze, the bob and the mouth riding the
- * stroke rate) is the firmware's faceTick() in miniature, so the screen face
- * and the board behave alike side by side.
+ * The animation (blinks, a wandering gaze, the bob riding the stroke rate) is
+ * the firmware's faceTick() in miniature, so the screen face and the board
+ * behave alike side by side.
+ *
+ * It may fill a 4K screen, so it is kept cheap: 30 frames a second, and the
+ * glow and the dot matrix are CSS the compositor applies (a drop-shadow, and a
+ * grid laid over the top) rather than SVG filters and masks redrawn on the
+ * main thread every frame.
  */
 const props = withDefaults(defineProps<{
   msg: FaceMessage | null
@@ -32,7 +37,7 @@ const pose = computed(() => kerfusPose({
   intensity: intensity.value,
   hearts: 'never',
 }))
-/** Something is driving strokes, so the bob and the mouth have a rhythm to ride. */
+/** Something is driving strokes, so the bob has a rhythm to ride. */
 const moving = computed(() => {
   const m = props.msg
   return !!m && !m.panic && (m.spm ?? 0) > 1 && (m.playing || m.src === 'motion' || m.src === 'session')
@@ -43,7 +48,6 @@ const lid = ref(1)
 const lookX = ref(0)
 const lookY = ref(0)
 const bob = ref(0)
-const mouthOpen = ref(0)
 
 let raf = 0
 let last = 0
@@ -53,7 +57,9 @@ let nextLookAt = 0
 let lookTX = 0
 let lookTY = 0
 let bobPhase = 0
-let mouthPhase = 0
+
+/** A frame every ~33ms is plenty for blinks and a 2px bob. */
+const FRAME_MS = 1000 / 30
 
 function approach(cur: number, target: number, rate: number, dt: number) {
   const d = target - cur
@@ -64,6 +70,8 @@ const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo)
 
 function frame(t: number) {
   raf = requestAnimationFrame(frame)
+  if (last && t - last < FRAME_MS - 2)
+    return
   const dt = Math.min(0.1, (t - (last || t)) / 1000)
   last = t
   const p = pose.value
@@ -96,15 +104,11 @@ function frame(t: number) {
   lookY.value = approach(lookY.value, ty, follow ? 9 : 2.2, dt)
 
   if (moving.value) {
-    bobPhase += (spm / 60) * dt
-    bob.value = Math.sin(bobPhase * Math.PI * 2) * 2
-    // Slower than the stroke: a mouth flapping at 2Hz reads as chewing.
-    mouthPhase = (mouthPhase + Math.min(0.9, (spm / 60) * 0.34) * dt) % 1
-    mouthOpen.value = (0.5 - 0.5 * Math.cos(mouthPhase * Math.PI * 2)) * (0.35 + 0.65 * x)
+    bobPhase = (bobPhase + (spm / 60) * dt) % 1
+    bob.value = Math.round(Math.sin(bobPhase * Math.PI * 2) * 2 * 4) / 4
   }
   else {
     bob.value = approach(bob.value, 0, 12, dt)
-    mouthOpen.value = approach(mouthOpen.value, 0, 3, dt)
   }
 }
 
@@ -169,143 +173,146 @@ const mouthW = computed(() => {
     ? `M${160 - 2 * g} ${y + r} A${r} ${r} 0 0 1 160 ${y + r} A${r} ${r} 0 0 1 ${160 + 2 * g} ${y + r}`
     : `M${160 - 2 * g} ${y} A${r} ${r} 0 0 0 160 ${y} A${r} ${r} 0 0 0 ${160 + 2 * g} ${y}`
 })
-/** The open mouth: a tongue hanging under the cusp of the ω, growing with the stroke. */
-const tongue = computed(() => {
-  const o = mouthOpen.value
-  const y = K.mouthY + 6
-  return `M${160 - 9} ${y} Q160 ${y + 4 + 22 * o} ${160 + 9} ${y} Z`
-})
 
 const viewBox = `${KERFUS_BOX.x} ${KERFUS_BOX.y} ${KERFUS_BOX.w} ${KERFUS_BOX.h}`
 </script>
 
 <template>
-  <svg :viewBox="viewBox" class="kerfus" :style="{ color: ink }" aria-hidden="true">
-    <defs>
-      <filter :id="`${id}-glow`" x="-20%" y="-30%" width="140%" height="160%">
-        <feGaussianBlur stdDeviation="2.4" result="b" />
-        <feMerge>
-          <feMergeNode in="b" />
-          <feMergeNode in="SourceGraphic" />
-        </feMerge>
-      </filter>
-      <pattern :id="`${id}-dots`" width="2" height="2" patternUnits="userSpaceOnUse">
-        <rect width="1.55" height="1.55" fill="white" />
-      </pattern>
-      <mask :id="`${id}-led`">
-        <rect :x="KERFUS_BOX.x" :y="KERFUS_BOX.y" :width="KERFUS_BOX.w" :height="KERFUS_BOX.h" :fill="`url(#${id}-dots)`" />
-      </mask>
-      <clipPath v-for="e in eyes" :id="`${id}-lid${e.side}`" :key="e.side">
-        <rect :x="e.cx - K.eyeR0 - 6" :y="K.eyeY - K.eyeR0 * K.lidCut" :width="2 * K.eyeR0 + 12" :height="2 * K.eyeR0" />
-      </clipPath>
-    </defs>
+  <div class="kerfus" :class="{ glow }" :style="{ color: ink }" aria-hidden="true">
+    <svg :viewBox="viewBox">
+      <defs>
+        <clipPath v-for="e in eyes" :id="`${id}-lid${e.side}`" :key="e.side">
+          <rect :x="e.cx - K.eyeR0 - 6" :y="K.eyeY - K.eyeR0 * K.lidCut" :width="2 * K.eyeR0 + 12" :height="2 * K.eyeR0" />
+        </clipPath>
+      </defs>
 
-    <g :filter="glow ? `url(#${id}-glow)` : undefined" :mask="led ? `url(#${id}-led)` : undefined">
-      <g class="body" :style="{ opacity: pose.dim ? 0.28 : 1 }">
-        <!-- Brows and eyes bob together -->
-        <g :transform="`translate(0 ${bob})`">
-          <ellipse
-            v-for="e in eyes"
-            :key="`b${e.side}`"
-            :cx="e.side < 0 ? K.browL : K.browR"
-            :cy="K.browY + pose.browDy"
-            :rx="K.browRx"
-            :ry="K.browRy"
-            fill="currentColor"
-            :transform="`rotate(${-e.side * pose.browTilt} ${e.side < 0 ? K.browL : K.browR} ${K.browY + pose.browDy})`"
-            class="brow"
-          />
-
-          <g v-for="e in eyes" :key="`e${e.side}`">
-            <path
-              v-if="(eyeShape(e.side) === 'ring' || eyeShape(e.side) === 'lid') && pose.blinks && lid < 0.3"
-              :d="`M${e.cx - K.eyeR0 + 6} ${K.eyeY} L${e.cx + K.eyeR0 - 6} ${K.eyeY}`"
-              stroke="currentColor"
-              stroke-width="8"
-              stroke-linecap="round"
+      <g>
+        <g class="body" :style="{ opacity: pose.dim ? 0.28 : 1 }">
+          <!-- Brows and eyes bob together -->
+          <g :transform="`translate(0 ${bob})`">
+            <ellipse
+              v-for="e in eyes"
+              :key="`b${e.side}`"
+              :cx="e.side < 0 ? K.browL : K.browR"
+              :cy="K.browY + pose.browDy"
+              :rx="K.browRx"
+              :ry="K.browRy"
+              fill="currentColor"
+              :transform="`rotate(${-e.side * pose.browTilt} ${e.side < 0 ? K.browL : K.browR} ${K.browY + pose.browDy})`"
+              class="brow"
             />
-            <template v-else-if="eyeShape(e.side) === 'ring' || eyeShape(e.side) === 'lid'">
-              <g
-                :clip-path="eyeShape(e.side) === 'lid' ? `url(#${id}-lid${e.side})` : undefined"
-                :transform="`translate(0 ${K.eyeY}) scale(1 ${Math.max(0.1, lid)}) translate(0 ${-K.eyeY})`"
-              >
-                <circle :cx="e.cx" :cy="K.eyeY" :r="K.eyeR0" fill="currentColor" />
-                <circle :cx="e.cx + pupil.dx" :cy="K.eyeY + pupil.dy" :r="pupil.r" fill="#000" />
-              </g>
+
+            <g v-for="e in eyes" :key="`e${e.side}`">
               <path
-                v-if="eyeShape(e.side) === 'lid'"
-                :d="`M${e.cx - K.eyeR0 + 2} ${K.eyeY - K.eyeR0 * K.lidCut} L${e.cx + K.eyeR0 - 2} ${K.eyeY - K.eyeR0 * K.lidCut}`"
+                v-if="(eyeShape(e.side) === 'ring' || eyeShape(e.side) === 'lid') && pose.blinks && lid < 0.3"
+                :d="`M${e.cx - K.eyeR0 + 6} ${K.eyeY} L${e.cx + K.eyeR0 - 6} ${K.eyeY}`"
+                stroke="currentColor"
+                stroke-width="8"
+                stroke-linecap="round"
+              />
+              <template v-else-if="eyeShape(e.side) === 'ring' || eyeShape(e.side) === 'lid'">
+                <g
+                  :clip-path="eyeShape(e.side) === 'lid' ? `url(#${id}-lid${e.side})` : undefined"
+                  :transform="`translate(0 ${K.eyeY}) scale(1 ${Math.max(0.1, lid)}) translate(0 ${-K.eyeY})`"
+                >
+                  <circle :cx="e.cx" :cy="K.eyeY" :r="K.eyeR0" fill="currentColor" />
+                  <circle :cx="e.cx + pupil.dx" :cy="K.eyeY + pupil.dy" :r="pupil.r" fill="#000" />
+                </g>
+                <path
+                  v-if="eyeShape(e.side) === 'lid'"
+                  :d="`M${e.cx - K.eyeR0 + 2} ${K.eyeY - K.eyeR0 * K.lidCut} L${e.cx + K.eyeR0 - 2} ${K.eyeY - K.eyeR0 * K.lidCut}`"
+                  stroke="currentColor"
+                  :stroke-width="K.lineT"
+                  stroke-linecap="round"
+                />
+              </template>
+              <path
+                v-else-if="eyeShape(e.side) === 'chevron'"
+                :d="chevron(e.cx, e.side)"
+                fill="none"
                 stroke="currentColor"
                 :stroke-width="K.lineT"
                 stroke-linecap="round"
+                stroke-linejoin="round"
               />
-            </template>
-            <path
-              v-else-if="eyeShape(e.side) === 'chevron'"
-              :d="chevron(e.cx, e.side)"
-              fill="none"
-              stroke="currentColor"
-              :stroke-width="K.lineT"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-            <path v-else-if="eyeShape(e.side) === 'hearts'" :d="heart(e.cx)" :fill="KERFUS_BLUSH" />
-            <template v-else-if="eyeShape(e.side) === 'sad'">
-              <path :d="sadBar(e.cx, e.side).d" stroke="currentColor" :stroke-width="K.lineT + 3" stroke-linecap="round" />
-              <circle :cx="sadBar(e.cx, e.side).tear.x" :cy="sadBar(e.cx, e.side).tear.y" r="7" fill="currentColor" />
-            </template>
-            <path
-              v-else-if="eyeShape(e.side) === 'sleep'"
-              :d="`M${e.cx - 32} ${K.eyeY + 2} Q${e.cx} ${K.eyeY + 16} ${e.cx + 32} ${K.eyeY + 2}`"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="8"
-              stroke-linecap="round"
-            />
-            <path v-else :d="`M${e.cx - 28} ${K.eyeY + 4} L${e.cx + 28} ${K.eyeY + 4}`" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
+              <path v-else-if="eyeShape(e.side) === 'hearts'" :d="heart(e.cx)" :fill="KERFUS_BLUSH" />
+              <template v-else-if="eyeShape(e.side) === 'sad'">
+                <path :d="sadBar(e.cx, e.side).d" stroke="currentColor" :stroke-width="K.lineT + 3" stroke-linecap="round" />
+                <circle :cx="sadBar(e.cx, e.side).tear.x" :cy="sadBar(e.cx, e.side).tear.y" r="7" fill="currentColor" />
+              </template>
+              <path
+                v-else-if="eyeShape(e.side) === 'sleep'"
+                :d="`M${e.cx - 32} ${K.eyeY + 2} Q${e.cx} ${K.eyeY + 16} ${e.cx + 32} ${K.eyeY + 2}`"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="8"
+                stroke-linecap="round"
+              />
+              <path v-else :d="`M${e.cx - 28} ${K.eyeY + 4} L${e.cx + 28} ${K.eyeY + 4}`" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
+            </g>
           </g>
-        </g>
 
-        <!-- Nose, mouth, whiskers -->
-        <ellipse cx="160" :cy="K.noseY" :rx="K.noseRx" :ry="K.noseRy" fill="currentColor" />
-        <template v-if="pose.mouth === 'w' || pose.mouth === 'm'">
-          <path v-if="pose.mouth === 'w' && mouthOpen > 0.04" :d="tongue" fill="currentColor" />
-          <path :d="mouthW" fill="none" stroke="currentColor" :stroke-width="K.mouthT" stroke-linecap="round" stroke-linejoin="round" />
-        </template>
-        <circle v-else-if="pose.mouth === 'o'" cx="160" :cy="K.mouthY + 10" r="8" fill="none" stroke="currentColor" stroke-width="5" />
-        <path v-else :d="`M148 ${K.mouthY + 6} L172 ${K.mouthY + 6}`" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
-
-        <g v-for="side in [-1, 1]" :key="`w${side}`">
-          <line
-            v-for="(wy, i) in K.whiskerY"
-            :key="i"
-            :x1="(side < 0 ? K.whiskerX : 320 - K.whiskerX) - K.whiskerLen / 2"
-            :x2="(side < 0 ? K.whiskerX : 320 - K.whiskerX) + K.whiskerLen / 2"
-            :y1="wy"
-            :y2="wy"
-            stroke="currentColor"
-            :stroke-width="K.whiskerT"
-            stroke-linecap="round"
-            :transform="`rotate(${(i === 0 ? 1 : -1) * -side * K.whiskerTilt} ${side < 0 ? K.whiskerX : 320 - K.whiskerX} ${wy})`"
-          />
-        </g>
-
-        <g v-if="pose.blush" :stroke="KERFUS_BLUSH" stroke-width="3.5" stroke-linecap="round">
-          <template v-for="e in eyes" :key="`bl${e.side}`">
-            <line v-for="k in 3" :key="k" :x1="e.cx - 17 + (k - 1) * 12" :y1="K.eyeY + 54" :x2="e.cx - 11 + (k - 1) * 12" :y2="K.eyeY + 44" />
+          <!-- Nose, mouth, whiskers -->
+          <ellipse cx="160" :cy="K.noseY" :rx="K.noseRx" :ry="K.noseRy" fill="currentColor" />
+          <template v-if="pose.mouth === 'w' || pose.mouth === 'm'">
+            <path :d="mouthW" fill="none" stroke="currentColor" :stroke-width="K.mouthT" stroke-linecap="round" stroke-linejoin="round" />
           </template>
-        </g>
+          <circle v-else-if="pose.mouth === 'o'" cx="160" :cy="K.mouthY + 10" r="8" fill="none" stroke="currentColor" stroke-width="5" />
+          <path v-else :d="`M148 ${K.mouthY + 6} L172 ${K.mouthY + 6}`" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
 
-        <text v-if="pose.eyes === 'sleep'" x="286" y="52" class="zz" fill="currentColor">z</text>
+          <g v-for="side in [-1, 1]" :key="`w${side}`">
+            <line
+              v-for="(wy, i) in K.whiskerY"
+              :key="i"
+              :x1="(side < 0 ? K.whiskerX : 320 - K.whiskerX) - K.whiskerLen / 2"
+              :x2="(side < 0 ? K.whiskerX : 320 - K.whiskerX) + K.whiskerLen / 2"
+              :y1="wy"
+              :y2="wy"
+              stroke="currentColor"
+              :stroke-width="K.whiskerT"
+              stroke-linecap="round"
+              :transform="`rotate(${(i === 0 ? 1 : -1) * -side * K.whiskerTilt} ${side < 0 ? K.whiskerX : 320 - K.whiskerX} ${wy})`"
+            />
+          </g>
+
+          <g v-if="pose.blush" :stroke="KERFUS_BLUSH" stroke-width="3.5" stroke-linecap="round">
+            <template v-for="e in eyes" :key="`bl${e.side}`">
+              <line v-for="k in 3" :key="k" :x1="e.cx - 17 + (k - 1) * 12" :y1="K.eyeY + 54" :x2="e.cx - 11 + (k - 1) * 12" :y2="K.eyeY + 44" />
+            </template>
+          </g>
+
+          <text v-if="pose.eyes === 'sleep'" x="286" y="52" class="zz" fill="currentColor">z</text>
+        </g>
       </g>
-    </g>
-  </svg>
+    </svg>
+    <!-- One grid line every 2 units: 160 columns and 70 rows over the 320x140 box -->
+    <div v-if="led" class="led" />
+  </div>
 </template>
 
 <style scoped>
 .kerfus {
+  position: relative;
+  aspect-ratio: 320 / 140;
+  container-type: inline-size;
+}
+.kerfus > svg {
   display: block;
+  width: 100%;
+  height: 100%;
   overflow: visible;
+}
+.kerfus.glow > svg {
+  filter: drop-shadow(0 0 0.9cqw currentColor);
+  will-change: filter;
+}
+.led {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, transparent 77%, #000 77%), linear-gradient(to bottom, transparent 77%, #000 77%);
+  background-size: calc(100% / 160) calc(100% / 70);
 }
 .body {
   transition: opacity 0.3s ease;

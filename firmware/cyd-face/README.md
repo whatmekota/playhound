@@ -107,10 +107,9 @@ robot's own expressions:
 | edge      | sad bars with a tear and a frown         |
 | panicked  | eyes shut and the whole face dimmed      |
 
-The mouth opens with the stroke rate, as the anime face's does. The app can
-show the same face on a second monitor (**Face** panel → **Open face window**),
-with no board at all. The drawing is shared with `src/lib/kerfus.ts`; change
-both together.
+The app can show the same face on a second monitor (**Face** panel → **Open
+face window**), with no board at all. The drawing is shared with
+`src/lib/kerfus.ts`; change both together.
 
 ## How it connects
 

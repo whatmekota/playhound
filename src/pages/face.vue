@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FaceScreenMsg } from '~/composables/useFaceScreen'
 import type { FaceMessage } from '~/lib/faceState'
-import { useIdle } from '@vueuse/core'
+import { useEventListener, useIdle } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue'
 import KerfusFace from '~/components/face/KerfusFace.vue'
 import { FACE_CHANNEL, faceScreenSettings, SCREEN_PING_MS } from '~/composables/useFaceScreen'
@@ -11,7 +11,11 @@ defineOptions({ name: 'FacePage' })
 
 /**
  * The face, full window, for a second monitor. Fed by the main window over a
- * BroadcastChannel (see useFaceScreen); double-click for full screen.
+ * BroadcastChannel (see useFaceScreen).
+ *
+ * Getting out has to be obvious on a screen with nothing else on it: moving
+ * the mouse shows full-screen and close buttons, Esc leaves full screen and
+ * then closes, and the Face panel can close it from the main window.
  */
 const cfg = faceScreenSettings()
 const msg = shallowRef<FaceMessage | null>(null)
@@ -29,6 +33,8 @@ onMounted(() => {
   document.title = 'playhound face'
   channel = new BroadcastChannel(FACE_CHANNEL)
   channel.onmessage = (e: MessageEvent<FaceScreenMsg>) => {
+    if (e.data?.type === 'close')
+      close()
     if (e.data?.type !== 'frame')
       return
     msg.value = e.data.msg
@@ -53,6 +59,11 @@ onBeforeUnmount(() => {
   removeEventListener('pagehide', bye)
 })
 
+const fullscreen = ref(false)
+useEventListener(document, 'fullscreenchange', () => {
+  fullscreen.value = !!document.fullscreenElement
+})
+
 function toggleFullscreen() {
   if (document.fullscreenElement)
     void document.exitFullscreen()
@@ -60,14 +71,38 @@ function toggleFullscreen() {
     void document.documentElement.requestFullscreen().catch(() => {})
 }
 
+function close() {
+  bye()
+  window.close()
+}
+
+// The browser handles Esc in full screen itself; out of it, Esc closes.
+useEventListener(window, 'keydown', (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && !document.fullscreenElement) {
+    close()
+  }
+  else if (e.key === 'F11' || e.key.toLowerCase() === 'f') {
+    e.preventDefault()
+    toggleFullscreen()
+  }
+})
+
 const { idle } = useIdle(2500)
 </script>
 
 <template>
   <main class="face-page" :class="{ 'cursor-none': idle }" @dblclick="toggleFullscreen">
     <KerfusFace class="face" :msg="connected ? msg : null" :edging="connected && edging" :color="cfg.color" :led="cfg.led" />
+    <div class="controls" :class="{ shown: !idle }" @dblclick.stop>
+      <button type="button" :title="fullscreen ? 'Leave full screen (Esc)' : 'Full screen (F)'" @click="toggleFullscreen">
+        <span :class="fullscreen ? 'i-carbon-minimize' : 'i-carbon-maximize'" />
+      </button>
+      <button type="button" title="Close (Esc)" @click="close">
+        <span class="i-carbon-close" />
+      </button>
+    </div>
     <p class="status" :class="{ shown: !connected || !idle }" :style="{ color: KERFUS_COLORS[cfg.color] }">
-      {{ connected ? 'double-click for full screen' : 'waiting for playhound' }}
+      {{ connected ? (fullscreen ? 'Esc leaves full screen' : 'double-click for full screen · Esc closes') : 'waiting for playhound' }}
     </p>
   </main>
 </template>
@@ -85,6 +120,38 @@ const { idle } = useIdle(2500)
 .face {
   width: min(92vw, calc(92vh * 320 / 140));
   height: auto;
+}
+.controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+.controls.shown {
+  opacity: 1;
+  pointer-events: auto;
+}
+.controls button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 18px;
+  color: rgb(255 255 255 / 0.75);
+  background: rgb(255 255 255 / 0.08);
+  transition: background 0.15s ease;
+}
+.controls button:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.18);
+}
+.controls button:last-child:hover {
+  background: rgb(220 50 70 / 0.7);
 }
 .status {
   position: absolute;

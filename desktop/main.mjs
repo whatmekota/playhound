@@ -273,14 +273,20 @@ function fromMainWindow(event) {
     && !!frame && frame === win.webContents.mainFrame && isOurs(frame.url)
 }
 
+/** A display other than the main window's, if there is one. */
+function otherDisplay() {
+  const here = win ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay()
+  return { here, other: screen.getAllDisplays().find(d => d.id !== here.id) }
+}
+
 /**
- * The face window (/face): full screen on a display other than the main
- * window's when there is one, since a second monitor is what it is for, and a
- * plain window otherwise.
+ * The face window (/face): placed on a display other than the main window's
+ * when there is one, since a second monitor is what it is for. It goes full
+ * screen from the page (see did-create-window below) rather than as a window
+ * option, so Esc and double-click take it back out like any web page.
  */
 function faceWindowOptions() {
-  const here = win ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay()
-  const other = screen.getAllDisplays().find(d => d.id !== here.id)
+  const { here, other } = otherDisplay()
   const area = (other ?? here).workArea
   const width = Math.min(960, area.width)
   const height = Math.min(600, area.height)
@@ -289,7 +295,6 @@ function faceWindowOptions() {
     y: Math.round(area.y + (area.height - height) / 2),
     width,
     height,
-    fullscreen: !!other,
     frame: true,
     autoHideMenuBar: true,
     backgroundColor: '#000000',
@@ -393,6 +398,14 @@ function createWindow(url) {
     }
     openExternal(target)
     return { action: 'deny' }
+  })
+  wc.on('did-create-window', (child, { url: target }) => {
+    if (!isOurs(target) || !new URL(target).pathname.endsWith('/face') || !otherDisplay().other)
+      return
+    // As if the user had asked: a page may only go full screen on a gesture.
+    child.webContents.once('did-finish-load', () => {
+      child.webContents.executeJavaScript('document.documentElement.requestFullscreen().catch(() => {})', true).catch(() => {})
+    })
   })
   wc.on('will-navigate', (event, target) => {
     if (!isOurs(target)) {
