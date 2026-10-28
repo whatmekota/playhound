@@ -80,8 +80,9 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   script, the music or the session.
 - **Streams straight from the post.** Pixeldrain, Gofile, MEGA, Iwara,
   Rule34Video and PMVHaven links play without downloading anything first, with
-  seeking and a quality choice; X, Pornhub, Hanime1 and many more go through
-  yt-dlp, which playhound fetches for you if you want it.
+  seeking and a quality choice; Pornhub, XVideos, Hanime1, rule34.xyz and many
+  more go through yt-dlp, which playhound fetches for you if you want it. Or
+  download the video with its scripts, named so the library pairs them.
 - **Remotes.** Use a phone over Wi-Fi (big buttons, panic in the thumb zone), a
   gamepad, or an [ESP32 "Cheap Yellow Display"](firmware/cyd-face) face that
   watches the session and reacts. The face also comes as Kerfus, the cat robot,
@@ -222,16 +223,26 @@ don't have to match the video's, which on file hosts they rarely do. Each
 script's axis is read from its siblings (`Song.roll` next to `Song`), and a post
 with several videos gives each one the set whose name fits it best.
 
-| Host                                                    | How                                                                                                                                             |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Pixeldrain, Gofile, MEGA, Iwara, Rule34Video, PMVHaven  | playhound's own resolvers; MEGA is decrypted as it streams                                                                                      |
-| X, Pornhub, Hanime1, rule34.xyz/xxx, Bunkr and the rest | [yt-dlp](https://github.com/yt-dlp/yt-dlp): the first time a link needs it, playhound offers to fetch the official release and keeps it updated |
+| Host                                                   | Tried and working | How                                                                                                                                             |
+| ------------------------------------------------------ | :---------------: | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pixeldrain, Gofile, MEGA, Iwara, Rule34Video, PMVHaven |         ✓         | playhound's own resolvers; MEGA is decrypted as it streams                                                                                      |
+| Pornhub, XVideos, Hanime1, rule34.xyz                  |         ✓         | [yt-dlp](https://github.com/yt-dlp/yt-dlp): the first time a link needs it, playhound offers to fetch the official release and keeps it updated |
+| Many more sites yt-dlp supports                        |                   | yt-dlp                                                                                                                                          |
+| X                                                      |                   | yt-dlp, but age-restricted posts only show video to logged-in users                                                                             |
+| rule34.xxx, Bunkr                                      |         ✗         | rule34.xxx sits behind a Cloudflare check, and yt-dlp has no Bunkr support                                                                      |
+
+**Download** next to a source saves the video and the post's scripts into your
+library folder (or a folder you pick once), all under the video's name, so the
+library pairs them the moment they land: `Name.mp4`, `Name.funscript`,
+`Name.roll.funscript`. Nothing is overwritten: a name that is taken gets
+` (2)`. HLS sources (some Pornhub videos) can play but not be saved yet.
 
 Streams go through the small local proxy the Windows app runs (or
-`start.bat` / `pnpm dev:proxy` from source), which also follows your
-`HTTP(S)_PROXY` if you have one. Anonymous MEGA has a transfer quota per
-connection, and some sites (age-restricted posts on X, for one) only show
-video to logged-in users.
+`start.bat` / `pnpm dev:proxy` from source). If some of these sites are blocked
+where you are, put an HTTP proxy in **Settings → Network**: the forum,
+streaming and yt-dlp all go through it. Left empty, playhound uses
+`HTTPS_PROXY` from your system if it is set. Anonymous MEGA has a transfer
+quota per connection.
 
 ### Phone remote
 
