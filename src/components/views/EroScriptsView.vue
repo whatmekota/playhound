@@ -8,6 +8,7 @@ import { useIntersectionObserver } from '@vueuse/core'
 import { useFunscript } from '~/composables/useFunscript'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
+import { classifyPostScripts, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -522,6 +523,7 @@ const primarySource = computed(() => {
     ?? links.find(v => v.state !== 'error')
     ?? null
 })
+const primaryScripts = computed(() => (openTopic.value && primarySource.value ? scriptsFor(openTopic.value, primarySource.value).length : 0))
 
 // ─── Downloads & playback ─────────────────────────────────────────────────────
 const saving = reactive(new Set<string>())
@@ -572,8 +574,29 @@ const job = ref<Job | null>(null)
 const isPd = (url: string) => url.startsWith(`${PROXY}/pd/`)
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms))
 
+/**
+ * The post's scripts that go with this video, each with its axis. Names are
+ * only compared among the scripts: the video's name rarely matches theirs.
+ */
+function scriptsFor(topic: ESTopic, link: VideoLink): { entry: FunscriptEntry, suffix: string }[] {
+  const all = topic.funscriptUrls ?? []
+  if (!all.length)
+    return []
+  // Where this video sits among every video in the post.
+  let index = 0
+  let count = 0
+  for (const vl of topic.videoLinks ?? []) {
+    if (vl === link)
+      index = count + (vl.items.length > 1 ? vl.item : 0)
+    count += Math.max(1, vl.items.length)
+  }
+  const picked = scriptsForVideo(classifyPostScripts(all.map(e => e.filename)), { title: chosenTitle(link, ''), index, count })
+  return picked.map(p => ({ entry: all.find(e => e.filename === p.filename)!, suffix: p.suffix }))
+}
+
 async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
-  const entries = withScripts ? (topic.funscriptUrls ?? []) : []
+  const chosen = withScripts ? scriptsFor(topic, link) : []
+  const entries = chosen.map(c => c.entry)
   job.value = { topicId: topic.id, step: 'Finding the stream', done: 0, total: entries.length + 1 }
   try {
     await resolveVideoLink(link)
@@ -590,19 +613,22 @@ async function play(topic: ESTopic, link: VideoLink, withScripts: boolean) {
         job.value!.step = `Downloading scripts · ${job.value!.done} of ${entries.length}`
       }
       job.value.step = `Downloading scripts · 0 of ${entries.length}`
-      files.push(...await Promise.all(entries.filter(e => !isPd(e.url)).map(async (e) => {
-        const f = await fetchScript(e)
+      const suffixes: string[] = []
+      files.push(...await Promise.all(chosen.filter(c => !isPd(c.entry.url)).map(async (c) => {
+        const f = await fetchScript(c.entry)
         step()
         return f
       })))
-      const pd = entries.filter(e => isPd(e.url))
-      for (const [i, e] of pd.entries()) {
-        files.push(await fetchScript(e))
+      suffixes.push(...chosen.filter(c => !isPd(c.entry.url)).map(c => c.suffix))
+      const pd = chosen.filter(c => isPd(c.entry.url))
+      for (const [i, c] of pd.entries()) {
+        files.push(await fetchScript(c.entry))
+        suffixes.push(c.suffix)
         step()
         if (i < pd.length - 1)
           await wait(300)
       }
-      await loadScriptFiles(files, topic.title)
+      await loadScriptFiles(files, '', suffixes)
       // Let Pixeldrain release the download slot before the video asks for one.
       if (pd.length && link.host.id === 'pixeldrain')
         await wait(500)
@@ -975,7 +1001,7 @@ onBeforeUnmount(() => {
                     :disabled="!!job"
                     @click="play(openTopic, primarySource, true)"
                   >
-                    {{ openTopic.funscriptUrls.length ? `Play with ${openTopic.funscriptUrls.length} script${openTopic.funscriptUrls.length === 1 ? '' : 's'}` : 'Play video' }}
+                    {{ primaryScripts ? `Play with ${primaryScripts} script${primaryScripts === 1 ? '' : 's'}` : 'Play video' }}
                   </UiButton>
                   <p class="hint text-center">
                     from {{ primarySource.title || primarySource.host.label }}

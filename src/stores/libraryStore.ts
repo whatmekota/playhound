@@ -11,6 +11,8 @@ export interface ScriptMatch {
   file: File
   isAlt: boolean
   altName: string // e.g. "Bounce" extracted from "(Bounce)" or " Bounce" suffix
+  /** Axis suffix decided by the caller, when the video's name cannot tell it. */
+  suffix?: string
 }
 
 /** How the script type is classified — drives badge color in library */

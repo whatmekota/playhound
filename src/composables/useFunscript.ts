@@ -33,12 +33,12 @@ export function useFunscript() {
   }
 
   /** Load specific funscript File objects manually selected by the user. */
-  async function loadScriptFiles(files: File[], videoBasename = '') {
+  async function loadScriptFiles(files: File[], videoBasename = '', suffixes?: string[]) {
     loading.value = true
     error.value = null
     lastRawMetadata.value = null
     try {
-      const matches: ScriptMatch[] = files.map(f => ({ file: f, isAlt: false, altName: '' }))
+      const matches: ScriptMatch[] = files.map((f, i) => ({ file: f, isAlt: false, altName: '', suffix: suffixes?.[i] }))
       const results = await parseMatches(matches, videoBasename)
       scriptStore.setScripts(results)
       return results
@@ -55,10 +55,10 @@ export function useFunscript() {
     const enabledChannels = new Set<string>()
 
     for (const match of matches) {
-      const { file, isAlt, altName } = match
+      const { file, isAlt, altName, suffix } = match
       try {
         const content = await file.text()
-        const parsed = parseFunscriptContent(content, file.name, videoBasename)
+        const parsed = parseFunscriptContent(content, file.name, videoBasename, suffix)
         // Capture metadata from the first (primary) file
         if (!isAlt && parsed.rawMetadata && !lastRawMetadata.value) {
           lastRawMetadata.value = parsed.rawMetadata
