@@ -9,6 +9,16 @@ import {
 } from 'unocss'
 import { ALL_VIEWS } from './src/lib/views'
 
+/**
+ * SVG presentation attributes are not utilities. Left to attributify,
+ * `opacity="1"` became `opacity: 0.01` and `stroke="var(--accent)"` a
+ * stroke-width, which hid the Stats bars. The preset ignores a few of these
+ * by name, but checks before stripping Vue's `:` prefix, so a bound
+ * `:opacity` got through: list both spellings.
+ */
+const SVG_ATTRIBUTES = ['placeholder', 'fill', 'opacity', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-dasharray']
+  .flatMap(a => [a, `:${a}`, `v-bind:${a}`])
+
 export default defineConfig({
   // Menus, registries and toasts name their icons in plain .ts files. Those go
   // through Vite's transform like any module, so letting the extractor see
@@ -130,7 +140,7 @@ export default defineConfig({
 
   presets: [
     presetWind4(),
-    presetAttributify(),
+    presetAttributify({ ignoreAttributes: SVG_ATTRIBUTES }),
     presetIcons({
       scale: 1.2,
       warn: true,
