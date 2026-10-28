@@ -82,6 +82,7 @@ declare global {
   const isReactive: typeof import('vue').isReactive
   const isReadonly: typeof import('vue').isReadonly
   const isRef: typeof import('vue').isRef
+  const isSaved: typeof import('./src/composables/useSavedPosts').isSaved
   const isShallow: typeof import('vue').isShallow
   const isStrengthToy: typeof import('./src/composables/useButtplug').isStrengthToy
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
@@ -145,6 +146,7 @@ declare global {
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
   const resolveStream: typeof import('./src/composables/useStreams').resolveStream
+  const savedPosts: typeof import('./src/composables/useSavedPosts').savedPosts
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
@@ -166,6 +168,7 @@ declare global {
   const toValue: typeof import('vue').toValue
   const toast: typeof import('./src/composables/useToast').toast
   const toggleDark: typeof import('./src/composables/dark').toggleDark
+  const toggleSaved: typeof import('./src/composables/useSavedPosts').toggleSaved
   const triggerRef: typeof import('vue').triggerRef
   const tryOnBeforeMount: typeof import('@vueuse/core').tryOnBeforeMount
   const tryOnBeforeUnmount: typeof import('@vueuse/core').tryOnBeforeUnmount
@@ -433,6 +436,9 @@ declare global {
   export type { RemoteAction, RemoteEdge, RemoteState } from './src/composables/useRemoteLink'
   import('./src/composables/useRemoteLink')
   // @ts-ignore
+  export type { SavedPost } from './src/composables/useSavedPosts'
+  import('./src/composables/useSavedPosts')
+  // @ts-ignore
   export type { ScriptAnalysis } from './src/composables/useScriptAnalysis'
   import('./src/composables/useScriptAnalysis')
   // @ts-ignore
@@ -539,6 +545,7 @@ declare module 'vue' {
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
     readonly isRef: UnwrapRef<typeof import('vue')['isRef']>
+    readonly isSaved: UnwrapRef<typeof import('./src/composables/useSavedPosts')['isSaved']>
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
     readonly isStrengthToy: UnwrapRef<typeof import('./src/composables/useButtplug')['isStrengthToy']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
@@ -602,6 +609,7 @@ declare module 'vue' {
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveStream: UnwrapRef<typeof import('./src/composables/useStreams')['resolveStream']>
+    readonly savedPosts: UnwrapRef<typeof import('./src/composables/useSavedPosts')['savedPosts']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>
@@ -623,6 +631,7 @@ declare module 'vue' {
     readonly toValue: UnwrapRef<typeof import('vue')['toValue']>
     readonly toast: UnwrapRef<typeof import('./src/composables/useToast')['toast']>
     readonly toggleDark: UnwrapRef<typeof import('./src/composables/dark')['toggleDark']>
+    readonly toggleSaved: UnwrapRef<typeof import('./src/composables/useSavedPosts')['toggleSaved']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly tryOnBeforeMount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeMount']>
     readonly tryOnBeforeUnmount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeUnmount']>

@@ -7,6 +7,7 @@ import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { useFunscript } from '~/composables/useFunscript'
 import { downloadPost, downloads } from '~/composables/usePostDownload'
+import { isSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
 import { classifyPostScripts, scriptsForVideo } from '~/lib/postScripts'
@@ -67,7 +68,7 @@ defineOptions({ name: 'EroScriptsView' })
 const topics = ref<ESTopic[]>([])
 const page = ref(0)
 const hasMore = ref(true)
-const sort = ref<'latest' | 'top' | 'hot'>('latest')
+const sort = ref<'latest' | 'top' | 'hot' | 'saved'>('latest')
 const availableTags = ref<ESTag[]>([])
 const activeTag = ref<ESTag | null>(null)
 const query = ref('')
@@ -192,7 +193,8 @@ watch(viewMode, v => lsSet('ph:ui.eroscripts.view', v))
 const loading = ref(false)
 
 async function loadTopics(reset = false) {
-  if (loading.value)
+  // Saved posts are listed from storage; nothing to fetch.
+  if (loading.value || sort.value === 'saved')
     return
   if (reset) {
     page.value = 0
@@ -283,13 +285,24 @@ async function doSearch() {
   }
 }
 
-const items = computed(() => (searching.value ? searchResults.value : topics.value))
+/** Saved posts, newest saved first, in the shape the lists draw. */
+const savedTopics = computed<ESTopic[]>(() => savedPosts.value.map(p => ({ ...p })))
+const items = computed(() => (searching.value ? searchResults.value : sort.value === 'saved' ? savedTopics.value : topics.value))
+
+function toggleSave(t: ESTopic) {
+  const saved = toggleSaved(t)
+  toast(saved ? 'Saved for later' : 'Removed from saved', {
+    icon: saved ? 'i-carbon-star-filled' : 'i-carbon-star',
+    detail: saved ? 'Find it under Saved' : t.title,
+    key: 'es-save',
+  })
+}
 const busy = computed(() => (searching.value ? searchLoading.value : loading.value))
 
 // Infinite scroll: fetch the next page as the bottom comes into view.
 const sentinel = ref<HTMLElement | null>(null)
 useIntersectionObserver(sentinel, ([e]) => {
-  if (e?.isIntersecting && !searching.value && hasMore.value && !loading.value && topics.value.length && !proxyDown.value)
+  if (e?.isIntersecting && !searching.value && sort.value !== 'saved' && hasMore.value && !loading.value && topics.value.length && !proxyDown.value)
     void loadTopics(false)
 }, { rootMargin: '400px' })
 
@@ -796,6 +809,7 @@ onBeforeUnmount(() => {
             { value: 'latest', label: 'Latest', icon: 'i-carbon-time' },
             { value: 'top', label: 'Top', icon: 'i-carbon-trophy' },
             { value: 'hot', label: 'Hot', icon: 'i-carbon-fire' },
+            { value: 'saved', label: savedPosts.length ? `Saved · ${savedPosts.length}` : 'Saved', icon: 'i-carbon-star' },
           ]"
         />
         <span v-else-if="searchedFor" class="text-[12.5px] text-fg-muted">
@@ -813,7 +827,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Tags -->
-      <div v-if="!searching && availableTags.length" class="flex gap-2 min-w-0 items-center">
+      <div v-if="!searching && sort !== 'saved' && availableTags.length" class="flex gap-2 min-w-0 items-center">
         <UiInput v-model="tagFilter" icon="i-carbon-tag" placeholder="Tags" clearable class="shrink-0 w-36" />
         <div class="tag-strip py-0.5 flex flex-1 gap-1.5 min-w-0 overflow-x-auto">
           <button
@@ -908,6 +922,12 @@ onBeforeUnmount(() => {
             description="Try fewer words, or the performer or studio name on its own."
           />
           <UiEmpty
+            v-else-if="sort === 'saved' && !items.length && !searching"
+            icon="i-carbon-star"
+            title="Nothing saved yet"
+            description="Star a post to keep it here: open it later to stream the video again, or download it with its scripts."
+          />
+          <UiEmpty
             v-else-if="!busy && !items.length && !error && !searching"
             icon="i-carbon-document-blank"
             title="No scripts here"
@@ -942,6 +962,19 @@ onBeforeUnmount(() => {
                 <div v-else class="text-fg-faint center h-full w-full">
                   <span class="i-carbon-chart-line text-[28px]" />
                 </div>
+                <span
+                  v-tip="isSaved(t.id) ? 'Saved · click to unsave' : 'Save for later'"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="isSaved(t.id) ? 'Unsave' : 'Save for later'"
+                  :aria-pressed="isSaved(t.id)"
+                  class="text-white rounded-full bg-black/55 center h-7 w-7 transition-opacity right-1.5 top-1.5 absolute backdrop-blur-sm hover:bg-black/75"
+                  :class="isSaved(t.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'"
+                  @click.stop="toggleSave(t)"
+                  @keydown.enter.stop.prevent="toggleSave(t)"
+                >
+                  <span :class="isSaved(t.id) ? 'i-carbon-star-filled text-warn' : 'i-carbon-star'" class="text-[14px]" />
+                </span>
                 <div class="text-[11px] text-white px-2 py-1.5 bg-[linear-gradient(to_top,rgba(0,0,0,0.7),transparent)] opacity-0 flex gap-2.5 transition-opacity bottom-0 left-0 right-0 absolute group-hover:opacity-100">
                   <span class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
                   <span class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
@@ -995,12 +1028,25 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
               </div>
+              <span
+                v-tip="isSaved(t.id) ? 'Saved · click to unsave' : 'Save for later'"
+                role="button"
+                tabindex="0"
+                :aria-label="isSaved(t.id) ? 'Unsave' : 'Save for later'"
+                :aria-pressed="isSaved(t.id)"
+                class="rounded-full center shrink-0 h-7 w-7 transition-opacity hover:bg-fg/8"
+                :class="isSaved(t.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'"
+                @click.stop="toggleSave(t)"
+                @keydown.enter.stop.prevent="toggleSave(t)"
+              >
+                <span :class="isSaved(t.id) ? 'i-carbon-star-filled text-warn' : 'i-carbon-star text-fg-muted'" class="text-[14px]" />
+              </span>
               <span class="i-carbon-chevron-right text-fg-faint shrink-0 transition-transform group-hover:translate-x-0.5" />
             </button>
           </div>
 
           <!-- Paging -->
-          <div v-if="!searching && items.length" ref="sentinel" class="py-6 flex justify-center">
+          <div v-if="!searching && sort !== 'saved' && items.length" ref="sentinel" class="py-6 flex justify-center">
             <UiSpinner v-if="loading" :size="18" class="text-accent-300" />
             <UiButton v-else-if="hasMore" variant="ghost" @click="loadTopics(false)">
               Load more
@@ -1015,6 +1061,13 @@ onBeforeUnmount(() => {
         <aside v-if="openTopic" class="border-l border-edge bg-surface-900 flex shrink-0 flex-col w-[420px]">
           <div class="pl-4 pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center">
             <span class="eyebrow flex-1">Script</span>
+            <UiIconButton
+              :icon="isSaved(openTopic.id) ? 'i-carbon-star-filled' : 'i-carbon-star'"
+              :label="isSaved(openTopic.id) ? 'Saved · click to unsave' : 'Save for later'"
+              :class="isSaved(openTopic.id) ? 'text-warn' : ''"
+              size="sm"
+              @click="toggleSave(openTopic)"
+            />
             <UiIconButton icon="i-carbon-launch" label="Open the post" size="sm" @click="openExternal(postUrl(openTopic))" />
             <UiIconButton icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="openTopic = null" />
           </div>

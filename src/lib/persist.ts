@@ -42,6 +42,7 @@ export const KEYS = {
   playlists: def('ph:playlists', 'data', 'Playlists'),
   smartPlaylists: def('ph:playlists.smart', 'data', 'Smart playlists'),
   bookmarks: def('ph:bookmarks', 'data', 'Bookmarks'),
+  esSaved: def('ph:eroscripts.saved', 'data', 'Saved EroScripts posts'),
   starred: def('ph:library.starred', 'data', 'Starred videos'),
   stats: def('ph:stats', 'data', 'Watch stats'),
   statsDaily: def('ph:stats.daily', 'data', 'Watch time per day'),
