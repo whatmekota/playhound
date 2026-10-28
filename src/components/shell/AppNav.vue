@@ -99,7 +99,7 @@ function go(id: ViewId) {
     </div>
 
     <!-- Actions -->
-    <div class="px-2.5 py-2.5 border-t border-edge flex shrink-0 flex-col gap-0.5">
+    <div class="px-2.5 py-2.5 border-t border-edge flex shrink-0 flex-col gap-0.5 overflow-x-hidden">
       <button
         v-for="a in [
           { icon: 'i-carbon-search', label: 'Search & commands', kbd: 'Ctrl K', run: () => (ui.paletteOpen = true) },
