@@ -8,8 +8,12 @@
  * in by the desktop app) or, when running from source, the system's curl.
  */
 
+import { Buffer } from 'node:buffer'
 import { execFile } from 'node:child_process'
+import http from 'node:http'
+import https from 'node:https'
 import process from 'node:process'
+import tls from 'node:tls'
 import { EnvHttpProxyAgent, fetch as undiciFetch } from 'undici'
 
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
@@ -33,6 +37,74 @@ export function netFetch(url, init = {}) {
     dispatcher: agent,
     headers: { 'User-Agent': UA, ...init.headers },
   })
+}
+
+// ── node:https through the same proxy ─────────────────────────────────────────
+// The EroScripts and Pixeldrain routes in es-proxy.mjs stream with node:https,
+// which ignores HTTP(S)_PROXY. Where the forum is only reachable through one,
+// that was a timeout and a 502, so they get an agent that tunnels with CONNECT.
+
+function envProxy() {
+  const raw = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
+  if (!raw)
+    return null
+  try {
+    return new URL(raw.includes('://') ? raw : `http://${raw}`)
+  }
+  catch {
+    return null
+  }
+}
+
+/** NO_PROXY: `*`, or host suffixes such as `example.com` / `.example.com`. */
+function bypassed(hostname) {
+  const list = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  const host = hostname.toLowerCase()
+  return list.some(e => e === '*' || host === e.replace(/^\./, '') || host.endsWith(e.startsWith('.') ? e : `.${e}`))
+}
+
+class TunnelAgent extends https.Agent {
+  constructor(proxy) {
+    super({ keepAlive: true })
+    this.proxy = proxy
+  }
+
+  createConnection(options, done) {
+    const target = `${options.host}:${options.port || 443}`
+    const auth = this.proxy.username ? { 'Proxy-Authorization': `Basic ${Buffer.from(`${decodeURIComponent(this.proxy.username)}:${decodeURIComponent(this.proxy.password)}`).toString('base64')}` } : {}
+    const req = http.request({
+      host: this.proxy.hostname,
+      port: this.proxy.port || 80,
+      method: 'CONNECT',
+      path: target,
+      headers: { Host: target, ...auth },
+    })
+    req.once('connect', (res, socket) => {
+      if (res.statusCode !== 200) {
+        socket.destroy()
+        done(new Error(`Proxy refused ${target}: HTTP ${res.statusCode}`))
+        return
+      }
+      done(null, tls.connect({ socket, servername: options.servername || options.host }))
+    })
+    req.once('error', done)
+    req.end()
+  }
+}
+
+let tunnel = null
+let tunnelFor = ''
+
+/** The agent for a node:https request to `hostname`: a proxy tunnel, or undefined to go direct. */
+export function httpsAgentFor(hostname) {
+  const proxy = envProxy()
+  if (!proxy || bypassed(hostname))
+    return undefined
+  if (!tunnel || tunnelFor !== proxy.href) {
+    tunnel = new TunnelAgent(proxy)
+    tunnelFor = proxy.href
+  }
+  return tunnel
 }
 
 let browserFetch = null

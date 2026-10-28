@@ -139,17 +139,27 @@ const presence = createPresence((status, detail) => {
 })
 
 /** A fetch on Chromium's network stack, through HTTP(S)_PROXY if one is set. */
+/**
+ * Chromium ignores HTTP(S)_PROXY, while the proxy server in this process and
+ * yt-dlp honour it. Apply it to a session too, so the window (forum covers,
+ * thumbnails) reaches the same sites the server does. Loopback stays direct.
+ */
+async function applyEnvProxy(ses) {
+  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
+  if (!proxy)
+    return
+  try {
+    const host = new URL(proxy.includes('://') ? proxy : `http://${proxy}`).host
+    await ses.setProxy({ proxyRules: host, proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>' })
+  }
+  catch (err) {
+    console.warn('[playhound] Ignoring an unreadable HTTP(S)_PROXY:', err.message)
+  }
+}
+
 async function resolverFetch() {
   const ses = session.fromPartition('resolver')
-  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
-  if (proxy) {
-    try {
-      await ses.setProxy({ proxyRules: new URL(proxy).host, proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>' })
-    }
-    catch (err) {
-      console.warn('[playhound] Ignoring an unreadable HTTP(S)_PROXY:', err.message)
-    }
-  }
+  await applyEnvProxy(ses)
   return (url, init) => ses.fetch(url, init)
 }
 async function boot() {
@@ -221,6 +231,7 @@ async function boot() {
     // HTTP(S)_PROXY the rest of the resolvers use.
     browserFetch: await resolverFetch(),
   })
+  await applyEnvProxy(session.defaultSession)
 
   let url = DEV ? DEV_URL : APP_URL
   if (!DEV) {

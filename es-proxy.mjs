@@ -18,7 +18,7 @@ import { pathToFileURL } from 'node:url'
 import { WebSocketServer } from 'ws'
 import { resolve as resolveLink } from './server/hosts.mjs'
 import { register, serveMedia } from './server/media.mjs'
-import { setBrowserFetch } from './server/net.mjs'
+import { httpsAgentFor, setBrowserFetch } from './server/net.mjs'
 import { install as installYtdlp, setBinDir, status as ytdlpStatus } from './server/ytdlp.mjs'
 
 export const PORT = 7071
@@ -36,6 +36,7 @@ function makeRequest(hostname, path, reqHeaders, res, depth = 0) {
     port: 443,
     path,
     method: 'GET',
+    agent: httpsAgentFor(hostname),
     headers: {
       'Accept': '*/*',
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
@@ -166,6 +167,7 @@ function handleEroScripts(req, res) {
         port: 443,
         path,
         method: 'HEAD',
+        agent: httpsAgentFor(hostname),
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Referer': 'https://pixeldrain.com/',
