@@ -40,7 +40,9 @@ const scanning = ref(false)
 const devices = shallowRef<ButtplugClientDevice[]>([])
 const error = ref<string | null>(null)
 const serverUrl = ref(localStorage.getItem(KEYS.buttplugUrl.key) ?? 'ws://localhost:12345')
-const enabled = ref(localStorage.getItem(KEYS.buttplugEnabled.key) === 'true')
+// On unless switched off: a toy that connects and then sits still because a
+// switch further down was off read as a broken connection.
+const enabled = ref(localStorage.getItem(KEYS.buttplugEnabled.key) !== 'false')
 
 /** Per-toy vibration settings, keyed by device name. */
 let vibeStore: ReturnType<typeof useLocalStorage<Record<string, VibeSettings>>> | null = null

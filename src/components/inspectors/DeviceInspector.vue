@@ -291,7 +291,7 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
     if (device.connected) {
       return device.deviceEnabled
         ? { tone: 'ok', label: 'Connected', detail: `${device.portPath || 'Serial port'} · ${serialSummary.value}` }
-        : { tone: 'warn', label: 'Connected, output held', detail: 'Commands are not being sent' }
+        : { tone: 'warn', label: 'Connected, output held', detail: 'Device output is switched off' }
     }
     if (!webSerial.supported)
       return { tone: 'danger', label: 'Web Serial unavailable', detail: 'Use Chrome or Edge for a USB device' }
@@ -302,11 +302,22 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
   if (bp.connected.value) {
     const n = bp.deviceCount.value
     if (!bp.enabled.value)
-      return { tone: 'warn', label: 'Connected, output held', detail: 'Turn on output to drive devices' }
+      return { tone: 'warn', label: 'Connected, output held', detail: '"Send to devices" is off' }
     return { tone: n ? 'ok' : 'warn', label: n ? 'Connected' : 'No devices yet', detail: n ? `Intiface · ${n} device${n === 1 ? '' : 's'}` : 'Scan, then wake the toy' }
   }
   return { tone: 'idle', label: 'Not connected', detail: 'Start Intiface Central, then connect' }
 })
+
+/** Connected but nothing is sent: worth a button right where it says so. */
+const held = computed(() => transport.value === 'serial'
+  ? device.connected && !device.deviceEnabled
+  : bp.connected.value && !bp.enabled.value)
+function releaseOutput() {
+  if (transport.value === 'serial')
+    device.deviceEnabled = true
+  else
+    bp.setEnabled(true)
+}
 
 const DOT: Record<Tone, string> = {
   ok: 'bg-ok text-ok',
@@ -546,6 +557,9 @@ const logOpen = ref(false)
             {{ status.detail }}
           </p>
         </div>
+        <UiButton v-if="held" size="sm" variant="primary" icon="i-carbon-play-filled-alt" @click="releaseOutput">
+          Turn on
+        </UiButton>
       </div>
 
       <UiSegmented v-model="transport" :options="TRANSPORTS" block class="relative" />
