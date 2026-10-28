@@ -11,6 +11,7 @@
   <a href="https://github.com/whatmekota/playhound/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/whatmekota/playhound/test.yml?branch=master&style=flat&colorA=18181B&label=tests" alt="Tests"></a>
   <a href="#getting-started"><img src="https://img.shields.io/badge/runs_on-Windows_%7C_Chromium-d946ef?style=flat&labelColor=18181B" alt="Windows app or Chromium browser"></a>
   <a href="https://whatmekota.github.io/playhound/"><img src="https://img.shields.io/badge/try_it-in_your_browser-d946ef?style=flat&labelColor=18181B" alt="Try it in your browser"></a>
+  <a href="https://discuss.eroscripts.com/t/playhound-audiovisual-session-engine-yet-another-funscript-player/345390"><img src="https://img.shields.io/badge/EroScripts-thread-d946ef?style=flat&labelColor=18181B&logo=discourse&logoColor=white" alt="EroScripts thread"></a>
   <a href="#safety"><img src="https://img.shields.io/badge/18%2B-only-a21caf?style=flat&labelColor=18181B" alt="18+ only"></a>
 </p>
 
@@ -22,6 +23,12 @@ It plays your videos with their scripts, finds the good parts, follows the music
 when there's no script, and can run a whole session by itself, with binaural
 audio, a hypnotic overlay, a heart-rate monitor and a phone in your other hand
 as the remote.
+
+I built this for myself initially. I wanted my own player, I had a few
+half-finished pet projects lying around (binaural beats with visuals, and a
+little CYD screen with eyes), and at some point I mixed them all into one big
+app with the help of an AI. It has grown big enough that it might be useful to
+someone else, so here it is.
 
 <p align="center">
   <a href="https://whatmekota.github.io/playhound/"><img src="docs/screenshot.webp" alt="playhound playing a dance video with four script axes: the Scripts panel shows stroke, twist, roll and pitch, the floating 3D emulator shows the stroker, and the timeline below shows the script's speed" width="100%"></a>
