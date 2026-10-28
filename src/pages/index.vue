@@ -21,6 +21,7 @@ import { useDiscordPresence } from '~/composables/useDiscordPresence'
 import { useGamepad } from '~/composables/useGamepad'
 import { useHeartRate } from '~/composables/useHeartRate'
 import { useMotionEngine } from '~/composables/useMotionEngine'
+import { startNetProxySync } from '~/composables/useNetProxy'
 import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
@@ -126,6 +127,8 @@ watch(() => motion.serialize(), v => storage.set(KEYS.motionConfig.key, v), { de
 onMounted(() => {
   // Bring the last folder back at startup, whichever view is open.
   void library.restoreFolder()
+  // Tell the local proxy which network proxy to use (Settings → Network).
+  startNetProxySync()
 })
 
 // ─── Stats ────────────────────────────────────────────────────────────────────

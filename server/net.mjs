@@ -1,8 +1,9 @@
 /**
  * Outgoing requests for the stream resolvers.
  *
- * Everything goes through undici with the HTTP(S)_PROXY / NO_PROXY the user has
- * set, because some of these hosts are only reachable through one. A few APIs
+ * Everything goes through the proxy from playhound's Settings → Network, or,
+ * with none set there, the HTTP(S)_PROXY / NO_PROXY of the environment: some
+ * of these hosts are only reachable through one. A few APIs
  * sit behind Cloudflare, which turns away Node's own TLS fingerprint; for those
  * `getText` falls back to a real browser stack (Electron's `net.fetch`, handed
  * in by the desktop app) or, when running from source, the system's curl.
@@ -14,7 +15,7 @@ import http from 'node:http'
 import https from 'node:https'
 import process from 'node:process'
 import tls from 'node:tls'
-import { EnvHttpProxyAgent, fetch as undiciFetch } from 'undici'
+import { EnvHttpProxyAgent, ProxyAgent, fetch as undiciFetch } from 'undici'
 
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
@@ -26,15 +27,73 @@ process.emitWarning = function (warning, ...rest) {
     return
   return emitWarning.call(process, warning, ...rest)
 }
-const agent = new EnvHttpProxyAgent()
+const envAgent = new EnvHttpProxyAgent()
 process.emitWarning = emitWarning
+
+// ── Which proxy ──────────────────────────────────────────────────────────────
+
+/** From the app's settings; empty follows the environment. */
+let configured = ''
+let configuredAgent = null
+/** The CONNECT tunnel for node:https (see httpsAgentFor), rebuilt when the proxy changes. */
+let tunnel = null
+let tunnelFor = ''
+const listeners = new Set()
+
+function envProxyRaw() {
+  return process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || ''
+}
+
+/** `host:port` or a URL, as an http(s) proxy URL. Throws on anything else. */
+export function normaliseProxy(raw) {
+  const text = String(raw ?? '').trim()
+  if (!text)
+    return ''
+  let url
+  try {
+    url = new URL(text.includes('://') ? text : `http://${text}`)
+  }
+  catch {
+    throw new Error('That is not a proxy address. Try http://127.0.0.1:8080')
+  }
+  if (!['http:', 'https:'].includes(url.protocol))
+    throw new Error(`${url.protocol.replace(':', '').toUpperCase()} proxies are not supported; use its HTTP port`)
+  if (!url.port)
+    throw new Error('The proxy needs a port, like http://127.0.0.1:8080')
+  return `${url.protocol}//${url.username ? `${url.username}:${url.password}@` : ''}${url.host}`
+}
+
+/** What is set, what the environment says, and which one is in use. */
+export function proxyInfo() {
+  const env = envProxyRaw() || null
+  return { configured: configured || null, env, effective: configured || env }
+}
+
+/** Use this proxy for everything, or '' to go back to the environment's. */
+export function setProxy(raw) {
+  const next = normaliseProxy(raw)
+  if (next === configured)
+    return proxyInfo()
+  configured = next
+  configuredAgent?.close().catch(() => {})
+  configuredAgent = next ? new ProxyAgent(next) : null
+  tunnel = null
+  for (const fn of listeners)
+    fn(proxyInfo().effective)
+  return proxyInfo()
+}
+
+/** Called with the effective proxy URL (or null) whenever it changes. */
+export function onProxyChange(fn) {
+  listeners.add(fn)
+}
 
 /** fetch through the user's proxy, with a browser User-Agent unless one is given. */
 export function netFetch(url, init = {}) {
   return undiciFetch(url, {
     redirect: 'follow',
     ...init,
-    dispatcher: agent,
+    dispatcher: configuredAgent ?? envAgent,
     headers: { 'User-Agent': UA, ...init.headers },
   })
 }
@@ -44,8 +103,8 @@ export function netFetch(url, init = {}) {
 // which ignores HTTP(S)_PROXY. Where the forum is only reachable through one,
 // that was a timeout and a 502, so they get an agent that tunnels with CONNECT.
 
-function envProxy() {
-  const raw = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
+function activeProxy() {
+  const raw = configured || envProxyRaw()
   if (!raw)
     return null
   try {
@@ -56,8 +115,10 @@ function envProxy() {
   }
 }
 
-/** NO_PROXY: `*`, or host suffixes such as `example.com` / `.example.com`. */
+/** NO_PROXY: `*`, or host suffixes such as `example.com` / `.example.com`. Only for the environment's proxy. */
 function bypassed(hostname) {
+  if (configured)
+    return false
   const list = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
   const host = hostname.toLowerCase()
   return list.some(e => e === '*' || host === e.replace(/^\./, '') || host.endsWith(e.startsWith('.') ? e : `.${e}`))
@@ -92,12 +153,9 @@ class TunnelAgent extends https.Agent {
   }
 }
 
-let tunnel = null
-let tunnelFor = ''
-
 /** The agent for a node:https request to `hostname`: a proxy tunnel, or undefined to go direct. */
 export function httpsAgentFor(hostname) {
-  const proxy = envProxy()
+  const proxy = activeProxy()
   if (!proxy || bypassed(hostname))
     return undefined
   if (!tunnel || tunnelFor !== proxy.href) {
@@ -127,9 +185,12 @@ function curl(url, headers) {
     if (k.toLowerCase() !== 'user-agent')
       args.push('-H', `${k}: ${v}`)
   }
+  // curl reads HTTP(S)_PROXY from the environment by itself; a proxy set in
+  // the app has to be passed.
+  if (configured)
+    args.push('-x', configured)
   args.push(url)
   return new Promise((resolve, reject) => {
-    // curl reads HTTP(S)_PROXY from the environment by itself.
     execFile('curl', args, { maxBuffer: 32 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
       if (err)
         return reject(new Error(`curl: ${err.message}`))

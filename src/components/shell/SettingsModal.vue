@@ -10,6 +10,7 @@ import UiModal from '~/components/ui/UiModal.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/composables/useDiscordPresence'
+import { netProxy, netProxyError, netProxyInfo, refreshNetProxy } from '~/composables/useNetProxy'
 import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
@@ -89,13 +90,14 @@ const library = useLibraryStore()
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
 
-type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'keyboard' | 'discord' | 'about'
+type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
   { id: 'playback', label: 'Playback', icon: 'i-carbon-play-outline' },
   { id: 'startup', label: 'Startup', icon: 'i-carbon-rocket' },
   { id: 'safety', label: 'Safety', icon: 'i-carbon-security' },
   { id: 'library', label: 'Library', icon: 'i-carbon-folder' },
+  { id: 'network', label: 'Network', icon: 'i-carbon-network-3' },
   { id: 'keyboard', label: 'Keyboard', icon: 'i-carbon-keyboard' },
   { id: 'discord', label: 'Discord', icon: 'i-carbon-logo-discord' },
   { id: 'about', label: 'About', icon: 'i-carbon-information' },
@@ -195,6 +197,33 @@ async function forget() {
 watch(() => ui.settingsOpen, (open) => {
   if (!open)
     confirmForget.value = false
+})
+
+// ─── Network ─────────────────────────────────────────────────────────────────
+// Edited as a draft and applied on Enter or the button, so the server is not
+// handed every half-typed address on the way.
+const proxyDraft = ref(netProxy.value)
+watch(section, (s) => {
+  if (s === 'network') {
+    proxyDraft.value = netProxy.value
+    void refreshNetProxy()
+  }
+})
+function applyProxy() {
+  netProxy.value = proxyDraft.value.trim()
+  proxyDraft.value = netProxy.value
+}
+const proxyStatus = computed(() => {
+  const info = netProxyInfo.value
+  if (!info)
+    return { tone: 'muted', text: 'The local proxy is not running, so there is nothing to apply this to. It runs with the desktop app, start.bat or pnpm dev:proxy.' }
+  if (netProxyError.value)
+    return { tone: 'danger', text: netProxyError.value }
+  if (info.configured)
+    return { tone: 'ok', text: `Using ${info.configured}` }
+  if (info.env)
+    return { tone: 'ok', text: `Using ${info.env}, from HTTPS_PROXY on this computer` }
+  return { tone: 'muted', text: 'Connecting directly, no proxy' }
 })
 
 // ─── Elsewhere ───────────────────────────────────────────────────────────────
@@ -432,6 +461,30 @@ function openBackup() {
                 <UiButton variant="ghost" icon="i-carbon-save" @click="openBackup">
                   Open Backup
                 </UiButton>
+              </div>
+            </template>
+
+            <!-- Network -->
+            <template v-else-if="section === 'network'">
+              <div class="p-4 card flex flex-col gap-3">
+                <div class="flex flex-col gap-1">
+                  <span class="text-[13px] text-fg font-medium">Proxy</span>
+                  <span class="hint">
+                    For the EroScripts browser, streaming and yt-dlp. Some of these sites are blocked on some
+                    networks, and an HTTP proxy gets you through. Leave it empty to use HTTPS_PROXY from this
+                    computer, if it has one.
+                  </span>
+                </div>
+                <div class="flex gap-2 items-center">
+                  <UiInput v-model="proxyDraft" class="flex-1" placeholder="http://127.0.0.1:8080" mono clearable @enter="applyProxy" />
+                  <UiButton variant="primary" :disabled="proxyDraft.trim() === netProxy" @click="applyProxy">
+                    Apply
+                  </UiButton>
+                </div>
+                <p class="text-[12px] flex gap-1.5 items-start" :class="proxyStatus.tone === 'danger' ? 'text-danger' : proxyStatus.tone === 'ok' ? 'text-fg-muted' : 'text-fg-faint'">
+                  <span class="text-[14px] mt-px shrink-0" :class="proxyStatus.tone === 'danger' ? 'i-carbon-warning-alt' : proxyStatus.tone === 'ok' ? 'i-carbon-checkmark-outline text-ok' : 'i-carbon-information'" />
+                  {{ proxyStatus.text }}
+                </p>
               </div>
             </template>
 

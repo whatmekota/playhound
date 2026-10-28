@@ -18,7 +18,7 @@ import { pathToFileURL } from 'node:url'
 import { WebSocketServer } from 'ws'
 import { resolve as resolveLink } from './server/hosts.mjs'
 import { register, serveMedia } from './server/media.mjs'
-import { httpsAgentFor, setBrowserFetch } from './server/net.mjs'
+import { httpsAgentFor, onProxyChange, proxyInfo, setBrowserFetch, setProxy } from './server/net.mjs'
 import { install as installYtdlp, setBinDir, status as ytdlpStatus } from './server/ytdlp.mjs'
 
 export const PORT = 7071
@@ -95,11 +95,27 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body))
 }
 
-/** /resolve, /media and /ytdlp. Returns true when it handled the request. */
+function readBody(req, limit = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.setEncoding('utf8')
+    req.on('data', (chunk) => {
+      body += chunk
+      if (body.length > limit) {
+        req.destroy()
+        reject(new Error('Body too large'))
+      }
+    })
+    req.on('end', () => resolve(body))
+    req.on('error', reject)
+  })
+}
+
+/** /resolve, /media, /ytdlp and /config. Returns true when it handled the request. */
 async function handleStreams(req, res) {
   const url = new URL(req.url, 'http://localhost')
   const isMedia = url.pathname.startsWith('/media/')
-  if (!isMedia && !['/resolve', '/ytdlp/status', '/ytdlp/install'].includes(url.pathname))
+  if (!isMedia && !['/resolve', '/ytdlp/status', '/ytdlp/install', '/config'].includes(url.pathname))
     return false
   const origin = req.headers.origin
   if (origin ? !APP_ORIGIN.test(origin) : !isMedia) {
@@ -110,7 +126,22 @@ async function handleStreams(req, res) {
     return serveMedia(req, res)
 
   try {
-    if (url.pathname === '/ytdlp/status') {
+    if (url.pathname === '/config') {
+      // The proxy from Settings → Network. GET reports, POST sets.
+      if (req.method === 'POST') {
+        const body = JSON.parse(await readBody(req) || '{}')
+        try {
+          sendJson(res, 200, setProxy(body.proxy ?? ''))
+        }
+        catch (err) {
+          sendJson(res, 400, { error: err.message, ...proxyInfo() })
+        }
+      }
+      else {
+        sendJson(res, 200, proxyInfo())
+      }
+    }
+    else if (url.pathname === '/ytdlp/status') {
       sendJson(res, 200, await ytdlpStatus())
     }
     else if (url.pathname === '/ytdlp/install') {
@@ -139,7 +170,7 @@ async function handleStreams(req, res) {
 function handleProxy(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Accept, X-ES-Cookie, Range')
+  res.setHeader('Access-Control-Allow-Headers', 'Accept, Content-Type, X-ES-Cookie, Range')
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return }
 
@@ -358,11 +389,13 @@ function listen(server, port, host, name, log) {
  * `ready` resolves once both have either bound or given up; `close()` stops
  * whichever did bind, dropping any connected phones.
  */
-export function startProxy({ log = console, binDir, browserFetch } = {}) {
+export function startProxy({ log = console, binDir, browserFetch, onProxy } = {}) {
   if (binDir)
     setBinDir(binDir)
   if (browserFetch)
     setBrowserFetch(browserFetch)
+  if (onProxy)
+    onProxyChange(onProxy)
   const proxy = http.createServer(handleProxy)
   const relay = createRelay()
 

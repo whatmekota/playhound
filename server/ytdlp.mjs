@@ -13,7 +13,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
-import { netFetch } from './net.mjs'
+import { netFetch, proxyInfo } from './net.mjs'
 
 const RELEASE = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/'
 const ASSET = { win32: 'yt-dlp.exe', darwin: 'yt-dlp_macos', linux: 'yt-dlp' }[process.platform] ?? 'yt-dlp'
@@ -29,6 +29,10 @@ export function setBinDir(dir) {
 const own = () => path.join(binDir, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp')
 
 function run(bin, args, timeout = 60_000) {
+  // yt-dlp reads HTTP(S)_PROXY by itself; a proxy set in the app is passed.
+  const { configured } = proxyInfo()
+  if (configured)
+    args = ['--proxy', configured, ...args]
   return new Promise((resolve, reject) => {
     execFile(bin, args, { maxBuffer: 64 * 1024 * 1024, timeout, windowsHide: true }, (err, stdout, stderr) => {
       if (err)
@@ -110,7 +114,6 @@ export async function extract(url) {
     throw err
   }
   maybeUpdate()
-  // yt-dlp honours HTTP(S)_PROXY from the environment by itself.
   const info = JSON.parse(await run(bin, ['-J', '--no-playlist', '--no-warnings', url]))
   const entry = info._type === 'playlist' ? info.entries?.find(Boolean) : info
   if (!entry)

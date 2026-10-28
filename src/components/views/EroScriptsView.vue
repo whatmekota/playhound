@@ -140,8 +140,13 @@ async function apiFetch(path: string) {
     },
   })
   proxyDown.value = false
-  if (!res.ok)
-    throw new Error(res.status === 403 ? 'EroScripts refused the request — the session cookie may have expired' : `EroScripts answered HTTP ${res.status}`)
+  if (!res.ok) {
+    throw new Error(res.status === 403
+      ? 'EroScripts refused the request — the session cookie may have expired'
+      : res.status === 502 || res.status === 504
+        ? 'Could not reach EroScripts. If it is blocked on your network, set a proxy in Settings → Network'
+        : `EroScripts answered HTTP ${res.status}`)
+  }
   return res.json()
 }
 

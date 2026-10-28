@@ -139,27 +139,34 @@ const presence = createPresence((status, detail) => {
 })
 
 /** A fetch on Chromium's network stack, through HTTP(S)_PROXY if one is set. */
+const envProxy = () => process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null
+
 /**
  * Chromium ignores HTTP(S)_PROXY, while the proxy server in this process and
- * yt-dlp honour it. Apply it to a session too, so the window (forum covers,
- * thumbnails) reaches the same sites the server does. Loopback stays direct.
+ * yt-dlp follow it, or the proxy from Settings → Network. Apply the same one
+ * to a session, so the window (forum covers, thumbnails) reaches the sites
+ * the server does. Loopback always stays direct.
  */
-async function applyEnvProxy(ses) {
-  const proxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy
-  if (!proxy)
-    return
+async function applyProxy(ses, proxy) {
   try {
-    const host = new URL(proxy.includes('://') ? proxy : `http://${proxy}`).host
-    await ses.setProxy({ proxyRules: host, proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>' })
+    if (!proxy) {
+      await ses.setProxy({ mode: 'direct' })
+      return
+    }
+    const u = new URL(proxy.includes('://') ? proxy : `http://${proxy}`)
+    await ses.setProxy({
+      proxyRules: `${u.protocol === 'https:' ? 'https://' : ''}${u.host}`,
+      proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>',
+    })
   }
   catch (err) {
-    console.warn('[playhound] Ignoring an unreadable HTTP(S)_PROXY:', err.message)
+    console.warn('[playhound] Ignoring an unreadable proxy:', err.message)
   }
 }
 
 async function resolverFetch() {
   const ses = session.fromPartition('resolver')
-  await applyEnvProxy(ses)
+  await applyProxy(ses, envProxy())
   return (url, init) => ses.fetch(url, init)
 }
 async function boot() {
@@ -230,8 +237,13 @@ async function boot() {
     // Chromium. They get their own throwaway session, routed through the same
     // HTTP(S)_PROXY the rest of the resolvers use.
     browserFetch: await resolverFetch(),
+    // Settings → Network changed the proxy (null: back to the environment's or none).
+    onProxy: (proxy) => {
+      void applyProxy(session.fromPartition('resolver'), proxy)
+      void applyProxy(session.defaultSession, proxy)
+    },
   })
-  await applyEnvProxy(session.defaultSession)
+  await applyProxy(session.defaultSession, envProxy())
 
   let url = DEV ? DEV_URL : APP_URL
   if (!DEV) {
