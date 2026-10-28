@@ -101,6 +101,7 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 | Intiface / Buttplug toys                                    |                        ✓\*                         |                                ✓                                |      ✓      |
 | EroScripts browser, phone remote, CYD face                  |                                                    |                                ✓                                |      ✓      |
 | Streaming from file hosts and yt-dlp sites                  |                                                    |                                ✓                                |      ✓      |
+| Kerfus face on a second monitor                             |                         ✓                          |                                ✓                                |      ✓      |
 | Remembers your library folder without a click               |                                                    |                                ✓                                |             |
 | Keeps driving the device while minimised                    |                                                    |                                ✓                                |             |
 | Discord Rich Presence                                       |                                                    |                                ✓                                |             |
@@ -215,6 +216,11 @@ Open a post in the **EroScripts** view and its video links are resolved as soon
 as it loads: pick a video (a folder can hold several) and a quality, then
 **Play** or **Play + scripts**. Anywhere else, **Ctrl+K → Play a link…** takes
 any link you paste.
+
+The scripts come with the video because they are in the same post: their names
+don't have to match the video's, which on file hosts they rarely do. Each
+script's axis is read from its siblings (`Song.roll` next to `Song`), and a post
+with several videos gives each one the set whose name fits it best.
 
 | Host                                                    | How                                                                                                                                             |
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
