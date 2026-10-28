@@ -237,6 +237,9 @@ library pairs them the moment they land: `Name.mp4`, `Name.funscript`,
 `Name.roll.funscript`. Nothing is overwritten: a name that is taken gets
 ` (2)`. HLS sources (some Pornhub videos) can play but not be saved yet.
 
+Star a post to keep it under **Saved**, with the rest of your own data (Backup
+carries it): open it later to stream the video again or download it.
+
 Streams go through the small local proxy the Windows app runs (or
 `start.bat` / `pnpm dev:proxy` from source). If some of these sites are blocked
 where you are, put an HTTP proxy in **Settings → Network**: the forum,
