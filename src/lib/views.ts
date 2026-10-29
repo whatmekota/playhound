@@ -105,7 +105,7 @@ export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
     id: 'device',
     label: 'Device',
     items: [
-      { id: 'device', kind: 'inspector', label: 'Device', icon: 'i-carbon-plug', hint: 'Serial / Buttplug connection and axes', kbd: 'D' },
+      { id: 'device', kind: 'inspector', label: 'Device', icon: 'i-carbon-plug', hint: 'Serial / Intiface connection and axes', kbd: 'D' },
       { id: 'motion', kind: 'inspector', label: 'Motion', icon: 'i-carbon-wave-height', hint: 'What drives the device: script, session, beat or manual' },
       { id: 'emulator', kind: 'floating', label: 'Emulator', icon: 'i-carbon-cube', hint: 'Floating OSR preview over any view' },
       { id: 'remote', kind: 'inspector', label: 'Remote', icon: 'i-carbon-mobile', hint: 'Control playback from your phone' },

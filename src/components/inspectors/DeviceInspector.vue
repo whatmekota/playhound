@@ -75,7 +75,7 @@ onMounted(() => {
 
 const TRANSPORTS = [
   { value: 'serial' as const, label: 'Serial', icon: 'i-carbon-usb', title: 'TCode over USB (OSR2, SR6, SSR1…)' },
-  { value: 'buttplug' as const, label: 'Buttplug', icon: 'i-carbon-bluetooth', title: 'Any toy Intiface Central supports' },
+  { value: 'buttplug' as const, label: 'Intiface', icon: 'i-brand-intiface', title: 'Any toy Intiface Central supports' },
 ]
 
 // ─── Serial ───────────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ async function connectBp() {
     bpConnecting.value = false
   }
   if (bp.connected.value) {
-    toast.success('Connected to Intiface', { detail: bp.deviceCount.value ? `${bp.deviceCount.value} device(s) ready` : 'Scan to find your devices', icon: 'i-carbon-bluetooth', key: 'bp' })
+    toast.success('Connected to Intiface', { detail: bp.deviceCount.value ? `${bp.deviceCount.value} device(s) ready` : 'Scan to find your devices', icon: 'i-brand-intiface', key: 'bp' })
     if (!bp.deviceCount.value)
       void bp.startScan()
   }
@@ -541,7 +541,7 @@ const logOpen = ref(false)
 
       <div class="flex gap-3 items-center relative">
         <div class="rounded-[var(--radius-md)] center shrink-0 h-10 w-10 transition-colors duration-300 relative" :class="TILE[status.tone]">
-          <span :class="transport === 'serial' ? 'i-carbon-usb' : 'i-carbon-bluetooth'" class="text-[19px]" />
+          <span :class="transport === 'serial' ? 'i-carbon-usb' : 'i-brand-intiface'" class="text-[19px]" />
           <span
             class="rounded-full h-2.5 w-2.5 ring-2 ring-surface-850 transition-colors duration-300 absolute -right-0.5 -top-0.5"
             :class="[DOT[status.tone], live ? 'animate-pulse-dot' : '']"
@@ -569,7 +569,7 @@ const logOpen = ref(false)
         <div v-if="transport === 'serial'" key="serial" class="flex flex-col gap-2.5 relative">
           <div v-if="!webSerial.supported" class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20">
             <span class="i-carbon-warning-alt text-[15px] mt-px shrink-0" />
-            <span>This browser cannot talk to USB serial devices. Open playhound in Chrome or Edge, or use Buttplug.</span>
+            <span>This browser cannot talk to USB serial devices. Open playhound in Chrome or Edge, or use Intiface.</span>
           </div>
 
           <UiButton
@@ -639,7 +639,7 @@ const logOpen = ref(false)
           </div>
         </div>
 
-        <!-- Buttplug -->
+        <!-- Intiface (the Buttplug protocol) -->
         <div v-else key="buttplug" class="flex flex-col gap-2.5 relative">
           <UiInput
             v-model="bpUrl"

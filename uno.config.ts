@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import {
   defineConfig,
   presetAttributify,
@@ -144,6 +145,12 @@ export default defineConfig({
     presetIcons({
       scale: 1.2,
       warn: true,
+      // Logos of the apps playhound connects to, in their own colours.
+      collections: {
+        brand: {
+          intiface: () => readFileSync(new URL('./src/assets/brands/intiface.svg', import.meta.url), 'utf8'),
+        },
+      },
     }),
     presetWebFonts({
       fonts: {
