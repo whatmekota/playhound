@@ -71,11 +71,15 @@ export function outputsOf(d: ButtplugClientDevice): ToyOutputs {
       return false
     }
   }
+  const linear = has(OutputType.HwPositionWithDuration)
   return {
-    linear: has(OutputType.HwPositionWithDuration),
+    linear,
     vibrate: has(OutputType.Vibrate),
     rotate: has(OutputType.Rotate),
-    oscillate: has(OutputType.Oscillate),
+    // A stroker that also offers oscillate (the Lovense Solace Pro) has one
+    // motor with two ways to drive it: speeds sent alongside the script's
+    // positions would fight them, so it only ever gets positions.
+    oscillate: has(OutputType.Oscillate) && !linear,
   }
 }
 
