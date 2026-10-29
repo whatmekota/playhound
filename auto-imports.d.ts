@@ -138,6 +138,7 @@ declare global {
   const refThrottled: typeof import('@vueuse/core').refThrottled
   const refWithControl: typeof import('@vueuse/core').refWithControl
   const refreshNetProxy: typeof import('./src/composables/useNetProxy').refreshNetProxy
+  const refreshSaved: typeof import('./src/composables/useSavedPosts').refreshSaved
   const refreshYtdlp: typeof import('./src/composables/useStreams').refreshYtdlp
   const releaseToast: typeof import('./src/composables/useToast').releaseToast
   const remoteRoom: typeof import('./src/composables/useRemoteLink').remoteRoom
@@ -601,6 +602,7 @@ declare module 'vue' {
     readonly refThrottled: UnwrapRef<typeof import('@vueuse/core')['refThrottled']>
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
     readonly refreshNetProxy: UnwrapRef<typeof import('./src/composables/useNetProxy')['refreshNetProxy']>
+    readonly refreshSaved: UnwrapRef<typeof import('./src/composables/useSavedPosts')['refreshSaved']>
     readonly refreshYtdlp: UnwrapRef<typeof import('./src/composables/useStreams')['refreshYtdlp']>
     readonly releaseToast: UnwrapRef<typeof import('./src/composables/useToast')['releaseToast']>
     readonly remoteRoom: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteRoom']>
