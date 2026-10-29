@@ -8,7 +8,7 @@ import { nextActionAt } from '~/lib/funscriptParser'
 import { clampLatency } from '~/lib/latency'
 import { KEYS } from '~/lib/persist'
 import { backOff, intensityParams, sampleScaled, scaleScript } from '~/lib/scriptScale'
-import { calcInterval } from '~/lib/tcodeEncoder'
+import { frameCommand, holdCommand, SEND_INTERVAL_MS } from '~/lib/tcodeEncoder'
 import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
@@ -76,6 +76,12 @@ export function useVideoSync() {
   let videoEl: HTMLVideoElement | null = null
   const syncing = ref(false)
 
+  let snap = true
+  let stillFrames = 0
+  let prevVideoMs = -1
+  let wasHolding = false
+  let lastDir: Record<string, number> = {}
+
   // Derived-axis state, kept across frames so twist turns continuously and
   // velocity is measured rather than guessed.
   let twistPhase = 0
@@ -97,7 +103,7 @@ export function useVideoSync() {
    * Only ever writes channels the script does not drive — a scripted twist
    * always wins over an invented one.
    */
-  function driveDerivedAxes(strokePos: number, dtSec: number, interval: number) {
+  function driveDerivedAxes(strokePos: number, dtSec: number) {
     if (!motion.synthEnabled)
       return
 
@@ -118,7 +124,7 @@ export function useVideoSync() {
     for (const channel of targets) {
       const value = derived[channel]
       if (value !== undefined)
-        sendPosition(channel, value, interval)
+        sendPosition(channel, value, SEND_INTERVAL_MS)
     }
   }
 
@@ -136,6 +142,11 @@ export function useVideoSync() {
       return
     syncing.value = true
     bpSegmentAt = Number.NaN
+    prevVideoMs = -1
+    stillFrames = 0
+    wasHolding = false
+    lastDir = {}
+    snap = true
     tick()
   }
 
@@ -143,6 +154,11 @@ export function useVideoSync() {
     syncing.value = false
     prevStrokePos = null
     prevTs = 0
+    prevVideoMs = -1
+    stillFrames = 0
+    wasHolding = false
+    lastDir = {}
+    snap = true
     if (rafId !== null) {
       cancelAnimationFrame(rafId)
       rafId = null
@@ -171,6 +187,29 @@ export function useVideoSync() {
     return hold > 0 ? backOff(pos, 0.5, hold) : pos
   }
 
+  function sendAxis(
+    channel: string,
+    actions: FunscriptAction[],
+    ms: number,
+    speed: number,
+    nextAt: number | null,
+    hold: boolean,
+  ): number {
+    const pos = positionAt(channel, actions, ms)
+    if (hold) {
+      const cmd = holdCommand(pos)
+      sendPosition(channel, cmd.pos, cmd.interval, { force: snap })
+      return pos
+    }
+    const end = nextAt === null ? null : positionAt(channel, actions, nextAt)
+    const cmd = frameCommand(pos, end, nextAt, ms, speed)
+    const dir = Math.sign((end ?? pos) - pos)
+    const reversal = lastDir[channel] !== undefined && dir !== 0 && dir !== lastDir[channel]
+    lastDir[channel] = dir
+    sendPosition(channel, cmd.pos, cmd.interval, { reported: pos, force: reversal })
+    return pos
+  }
+
   function tick() {
     if (!syncing.value || !videoEl)
       return
@@ -178,11 +217,16 @@ export function useVideoSync() {
     const timeMs = videoEl.currentTime * 1000
     const speed = videoEl.playbackRate
 
+    stillFrames = timeMs === prevVideoMs ? stillFrames + 1 : 0
+    prevVideoMs = timeMs
+    const hold = snap || stillFrames >= 2
+    const settle = hold && !wasHolding
+    wasHolding = hold
+
     const now = performance.now()
     const dtSec = prevTs ? Math.min(0.1, (now - prevTs) / 1000) : 0
     prevTs = now
     let strokePos: number | null = null
-    let strokeInterval = 100
 
     const lead = leadMs(speed)
     for (const script of scriptStore.activeScripts) {
@@ -192,15 +236,16 @@ export function useVideoSync() {
         continue
 
       const adjustedMs = timeMs + (offsetMs ?? 0) + lead
-      const pos = positionAt(channel, actions, adjustedMs)
       const nextAt = nextActionAt(actions, adjustedMs)
-      const interval = calcInterval(nextAt, adjustedMs, speed)
-      sendPosition(channel, pos, interval)
+      const pos = sendAxis(channel, actions, adjustedMs, speed, nextAt, hold)
 
       if (channel === 'L0') {
         strokePos = pos
-        strokeInterval = interval
-        if (nextAt !== null && nextAt !== bpSegmentAt) {
+        if (settle) {
+          void bp.sendLinear(pos, SEND_INTERVAL_MS)
+          bpSegmentAt = Number.NaN
+        }
+        else if (!hold && nextAt !== null && nextAt !== bpSegmentAt) {
           bpSegmentAt = nextAt
           void bp.sendLinear(positionAt(channel, actions, nextAt), Math.max(0, (nextAt - adjustedMs) / speed))
         }
@@ -208,10 +253,11 @@ export function useVideoSync() {
     }
 
     if (strokePos !== null) {
-      driveDerivedAxes(strokePos, dtSec, strokeInterval)
+      driveDerivedAxes(strokePos, dtSec)
       prevStrokePos = strokePos
     }
 
+    snap = false
     rafId = requestAnimationFrame(tick)
   }
 
@@ -223,16 +269,20 @@ export function useVideoSync() {
     const timeMs = videoEl.currentTime * 1000
     const speed = videoEl.playbackRate
     const lead = leadMs(speed)
+    snap = true
+    prevVideoMs = timeMs
+    stillFrames = 1
+    wasHolding = false
+    lastDir = {}
     for (const script of scriptStore.activeScripts) {
       const { channel, parsed, offsetMs } = script
       const adjustedMs = timeMs + (offsetMs ?? 0) + lead
       if (parsed.actions.length === 0)
         continue
-      const pos = positionAt(channel, parsed.actions, adjustedMs)
       const nextAt = nextActionAt(parsed.actions, adjustedMs)
-      const interval = calcInterval(nextAt, adjustedMs, speed)
-      sendPosition(channel, pos, interval)
+      sendAxis(channel, parsed.actions, adjustedMs, speed, nextAt, true)
     }
+    snap = false
   }
 
   onUnmounted(() => {

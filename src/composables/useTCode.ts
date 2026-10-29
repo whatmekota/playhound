@@ -1,6 +1,6 @@
 import type { AxisLimits } from '~/lib/tcodeEncoder'
 import { logCommand } from '~/lib/serialLog'
-import { encodeTCode } from '~/lib/tcodeEncoder'
+import { encodeTCode, SEND_INTERVAL_MS } from '~/lib/tcodeEncoder'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useSerialPort } from './useSerialPort'
 
@@ -24,13 +24,17 @@ function track(channel: string, position: number, limits: AxisLimits) {
 
 // Per-axis rate limiting: don't flood the serial port (min 33ms between writes per axis)
 const lastSentAt: Record<string, number> = {}
-const SEND_INTERVAL_MS = 33 // ~30 Hz max per axis
 
 export function useTCode() {
   const deviceStore = useDeviceStore()
   const { write } = useSerialPort()
 
-  function sendPosition(channel: string, position: number, interval: number) {
+  function sendPosition(
+    channel: string,
+    position: number,
+    interval: number,
+    opts: { reported?: number, force?: boolean } = {},
+  ) {
     const axisCfg = deviceStore.axisConfigs[channel]
     const ver = deviceStore.tcodeVersion
     const limits: AxisLimits = axisCfg
@@ -38,7 +42,7 @@ export function useTCode() {
       : { min: 0, max: 1, invert: false }
 
     const cmd = encodeTCode({ channel, position, interval }, limits, ver)
-    track(channel, position, limits)
+    track(channel, opts.reported ?? position, limits)
 
     logCommand(cmd)
     emuInstance?.write(cmd)
@@ -48,7 +52,7 @@ export function useTCode() {
 
     // Rate-limit per axis — skip if sent too recently
     const now = performance.now()
-    if ((now - (lastSentAt[channel] ?? 0)) < SEND_INTERVAL_MS)
+    if (!opts.force && (now - (lastSentAt[channel] ?? 0)) < SEND_INTERVAL_MS)
       return
     lastSentAt[channel] = now
 
