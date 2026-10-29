@@ -13,6 +13,8 @@ export interface AxisLimits {
   invert: boolean
 }
 
+export const SEND_INTERVAL_MS = 33 // ~30 Hz max per axis
+
 /**
  * Encode a single TCode command string.
  * Respects tcodeVersion: 'v2' = 3-digit (000-999), 'v3' = 4-digit (0000-9999)
@@ -57,4 +59,18 @@ export function calcInterval(nextActionMs: number | null, currentMs: number, spe
     return 500
   const raw = (nextActionMs - currentMs) / speed
   return Math.max(10, Math.min(5000, Math.round(raw)))
+}
+
+export function frameCommand(
+  pos: number,
+  posAtNext: number | null,
+  nextAt: number | null,
+  ms: number,
+  speed: number,
+): { pos: number, interval: number } {
+  return { pos: posAtNext ?? pos, interval: calcInterval(nextAt, ms, speed) }
+}
+
+export function holdCommand(pos: number): { pos: number, interval: number } {
+  return { pos, interval: SEND_INTERVAL_MS }
 }
