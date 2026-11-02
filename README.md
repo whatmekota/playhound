@@ -16,8 +16,9 @@
 </p>
 
 A funscript video player and audiovisual session engine for your own library and
-your own hardware: OSR2/SR6 strokers over TCode, Intiface/Buttplug toys, and an
-on-screen emulator when nothing is plugged in.
+your own hardware: OSR2/SR6 strokers over TCode, the Handy over WiFi or
+Bluetooth, Intiface/Buttplug toys, and an on-screen emulator when nothing is
+plugged in.
 
 It plays your videos with their scripts, finds the good parts, follows the music
 when there's no script, and can run a whole session by itself, with binaural
@@ -63,6 +64,11 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   calibration, a per-video script offset, A–B loops and speed control, and a
   timeline that shows the script's intensity, chapters, bookmarks and your past
   edges and finishes.
+- **The Handy, built in.** Connect over WiFi with the key from the Handy app, or
+  straight over Bluetooth with no internet at all. The script is streamed a few
+  seconds ahead and the Handy plays it on its own clock, kept in step with the
+  video, so fast scripts play as written, and edges and the intensity knob
+  still apply.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
   that you can save and edit. If it hears the beat wrong, tap it in with **T**.
@@ -183,6 +189,17 @@ Open the **Device** panel (**D**):
 | **Intiface / Buttplug**  | Connect to Intiface Central. Strokers get linear moves, from scripts and from the motion generator; vibrators, rotators and oscillators get a strength from the source you pick per toy.                                                                                                                                                                                                                                                                                                                                                |
 | **The Handy**            | Firmware 4, over WiFi (paste the connection key from the Handy app) or straight over Bluetooth (no internet, no key). playhound streams the stroke script a few seconds ahead and the Handy plays it on its own clock, kept in step with the video, so fast scripts play as written, and the intensity knob and edges still apply. The motion generator (music, tap tempo, gamepad) drives it live. Under Advanced: **Live**, every move sent as it happens like MultiFunPlayer, and, over WiFi, **Whole script** for slow connections. |
 | **Emulator**             | A 3D OSR on screen, for trying things with nothing plugged in.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+**Connecting the Handy** (firmware 4) in the Device panel's **Handy** tab:
+
+- **WiFi:** paste the connection key from the Handy app and click **Connect to
+  the Handy**. It goes through Handy's server, so it needs internet.
+- **Bluetooth:** click **Connect to the Handy** and pick it from the list. No key
+  and no internet. Close the Handy app's Bluetooth connection first, since only
+  one program can hold it. In a browser, Bluetooth needs Chrome or Edge.
+
+Then play anything with a stroke script. The Handy has its own **Sync offset**,
+separate from latency calibration.
 
 **Latency calibration** lines the device up with the picture. A **per-video
 offset** fixes scripts that are a little early or late.
@@ -347,6 +364,9 @@ world only when you use a feature that needs it:
 
 - the **EroScripts** browser and its download hosts
 - **YouTube** tiles on the media wall
+- **the Handy over WiFi**: commands go through Handy's server with your
+  connection key, and **Whole script** uploads the shaped script to Handy's
+  script hosting. Over Bluetooth nothing leaves your computer.
 - **Discord Rich Presence**: desktop app only, off by default. Its Minimal mode
   shows the app and a timer, never what's playing; titles appear only if you
   write a custom template that asks for them.
