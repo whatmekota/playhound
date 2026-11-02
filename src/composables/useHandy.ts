@@ -1,12 +1,16 @@
 /**
  * useHandy — the Handy over WiFi, through Handy's cloud API (v3).
  *
- * The stroke script is uploaded to Handy's script hosting, shaped by the knob
- * and the stroke axis range (see lib/handy.ts), and the device is set up to
- * play it (HSSP). From then on useVideoSync calls follow() every frame with
- * the video's script time, and only a play, a stop or an occasional clock
- * nudge goes over the network: the device plays the strokes itself, so fast
- * scripts cost nothing extra.
+ * useVideoSync calls follow() every frame with the video's script time, and
+ * only a play, a stop, a top-up of points or an occasional clock nudge goes
+ * over the network: the device plays the strokes itself, so fast scripts cost
+ * nothing extra. Two protocols (see lib/handy.ts):
+ *
+ * - HSP, the default: the next few seconds of the stroke script are kept in
+ *   the device's buffer, shaped by the knob, an edge and the stroke range as
+ *   they are sent.
+ * - HSSP: the whole shaped script is uploaded to Handy's script hosting and
+ *   set up once; a knob change uploads it again, and an edge stops it.
  *
  * The application ID comes from VITE_HANDY_APP_ID at build time (an ID is
  * meant to be shipped in clients); one typed in the panel overrides it. The
@@ -15,27 +19,32 @@
  * Usage:
  *   const handy = useHandy()
  *   await handy.connect()
- *   handy.follow({ playing, at, rate })   // every frame
- *   handy.halt()                          // pause, end, panic
+ *   handy.follow({ playing, at, rate, hold })   // every frame
+ *   handy.halt()                                // pause, end, panic
  */
 
-import type { EffectScope } from 'vue'
-import type { HandyCommand, HandyRun, HandyWant, TimeSample } from '~/lib/handy'
+import type { ComputedRef, EffectScope } from 'vue'
+import type { FunscriptAction } from '~/lib/funscriptParser'
+import type { HandyAction, HandyCommand, HandyRun, HandyWant, HspCommand, HspRun, TimeSample } from '~/lib/handy'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, effectScope, ref, watch } from 'vue'
-import { clockOffset, HANDY_API, HANDY_HOSTING, handyError, handyFunscript, handyScript, scriptKey, stepHandy } from '~/lib/handy'
+import { clockOffset, HANDY_API, HANDY_HOSTING, handyError, handyFunscript, handyScript, HSP_BATCH, scriptKey, stepHandy, stepHsp } from '~/lib/handy'
 import { KEYS } from '~/lib/persist'
 import { logCommand } from '~/lib/serialLog'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 
+export type HandyProtocol = 'hsp' | 'hssp'
+
 const ENV_APP_ID = String(import.meta.env.VITE_HANDY_APP_ID ?? '').trim()
 const TIME_SAMPLES = 20
 /** After a failed command, wait this long before trying again. */
 const BACKOFF_MS = 3000
-/** The knob is rounded to this before shaping the script, so turning it does not upload a script per step. */
-const KNOB_STEP = 0.05
+/** The knob and an edge's hold are rounded to this before shaping, so turning them does not reshape per step. */
+const SHAPE_STEP = 0.05
+/** An edge this deep stops the device under HSSP, which cannot ease off mid-script. */
+const HSSP_HOLD_STOP = 0.02
 
 class HandyApiError extends Error {
   constructor(message: string, readonly offline: boolean) {
@@ -47,20 +56,21 @@ class HandyApiError extends Error {
 const connectionKey = useLocalStorage(KEYS.handyKey.key, '')
 const appIdOverride = useLocalStorage(KEYS.handyAppId.key, '')
 const enabled = useLocalStorage(KEYS.handyEnabled.key, true)
+const protocol = useLocalStorage<HandyProtocol>(KEYS.handyProtocol.key, 'hsp')
 /** Script ms added on top of the script's own offset: positive plays the device earlier. */
 const offsetMs = useLocalStorage(KEYS.handyOffset.key, 0)
 
 const state = ref<'idle' | 'connecting' | 'connected'>('idle')
 const error = ref<string | null>(null)
 const info = ref<{ model: string, firmware: string } | null>(null)
-/** The stroke script on the device: none to play, uploading, ready, or it could not be set up. */
+/** The stroke script on the device: none to play, being set up, ready, or it could not be set up. */
 const script = ref<'none' | 'loading' | 'ready' | 'failed'>('none')
 const playing = ref(false)
 
 const appId = computed(() => appIdOverride.value.trim() || ENV_APP_ID)
 
 let csOffset = 0
-let run: HandyRun | null = null
+let run: HandyRun | HspRun | null = null
 let backoffUntil = 0
 /** Commands go out one at a time, in order; follow() skips frames while one is out. */
 let queue: Promise<void> = Promise.resolve()
@@ -68,9 +78,24 @@ let pending = 0
 let preparedKey: string | null = null
 let prepareSeq = 0
 const uploads = new Map<string, string>()
+/** HSP: a session is set up on the device, and how many points a batch may carry. */
+let hspSession = false
+let hspBatch = HSP_BATCH
+/** HSP: the running count of points sent, which the API wants with every add. */
+let streamIndex = 0
+
+interface Base {
+  actions: FunscriptAction[]
+  min: number
+  max: number
+  invert: boolean
+}
 let scope: EffectScope | null = null
+let base: ComputedRef<Base | null> | null = null
+let shapedCache: { base: Base, key: string, actions: HandyAction[] } | null = null
 
 const clientNow = () => performance.timeOrigin + performance.now()
+const step = (v: number) => Math.round(v / SHAPE_STEP) * SHAPE_STEP
 
 async function api(method: 'GET' | 'PUT', path: string, body?: unknown): Promise<any> {
   const headers: Record<string, string> = {
@@ -126,15 +151,18 @@ function describe(e: unknown): string {
   return (e as Error)?.message ?? String(e)
 }
 
-function enqueue(cmd: HandyCommand) {
+type AnyCommand = HandyCommand | HspCommand
+
+function enqueue(cmd: AnyCommand, proto: HandyProtocol = protocol.value) {
   pending++
   queue = queue
-    .then(() => send(cmd))
+    .then(() => send(cmd, proto))
     .catch((e) => {
       error.value = describe(e)
       backoffUntil = clientNow() + BACKOFF_MS
-      // A play that failed did not start: try again after the backoff.
-      if (cmd.kind === 'play') {
+      // A play that failed did not start, and points that did not arrive leave
+      // a hole: either way, start over with a fresh play after the backoff.
+      if (cmd.kind === 'play' || cmd.kind === 'add') {
         run = null
         playing.value = false
       }
@@ -146,23 +174,36 @@ function enqueue(cmd: HandyCommand) {
     })
 }
 
-async function send(cmd: HandyCommand) {
+const serverNow = () => Math.round(clientNow() + csOffset)
+const toPoints = (points: HandyAction[]) => points.map(p => ({ t: p.at, x: p.pos }))
+
+async function send(cmd: AnyCommand, proto: HandyProtocol) {
+  const p = `/${proto}`
   switch (cmd.kind) {
     case 'play': {
-      const body = { start_time: Math.round(cmd.at), server_time: Math.round(clientNow() + csOffset), playback_rate: cmd.rate }
-      logCommand(`[Handy] play at=${body.start_time}ms rate=${cmd.rate}`)
+      const body: Record<string, unknown> = { start_time: Math.round(cmd.at), server_time: serverNow(), playback_rate: cmd.rate }
+      if ('points' in cmd && cmd.points.length) {
+        streamIndex += cmd.points.length
+        body.pause_on_starving = false
+        body.add = { points: toPoints(cmd.points), flush: true, tail_point_stream_index: streamIndex }
+      }
+      logCommand(`[Handy] ${proto} play at=${body.start_time}ms rate=${cmd.rate}${'points' in cmd ? ` +${cmd.points.length} points` : ''}`)
       playing.value = true
-      await api('PUT', '/hssp/play', body)
+      await api('PUT', `${p}/play`, body)
       error.value = null
       break
     }
+    case 'add':
+      streamIndex += cmd.points.length
+      await api('PUT', '/hsp/add', { points: toPoints(cmd.points), tail_point_stream_index: streamIndex })
+      break
     case 'stop':
-      logCommand('[Handy] stop')
+      logCommand(`[Handy] ${proto} stop`)
       playing.value = false
-      await api('PUT', '/hssp/stop')
+      await api('PUT', `${p}/stop`)
       break
     case 'synctime':
-      await api('PUT', '/hssp/synctime', { current_time: Math.round(cmd.at), server_time: Math.round(clientNow() + csOffset) })
+      await api('PUT', `${p}/synctime`, { current_time: Math.round(cmd.at), server_time: serverNow() })
       break
   }
 }
@@ -182,10 +223,10 @@ async function upload(text: string, key: string): Promise<string> {
 }
 
 /**
- * Put `text` on the device, unless it is already there. Setting up stops any
- * play, so the next frame starts it again from wherever the video is.
+ * HSSP: put `text` on the device, unless it is already there. Setting up
+ * stops any play, so the next frame starts it again from wherever the video is.
  */
-async function prepare(text: string | null) {
+async function prepareHssp(text: string | null) {
   const seq = ++prepareSeq
   if (text === null) {
     preparedKey = null
@@ -205,7 +246,7 @@ async function prepare(text: string | null) {
     await queue
     if (seq !== prepareSeq)
       return
-    logCommand('[Handy] setup script')
+    logCommand('[Handy] hssp setup')
     await api('PUT', '/hssp/setup', { url })
     if (seq !== prepareSeq)
       return
@@ -222,12 +263,67 @@ async function prepare(text: string | null) {
   }
 }
 
+/**
+ * HSP: a session on the device, once per connection. The points themselves
+ * go with each play, so a new script only needs the next play to start over.
+ */
+async function prepareHsp(has: boolean) {
+  const seq = ++prepareSeq
+  run = null
+  if (!has) {
+    script.value = 'none'
+    halt()
+    return
+  }
+  if (hspSession) {
+    script.value = 'ready'
+    return
+  }
+  script.value = 'loading'
+  playing.value = false
+  try {
+    await queue
+    if (seq !== prepareSeq)
+      return
+    logCommand('[Handy] hsp setup')
+    const st = await api('PUT', '/hsp/setup', {})
+    if (seq !== prepareSeq)
+      return
+    const max = Number(st?.max_points)
+    // Half the buffer at most, so a top-up never pushes out points still to play.
+    hspBatch = Number.isFinite(max) && max > 0 ? Math.max(2, Math.min(HSP_BATCH, Math.floor(max / 2))) : HSP_BATCH
+    streamIndex = 0
+    hspSession = true
+    script.value = 'ready'
+    error.value = null
+  }
+  catch (e) {
+    if (seq !== prepareSeq)
+      return
+    script.value = 'failed'
+    error.value = describe(e)
+  }
+}
+
 /** Stop the device if it is playing (or about to). */
-function halt() {
+function halt(proto: HandyProtocol = protocol.value) {
   if (state.value !== 'connected' || (!run && !pending && !playing.value))
     return
   run = null
-  enqueue({ kind: 'stop' })
+  enqueue({ kind: 'stop' }, proto)
+}
+
+/** The script shaped for the knob and hold as they stand, rebuilt only when either moves a step. */
+function shapedNow(b: Base, knob: number, hold: number): { shape: string, actions: HandyAction[] } {
+  const key = `${step(knob).toFixed(2)}|${step(hold).toFixed(2)}`
+  if (shapedCache?.base !== b || shapedCache.key !== key) {
+    shapedCache = {
+      base: b,
+      key,
+      actions: handyScript(b.actions, { knob: step(knob), hold: step(hold), min: b.min, max: b.max, invert: b.invert }),
+    }
+  }
+  return { shape: key, actions: shapedCache.actions }
 }
 
 export function useHandy() {
@@ -235,33 +331,46 @@ export function useHandy() {
   const device = useDeviceStore()
   const control = useSessionControlStore()
 
-  /** The stroke script as the device should get it, or null when there is none. */
-  const wanted = computed(() => {
-    const s = scripts.activeScripts.find(x => x.channel === 'L0')
-    if (!s || !s.parsed.actions.length)
-      return null
-    const axis = device.axisConfigs.L0
-    const knob = Math.round(control.intensityScale / KNOB_STEP) * KNOB_STEP
-    return handyFunscript(handyScript(s.parsed.actions, {
-      knob,
-      min: axis?.min ?? 0,
-      max: axis?.max ?? 1,
-      invert: axis?.invert ?? false,
-    }))
-  })
-
   // Once per app: keep the device's script in step with the loaded one.
   if (!scope) {
     scope = effectScope(true)
     scope.run(() => {
+      base = computed(() => {
+        const s = scripts.activeScripts.find(x => x.channel === 'L0')
+        if (!s || !s.parsed.actions.length)
+          return null
+        const axis = device.axisConfigs.L0
+        return { actions: s.parsed.actions, min: axis?.min ?? 0, max: axis?.max ?? 1, invert: axis?.invert ?? false }
+      })
+      /** HSSP: the whole shaped script as uploaded. */
+      const hsspText = computed(() => {
+        const b = base!.value
+        if (!b || protocol.value !== 'hssp')
+          return null
+        return handyFunscript(handyScript(b.actions, { knob: step(control.intensityScale), min: b.min, max: b.max, invert: b.invert }))
+      })
+
       let timer: ReturnType<typeof setTimeout> | undefined
-      watch([wanted, state], ([text, st]) => {
+      watch([hsspText, base, state, protocol], ([text, b, st, proto]) => {
         clearTimeout(timer)
         if (st !== 'connected')
           return
+        if (proto === 'hsp') {
+          void prepareHsp(!!b)
+          return
+        }
         // A knob turned step by step or a range dragged settles first.
-        timer = setTimeout(() => void prepare(text), script.value === 'ready' || script.value === 'loading' ? 800 : 0)
+        timer = setTimeout(() => void prepareHssp(text), script.value === 'ready' || script.value === 'loading' ? 800 : 0)
       }, { immediate: true })
+
+      // Switching protocol stops what the old one was playing.
+      watch(protocol, (_now, was) => {
+        if (state.value === 'connected')
+          halt(was)
+        run = null
+        preparedKey = null
+        script.value = 'none'
+      }, { flush: 'sync' })
     })
   }
 
@@ -289,6 +398,7 @@ export function useHandy() {
       playing.value = false
       backoffUntil = 0
       preparedKey = null
+      hspSession = false
       state.value = 'connected'
     }
     catch (e) {
@@ -306,25 +416,35 @@ export function useHandy() {
     info.value = null
     script.value = 'none'
     preparedKey = null
+    hspSession = false
     run = null
     playing.value = false
   }
 
-  /** Called every frame while a video plays; sends only when something changed. */
-  function follow(want: HandyWant) {
+  /**
+   * Called every frame while a video plays; sends only when something
+   * changed. `hold` is the edge's (0–1).
+   */
+  function follow(want: HandyWant & { hold: number }) {
     if (state.value !== 'connected' || script.value !== 'ready' || pending)
       return
     const now = clientNow()
     if (now < backoffUntil)
       return
-    const { cmd, run: next } = stepHandy(run, {
-      playing: want.playing && enabled.value,
-      at: want.at + offsetMs.value,
-      rate: want.rate,
-    }, now)
-    run = next
-    if (cmd)
-      enqueue(cmd)
+    const at = want.at + offsetMs.value
+    let next: { cmd: AnyCommand | null, run: HandyRun | HspRun | null }
+    if (protocol.value === 'hssp') {
+      next = stepHandy(run, { playing: want.playing && enabled.value && want.hold < HSSP_HOLD_STOP, at, rate: want.rate }, now)
+    }
+    else {
+      const b = base?.value
+      if (!b)
+        return
+      next = stepHsp(run as HspRun | null, { playing: want.playing && enabled.value, at, rate: want.rate }, now, shapedNow(b, control.intensityScale, want.hold), hspBatch)
+    }
+    run = next.run
+    if (next.cmd)
+      enqueue(next.cmd)
   }
 
   function setEnabled(v: boolean) {
@@ -338,6 +458,7 @@ export function useHandy() {
     appIdOverride,
     hasBuiltInAppId: !!ENV_APP_ID,
     enabled,
+    protocol,
     offsetMs,
     state,
     connected: computed(() => state.value === 'connected'),
