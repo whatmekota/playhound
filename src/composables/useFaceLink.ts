@@ -24,6 +24,7 @@ import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useButtplug } from './useButtplug'
 import { faceScreenOpen, hostFaceScreens, publishFaceFrame } from './useFaceScreen'
+import { useHandy } from './useHandy'
 import { useRemoteStatus } from './useRemoteStatus'
 import { analyseActions, analysisKey } from './useScriptAnalysis'
 import { axisOutput } from './useTCode'
@@ -97,6 +98,7 @@ function start() {
     const safety = useSafetyStore()
     const device = useDeviceStore()
     const bp = useButtplug()
+    const handy = useHandy()
     const ctl = useSessionControlStore()
 
     /** Each script's sorted speeds, kept as long as its shared analysis is. */
@@ -125,7 +127,7 @@ function start() {
         videoPlaying: player.isPlaying,
         title: player.videoPath ?? '',
         panicked: safety.panicked,
-        deviceConnected: device.connected || bp.connected.value,
+        deviceConnected: device.connected || bp.connected.value || handy.connected.value,
         sessionActive: audio.sessionActive.value,
         sessionIntensity: audio.intensity.value,
         sessionPhase: audio.phase.value,

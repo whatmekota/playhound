@@ -31,8 +31,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Pages serves the site under /playhound/.
+      # Pages serves the site under /playhound/. The Handy application ID is
+      # a repository variable (an ID is meant to ship in clients); without it
+      # the page asks for one.
       - run: pnpm exec vite build --base /playhound/
+        env:
+          VITE_HANDY_APP_ID: ${{ vars.HANDY_APP_ID }}
 
       # Pages has no SPA fallback: send unknown paths (/playhound/remote …) to the app.
       - run: cp dist/index.html dist/404.html

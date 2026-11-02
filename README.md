@@ -100,6 +100,7 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 | Your library, the player, programmes, the session engine    |                         ✓                          |                                ✓                                |      ✓      |
 | TCode devices (Web Serial), heart-rate monitors (Bluetooth) |                         ✓                          |                                ✓                                |      ✓      |
 | Intiface / Buttplug toys                                    |                        ✓\*                         |                                ✓                                |      ✓      |
+| The Handy over WiFi                                         |                         ✓                          |                                ✓                                |     ✓†      |
 | EroScripts browser, phone remote, CYD face                  |                                                    |                                ✓                                |      ✓      |
 | Streaming from file hosts and yt-dlp sites                  |                                                    |                                ✓                                |      ✓      |
 | Kerfus face on a second monitor                             |                         ✓                          |                                ✓                                |      ✓      |
@@ -109,6 +110,10 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 
 \*With Intiface Central running on the same computer; not yet tested from the
 hosted page.
+
+†Needs a Handy application ID (free, from the
+[Handy developer portal](https://user.handyfeeling.com)) in `.env.local` as
+`VITE_HANDY_APP_ID`, or pasted under the Handy tab's **Advanced**.
 
 - **Browser:** nothing to install, a good way to see if you like it. Your
   library, settings and stats are kept by that browser; **Backup → Export**
@@ -168,11 +173,12 @@ private networks, or the phone remote can't connect.
 
 Open the **Device** panel (**D**):
 
-| Output                   | How                                                                                                                                          |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **TCode** (OSR2, SR6, …) | Web Serial. Set each axis's range, inversion and resting position, and save presets.                                                         |
-| **Intiface / Buttplug**  | Connect to Intiface Central. Strokers get linear moves; vibrators, rotators and oscillators get a strength from the source you pick per toy. |
-| **Emulator**             | A 3D OSR on screen, for trying things with nothing plugged in.                                                                               |
+| Output                   | How                                                                                                                                                                                                                                             |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TCode** (OSR2, SR6, …) | Web Serial. Set each axis's range, inversion and resting position, and save presets.                                                                                                                                                            |
+| **Intiface / Buttplug**  | Connect to Intiface Central. Strokers get linear moves; vibrators, rotators and oscillators get a strength from the source you pick per toy.                                                                                                    |
+| **The Handy (WiFi)**     | Paste the connection key from the Handy app. The Handy is given the whole stroke script and plays it in time with the video through Handy's server, so fast scripts don't choke a Bluetooth link. Firmware 4 and an internet connection needed. |
+| **Emulator**             | A 3D OSR on screen, for trying things with nothing plugged in.                                                                                                                                                                                  |
 
 **Latency calibration** lines the device up with the picture. A **per-video
 offset** fixes scripts that are a little early or late.
@@ -390,7 +396,7 @@ This is a personal project, built for and tested on one setup (Windows, Chrome,
 an OSR2). Two things are written but haven't been tried with real hardware yet:
 
 - vibrators through Intiface
-- the Handy
+- the Handy, through Intiface or over WiFi
 
 Reports and fixes are welcome.
 

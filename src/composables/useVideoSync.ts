@@ -13,6 +13,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useButtplug } from './useButtplug'
+import { useHandy } from './useHandy'
 import { useTCode } from './useTCode'
 
 let latency: Ref<number> | null = null
@@ -64,6 +65,7 @@ export function useVideoSync() {
   const motion = useMotionStore()
   const { sendPosition, homeAllAxes } = useTCode()
   const bp = useButtplug()
+  const handy = useHandy()
   /**
    * Buttplug linear strokers take "go to P over D ms" rather than a stream of
    * positions, so the stroke is sent once per script action, aimed at the
@@ -164,6 +166,7 @@ export function useVideoSync() {
       rafId = null
     }
     homeAllAxes(500)
+    handy.halt()
   }
 
   /**
@@ -241,6 +244,14 @@ export function useVideoSync() {
 
       if (channel === 'L0') {
         strokePos = pos
+        // The Handy plays the script itself: it is only told where the video
+        // is. Buffering and an edge stop it (it cannot ease off mid-script),
+        // and its own offset stands in for the device latency.
+        handy.follow({
+          playing: !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 3 && control.holdBack < 0.02,
+          at: timeMs + (offsetMs ?? 0),
+          rate: speed,
+        })
         if (settle) {
           void bp.sendLinear(pos, SEND_INTERVAL_MS)
           bpSegmentAt = Number.NaN
