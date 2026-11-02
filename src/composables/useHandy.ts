@@ -4,13 +4,19 @@
  * useVideoSync calls follow() every frame with the video's script time, and
  * only a play, a stop, a top-up of points or an occasional clock nudge goes
  * over the network: the device plays the strokes itself, so fast scripts cost
- * nothing extra. Two protocols (see lib/handy.ts):
+ * nothing extra. Three ways to play a script (see lib/handy.ts):
  *
  * - HSP, the default: the next few seconds of the stroke script are kept in
  *   the device's buffer, shaped by the knob, an edge and the stroke range as
  *   they are sent.
  * - HSSP: the whole shaped script is uploaded to Handy's script hosting and
  *   set up once; a knob change uploads it again, and an edge stops it.
+ * - HDSP, live: one "go to P over T ms" per action, sent early by half the
+ *   measured round trip, as MultiFunPlayer drives the Handy.
+ *
+ * Generated motion (the Music source, tap tempo, a session, the gamepad) has
+ * no script to buffer, so it always goes live: liveMove() takes the moves the
+ * motion engine plans (lib/strokePlan.ts).
  *
  * The application ID comes from VITE_HANDY_APP_ID at build time (an ID is
  * meant to be shipped in clients); one typed in the panel overrides it. The
@@ -19,7 +25,8 @@
  * Usage:
  *   const handy = useHandy()
  *   await handy.connect()
- *   handy.follow({ playing, at, rate, hold })   // every frame
+ *   handy.follow({ playing, at, rate, hold })   // every frame of a scripted video
+ *   handy.liveMove(pos, ms)                     // generated motion
  *   handy.halt()                                // pause, end, panic
  */
 
@@ -28,17 +35,19 @@ import type { FunscriptAction } from '~/lib/funscriptParser'
 import type { HandyAction, HandyCommand, HandyRun, HandyWant, HspCommand, HspRun, TimeSample } from '~/lib/handy'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, effectScope, ref, watch } from 'vue'
-import { clockOffset, HANDY_API, HANDY_HOSTING, handyError, handyFunscript, handyScript, HSP_BATCH, scriptKey, stepHandy, stepHsp } from '~/lib/handy'
+import { clockOffset, HANDY_API, HANDY_HOSTING, handyError, handyFunscript, handyScript, HSP_BATCH, roundTrip, scriptKey, stepHandy, stepHsp } from '~/lib/handy'
 import { KEYS } from '~/lib/persist'
 import { logCommand } from '~/lib/serialLog'
+import { createMovePlanner, scriptMove } from '~/lib/strokePlan'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 
-export type HandyProtocol = 'hsp' | 'hssp'
+export type HandyProtocol = 'hsp' | 'hssp' | 'hdsp'
 
 const ENV_APP_ID = String(import.meta.env.VITE_HANDY_APP_ID ?? '').trim()
-const TIME_SAMPLES = 20
+/** Clock samples on connect: 30, as Handy's docs and MultiFunPlayer both use. */
+const TIME_SAMPLES = 30
 /** After a failed command, wait this long before trying again. */
 const BACKOFF_MS = 3000
 /** The knob and an edge's hold are rounded to this before shaping, so turning them does not reshape per step. */
@@ -66,6 +75,12 @@ const info = ref<{ model: string, firmware: string } | null>(null)
 /** The stroke script on the device: none to play, being set up, ready, or it could not be set up. */
 const script = ref<'none' | 'loading' | 'ready' | 'failed'>('none')
 const playing = ref(false)
+/** Typical round trip to Handy's server, ms, measured on connect. */
+const roundTripMs = ref(0)
+/** How early a live move leaves: half the round trip, plus the user's offset. */
+const leadMs = computed(() => Math.max(0, roundTripMs.value / 2 + offsetMs.value))
+/** Bumped when live moves took the device out of the script protocol, so it is set up again. */
+const modeEpoch = ref(0)
 
 const appId = computed(() => appIdOverride.value.trim() || ENV_APP_ID)
 
@@ -90,6 +105,14 @@ interface Base {
   max: number
   invert: boolean
 }
+// ── Live moves (HDSP) ──
+/** The newest move waiting while one is on its way: only the latest matters. */
+let nextMove: { pos: number, ms: number, queuedAt: number } | null = null
+let moveInFlight = false
+/** A live move left the device in HDSP: the script protocol needs its setup again. */
+let needsSetup = false
+const scriptPlanner = createMovePlanner()
+
 let scope: EffectScope | null = null
 let base: ComputedRef<Base | null> | null = null
 let shapedCache: { base: Base, key: string, actions: HandyAction[] } | null = null
@@ -132,6 +155,44 @@ async function syncClock() {
   if (!samples.length)
     throw new Error('Could not read the Handy server clock')
   csOffset = clockOffset(samples)
+  roundTripMs.value = Math.round(roundTrip(samples))
+}
+
+/**
+ * Send a live move, 0–100 on the device's scale. One request is out at a
+ * time; a move that comes in meanwhile replaces any still waiting, and its
+ * time is shortened by however long it waited. The server answers without
+ * waiting for the device (immediate_rsp), and the slider stops at the
+ * target rather than running on if the next move is late.
+ */
+function sendMove(pos: number, ms: number) {
+  if (state.value !== 'connected' || clientNow() < backoffUntil)
+    return
+  if (protocol.value !== 'hdsp')
+    needsSetup = true
+  nextMove = { pos, ms, queuedAt: clientNow() }
+  if (!moveInFlight)
+    void pumpMoves()
+}
+
+async function pumpMoves() {
+  moveInFlight = true
+  while (nextMove) {
+    const m = nextMove
+    nextMove = null
+    const t = Math.max(20, Math.round(m.ms - (clientNow() - m.queuedAt)))
+    try {
+      await api('PUT', '/hdsp/xpt', { xp: Math.round(Math.max(0, Math.min(100, m.pos)) * 10) / 10, t, stop_on_target: true, immediate_rsp: true })
+    }
+    catch (e) {
+      error.value = describe(e)
+      backoffUntil = clientNow() + BACKOFF_MS
+      nextMove = null
+      if (e instanceof HandyApiError && e.offline)
+        info.value = null
+    }
+  }
+  moveInFlight = false
 }
 
 function describe(e: unknown): string {
@@ -307,6 +368,12 @@ async function prepareHsp(has: boolean) {
 
 /** Stop the device if it is playing (or about to). */
 function halt(proto: HandyProtocol = protocol.value) {
+  if (proto === 'hdsp') {
+    // Every live move stops on its target: nothing more to send.
+    scriptPlanner.reset()
+    playing.value = false
+    return
+  }
   if (state.value !== 'connected' || (!run && !pending && !playing.value))
     return
   run = null
@@ -351,10 +418,18 @@ export function useHandy() {
       })
 
       let timer: ReturnType<typeof setTimeout> | undefined
-      watch([hsspText, base, state, protocol], ([text, b, st, proto]) => {
+      watch([hsspText, base, state, protocol, modeEpoch], ([text, b, st, proto]) => {
         clearTimeout(timer)
         if (st !== 'connected')
           return
+        if (proto === 'hdsp') {
+          // Nothing to set up: moves go one by one.
+          ++prepareSeq
+          run = null
+          scriptPlanner.reset()
+          script.value = b ? 'ready' : 'none'
+          return
+        }
         if (proto === 'hsp') {
           void prepareHsp(!!b)
           return
@@ -399,6 +474,8 @@ export function useHandy() {
       backoffUntil = 0
       preparedKey = null
       hspSession = false
+      needsSetup = false
+      scriptPlanner.reset()
       state.value = 'connected'
     }
     catch (e) {
@@ -426,11 +503,38 @@ export function useHandy() {
    * changed. `hold` is the edge's (0–1).
    */
   function follow(want: HandyWant & { hold: number }) {
-    if (state.value !== 'connected' || script.value !== 'ready' || pending)
+    if (state.value !== 'connected')
+      return
+    if (needsSetup && protocol.value !== 'hdsp') {
+      // Live moves since the last setup switched the device to HDSP.
+      needsSetup = false
+      hspSession = false
+      preparedKey = null
+      run = null
+      script.value = 'none'
+      modeEpoch.value++
+      return
+    }
+    if (script.value !== 'ready' || pending)
       return
     const now = clientNow()
     if (now < backoffUntil)
       return
+    if (protocol.value === 'hdsp') {
+      const b = base?.value
+      if (!b || !want.playing || !enabled.value) {
+        halt('hdsp')
+        return
+      }
+      // The move that lands half a round trip from now, aimed at the next action.
+      const t = want.at + leadMs.value * (want.rate || 1)
+      const move = scriptPlanner.planned(scriptMove(shapedNow(b, control.intensityScale, want.hold).actions, t, want.rate))
+      if (move) {
+        playing.value = true
+        sendMove(move.pos * 100, move.ms)
+      }
+      return
+    }
     const at = want.at + offsetMs.value
     let next: { cmd: AnyCommand | null, run: HandyRun | HspRun | null }
     if (protocol.value === 'hssp') {
@@ -453,6 +557,29 @@ export function useHandy() {
       halt()
   }
 
+  /** 0–1 on the stroke axis, through its range and direction, to the device's 0–100. */
+  function devicePos(pos: number): number {
+    const axis = device.axisConfigs.L0
+    const lo = axis?.min ?? 0
+    const hi = axis?.max ?? 1
+    let p = lo + Math.max(0, Math.min(1, pos)) * (hi - lo)
+    if (axis?.invert)
+      p = lo + hi - p
+    return p * 100
+  }
+
+  /** A move of generated motion (0–1 before the axis range), sent live. */
+  function liveMove(pos: number, ms: number) {
+    if (enabled.value)
+      sendMove(devicePos(pos), ms)
+  }
+
+  /** Generated motion stopped: settle at the resting point, gently. */
+  function liveRest(ms = 600) {
+    if (enabled.value && state.value === 'connected')
+      sendMove(devicePos(device.axisConfigs.L0?.defaultPos ?? 0.5), ms)
+  }
+
   return {
     connectionKey,
     appIdOverride,
@@ -462,6 +589,10 @@ export function useHandy() {
     offsetMs,
     state,
     connected: computed(() => state.value === 'connected'),
+    roundTripMs,
+    leadMs,
+    liveMove,
+    liveRest,
     error,
     info,
     script,

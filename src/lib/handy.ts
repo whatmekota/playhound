@@ -116,6 +116,20 @@ export function clockOffset(samples: readonly TimeSample[]): number {
 }
 
 /**
+ * The typical round trip to the server, ms, as MultiFunPlayer measures it:
+ * the mean with the fastest and slowest tenth set aside. Half of it is how
+ * early a live move (HDSP) has to leave to land on time.
+ */
+export function roundTrip(samples: readonly TimeSample[]): number {
+  if (!samples.length)
+    return 0
+  const rtd = samples.map(s => s.received - s.sent).sort((a, b) => a - b)
+  const cut = Math.floor(rtd.length / 10)
+  const kept = rtd.slice(cut, rtd.length - cut)
+  return kept.reduce((a, b) => a + b, 0) / kept.length
+}
+
+/**
  * The message in a failed answer. The API answers in two shapes: a device
  * error under `error`, and a plain `{ name, message }` for a bad request.
  */

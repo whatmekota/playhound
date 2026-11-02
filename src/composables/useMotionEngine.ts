@@ -1,4 +1,5 @@
 import { computed, watch } from 'vue'
+import { clampLatency } from '~/lib/latency'
 import {
   advancePhase,
   applyDepth,
@@ -10,14 +11,19 @@ import {
   strokePosition,
 } from '~/lib/motionMath'
 import { createSubdivisionHold, pickStrokesPerBeat, steerPhase } from '~/lib/musicMotion'
+import { createMovePlanner, createPhaseUnwrapper, oscillatorMove } from '~/lib/strokePlan'
 import { useAudioStore } from '~/stores/audio'
+import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useBinauralBeats } from './useBinauralBeats'
+import { useButtplug } from './useButtplug'
+import { useHandy } from './useHandy'
 import { useTCode } from './useTCode'
 import { getBeatGrid, isBeatReady } from './useVideoBeat'
+import { useDeviceLatency } from './useVideoSync'
 
 // ─── Singleton loop state ─────────────────────────────────────────────────────
 // One engine drives the device regardless of how many panels are mounted.
@@ -30,6 +36,14 @@ let running = false
 /** Music source: the stroke's own 0–1 phase, steered onto the beat grid. */
 let musicPhase = 0
 const subdivision = createSubdivisionHold()
+// Devices that take moves rather than positions (the Handy, Intiface
+// strokers) get one move per half-stroke, planned ahead by their delay.
+const unwrap = createPhaseUnwrapper()
+const handyPlan = createMovePlanner()
+const bpPlan = createMovePlanner()
+/** Whether generated motion moved them, so stopping only settles a device it was driving. */
+let movedHandy = false
+let movedBp = false
 
 /** TCode interval hint: how long the device should take to reach the position. */
 const SEND_INTERVAL_MS = 40
@@ -64,6 +78,32 @@ export function useMotionEngine() {
   const { sendPosition, homeAllAxes } = useTCode()
   const { getPulseClock } = useBinauralBeats()
   const control = useSessionControlStore()
+  const handy = useHandy()
+  const bp = useButtplug()
+  const latencyMs = useDeviceLatency()
+
+  /**
+   * Send this frame's motion to the move-taking devices: a planned move to
+   * the next turning point, early by each device's delay, or, for direct
+   * (gamepad) control, the stick's target at a steady pace.
+   */
+  function driveMovers(pos: number, direct: boolean, now: number) {
+    const osc = direct ? null : { phase: unwrap.next(phase), spm, depth, center: motion.center, shape: motion.shape }
+    if (handy.connected.value) {
+      const m = osc ? handyPlan.planned(oscillatorMove(osc, handy.leadMs.value)) : handyPlan.direct(pos, now)
+      if (m) {
+        handy.liveMove(m.pos, m.ms)
+        movedHandy = true
+      }
+    }
+    if (bp.connected.value && bp.hasLinear.value) {
+      const m = osc ? bpPlan.planned(oscillatorMove(osc, clampLatency(latencyMs.value))) : bpPlan.direct(pos, now)
+      if (m) {
+        void bp.sendLinear(m.pos, m.ms)
+        movedBp = true
+      }
+    }
+  }
 
   /**
    * The funscript wins whenever a script is actually playing — the generator
@@ -239,6 +279,7 @@ export function useMotionEngine() {
     // the gentler motion is also a softer one.
     const interval = Math.round(SEND_INTERVAL_MS * (1 + 0.5 * (1 - depthFactor)))
     sendPosition('L0', pos, interval)
+    driveMovers(pos, motion.source === 'manual' && motion.manualMode === 'direct', ts)
 
     if (motion.secondaryAxes) {
       // Offset rotations so they read as a related motion, not a copy of L0.
@@ -291,6 +332,15 @@ export function useMotionEngine() {
     depth = 0
     musicPhase = 0
     subdivision.reset()
+    unwrap.reset()
+    handyPlan.reset()
+    bpPlan.reset()
+    if (home && movedHandy)
+      handy.liveRest()
+    if (home && movedBp)
+      void bp.sendLinear(useDeviceStore().axisConfigs.L0?.defaultPos ?? 0.5, 600)
+    movedHandy = false
+    movedBp = false
     motion.musicStrokesPerBeat = 0
     motion.currentSpm = 0
     motion.currentDepth = 0
