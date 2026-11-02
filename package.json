@@ -1,7 +1,7 @@
 {
   "name": "playhound",
   "type": "module",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "packageManager": "pnpm@10.30.3",
   "description": "Audiovisual session engine and funscript video player with TCode/OSR device support",
