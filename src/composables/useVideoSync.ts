@@ -149,6 +149,8 @@ export function useVideoSync() {
     wasHolding = false
     lastDir = {}
     snap = true
+    if (motion.softStart)
+      control.softStart()
     tick()
   }
 
@@ -169,6 +171,10 @@ export function useVideoSync() {
     handy.halt()
   }
 
+  function holdsNow(): number {
+    return 1 - (1 - control.holdBack) * (1 - control.softHold)
+  }
+
   /**
    * Where a script puts an axis at `ms`, after the intensity knob and any
    * running edge. The knob reshapes the script (shorter, slower strokes on
@@ -177,7 +183,7 @@ export function useVideoSync() {
    */
   function positionAt(channel: string, actions: FunscriptAction[], ms: number): number {
     const knob = control.intensityScale
-    const hold = control.holdBack
+    const hold = holdsNow()
     if (isLevelChannel(channel)) {
       const { pos } = sampleScaled(scaledFor(actions, 1), ms)
       return pos * Math.max(0, Math.min(1, knob)) * (1 - hold)
@@ -251,7 +257,7 @@ export function useVideoSync() {
           playing: !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 3,
           at: timeMs + (offsetMs ?? 0),
           rate: speed,
-          hold: control.holdBack,
+          hold: holdsNow(),
         })
         if (settle) {
           void bp.sendLinear(pos, SEND_INTERVAL_MS)
@@ -278,6 +284,8 @@ export function useVideoSync() {
     // After seek, immediately send current position without waiting for next RAF
     if (!videoEl || !syncing.value)
       return
+    if (motion.softStart)
+      control.softStart()
     const timeMs = videoEl.currentTime * 1000
     const speed = videoEl.playbackRate
     const lead = leadMs(speed)

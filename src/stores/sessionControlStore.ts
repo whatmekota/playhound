@@ -52,10 +52,13 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
   const intensityScale = useLocalStorage<number>(KEYS.intensityScale.key, 1)
 
   const envelope = createEdgeEnvelope()
+  const soft = createEdgeEnvelope()
+  const softTiming = () => ({ cooldownSec: 0, rebuildSec: 2, depth: settings.value.depth })
   /** Edges called this session (since the app started or the log was cleared). */
   const edges = ref<EdgeEvent[]>([])
   /** 0–1, updated by tick(). */
   const holdBack = ref(0)
+  const softHold = ref(0)
   /** Which part of the edge we are in, for the UI. */
   const phase = ref<'idle' | 'falling' | 'holding' | 'rebuilding'>('idle')
   /** Seconds left in the current hold + rebuild, for a countdown. */
@@ -88,6 +91,7 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
   /** Cancel any edge immediately (panic, stop). */
   function reset() {
     envelope.reset()
+    soft.reset()
     tick()
   }
 
@@ -95,8 +99,14 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
   function tick(now = performance.now()) {
     const s = envelope.sample(now, settings.value)
     holdBack.value = s.holdBack
+    softHold.value = soft.sample(now, softTiming()).holdBack
     phase.value = s.phase
     remainingSec.value = s.remainingSec
+  }
+
+  function softStart(now = performance.now()) {
+    soft.startAtDepth(now, softTiming())
+    tick(now)
   }
 
   function setIntensityScale(v: number) {
@@ -116,10 +126,12 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
     intensityScale,
     edges,
     holdBack,
+    softHold,
     phase,
     remainingSec,
     effectiveIntensity,
     edge,
+    softStart,
     release,
     reset,
     tick,
