@@ -1,15 +1,24 @@
 import type { FunscriptAction } from './funscriptParser'
-import { intensityParams, scaleScript } from './scriptScale'
+import { backOff, intensityParams, scaleScript } from './scriptScale'
 
 /**
  * The Handy over WiFi, through Handy's own cloud API (v3).
  *
  * Over Bluetooth the player streams every stroke as it plays, and fast
- * scripts choke the link. Over WiFi the device is given the whole script up
- * front (HSSP, the synchronised script protocol) and plays it itself; the
- * player only says "play from script time T at server time S", stop, and
- * the odd clock nudge. Client and device agree on time through the server's
- * clock, so the only per-session measurement is this client's offset to it.
+ * scripts choke the link. Over WiFi the device plays timed points itself,
+ * and client and device agree on time through the server's clock, so the
+ * only per-session measurement is this client's offset to it. Two ways in:
+ *
+ * - HSP (streaming): the player keeps the next few seconds of the script in
+ *   the device's buffer, shaped as they are sent, so the intensity knob and
+ *   an edge apply within a second. The default.
+ * - HSSP (synchronised script): the whole script, uploaded to Handy's script
+ *   hosting, set up once. Nothing more to send while it plays, so it rides
+ *   out a poor connection; a knob change means a new upload, and an edge
+ *   can only stop it.
+ *
+ * Either way the player says "play from script time T at server time S",
+ * stop, and now and then nudges the clock.
  *
  * The pure parts live here: the script as the device should get it, the
  * clock offset, and what to tell the device on each frame. useHandy does the
@@ -34,12 +43,14 @@ export interface HandyShape {
   min: number
   max: number
   invert: boolean
+  /** An edge's hold, 0–1: strokes shrink toward the middle, as for every other device. */
+  hold?: number
 }
 
 /**
  * The stroke script as the device should play it. Everything the player
  * would otherwise apply per frame is baked in, since the device plays on its
- * own: the knob, then the stroke range and direction. Positions are whole
+ * own: the knob, an edge's hold, then the stroke range and direction. Positions are whole
  * percent; two actions at the same millisecond keep the later one.
  */
 export function handyScript(actions: readonly FunscriptAction[], shape: HandyShape): HandyAction[] {
@@ -48,9 +59,11 @@ export function handyScript(actions: readonly FunscriptAction[], shape: HandySha
   const scaled = scaleScript(actions, intensityParams(shape.knob)).actions
   const lo = Math.max(0, Math.min(1, shape.min))
   const hi = Math.max(lo, Math.min(1, shape.max))
+  const hold = shape.hold ?? 0
   const out: HandyAction[] = []
   for (const a of scaled) {
-    let p = lo + a.pos * (hi - lo)
+    const pos = hold > 0 ? backOff(a.pos, 0.5, hold) : a.pos
+    let p = lo + pos * (hi - lo)
     if (shape.invert)
       p = lo + hi - p
     const action = { at: Math.max(0, Math.round(a.at)), pos: Math.round(Math.max(0, Math.min(1, p)) * 100) }
@@ -172,6 +185,124 @@ export function stepHandy(run: HandyRun | null, want: HandyWant, now: number): {
   const expected = run.at + (now - run.sentAt) * run.rate
   if (Math.abs(expected - at) > HANDY_DRIFT_MS)
     return play()
+  if (now >= run.nextSync) {
+    const syncs = run.syncs + 1
+    return {
+      cmd: { kind: 'synctime', at },
+      run: { ...run, syncs, nextSync: now + (syncs < EARLY_SYNCS ? HANDY_SYNC_EARLY_MS : HANDY_SYNC_LATE_MS) },
+    }
+  }
+  return { cmd: null, run }
+}
+
+// ─── Streaming (HSP) ──────────────────────────────────────────────────────────
+
+/** How far ahead of the video the device's buffer is kept, and when it is topped up. */
+export const HSP_LEAD_MS = 8000
+export const HSP_REFILL_MS = 4000
+/** A knob or edge change re-sends the buffer at most this often. */
+export const HSP_RESHAPE_MS = 1000
+/** Points per add, the API's limit. */
+export const HSP_BATCH = 100
+
+export interface HspRun extends HandyRun {
+  /** Time of the last point sent; Infinity once the script's end is on the device. */
+  sentUntil: number
+  /** The shaping (knob, hold) the buffered points were made with. */
+  shape: string
+  reshapedAt: number
+}
+
+export type HspCommand
+  = | { kind: 'play', at: number, rate: number, points: HandyAction[] }
+    | { kind: 'add', points: HandyAction[] }
+    | { kind: 'stop' }
+    | { kind: 'synctime', at: number }
+
+/** Index of the last action at or before `t`, or -1. */
+function lastAtOrBefore(actions: readonly HandyAction[], t: number): number {
+  let lo = 0
+  let hi = actions.length - 1
+  let found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    if (actions[mid].at <= t) {
+      found = mid
+      lo = mid + 1
+    }
+    else {
+      hi = mid - 1
+    }
+  }
+  return found
+}
+
+/**
+ * Points from index `start` up to time `until`, at most `max`, and never
+ * fewer than two when there are two: a long hold still needs the point it
+ * is heading for.
+ */
+function take(actions: readonly HandyAction[], start: number, until: number, max: number): HandyAction[] {
+  const out: HandyAction[] = []
+  for (let i = Math.max(0, start); i < actions.length && out.length < max; i++) {
+    if (actions[i].at > until && out.length >= 2)
+      break
+    out.push(actions[i])
+  }
+  return out
+}
+
+function sentUntilAfter(actions: readonly HandyAction[], points: HandyAction[]): number {
+  const last = points.at(-1)
+  return !last || last === actions.at(-1) ? Number.POSITIVE_INFINITY : last.at
+}
+
+/**
+ * What to send the device on this frame when streaming. Like stepHandy, a
+ * play goes out on starting, after a seek and on a speed change, now
+ * carrying the buffer's first points (replacing whatever was there); a
+ * changed shape (the knob, an edge) re-sends the buffer the same way, at
+ * most once a second; and as the video nears the end of what was sent,
+ * the next stretch is added.
+ */
+export function stepHsp(
+  run: HspRun | null,
+  want: HandyWant,
+  now: number,
+  script: { shape: string, actions: readonly HandyAction[] },
+  batch = HSP_BATCH,
+): { cmd: HspCommand | null, run: HspRun | null } {
+  if (!want.playing)
+    return run ? { cmd: { kind: 'stop' }, run: null } : { cmd: null, run: null }
+
+  const at = Math.max(0, want.at)
+  const rate = want.rate > 0 ? want.rate : 1
+  const { actions } = script
+  const reshape = !!run && run.shape !== script.shape && now - run.reshapedAt >= HSP_RESHAPE_MS
+  const drifted = !!run && Math.abs(run.at + (now - run.sentAt) * run.rate - at) > HANDY_DRIFT_MS
+  if (!run || Math.abs(run.rate - rate) > 1e-3 || drifted || reshape) {
+    const points = take(actions, lastAtOrBefore(actions, at), at + HSP_LEAD_MS, batch)
+    return {
+      cmd: { kind: 'play', at, rate, points },
+      run: {
+        at,
+        sentAt: now,
+        rate,
+        syncs: 0,
+        nextSync: now + HANDY_SYNC_EARLY_MS,
+        sentUntil: sentUntilAfter(actions, points),
+        shape: script.shape,
+        reshapedAt: now,
+      },
+    }
+  }
+  if (run.sentUntil - at < HSP_REFILL_MS) {
+    const points = take(actions, lastAtOrBefore(actions, run.sentUntil) + 1, at + HSP_LEAD_MS, batch)
+    return {
+      cmd: points.length ? { kind: 'add', points } : null,
+      run: { ...run, sentUntil: sentUntilAfter(actions, points) },
+    }
+  }
   if (now >= run.nextSync) {
     const syncs = run.syncs + 1
     return {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clockOffset, HANDY_DRIFT_MS, HANDY_SYNC_EARLY_MS, HANDY_SYNC_LATE_MS, handyError, handyScript, scriptKey, stepHandy } from '../src/lib/handy'
+import { clockOffset, HANDY_DRIFT_MS, HANDY_SYNC_EARLY_MS, HANDY_SYNC_LATE_MS, handyError, handyScript, HSP_LEAD_MS, HSP_REFILL_MS, HSP_RESHAPE_MS, scriptKey, stepHandy, stepHsp } from '../src/lib/handy'
 
 const FULL = { knob: 1, min: 0, max: 1, invert: false }
 const strokes = [{ at: 0, pos: 0 }, { at: 400, pos: 1 }, { at: 800, pos: 0 }, { at: 1200, pos: 1 }]
@@ -119,5 +119,73 @@ describe('stepHandy', () => {
 
   it('never asks for a negative start', () => {
     expect(stepHandy(null, want(-300), 0).cmd).toEqual({ kind: 'play', at: 0, rate: 1 })
+  })
+})
+
+describe('stepHsp', () => {
+  // A stroke every 250 ms for a minute, already shaped.
+  const actions = Array.from({ length: 240 }, (_, i) => ({ at: i * 250, pos: i % 2 ? 100 : 0 }))
+  const script = { shape: '1.00|0.00', actions }
+  const want = (at: number, rate = 1, playing = true) => ({ playing, at, rate })
+
+  it('starts with a play carrying the next stretch, from the point before', () => {
+    const { cmd, run } = stepHsp(null, want(10_100), 0, script)
+    expect(cmd?.kind).toBe('play')
+    const points = (cmd as { points: { at: number }[] }).points
+    expect(points[0].at).toBe(10_000)
+    expect(points.at(-1)!.at).toBeLessThanOrEqual(10_100 + HSP_LEAD_MS)
+    expect(points.at(-1)!.at).toBeGreaterThan(10_100 + HSP_LEAD_MS - 250)
+    expect(run!.sentUntil).toBe(points.at(-1)!.at)
+  })
+
+  it('tops up as the video nears the end of what was sent, and only then', () => {
+    let { run } = stepHsp(null, want(0), 0, script)
+    const sent = run!.sentUntil
+    const quiet = stepHsp(run, want(sent - HSP_REFILL_MS - 100), sent - HSP_REFILL_MS - 100, script)
+    expect(quiet.cmd?.kind).not.toBe('add')
+    const t = sent - HSP_REFILL_MS + 100
+    const step = stepHsp(run, want(t), t, script)
+    expect(step.cmd?.kind).toBe('add')
+    const added = (step.cmd as { points: { at: number }[] }).points
+    expect(added[0].at).toBe(sent + 250)
+    run = step.run
+    expect(run!.sentUntil).toBe(added.at(-1)!.at)
+  })
+
+  it('knows when the end of the script is on the device', () => {
+    const { run } = stepHsp(null, want(57_000), 0, script)
+    expect(run!.sentUntil).toBe(Number.POSITIVE_INFINITY)
+    expect(stepHsp(run, want(58_000), 1000, script).cmd?.kind).not.toBe('add')
+  })
+
+  it('re-sends the buffer when the shape changes, at most once a second', () => {
+    const { run } = stepHsp(null, want(0), 0, script)
+    const edged = { shape: '1.00|0.50', actions: actions.map(a => ({ ...a, pos: 25 + a.pos / 2 })) }
+    expect(stepHsp(run, want(500), 500, edged).cmd?.kind).not.toBe('play')
+    const later = stepHsp(run, want(HSP_RESHAPE_MS), HSP_RESHAPE_MS, edged)
+    expect(later.cmd?.kind).toBe('play')
+    expect((later.cmd as { points: { pos: number }[] }).points.every(p => p.pos >= 25 && p.pos <= 75)).toBe(true)
+  })
+
+  it('plays again after a seek, stops when play is no longer wanted', () => {
+    const { run } = stepHsp(null, want(0), 0, script)
+    expect(stepHsp(run, want(30_000), 100, script).cmd?.kind).toBe('play')
+    expect(stepHsp(run, want(100, 1, false), 100, script).cmd).toEqual({ kind: 'stop' })
+  })
+
+  it('keeps a batch within the limit, and a long hold still gets the point it heads for', () => {
+    const dense = { shape: 'x', actions: Array.from({ length: 1000 }, (_, i) => ({ at: i * 20, pos: i % 2 ? 100 : 0 })) }
+    const { cmd } = stepHsp(null, want(0), 0, dense, 50)
+    expect((cmd as { points: unknown[] }).points).toHaveLength(50)
+    const sparse = { shape: 'x', actions: [{ at: 0, pos: 0 }, { at: 30_000, pos: 100 }, { at: 31_000, pos: 0 }] }
+    const first = stepHsp(null, want(1000), 0, sparse).cmd as { points: { at: number }[] }
+    expect(first.points.map(p => p.at)).toEqual([0, 30_000])
+  })
+})
+
+describe('handyScript with an edge', () => {
+  it('shrinks strokes toward the middle by the hold', () => {
+    const held = handyScript([{ at: 0, pos: 0 }, { at: 400, pos: 1 }], { knob: 1, min: 0, max: 1, invert: false, hold: 0.5 })
+    expect(held.map(a => a.pos)).toEqual([25, 75])
   })
 })

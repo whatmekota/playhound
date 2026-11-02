@@ -209,12 +209,19 @@ async function disconnectHandy() {
   toast('Disconnected from the Handy', { icon: 'i-carbon-wifi-off', key: 'handy' })
 }
 
+const HANDY_PROTOCOLS = [
+  { value: 'hsp' as const, label: 'Streamed', title: 'HSP: the next few seconds at a time; the knob and edges apply at once' },
+  { value: 'hssp' as const, label: 'Whole script', title: 'HSSP: the whole script up front; rides out a poor connection' },
+]
 const handyScriptLine = computed(() => {
+  const streamed = handy.protocol.value === 'hsp'
   switch (handy.script.value) {
     case 'loading':
-      return { tone: 'info' as const, text: 'Sending the script…' }
+      return { tone: 'info' as const, text: streamed ? 'Starting a stream…' : 'Sending the script…' }
     case 'ready':
-      return { tone: 'ok' as const, text: handy.playing.value ? 'Playing with the video' : 'Script on the device' }
+      if (handy.playing.value)
+        return { tone: 'ok' as const, text: streamed ? 'Streaming with the video' : 'Playing with the video' }
+      return { tone: 'ok' as const, text: streamed ? 'Ready to stream' : 'Script on the device' }
     case 'failed':
       return { tone: 'danger' as const, text: 'The script could not be set up' }
     default:
@@ -930,9 +937,9 @@ const logOpen = ref(false)
           </template>
 
           <p v-else class="hint">
-            For a Handy on WiFi with firmware 4. The Handy plays the whole stroke script itself, kept in time with the
-            video through Handy's server, so fast scripts play as written. Needs an internet connection; the script is
-            uploaded to Handy's script hosting, shaped by the intensity knob and the stroke range.
+            For a Handy on WiFi with firmware 4. playhound sends the stroke script a few seconds ahead and the Handy plays
+            it itself, kept in time with the video through Handy's server, so fast scripts play as written. The intensity
+            knob, edges and the stroke range still apply. Needs an internet connection.
           </p>
 
           <div class="flex flex-col">
@@ -949,6 +956,15 @@ const logOpen = ref(false)
               <div v-if="handyAdvanced">
                 <div class="min-h-0 overflow-hidden">
                   <div class="pt-1.5 flex flex-col gap-1.5">
+                    <div class="flex flex-col gap-1">
+                      <span class="label">Sending the script</span>
+                      <UiSegmented v-model="handy.protocol.value" :options="HANDY_PROTOCOLS" size="xs" block />
+                    </div>
+                    <p class="hint">
+                      {{ handy.protocol.value === 'hsp'
+                        ? 'Streamed: a few seconds at a time, so the knob and edges apply within a second. Try Whole script if strokes stutter on a slow connection.'
+                        : 'Whole script: uploaded to Handy\'s script hosting and played from there, so a poor connection matters less. A knob change uploads it again, and an edge stops the Handy instead of easing off.' }}
+                    </p>
                     <UiInput
                       v-model="handy.appIdOverride.value"
                       label="Application ID"

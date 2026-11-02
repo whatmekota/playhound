@@ -245,12 +245,13 @@ export function useVideoSync() {
       if (channel === 'L0') {
         strokePos = pos
         // The Handy plays the script itself: it is only told where the video
-        // is. Buffering and an edge stop it (it cannot ease off mid-script),
-        // and its own offset stands in for the device latency.
+        // is and how deep an edge is. Buffering stops it, and its own offset
+        // stands in for the device latency.
         handy.follow({
-          playing: !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 3 && control.holdBack < 0.02,
+          playing: !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 3,
           at: timeMs + (offsetMs ?? 0),
           rate: speed,
+          hold: control.holdBack,
         })
         if (settle) {
           void bp.sendLinear(pos, SEND_INTERVAL_MS)
