@@ -131,6 +131,20 @@ const BT_SETTLE_MS = 2500
 /** And in all, before saying nothing was found. */
 const BT_SCAN_MS = 10_000
 
+/** How the chooser speaks of each kind of device the page asks for. */
+const BT_KINDS = {
+  heart: {
+    none: 'No heart-rate monitor found',
+    noneDetail: 'Make sure it is awake and broadcasting heart rate (on a watch that usually means starting a workout with heart-rate sharing on), and that it is not connected to a phone app.',
+    which: 'Which heart-rate monitor?',
+  },
+  handy: {
+    none: 'No Handy found',
+    noneDetail: 'Make sure the Handy is on, has firmware 4 and is close to this computer, and that the Handy app or another program is not connected to it over Bluetooth.',
+    which: 'Which Handy?',
+  },
+}
+
 /**
  * Choose a device for navigator.bluetooth.requestDevice().
  *
@@ -139,30 +153,34 @@ const BT_SCAN_MS = 10_000
  * been seen so far, until the app calls back exactly once. So: the device
  * used last time is taken the moment it shows up; otherwise listen for a
  * short while after the first one appears, then take the only one or ask
- * with a native list. The page's filter (heart_rate) has already been
- * applied, so everything listed is a monitor.
+ * with a native list. The page's filter has already been applied, so
+ * everything listed is the kind asked for; the page says which kind just
+ * before asking (expect()), a heart-rate monitor unless it says otherwise.
  *
  * Only our own page gets a choice; anything else is cancelled.
  *
  * @param {Electron.WebContents} wc
  * @param {object} opts
  * @param {string} opts.origin
- * @param {() => string | undefined} opts.lastDevice  deviceId picked last time
- * @param {(deviceId: string) => void} opts.rememberDevice
+ * @param {(kind: 'heart' | 'handy') => string | undefined} opts.lastDevice  deviceId picked last time
+ * @param {(kind: 'heart' | 'handy', deviceId: string) => void} opts.rememberDevice
+ * @returns {{ expect: (kind: string) => void }} what the page says the next request is for
  */
 export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
-  /** @type {null | { callback: (id: string) => void, seen: Map<string, Electron.BluetoothDevice>, startedAt: number, settle: any, limit: any, deciding: boolean }} */
+  /** @type {null | { kind: 'heart' | 'handy', callback: (id: string) => void, seen: Map<string, Electron.BluetoothDevice>, startedAt: number, settle: any, limit: any, deciding: boolean }} */
   let pending = null
+  /** @type {'heart' | 'handy'} */
+  let expected = 'heart'
 
   function finish(id) {
     if (!pending)
       return
     clearTimeout(pending.settle)
     clearTimeout(pending.limit)
-    const { callback } = pending
+    const { callback, kind } = pending
     pending = null
     if (id)
-      rememberDevice(id)
+      rememberDevice(kind, id)
     callback(id)
   }
 
@@ -173,13 +191,14 @@ export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
     clearTimeout(pending.settle)
     clearTimeout(pending.limit)
     const list = [...pending.seen.values()]
+    const words = BT_KINDS[pending.kind]
     const win = BrowserWindow.fromWebContents(wc) ?? undefined
     if (!list.length) {
       await dialog.showMessageBox(win, {
         type: 'info',
         title: 'playhound',
-        message: 'No heart-rate monitor found',
-        detail: 'Make sure it is awake and broadcasting heart rate (on a watch that usually means starting a workout with heart-rate sharing on), and that it is not connected to a phone app.',
+        message: words.none,
+        detail: words.noneDetail,
         buttons: ['OK'],
         noLink: true,
       })
@@ -193,7 +212,7 @@ export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
     const { response } = await dialog.showMessageBox(win, {
       type: 'question',
       title: 'playhound',
-      message: 'Which heart-rate monitor?',
+      message: words.which,
       // Command links on Windows: the second line is the small print.
       buttons: [...list.map(d => `${d.deviceName || 'Unnamed device'}\n${d.deviceId}`), 'Cancel'],
       defaultId: 0,
@@ -212,7 +231,8 @@ export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
     if (pending && Date.now() - pending.startedAt > BT_SCAN_MS + 60_000)
       pending = null
     if (!pending) {
-      pending = { callback, seen: new Map(), startedAt: Date.now(), settle: null, limit: null, deciding: false }
+      pending = { kind: expected, callback, seen: new Map(), startedAt: Date.now(), settle: null, limit: null, deciding: false }
+      expected = 'heart'
       pending.limit = setTimeout(() => void decide(), BT_SCAN_MS)
     }
     pending.callback = callback
@@ -221,7 +241,7 @@ export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
     if (pending.deciding)
       return
 
-    const last = lastDevice()
+    const last = lastDevice(pending.kind)
     if (last && pending.seen.has(last)) {
       finish(last)
       return
@@ -229,6 +249,12 @@ export function setupBluetooth(wc, { origin, lastDevice, rememberDevice }) {
     if (pending.seen.size && !pending.settle)
       pending.settle = setTimeout(() => void decide(), BT_SETTLE_MS)
   })
+
+  return {
+    expect(kind) {
+      expected = kind === 'handy' ? 'handy' : 'heart'
+    },
+  }
 }
 
 function vendorOf(port) {

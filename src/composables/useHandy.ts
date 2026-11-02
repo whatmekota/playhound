@@ -1,10 +1,13 @@
 /**
- * useHandy — the Handy over WiFi, through Handy's cloud API (v3).
+ * useHandy — the Handy (firmware 4), over WiFi through Handy's cloud API (v3)
+ * or straight over Bluetooth (lib/handyBle.ts).
  *
  * useVideoSync calls follow() every frame with the video's script time, and
  * only a play, a stop, a top-up of points or an occasional clock nudge goes
- * over the network: the device plays the strokes itself, so fast scripts cost
- * nothing extra. Three ways to play a script (see lib/handy.ts):
+ * out: the device plays the strokes itself, so fast scripts cost nothing
+ * extra. Both links speak the same protocols, so one driver per link turns
+ * the same commands into an API call or a Bluetooth message. Three ways to
+ * play a script (see lib/handy.ts):
  *
  * - HSP, the default: the next few seconds of the stroke script are kept in
  *   the device's buffer, shaped by the knob, an edge and the stroke range as
@@ -18,9 +21,14 @@
  * no script to buffer, so it always goes live: liveMove() takes the moves the
  * motion engine plans (lib/strokePlan.ts).
  *
- * The application ID comes from VITE_HANDY_APP_ID at build time (an ID is
- * meant to be shipped in clients); one typed in the panel overrides it. The
- * device is picked by its connection key, from the Handy app.
+ * Over WiFi, client and device agree on time through Handy's server: the
+ * application ID comes from VITE_HANDY_APP_ID at build time (an ID is meant
+ * to be shipped in clients; one typed in the panel overrides it), and the
+ * device is picked by its connection key, from the Handy app. Over
+ * Bluetooth, playhound is the server: it measures the device's clock and
+ * hands it the offset, so the same "play from T at server time S" works,
+ * with no internet. HSSP needs the device to fetch the script itself, so it
+ * is WiFi only; Bluetooth plays it streamed.
  *
  * Usage:
  *   const handy = useHandy()
@@ -33,9 +41,13 @@
 import type { ComputedRef, EffectScope } from 'vue'
 import type { FunscriptAction } from '~/lib/funscriptParser'
 import type { HandyAction, HandyCommand, HandyRun, HandyWant, HspCommand, HspRun, TimeSample } from '~/lib/handy'
+import type { HandyBleLink } from '~/lib/handyBle'
+import type { HandyIncoming } from '~/lib/handyProto'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, effectScope, ref, watch } from 'vue'
 import { clockOffset, HANDY_API, HANDY_HOSTING, handyError, handyFunscript, handyScript, HSP_BATCH, roundTrip, scriptKey, stepHandy, stepHsp } from '~/lib/handy'
+import { bluetoothSupported, HandyBleError, handyModelName, openHandyBle, pickHandy } from '~/lib/handyBle'
+import { MODE_HSP, NOTE } from '~/lib/handyProto'
 import { KEYS } from '~/lib/persist'
 import { logCommand } from '~/lib/serialLog'
 import { createMovePlanner, scriptMove } from '~/lib/strokePlan'
@@ -44,10 +56,19 @@ import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 
 export type HandyProtocol = 'hsp' | 'hssp' | 'hdsp'
+export type HandyLink = 'wifi' | 'ble'
 
 const ENV_APP_ID = String(import.meta.env.VITE_HANDY_APP_ID ?? '').trim()
 /** Clock samples on connect: 30, as Handy's docs and MultiFunPlayer both use. */
 const TIME_SAMPLES = 30
+/** Over Bluetooth a sample is quick and the clock is measured again now and then, with fewer. */
+const BLE_TIME_SAMPLES = 20
+const BLE_RESYNC_SAMPLES = 8
+const BLE_RESYNC_MS = 5 * 60_000
+/** Points per Bluetooth message: 50 stay under the ~509 bytes one write carries, as Edi found. */
+const BLE_BATCH = 50
+/** A dropped Bluetooth link is tried again after these pauses, then given up. */
+const BLE_RETRY_MS = [500, 2000, 5000]
 /** After a failed command, wait this long before trying again. */
 const BACKOFF_MS = 3000
 /** The knob and an edge's hold are rounded to this before shaping, so turning them does not reshape per step. */
@@ -66,6 +87,9 @@ const connectionKey = useLocalStorage(KEYS.handyKey.key, '')
 const appIdOverride = useLocalStorage(KEYS.handyAppId.key, '')
 const enabled = useLocalStorage(KEYS.handyEnabled.key, true)
 const protocol = useLocalStorage<HandyProtocol>(KEYS.handyProtocol.key, 'hsp')
+const link = useLocalStorage<HandyLink>(KEYS.handyLink.key, 'wifi')
+/** The protocol in use: Whole script needs WiFi, so Bluetooth streams instead. */
+const mode = computed<HandyProtocol>(() => (link.value === 'ble' && protocol.value === 'hssp' ? 'hsp' : protocol.value))
 /** Script ms added on top of the script's own offset: positive plays the device earlier. */
 const offsetMs = useLocalStorage(KEYS.handyOffset.key, 0)
 
@@ -75,7 +99,7 @@ const info = ref<{ model: string, firmware: string } | null>(null)
 /** The stroke script on the device: none to play, being set up, ready, or it could not be set up. */
 const script = ref<'none' | 'loading' | 'ready' | 'failed'>('none')
 const playing = ref(false)
-/** Typical round trip to Handy's server, ms, measured on connect. */
+/** Typical round trip to Handy's server (or over Bluetooth to the device), ms, measured on connect. */
 const roundTripMs = ref(0)
 /** How early a live move leaves: half the round trip, plus the user's offset. */
 const leadMs = computed(() => Math.max(0, roundTripMs.value / 2 + offsetMs.value))
@@ -86,6 +110,12 @@ const appId = computed(() => appIdOverride.value.trim() || ENV_APP_ID)
 
 let csOffset = 0
 let run: HandyRun | HspRun | null = null
+// ── Bluetooth ──
+let ble: HandyBleLink | null = null
+let bleDevice: BluetoothDevice | null = null
+/** Bumped by every connect and disconnect, so a reconnect loop from an older link stops. */
+let bleSeq = 0
+let bleClockAt = 0
 let backoffUntil = 0
 /** Commands go out one at a time, in order; follow() skips frames while one is out. */
 let queue: Promise<void> = Promise.resolve()
@@ -168,7 +198,7 @@ async function syncClock() {
 function sendMove(pos: number, ms: number) {
   if (state.value !== 'connected' || clientNow() < backoffUntil)
     return
-  if (protocol.value !== 'hdsp')
+  if (mode.value !== 'hdsp')
     needsSetup = true
   nextMove = { pos, ms, queuedAt: clientNow() }
   if (!moveInFlight)
@@ -182,7 +212,7 @@ async function pumpMoves() {
     nextMove = null
     const t = Math.max(20, Math.round(m.ms - (clientNow() - m.queuedAt)))
     try {
-      await api('PUT', '/hdsp/xpt', { xp: Math.round(Math.max(0, Math.min(100, m.pos)) * 10) / 10, t, stop_on_target: true, immediate_rsp: true })
+      await driver().move(Math.round(Math.max(0, Math.min(100, m.pos)) * 10) / 10, t)
     }
     catch (e) {
       error.value = describe(e)
@@ -196,6 +226,21 @@ async function pumpMoves() {
 }
 
 function describe(e: unknown): string {
+  if (e instanceof HandyBleError)
+    return `${e.message}.`.replace(/\.\.$/, '.')
+  const name = (e as { name?: string })?.name
+  if (link.value === 'ble' && e instanceof DOMException) {
+    // The chooser was closed without picking: nothing to report.
+    if (name === 'NotFoundError' && /cancel/i.test(e.message))
+      return ''
+    if (name === 'NotFoundError')
+      return 'No Handy found. Make sure it is on, has firmware 4 and is close by, and that the Handy app is not connected to it over Bluetooth.'
+    if (name === 'NotAllowedError' || name === 'SecurityError')
+      return 'Bluetooth access was refused. Allow it for this site, or use the desktop app.'
+    if (name === 'NetworkError')
+      return 'Could not reach the Handy over Bluetooth. It may be connected to the Handy app or another program; disconnect it there first.'
+    return e.message
+  }
   if (e instanceof HandyApiError) {
     if (e.offline)
       return 'The Handy went offline. Check it is on and connected to WiFi.'
@@ -214,7 +259,7 @@ function describe(e: unknown): string {
 
 type AnyCommand = HandyCommand | HspCommand
 
-function enqueue(cmd: AnyCommand, proto: HandyProtocol = protocol.value) {
+function enqueue(cmd: AnyCommand, proto: HandyProtocol = mode.value) {
   pending++
   queue = queue
     .then(() => send(cmd, proto))
@@ -238,33 +283,123 @@ function enqueue(cmd: AnyCommand, proto: HandyProtocol = protocol.value) {
 const serverNow = () => Math.round(clientNow() + csOffset)
 const toPoints = (points: HandyAction[]) => points.map(p => ({ t: p.at, x: p.pos }))
 
+/** The same commands over either link. */
+interface Driver {
+  /** Start an HSP session; the device's buffer size in points, 0 when it does not say. */
+  setupHsp: () => Promise<number>
+  setupHssp: (url: string) => Promise<void>
+  /** Play from script time `at`; under HSP, replacing the buffer with `add` first. */
+  play: (proto: HandyProtocol, at: number, rate: number, add: { points: HandyAction[], tail: number } | null) => Promise<void>
+  add: (points: HandyAction[], tail: number) => Promise<void>
+  stop: (proto: HandyProtocol) => Promise<void>
+  synctime: (proto: HandyProtocol, at: number) => Promise<void>
+  /** A live move: 0–100 over `t` ms. */
+  move: (xp: number, t: number) => Promise<void>
+}
+
+const wifi: Driver = {
+  async setupHsp() {
+    const st = await api('PUT', '/hsp/setup', {})
+    const max = Number(st?.max_points)
+    return Number.isFinite(max) && max > 0 ? max : 0
+  },
+  async setupHssp(url) {
+    await api('PUT', '/hssp/setup', { url })
+  },
+  async play(proto, at, rate, add) {
+    const body: Record<string, unknown> = { start_time: Math.round(at), server_time: serverNow(), playback_rate: rate }
+    if (add) {
+      body.pause_on_starving = false
+      body.add = { points: toPoints(add.points), flush: true, tail_point_stream_index: add.tail }
+    }
+    await api('PUT', `/${proto}/play`, body)
+  },
+  async add(points, tail) {
+    await api('PUT', '/hsp/add', { points: toPoints(points), tail_point_stream_index: tail })
+  },
+  async stop(proto) {
+    await api('PUT', `/${proto}/stop`)
+  },
+  async synctime(proto, at) {
+    await api('PUT', `/${proto}/synctime`, { current_time: Math.round(at), server_time: serverNow() })
+  },
+  async move(xp, t) {
+    await api('PUT', '/hdsp/xpt', { xp, t, stop_on_target: true, immediate_rsp: true })
+  },
+}
+
+function bleLink(): HandyBleLink {
+  if (!ble)
+    throw new HandyBleError('The Handy is not connected over Bluetooth')
+  return ble
+}
+
+const bluetooth: Driver = {
+  async setupHsp() {
+    const l = bleLink()
+    await l.request({ kind: 'modeSet', mode: MODE_HSP })
+    const r = await l.request({ kind: 'hspSetup', streamId: 1 + Math.floor(Math.random() * 0x7FFFFFF0) })
+    return r.hsp?.maxPoints ?? 0
+  },
+  async setupHssp() {
+    throw new HandyBleError('Whole script needs the Handy on WiFi')
+  },
+  async play(_proto, at, rate, add) {
+    const l = bleLink()
+    // Written back to back and answered in order: waiting for the points'
+    // answer first would start the play a round trip late. Stamped as it
+    // leaves, so the device takes the Bluetooth delay off itself.
+    const sent = [
+      ...(add ? [l.request({ kind: 'hspAdd', points: toPoints(add.points), flush: true, tail: add.tail })] : []),
+      l.request({ kind: 'hspPlay', startTime: Math.round(at), serverTime: serverNow(), rate }),
+    ]
+    await Promise.all(sent)
+  },
+  async add(points, tail) {
+    await bleLink().request({ kind: 'hspAdd', points: toPoints(points), flush: false, tail })
+  },
+  async stop() {
+    await bleLink().request({ kind: 'hspStop' })
+  },
+  async synctime(_proto, at) {
+    await bleLink().request({ kind: 'hspCurrentTimeSet', currentTime: Math.round(at), serverTime: serverNow(), filter: 0.5 })
+  },
+  async move(xp, t) {
+    // No answer awaited, as HandyVRC-OSC sends them: the write queue keeps them in order.
+    await bleLink().send({ kind: 'hdspXpt', xp: xp / 100, t, stopOnTarget: true })
+  },
+}
+
+function driver(): Driver {
+  return link.value === 'ble' ? bluetooth : wifi
+}
+
 async function send(cmd: AnyCommand, proto: HandyProtocol) {
-  const p = `/${proto}`
+  const d = driver()
   switch (cmd.kind) {
     case 'play': {
-      const body: Record<string, unknown> = { start_time: Math.round(cmd.at), server_time: serverNow(), playback_rate: cmd.rate }
+      let add: { points: HandyAction[], tail: number } | null = null
       if ('points' in cmd && cmd.points.length) {
         streamIndex += cmd.points.length
-        body.pause_on_starving = false
-        body.add = { points: toPoints(cmd.points), flush: true, tail_point_stream_index: streamIndex }
+        add = { points: cmd.points, tail: streamIndex }
       }
-      logCommand(`[Handy] ${proto} play at=${body.start_time}ms rate=${cmd.rate}${'points' in cmd ? ` +${cmd.points.length} points` : ''}`)
+      logCommand(`[Handy] ${proto} play at=${Math.round(cmd.at)}ms rate=${cmd.rate}${add ? ` +${add.points.length} points` : ''}`)
       playing.value = true
-      await api('PUT', `${p}/play`, body)
+      await d.play(proto, cmd.at, cmd.rate, add)
       error.value = null
       break
     }
     case 'add':
       streamIndex += cmd.points.length
-      await api('PUT', '/hsp/add', { points: toPoints(cmd.points), tail_point_stream_index: streamIndex })
+      await d.add(cmd.points, streamIndex)
       break
     case 'stop':
       logCommand(`[Handy] ${proto} stop`)
       playing.value = false
-      await api('PUT', `${p}/stop`)
+      await d.stop(proto)
       break
     case 'synctime':
-      await api('PUT', `${p}/synctime`, { current_time: Math.round(cmd.at), server_time: serverNow() })
+      await d.synctime(proto, cmd.at)
       break
   }
 }
@@ -308,7 +443,7 @@ async function prepareHssp(text: string | null) {
     if (seq !== prepareSeq)
       return
     logCommand('[Handy] hssp setup')
-    await api('PUT', '/hssp/setup', { url })
+    await driver().setupHssp(url)
     if (seq !== prepareSeq)
       return
     preparedKey = key
@@ -346,13 +481,13 @@ async function prepareHsp(has: boolean) {
     await queue
     if (seq !== prepareSeq)
       return
-    logCommand('[Handy] hsp setup')
-    const st = await api('PUT', '/hsp/setup', {})
+    logCommand(`[Handy] hsp setup (${link.value === 'ble' ? 'Bluetooth' : 'WiFi'})`)
+    const max = await driver().setupHsp()
     if (seq !== prepareSeq)
       return
-    const max = Number(st?.max_points)
     // Half the buffer at most, so a top-up never pushes out points still to play.
-    hspBatch = Number.isFinite(max) && max > 0 ? Math.max(2, Math.min(HSP_BATCH, Math.floor(max / 2))) : HSP_BATCH
+    const cap = link.value === 'ble' ? BLE_BATCH : HSP_BATCH
+    hspBatch = max > 0 ? Math.max(2, Math.min(cap, Math.floor(max / 2))) : cap
     streamIndex = 0
     hspSession = true
     script.value = 'ready'
@@ -367,7 +502,7 @@ async function prepareHsp(has: boolean) {
 }
 
 /** Stop the device if it is playing (or about to). */
-function halt(proto: HandyProtocol = protocol.value) {
+function halt(proto: HandyProtocol = mode.value) {
   if (proto === 'hdsp') {
     // Every live move stops on its target: nothing more to send.
     scriptPlanner.reset()
@@ -378,6 +513,124 @@ function halt(proto: HandyProtocol = protocol.value) {
     return
   run = null
   enqueue({ kind: 'stop' }, proto)
+}
+
+// ─── Bluetooth ────────────────────────────────────────────────────────────────
+
+/**
+ * Measure the device's clock against ours and hand it the offset, so the
+ * device can read "server time" stamps as ours: playhound is the server.
+ */
+async function syncBleClock(l: HandyBleLink, count: number) {
+  const samples: TimeSample[] = []
+  for (let i = 0; i < count; i++) {
+    const sent = clientNow()
+    const r = await l.request({ kind: 'clockOffsetGet' })
+    const received = clientNow()
+    if (r.clock)
+      samples.push({ sent, received, server: r.clock.time })
+  }
+  if (!samples.length)
+    throw new HandyBleError('Could not read the Handy\'s clock')
+  // clockOffset gives device ≈ ours + o; the device wants ours − its own.
+  const rtd = roundTrip(samples)
+  await l.request({ kind: 'clockOffsetSet', offset: Math.round(-clockOffset(samples)), rtd: Math.round(rtd) })
+  csOffset = 0
+  roundTripMs.value = Math.round(rtd)
+  bleClockAt = clientNow()
+}
+
+const BLE_PROBLEMS: Record<number, string> = {
+  [NOTE.tempHigh]: 'The Handy is running hot and may stop moving. Give it a rest.',
+  [NOTE.sliderBlocked]: 'The Handy\'s slider is blocked.',
+}
+const BLE_CLEARS: Record<number, number> = {
+  [NOTE.tempOk]: NOTE.tempHigh,
+  [NOTE.sliderUnblocked]: NOTE.sliderBlocked,
+}
+
+function onBleNotification(n: Extract<HandyIncoming, { type: 'notification' }>) {
+  if (n.which === NOTE.error && n.error) {
+    error.value = `The Handy reported an error${n.error.message ? `: ${n.error.message}` : ` (${n.error.code})`}.`
+    logCommand(`[Handy] error ${n.error.code} ${n.error.message}`)
+  }
+  else if (BLE_PROBLEMS[n.which]) {
+    error.value = BLE_PROBLEMS[n.which]
+  }
+  else if (BLE_CLEARS[n.which]) {
+    if (error.value === BLE_PROBLEMS[BLE_CLEARS[n.which]])
+      error.value = null
+  }
+  else if (n.which === NOTE.lowMemoryError) {
+    // It dropped a message for want of memory: send smaller ones from now on.
+    hspBatch = Math.max(10, Math.floor(hspBatch / 2))
+    logCommand(`[Handy] low memory, batches of ${hspBatch} points from now on`)
+  }
+  else if (n.which === NOTE.hspStarving) {
+    logCommand('[Handy] hsp ran out of points')
+  }
+}
+
+/** Forget whatever the device was doing: a new link starts every protocol from scratch. */
+function freshSession() {
+  run = null
+  playing.value = false
+  backoffUntil = 0
+  preparedKey = null
+  hspSession = false
+  needsSetup = false
+  nextMove = null
+  scriptPlanner.reset()
+}
+
+async function attachBle(device: BluetoothDevice, seq: number, samples = BLE_TIME_SAMPLES) {
+  ble?.close()
+  ble = null
+  const l = await openHandyBle(device, { onNotification: onBleNotification, onDrop: () => onBleDrop(seq) })
+  if (seq !== bleSeq) {
+    l.close()
+    return
+  }
+  ble = l
+  await syncBleClock(l, samples)
+  info.value = { model: handyModelName(device.name), firmware: '' }
+  freshSession()
+}
+
+function onBleDrop(seq: number) {
+  if (seq !== bleSeq)
+    return
+  ble = null
+  freshSession()
+  if (state.value !== 'connected')
+    return
+  state.value = 'connecting'
+  error.value = 'Lost the Bluetooth link to the Handy. Reconnecting…'
+  logCommand('[Handy] Bluetooth link dropped')
+  void reconnectBle(seq)
+}
+
+async function reconnectBle(seq: number) {
+  for (const wait of BLE_RETRY_MS) {
+    await new Promise(r => setTimeout(r, wait))
+    if (seq !== bleSeq || !bleDevice)
+      return
+    try {
+      // Fewer clock samples: the video is likely playing, and the Handy waits.
+      await attachBle(bleDevice, seq, BLE_RESYNC_SAMPLES * 2)
+      if (seq !== bleSeq)
+        return
+      error.value = null
+      state.value = 'connected'
+      return
+    }
+    catch {}
+  }
+  if (seq !== bleSeq)
+    return
+  state.value = 'idle'
+  info.value = null
+  error.value = 'Lost the Bluetooth link to the Handy. Check it is on and close by, then connect again.'
 }
 
 /** The script shaped for the knob and hold as they stand, rebuilt only when either moves a step. */
@@ -412,13 +665,13 @@ export function useHandy() {
       /** HSSP: the whole shaped script as uploaded. */
       const hsspText = computed(() => {
         const b = base!.value
-        if (!b || protocol.value !== 'hssp')
+        if (!b || mode.value !== 'hssp')
           return null
         return handyFunscript(handyScript(b.actions, { knob: step(control.intensityScale), min: b.min, max: b.max, invert: b.invert }))
       })
 
       let timer: ReturnType<typeof setTimeout> | undefined
-      watch([hsspText, base, state, protocol, modeEpoch], ([text, b, st, proto]) => {
+      watch([hsspText, base, state, mode, modeEpoch], ([text, b, st, proto]) => {
         clearTimeout(timer)
         if (st !== 'connected')
           return
@@ -438,19 +691,55 @@ export function useHandy() {
         timer = setTimeout(() => void prepareHssp(text), script.value === 'ready' || script.value === 'loading' ? 800 : 0)
       }, { immediate: true })
 
-      // Switching protocol stops what the old one was playing.
-      watch(protocol, (_now, was) => {
+      // Switching protocol stops what the old one was playing, and the new
+      // one starts from its setup: the device's mode followed the old one.
+      watch(mode, (_now, was) => {
         if (state.value === 'connected')
           halt(was)
         run = null
         preparedKey = null
+        hspSession = false
+        needsSetup = false
         script.value = 'none'
       }, { flush: 'sync' })
     })
   }
 
+  /** Pick a Handy and connect over Bluetooth. Must come from a click. */
+  async function connectBle() {
+    if (!bluetoothSupported) {
+      error.value = 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app, or connect over WiFi.'
+      return
+    }
+    const seq = ++bleSeq
+    state.value = 'connecting'
+    try {
+      // Straight from the click: the chooser needs it.
+      const device = await pickHandy()
+      if (seq !== bleSeq)
+        return
+      bleDevice = device
+      await attachBle(device, seq)
+      if (seq !== bleSeq)
+        return
+      state.value = 'connected'
+    }
+    catch (e) {
+      if (seq !== bleSeq)
+        return
+      ble?.close()
+      ble = null
+      bleDevice = null
+      state.value = 'idle'
+      info.value = null
+      error.value = describe(e) || null
+    }
+  }
+
   async function connect() {
     error.value = null
+    if (link.value === 'ble')
+      return connectBle()
     if (!connectionKey.value.trim()) {
       error.value = 'Enter the connection key from the Handy app first.'
       return
@@ -469,13 +758,7 @@ export function useHandy() {
         throw new Error(`The Handy needs a firmware update (it has ${i.fw_version ?? 'an old version'}; WiFi control needs v4).`)
       info.value = { model: String(i?.hw_model_name ?? 'Handy'), firmware: String(i?.fw_version ?? '') }
       await syncClock()
-      run = null
-      playing.value = false
-      backoffUntil = 0
-      preparedKey = null
-      hspSession = false
-      needsSetup = false
-      scriptPlanner.reset()
+      freshSession()
       state.value = 'connected'
     }
     catch (e) {
@@ -489,6 +772,10 @@ export function useHandy() {
     halt()
     await queue
     prepareSeq++
+    bleSeq++
+    ble?.close()
+    ble = null
+    bleDevice = null
     state.value = 'idle'
     info.value = null
     script.value = 'none'
@@ -505,7 +792,7 @@ export function useHandy() {
   function follow(want: HandyWant & { hold: number }) {
     if (state.value !== 'connected')
       return
-    if (needsSetup && protocol.value !== 'hdsp') {
+    if (needsSetup && mode.value !== 'hdsp') {
       // Live moves since the last setup switched the device to HDSP.
       needsSetup = false
       hspSession = false
@@ -520,7 +807,17 @@ export function useHandy() {
     const now = clientNow()
     if (now < backoffUntil)
       return
-    if (protocol.value === 'hdsp') {
+    if (ble && now - bleClockAt > BLE_RESYNC_MS) {
+      // Two clocks drift apart by a fraction of a second an hour: measure again now and then.
+      const l = ble
+      bleClockAt = now
+      pending++
+      queue = queue.then(() => syncBleClock(l, BLE_RESYNC_SAMPLES)).catch(() => {}).finally(() => {
+        pending--
+      })
+      return
+    }
+    if (mode.value === 'hdsp') {
       const b = base?.value
       if (!b || !want.playing || !enabled.value) {
         halt('hdsp')
@@ -537,7 +834,7 @@ export function useHandy() {
     }
     const at = want.at + offsetMs.value
     let next: { cmd: AnyCommand | null, run: HandyRun | HspRun | null }
-    if (protocol.value === 'hssp') {
+    if (mode.value === 'hssp') {
       next = stepHandy(run, { playing: want.playing && enabled.value && want.hold < HSSP_HOLD_STOP, at, rate: want.rate }, now)
     }
     else {
@@ -586,6 +883,10 @@ export function useHandy() {
     hasBuiltInAppId: !!ENV_APP_ID,
     enabled,
     protocol,
+    /** The protocol in use: Whole script falls back to Streamed over Bluetooth. */
+    mode,
+    link,
+    bluetoothSupported,
     offsetMs,
     state,
     connected: computed(() => state.value === 'connected'),

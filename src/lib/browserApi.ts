@@ -200,6 +200,17 @@ export interface DesktopInfo {
   presence: DesktopPresence | null
   /** The app's own EroScripts session. Null in any other desktop window, and in older builds. */
   eroscripts?: DesktopEroScripts | null
+  /** The desktop app's Bluetooth chooser. Absent in older builds. */
+  bluetooth?: DesktopBluetooth
+}
+
+export interface DesktopBluetooth {
+  /**
+   * Say what the next navigator.bluetooth.requestDevice() is for, just before
+   * calling it, so the desktop app's chooser words itself right and picks
+   * the device used last time for that.
+   */
+  expect: (kind: 'heart' | 'handy') => void
 }
 
 export interface DesktopEroScripts {

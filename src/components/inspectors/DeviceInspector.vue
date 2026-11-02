@@ -79,16 +79,17 @@ onMounted(() => {
     transport.value = up[0][0]
 })
 
-const TRANSPORTS = [
+const handyIcon = computed(() => (handy.link.value === 'ble' ? 'i-carbon-bluetooth' : 'i-carbon-wifi'))
+const TRANSPORTS = computed(() => [
   { value: 'serial' as const, label: 'Serial', icon: 'i-carbon-usb', title: 'TCode over USB (OSR2, SR6, SSR1…)' },
   { value: 'buttplug' as const, label: 'Intiface', icon: 'i-brand-intiface', title: 'Any toy Intiface Central supports' },
-  { value: 'handy' as const, label: 'Handy', icon: 'i-carbon-wifi', title: 'The Handy over WiFi, through Handy\'s server' },
-]
-const TRANSPORT_ICON: Record<Transport, string> = {
+  { value: 'handy' as const, label: 'Handy', icon: handyIcon.value, title: 'The Handy over WiFi or Bluetooth' },
+])
+const TRANSPORT_ICON = computed<Record<Transport, string>>(() => ({
   serial: 'i-carbon-usb',
   buttplug: 'i-brand-intiface',
-  handy: 'i-carbon-wifi',
-}
+  handy: handyIcon.value,
+}))
 
 // ─── Serial ───────────────────────────────────────────────────────────────────
 const showSerialOptions = ref(false)
@@ -186,8 +187,13 @@ function deviceKinds(d: ButtplugClientDevice) {
   return out
 }
 
-// ─── The Handy (WiFi) ─────────────────────────────────────────────────────────
-const handyAdvanced = ref(!handy.hasBuiltInAppId)
+// ─── The Handy (WiFi or Bluetooth) ────────────────────────────────────────────
+const handyAdvanced = ref(!handy.hasBuiltInAppId && handy.link.value === 'wifi')
+const handyBle = computed(() => handy.link.value === 'ble')
+const HANDY_LINKS = [
+  { value: 'wifi' as const, label: 'WiFi', icon: 'i-carbon-wifi', title: 'Through Handy\'s server, with the connection key from the Handy app' },
+  { value: 'ble' as const, label: 'Bluetooth', icon: 'i-carbon-bluetooth', title: 'Straight to the Handy from this computer, no internet needed' },
+]
 const handyEnabled = computed({
   get: () => handy.enabled.value,
   set: v => handy.setEnabled(v),
@@ -198,15 +204,16 @@ const signedMs = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)} ms`
 
 async function connectHandy() {
   await handy.connect()
+  const i = handy.info.value
   if (handy.connected.value)
-    toast.success('Connected to the Handy', { detail: handy.info.value ? `${handy.info.value.model} · firmware ${handy.info.value.firmware}` : undefined, icon: 'i-carbon-wifi', key: 'handy' })
+    toast.success('Connected to the Handy', { detail: i ? [i.model, i.firmware && `firmware ${i.firmware}`, handyBle.value ? 'Bluetooth' : 'WiFi'].filter(Boolean).join(' · ') : undefined, icon: handyBle.value ? 'i-carbon-bluetooth' : 'i-carbon-wifi', key: 'handy' })
   else if (handy.error.value)
     toast.error('Could not connect to the Handy', { detail: handy.error.value, key: 'handy' })
 }
 
 async function disconnectHandy() {
   await handy.disconnect()
-  toast('Disconnected from the Handy', { icon: 'i-carbon-wifi-off', key: 'handy' })
+  toast('Disconnected from the Handy', { icon: handyBle.value ? 'i-carbon-bluetooth-off' : 'i-carbon-wifi-off', key: 'handy' })
 }
 
 const HANDY_PROTOCOLS = [
@@ -214,13 +221,19 @@ const HANDY_PROTOCOLS = [
   { value: 'hdsp' as const, label: 'Live', title: 'HDSP: every move sent as it happens, as MultiFunPlayer does' },
   { value: 'hssp' as const, label: 'Whole script', title: 'HSSP: the whole script up front; rides out a poor connection' },
 ]
+/** Whole script needs the device on WiFi to fetch it. */
+const handyProtocols = computed(() => (handyBle.value ? HANDY_PROTOCOLS.filter(p => p.value !== 'hssp') : HANDY_PROTOCOLS))
+const handyMode = computed({
+  get: () => handy.mode.value,
+  set: v => (handy.protocol.value = v),
+})
 const HANDY_PROTOCOL_HINT: Record<string, string> = {
   hsp: 'Streamed: a few seconds of the script at a time, played on the Handy\'s own clock, so the knob and edges apply within a second. The steadiest choice for fast scripts.',
   hdsp: 'Live: every move is sent as the video reaches it, early by half the round trip, as MultiFunPlayer does. Follows everything at once, but a slow or uneven connection shows in the strokes.',
   hssp: 'Whole script: uploaded to Handy\'s script hosting and played from there, so a poor connection matters least. A knob change uploads it again, and an edge stops the Handy instead of easing off.',
 }
 const handyScriptLine = computed(() => {
-  const mode = handy.protocol.value
+  const mode = handy.mode.value
   switch (handy.script.value) {
     case 'loading':
       return { tone: 'info' as const, text: mode === 'hsp' ? 'Starting a stream…' : 'Sending the script…' }
@@ -359,14 +372,17 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
     return { tone: 'idle', label: 'Not connected', detail: 'Plug the device in by USB, then connect' }
   }
   if (transport.value === 'handy') {
+    const via = handyBle.value ? 'Bluetooth' : 'WiFi'
     if (handyBusy.value)
-      return { tone: 'info', label: 'Connecting…', detail: 'Reaching the Handy through Handy\'s server' }
+      return { tone: 'info', label: 'Connecting…', detail: handyBle.value ? 'Reaching the Handy over Bluetooth' : 'Reaching the Handy through Handy\'s server' }
     if (handy.connected.value) {
       if (!handy.enabled.value)
         return { tone: 'warn', label: 'Connected, output held', detail: '"Send to device" is off' }
-      return { tone: 'ok', label: 'Connected', detail: handy.info.value ? `${handy.info.value.model} · WiFi` : 'WiFi' }
+      return { tone: 'ok', label: 'Connected', detail: handy.info.value ? `${handy.info.value.model} · ${via}` : via }
     }
-    return { tone: 'idle', label: 'Not connected', detail: 'Enter the connection key from the Handy app' }
+    if (handyBle.value && !handy.bluetoothSupported)
+      return { tone: 'danger', label: 'Web Bluetooth unavailable', detail: 'Use Chrome, Edge or the desktop app' }
+    return { tone: 'idle', label: 'Not connected', detail: handyBle.value ? 'Turn the Handy on, then connect' : 'Enter the connection key from the Handy app' }
   }
   if (bpConnecting.value)
     return { tone: 'info', label: 'Connecting…', detail: bpUrl.value }
@@ -885,9 +901,13 @@ const logOpen = ref(false)
           </template>
         </div>
 
-        <!-- The Handy over WiFi (Handy's cloud API) -->
+        <!-- The Handy over WiFi (Handy's cloud API) or Bluetooth -->
         <div v-else key="handy" class="flex flex-col gap-2.5 relative">
+          <div :class="handy.connected.value || handyBusy ? 'pointer-events-none opacity-60' : ''" :aria-disabled="handy.connected.value || handyBusy">
+            <UiSegmented v-model="handy.link.value" :options="HANDY_LINKS" size="sm" block />
+          </div>
           <UiInput
+            v-if="!handyBle"
             v-model="handy.connectionKey.value"
             icon="i-carbon-password"
             label="Connection key"
@@ -903,8 +923,9 @@ const logOpen = ref(false)
             variant="primary"
             size="lg"
             block
-            icon="i-carbon-connect"
+            :icon="handyBle ? 'i-carbon-bluetooth' : 'i-carbon-connect'"
             :loading="handyBusy"
+            :disabled="handyBle && !handy.bluetoothSupported"
             @click="connectHandy"
           >
             Connect to the Handy
@@ -929,7 +950,7 @@ const logOpen = ref(false)
             <div class="text-[12px] px-2.5 rounded-[var(--radius-sm)] bg-surface-950/60 flex gap-2 h-8 items-center">
               <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="DOT[handyScriptLine.tone]" />
               <span class="text-fg-muted truncate">{{ handyScriptLine.text }}</span>
-              <span v-tip="'Round trip to Handy\'s server, measured on connect. Live moves leave half of it early.'" class="text-[11px] text-fg-faint num ml-auto shrink-0">
+              <span v-tip="handyBle ? 'Round trip over Bluetooth, measured on connect. Live moves leave half of it early.' : 'Round trip to Handy\'s server, measured on connect. Live moves leave half of it early.'" class="text-[11px] text-fg-faint num ml-auto shrink-0">
                 {{ handy.roundTripMs.value }} ms
               </span>
             </div>
@@ -945,6 +966,16 @@ const logOpen = ref(false)
             />
           </template>
 
+          <p v-else-if="handyBle" class="hint">
+            For a Handy with firmware 4, straight from this computer: no internet and no connection key. playhound sends
+            the stroke script a few seconds ahead and the Handy plays it itself, on a clock kept in step with this one,
+            so fast scripts play as written. The intensity knob, edges and the stroke range still apply, and the motion
+            generator (music, tap tempo, gamepad) drives it too. Close the Handy app's Bluetooth link first; only one
+            program can hold it.
+            <template v-if="!handy.bluetoothSupported">
+              This browser has no Web Bluetooth: use Chrome, Edge or the desktop app.
+            </template>
+          </p>
           <p v-else class="hint">
             For a Handy on WiFi with firmware 4. playhound sends the stroke script a few seconds ahead and the Handy plays
             it itself, kept in time with the video through Handy's server, so fast scripts play as written. The intensity
@@ -968,12 +999,16 @@ const logOpen = ref(false)
                   <div class="pt-1.5 flex flex-col gap-1.5">
                     <div class="flex flex-col gap-1">
                       <span class="label">Sending the script</span>
-                      <UiSegmented v-model="handy.protocol.value" :options="HANDY_PROTOCOLS" size="xs" block />
+                      <UiSegmented v-model="handyMode" :options="handyProtocols" size="xs" block />
                     </div>
                     <p class="hint">
-                      {{ HANDY_PROTOCOL_HINT[handy.protocol.value] }} The motion generator always goes live, since it has no script to send ahead.
+                      {{ HANDY_PROTOCOL_HINT[handy.mode.value] }} The motion generator always goes live, since it has no script to send ahead.
+                      <template v-if="handyBle">
+                        Whole script needs WiFi, since the Handy fetches it itself.
+                      </template>
                     </p>
                     <UiInput
+                      v-if="!handyBle"
                       v-model="handy.appIdOverride.value"
                       label="Application ID"
                       :placeholder="handy.hasBuiltInAppId ? 'Built in' : 'From the Handy developer portal'"
@@ -981,7 +1016,7 @@ const logOpen = ref(false)
                       size="sm"
                       :disabled="handy.connected.value"
                     />
-                    <p class="hint">
+                    <p v-if="!handyBle" class="hint">
                       {{ handy.hasBuiltInAppId ? 'Only needed to use your own instead of the one built in.' : 'This build has none: get one at user.handyfeeling.com.' }}
                     </p>
                   </div>
