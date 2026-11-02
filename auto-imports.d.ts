@@ -25,6 +25,7 @@ declare global {
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const axisOutput: typeof import('./src/composables/useTCode').axisOutput
+  const clearTapTempo: typeof import('./src/composables/useVideoBeat').clearTapTempo
   const closeFaceWindow: typeof import('./src/composables/useFaceScreen').closeFaceWindow
   const computed: typeof import('vue').computed
   const computedAsync: typeof import('@vueuse/core').computedAsync
@@ -148,6 +149,7 @@ declare global {
   const resolveRef: typeof import('@vueuse/core').resolveRef
   const resolveStream: typeof import('./src/composables/useStreams').resolveStream
   const savedPosts: typeof import('./src/composables/useSavedPosts').savedPosts
+  const scaleTapTempo: typeof import('./src/composables/useVideoBeat').scaleTapTempo
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
@@ -159,6 +161,8 @@ declare global {
   const storeToRefs: typeof import('pinia').storeToRefs
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
+  const tapState: typeof import('./src/composables/useVideoBeat').tapState
+  const tapTempo: typeof import('./src/composables/useVideoBeat').tapTempo
   const templateRef: typeof import('@vueuse/core').templateRef
   const throttledRef: typeof import('@vueuse/core').throttledRef
   const throttledWatch: typeof import('@vueuse/core').throttledWatch
@@ -490,6 +494,7 @@ declare module 'vue' {
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly axisOutput: UnwrapRef<typeof import('./src/composables/useTCode')['axisOutput']>
+    readonly clearTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['clearTapTempo']>
     readonly closeFaceWindow: UnwrapRef<typeof import('./src/composables/useFaceScreen')['closeFaceWindow']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
     readonly computedAsync: UnwrapRef<typeof import('@vueuse/core')['computedAsync']>
@@ -613,6 +618,7 @@ declare module 'vue' {
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveStream: UnwrapRef<typeof import('./src/composables/useStreams')['resolveStream']>
     readonly savedPosts: UnwrapRef<typeof import('./src/composables/useSavedPosts')['savedPosts']>
+    readonly scaleTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['scaleTapTempo']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>
@@ -624,6 +630,8 @@ declare module 'vue' {
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
+    readonly tapState: UnwrapRef<typeof import('./src/composables/useVideoBeat')['tapState']>
+    readonly tapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['tapTempo']>
     readonly templateRef: UnwrapRef<typeof import('@vueuse/core')['templateRef']>
     readonly throttledRef: UnwrapRef<typeof import('@vueuse/core')['throttledRef']>
     readonly throttledWatch: UnwrapRef<typeof import('@vueuse/core')['throttledWatch']>

@@ -6,7 +6,7 @@ import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput } from '~/composables/useTCode'
-import { useVideoBeat } from '~/composables/useVideoBeat'
+import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { synthTargets } from '~/lib/axisSynth'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -267,6 +267,19 @@ const beatCapped = computed(() => motion.beatBandHi > motion.maxSpm)
 const beatAnalysed = computed(() => (soundtrackAnalysis.value?.beats.length ?? 0) >= 2)
 const beatLocked = computed(() => beatAnalysed.value || videoBeat.confidence.value >= 0.6)
 
+/** Tap tempo: the button taps on press, not release, so the beat lands where the finger does. */
+function tap() {
+  tapTempo()
+}
+const tapLine = computed(() => {
+  const s = tapState.value
+  if (s.bpm !== null)
+    return s.needed > 0 ? 'Beat put back on your tap' : `From ${s.taps} taps; keep tapping to refine`
+  if (s.taps > 0)
+    return s.needed > 0 ? `${s.needed} more on the beat` : 'Tap steadily on the beat'
+  return 'Tap along to set the tempo by hand (T)'
+})
+
 /** How the music source is stroking relative to the beat, in words. */
 const subdivisionLabel = computed(() => ({
   2: 'Twice a beat',
@@ -481,7 +494,7 @@ const PAD_MAP = [
       <!-- Music -->
       <UiSection v-else-if="motion.source === 'music'" key="music" title="Music" icon="i-carbon-music">
         <p class="hint">
-          Strokes on the beat of the video's soundtrack, at whichever subdivision of the tempo fits your band, and deeper when the music gets louder. Listening live needs a few bars to settle; an unscripted video's whole soundtrack is analysed in the background, and from then on the beat is there from the first second.
+          Strokes on the beat of the video's soundtrack, at whichever subdivision of the tempo fits your band, and deeper when the music gets louder. Listening live needs a few bars to settle; an unscripted video's whole soundtrack is analysed in the background, and from then on the beat is there from the first second. When it hears the beat wrong, tap it in.
         </p>
 
         <div v-if="audio.scriptDrive.value" class="text-[12px] text-warn px-2.5 py-2 rounded-[var(--radius-md)] bg-warn/10 flex gap-2 ring-1 ring-warn/20">
@@ -491,6 +504,34 @@ const PAD_MAP = [
 
         <template v-else>
           <MusicScriptCard :make="false" :options="false" />
+          <div class="p-2 well flex gap-2 items-center">
+            <UiButton
+              size="sm"
+              :variant="tapState.bpm === null ? 'primary' : 'secondary'"
+              icon="i-carbon-touch-1"
+              :disabled="!player.isPlaying"
+              @pointerdown.prevent="tap"
+              @keydown.enter.prevent="tap"
+              @keydown.space.prevent="tap"
+            >
+              Tap
+            </UiButton>
+            <div class="flex flex-1 flex-col min-w-0">
+              <span class="text-[12.5px] text-fg font-medium num">
+                {{ tapState.bpm === null ? 'Tap tempo' : `${tapState.bpm} bpm tapped` }}
+              </span>
+              <span class="hint truncate">{{ player.isPlaying ? tapLine : 'Play the video, then tap on the beat' }}</span>
+            </div>
+            <template v-if="tapState.bpm !== null">
+              <UiButton size="xs" variant="ghost" title="Halve: you tapped twice a beat" @click="scaleTapTempo(0.5)">
+                ÷2
+              </UiButton>
+              <UiButton size="xs" variant="ghost" title="Double: you tapped every other beat" @click="scaleTapTempo(2)">
+                ×2
+              </UiButton>
+              <UiIconButton icon="i-carbon-close" label="Forget the tapped tempo (Shift + T)" size="xs" @click="clearTapTempo" />
+            </template>
+          </div>
           <!-- Live listening diagnostics: idle once the whole soundtrack is
                analysed, so showing them then would only contradict the card. -->
           <div v-if="!beatAnalysed" class="gap-2 grid grid-cols-3">

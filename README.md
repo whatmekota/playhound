@@ -64,7 +64,7 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   edges and finishes.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
-  that you can save and edit.
+  that you can save and edit. If it hears the beat wrong, tap it in with **T**.
 - **Stays in control.** **E** edges: everything backs off for a while and eases
   back in. An intensity knob scales every source. **G** jumps to the next
   peak and **Shift+G** to the most intense part. **Esc** is panic.
@@ -214,6 +214,7 @@ The ones you'll use most:
 | **-** · **=**    | intensity down / up                                 |
 | **G** · Shift+G  | next peak · jump to the finish                      |
 | **C**            | I came: marks it on the video and in Stats          |
+| **T** · Shift+T  | tap tempo for the Music source · forget it          |
 | B · S            | bookmark here · star the video                      |
 | **Esc** or **`** | **panic**: stop everything and cover the screen     |
 
