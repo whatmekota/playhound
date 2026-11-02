@@ -83,6 +83,11 @@ export function createEdgeEnvelope() {
       if (s.phase === 'falling' || s.phase === 'holding')
         releasedMs = now
     },
+    startAtDepth(now: number, t: EdgeTiming) {
+      fromLevel = Math.max(0, Math.min(1, t.depth))
+      startMs = now - EDGE_FALL_SEC * 1000
+      releasedMs = Number.NaN
+    },
     reset() {
       startMs = Number.NaN
       releasedMs = Number.NaN

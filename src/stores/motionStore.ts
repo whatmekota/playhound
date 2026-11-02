@@ -34,6 +34,7 @@ export const useMotionStore = defineStore('motion', () => {
   // Maximum rate of change, so a phase transition ramps instead of slamming.
   const spmRampPerSec = ref(25)
   const depthRampPerSec = ref(0.4)
+  const softStart = ref(true)
 
   // ─── Generated motion shape ───────────────────────────────────────────────
   const shape = ref<StrokeShape>('sine')
@@ -103,6 +104,7 @@ export const useMotionStore = defineStore('motion', () => {
     return {
       source: source.value,
       maxSpm: maxSpm.value,
+      softStart: softStart.value,
       shape: shape.value,
       center: center.value,
       minSpm: minSpm.value,
@@ -148,6 +150,8 @@ export const useMotionStore = defineStore('motion', () => {
     }
     if (data.source)
       source.value = data.source
+    if (typeof data.softStart === 'boolean')
+      softStart.value = data.softStart
     if (data.shape)
       shape.value = data.shape
     if (data.manualMode === 'oscillate' || data.manualMode === 'direct')
@@ -172,6 +176,7 @@ export const useMotionStore = defineStore('motion', () => {
     source,
     enabled,
     maxSpm,
+    softStart,
     spmRampPerSec,
     depthRampPerSec,
     shape,

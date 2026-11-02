@@ -685,6 +685,13 @@ const PAD_MAP = [
           Generated motion never exceeds the ceiling and eases toward new targets at these rates instead of jumping.
           Scripts are sent as written.
         </p>
+        <UiSwitch
+          v-model="motion.softStart"
+          size="sm"
+          tone="warn"
+          label="Soft start after pause and seek"
+          hint="Script playback comes back at the edge's hold depth and rebuilds to full travel over 2 s."
+        />
       </div>
     </section>
 
