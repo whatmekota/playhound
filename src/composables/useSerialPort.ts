@@ -5,7 +5,9 @@ import { useDeviceStore } from '~/stores/deviceStore'
 // ── Singleton port state — shared across all callers ─────────────────────────
 let port: SerialPort | null = null
 let writer: WritableStreamDefaultWriter<Uint8Array> | null = null
+let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
 let readLoopActive = false
+let readLoopId = 0
 const connecting = ref(false)
 
 export function useSerialPort() {
@@ -31,6 +33,7 @@ export function useSerialPort() {
 
   async function connect(selectedPort: SerialPort, baudRate = 115200) {
     try {
+      await disconnect()
       await selectedPort.open({ baudRate })
       port = selectedPort
       writer = port.writable!.getWriter()
@@ -47,12 +50,26 @@ export function useSerialPort() {
 
   async function disconnect() {
     readLoopActive = false
+    readLoopId++
+    const r = reader
+    reader = null
+    if (r) {
+      try { await r.cancel() }
+      catch {}
+      try { r.releaseLock() }
+      catch {}
+    }
     try { writer?.releaseLock() }
     catch {}
-    try { await port?.close() }
-    catch {}
     writer = null
+    const p = port
     port = null
+    try {
+      await p?.close()
+    }
+    catch (e: any) {
+      console.warn('Serial close failed:', e?.message)
+    }
     store.connected = false
   }
 
@@ -78,20 +95,26 @@ export function useSerialPort() {
     if (!port?.readable)
       return
     readLoopActive = true
-    const reader = port.readable.getReader()
+    const id = ++readLoopId
+    const r = port.readable.getReader()
+    reader = r
     ;(async () => {
       try {
         // eslint-disable-next-line no-unmodified-loop-condition -- cleared by disconnect()
         while (readLoopActive) {
-          const { done } = await reader.read()
+          const { done } = await r.read()
           if (done)
             break
         }
       }
       catch { /* port closed */ }
       finally {
-        reader.releaseLock()
-        store.connected = false
+        if (reader === r)
+          reader = null
+        try { r.releaseLock() }
+        catch {}
+        if (id === readLoopId)
+          store.connected = false
       }
     })()
   }
