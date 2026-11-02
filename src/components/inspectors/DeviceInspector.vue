@@ -14,6 +14,7 @@ import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMoun
 import LatencyCalibrateModal from '~/components/device/LatencyCalibrateModal.vue'
 import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
 import { isStrengthToy, outputsOf, useButtplug } from '~/composables/useButtplug'
+import { useHandy } from '~/composables/useHandy'
 import { useHeartRate } from '~/composables/useHeartRate'
 import { useSerialPort } from '~/composables/useSerialPort'
 import { useSettings } from '~/composables/useSettings'
@@ -21,6 +22,7 @@ import { axisOutput, useTCode } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
 import { useDeviceLatency } from '~/composables/useVideoSync'
 import { webSerial } from '~/lib/browserApi'
+import { HANDY_OTA_URL } from '~/lib/handy'
 import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
 import { serialLog } from '~/lib/serialLog'
 import { VIBE_SOURCES } from '~/lib/vibeMap'
@@ -33,6 +35,7 @@ let hydrated = false
 const device = useDeviceStore()
 const ui = useUiStore()
 const bp = useButtplug()
+const handy = useHandy()
 const { requestAndConnect, disconnect, connecting } = useSerialPort()
 const { homeAllAxes, testAxis } = useTCode()
 const { save, load, downloadGoon, importGoon } = useSettings()
@@ -63,20 +66,29 @@ onBeforeUnmount(() => {
 })
 
 // ─── Transport ────────────────────────────────────────────────────────────────
-type Transport = 'serial' | 'buttplug'
+type Transport = 'serial' | 'buttplug' | 'handy'
 const transport = useLocalStorage<Transport>('ph:device.transport', 'serial')
 onMounted(() => {
-  // Land on whichever link is actually up.
-  if (bp.connected.value && !device.connected)
-    transport.value = 'buttplug'
-  else if (device.connected && !bp.connected.value)
-    transport.value = 'serial'
+  // Land on whichever link is actually up, when only one is.
+  const up = ([
+    ['serial', device.connected],
+    ['buttplug', bp.connected.value],
+    ['handy', handy.connected.value],
+  ] as const).filter(([, on]) => on)
+  if (up.length === 1)
+    transport.value = up[0][0]
 })
 
 const TRANSPORTS = [
   { value: 'serial' as const, label: 'Serial', icon: 'i-carbon-usb', title: 'TCode over USB (OSR2, SR6, SSR1…)' },
   { value: 'buttplug' as const, label: 'Intiface', icon: 'i-brand-intiface', title: 'Any toy Intiface Central supports' },
+  { value: 'handy' as const, label: 'Handy', icon: 'i-carbon-wifi', title: 'The Handy over WiFi, through Handy\'s server' },
 ]
+const TRANSPORT_ICON: Record<Transport, string> = {
+  serial: 'i-carbon-usb',
+  buttplug: 'i-brand-intiface',
+  handy: 'i-carbon-wifi',
+}
 
 // ─── Serial ───────────────────────────────────────────────────────────────────
 const showSerialOptions = ref(false)
@@ -173,6 +185,42 @@ function deviceKinds(d: ButtplugClientDevice) {
     out.push('Oscillate')
   return out
 }
+
+// ─── The Handy (WiFi) ─────────────────────────────────────────────────────────
+const handyAdvanced = ref(!handy.hasBuiltInAppId)
+const handyEnabled = computed({
+  get: () => handy.enabled.value,
+  set: v => handy.setEnabled(v),
+})
+const handyBusy = computed(() => handy.state.value === 'connecting')
+const handyNeedsUpdate = computed(() => /firmware update/i.test(handy.error.value ?? ''))
+const signedMs = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)} ms`
+
+async function connectHandy() {
+  await handy.connect()
+  if (handy.connected.value)
+    toast.success('Connected to the Handy', { detail: handy.info.value ? `${handy.info.value.model} · firmware ${handy.info.value.firmware}` : undefined, icon: 'i-carbon-wifi', key: 'handy' })
+  else if (handy.error.value)
+    toast.error('Could not connect to the Handy', { detail: handy.error.value, key: 'handy' })
+}
+
+async function disconnectHandy() {
+  await handy.disconnect()
+  toast('Disconnected from the Handy', { icon: 'i-carbon-wifi-off', key: 'handy' })
+}
+
+const handyScriptLine = computed(() => {
+  switch (handy.script.value) {
+    case 'loading':
+      return { tone: 'info' as const, text: 'Sending the script…' }
+    case 'ready':
+      return { tone: 'ok' as const, text: handy.playing.value ? 'Playing with the video' : 'Script on the device' }
+    case 'failed':
+      return { tone: 'danger' as const, text: 'The script could not be set up' }
+    default:
+      return { tone: 'idle' as const, text: 'Load a video with a stroke script' }
+  }
+})
 
 // ─── Vibration (Buttplug strength toys) ───────────────────────────────────────
 const session = useSessionControlStore()
@@ -297,6 +345,16 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
       return { tone: 'danger', label: 'Web Serial unavailable', detail: 'Use Chrome or Edge for a USB device' }
     return { tone: 'idle', label: 'Not connected', detail: 'Plug the device in by USB, then connect' }
   }
+  if (transport.value === 'handy') {
+    if (handyBusy.value)
+      return { tone: 'info', label: 'Connecting…', detail: 'Reaching the Handy through Handy\'s server' }
+    if (handy.connected.value) {
+      if (!handy.enabled.value)
+        return { tone: 'warn', label: 'Connected, output held', detail: '"Send to device" is off' }
+      return { tone: 'ok', label: 'Connected', detail: handy.info.value ? `${handy.info.value.model} · WiFi` : 'WiFi' }
+    }
+    return { tone: 'idle', label: 'Not connected', detail: 'Enter the connection key from the Handy app' }
+  }
   if (bpConnecting.value)
     return { tone: 'info', label: 'Connecting…', detail: bpUrl.value }
   if (bp.connected.value) {
@@ -309,12 +367,18 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
 })
 
 /** Connected but nothing is sent: worth a button right where it says so. */
-const held = computed(() => transport.value === 'serial'
-  ? device.connected && !device.deviceEnabled
-  : bp.connected.value && !bp.enabled.value)
+const held = computed(() => {
+  if (transport.value === 'serial')
+    return device.connected && !device.deviceEnabled
+  if (transport.value === 'handy')
+    return handy.connected.value && !handy.enabled.value
+  return bp.connected.value && !bp.enabled.value
+})
 function releaseOutput() {
   if (transport.value === 'serial')
     device.deviceEnabled = true
+  else if (transport.value === 'handy')
+    handy.setEnabled(true)
   else
     bp.setEnabled(true)
 }
@@ -541,7 +605,7 @@ const logOpen = ref(false)
 
       <div class="flex gap-3 items-center relative">
         <div class="rounded-[var(--radius-md)] center shrink-0 h-10 w-10 transition-colors duration-300 relative" :class="TILE[status.tone]">
-          <span :class="transport === 'serial' ? 'i-carbon-usb' : 'i-brand-intiface'" class="text-[19px]" />
+          <span :class="TRANSPORT_ICON[transport]" class="text-[19px]" />
           <span
             class="rounded-full h-2.5 w-2.5 ring-2 ring-surface-850 transition-colors duration-300 absolute -right-0.5 -top-0.5"
             :class="[DOT[status.tone], live ? 'animate-pulse-dot' : '']"
@@ -640,7 +704,7 @@ const logOpen = ref(false)
         </div>
 
         <!-- Intiface (the Buttplug protocol) -->
-        <div v-else key="buttplug" class="flex flex-col gap-2.5 relative">
+        <div v-else-if="transport === 'buttplug'" key="buttplug" class="flex flex-col gap-2.5 relative">
           <UiInput
             v-model="bpUrl"
             icon="i-carbon-network-3"
@@ -806,6 +870,101 @@ const logOpen = ref(false)
               </div>
             </div>
           </template>
+        </div>
+
+        <!-- The Handy over WiFi (Handy's cloud API) -->
+        <div v-else key="handy" class="flex flex-col gap-2.5 relative">
+          <UiInput
+            v-model="handy.connectionKey.value"
+            icon="i-carbon-password"
+            label="Connection key"
+            placeholder="From the Handy app"
+            mono
+            size="md"
+            :disabled="handy.connected.value || handyBusy"
+            @enter="connectHandy"
+          />
+
+          <UiButton
+            v-if="!handy.connected.value"
+            variant="primary"
+            size="lg"
+            block
+            icon="i-carbon-connect"
+            :loading="handyBusy"
+            @click="connectHandy"
+          >
+            Connect to the Handy
+          </UiButton>
+          <UiButton v-else variant="secondary" size="md" block icon="i-carbon-close" @click="disconnectHandy">
+            Disconnect
+          </UiButton>
+
+          <div
+            v-if="handy.error.value"
+            class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20 animate-fade-in"
+          >
+            <span class="i-carbon-error-filled text-[14px] mt-px shrink-0" />
+            <span class="min-w-0 break-words">
+              {{ handy.error.value }}
+              <a v-if="handyNeedsUpdate" :href="HANDY_OTA_URL" target="_blank" rel="noopener" class="underline">Update it here.</a>
+            </span>
+          </div>
+
+          <template v-if="handy.connected.value">
+            <UiSwitch v-model="handyEnabled" size="sm" label="Send to device" hint="Off stops the Handy but keeps the link" />
+            <div class="text-[12px] px-2.5 rounded-[var(--radius-sm)] bg-surface-950/60 flex gap-2 h-8 items-center">
+              <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="DOT[handyScriptLine.tone]" />
+              <span class="text-fg-muted truncate">{{ handyScriptLine.text }}</span>
+            </div>
+            <UiSlider
+              v-model="handy.offsetMs.value"
+              label="Sync offset"
+              :min="-500"
+              :max="500"
+              :step="10"
+              :format="signedMs"
+              :reset="0"
+              hint="Positive moves the Handy earlier. Separate from Device latency, which is for USB and Intiface."
+            />
+          </template>
+
+          <p v-else class="hint">
+            For a Handy on WiFi with firmware 4. The Handy plays the whole stroke script itself, kept in time with the
+            video through Handy's server, so fast scripts play as written. Needs an internet connection; the script is
+            uploaded to Handy's script hosting, shaped by the intensity knob and the stroke range.
+          </p>
+
+          <div class="flex flex-col">
+            <button
+              type="button"
+              class="text-[11.5px] text-fg-faint px-1 focusable rounded-[var(--radius-sm)] flex gap-1.5 h-6 transition-colors items-center hover:text-fg-muted"
+              :aria-expanded="handyAdvanced"
+              @click="handyAdvanced = !handyAdvanced"
+            >
+              <span class="i-carbon-chevron-right text-[11px] transition-transform duration-200" :class="handyAdvanced ? 'rotate-90' : ''" />
+              <span>Advanced</span>
+            </button>
+            <Transition name="t-collapse">
+              <div v-if="handyAdvanced">
+                <div class="min-h-0 overflow-hidden">
+                  <div class="pt-1.5 flex flex-col gap-1.5">
+                    <UiInput
+                      v-model="handy.appIdOverride.value"
+                      label="Application ID"
+                      :placeholder="handy.hasBuiltInAppId ? 'Built in' : 'From the Handy developer portal'"
+                      mono
+                      size="sm"
+                      :disabled="handy.connected.value"
+                    />
+                    <p class="hint">
+                      {{ handy.hasBuiltInAppId ? 'Only needed to use your own instead of the one built in.' : 'This build has none: get one at user.handyfeeling.com.' }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+          </div>
         </div>
       </Transition>
     </section>

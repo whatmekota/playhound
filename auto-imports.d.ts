@@ -256,6 +256,7 @@ declare global {
   const useGamepad: typeof import('./src/composables/useGamepad').useGamepad
   const useGamepadStatus: typeof import('./src/composables/useGamepadStatus').useGamepadStatus
   const useGeolocation: typeof import('@vueuse/core').useGeolocation
+  const useHandy: typeof import('./src/composables/useHandy').useHandy
   const useHeartRate: typeof import('./src/composables/useHeartRate').useHeartRate
   const useId: typeof import('vue').useId
   const useIdle: typeof import('@vueuse/core').useIdle
@@ -720,6 +721,7 @@ declare module 'vue' {
     readonly useGamepad: UnwrapRef<typeof import('./src/composables/useGamepad')['useGamepad']>
     readonly useGamepadStatus: UnwrapRef<typeof import('./src/composables/useGamepadStatus')['useGamepadStatus']>
     readonly useGeolocation: UnwrapRef<typeof import('@vueuse/core')['useGeolocation']>
+    readonly useHandy: UnwrapRef<typeof import('./src/composables/useHandy')['useHandy']>
     readonly useHeartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['useHeartRate']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useIdle: UnwrapRef<typeof import('@vueuse/core')['useIdle']>

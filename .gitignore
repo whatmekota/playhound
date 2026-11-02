@@ -20,3 +20,10 @@ firmware/cyd-face/build/
 firmware/cyd-face/_preview.png
 
 __pycache__/
+
+# The Handy: credentials from the developer portal. Only the application ID
+# is built into the app (VITE_HANDY_APP_ID in .env.local); the key and the
+# access token never leave this machine.
+/appid
+/appkey
+/handytoken
