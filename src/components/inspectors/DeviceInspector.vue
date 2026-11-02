@@ -211,21 +211,27 @@ async function disconnectHandy() {
 
 const HANDY_PROTOCOLS = [
   { value: 'hsp' as const, label: 'Streamed', title: 'HSP: the next few seconds at a time; the knob and edges apply at once' },
+  { value: 'hdsp' as const, label: 'Live', title: 'HDSP: every move sent as it happens, as MultiFunPlayer does' },
   { value: 'hssp' as const, label: 'Whole script', title: 'HSSP: the whole script up front; rides out a poor connection' },
 ]
+const HANDY_PROTOCOL_HINT: Record<string, string> = {
+  hsp: 'Streamed: a few seconds of the script at a time, played on the Handy\'s own clock, so the knob and edges apply within a second. The steadiest choice for fast scripts.',
+  hdsp: 'Live: every move is sent as the video reaches it, early by half the round trip, as MultiFunPlayer does. Follows everything at once, but a slow or uneven connection shows in the strokes.',
+  hssp: 'Whole script: uploaded to Handy\'s script hosting and played from there, so a poor connection matters least. A knob change uploads it again, and an edge stops the Handy instead of easing off.',
+}
 const handyScriptLine = computed(() => {
-  const streamed = handy.protocol.value === 'hsp'
+  const mode = handy.protocol.value
   switch (handy.script.value) {
     case 'loading':
-      return { tone: 'info' as const, text: streamed ? 'Starting a stream…' : 'Sending the script…' }
+      return { tone: 'info' as const, text: mode === 'hsp' ? 'Starting a stream…' : 'Sending the script…' }
     case 'ready':
       if (handy.playing.value)
-        return { tone: 'ok' as const, text: streamed ? 'Streaming with the video' : 'Playing with the video' }
-      return { tone: 'ok' as const, text: streamed ? 'Ready to stream' : 'Script on the device' }
+        return { tone: 'ok' as const, text: mode === 'hsp' ? 'Streaming with the video' : mode === 'hdsp' ? 'Moving live with the video' : 'Playing with the video' }
+      return { tone: 'ok' as const, text: mode === 'hsp' ? 'Ready to stream' : mode === 'hdsp' ? 'Ready to move live' : 'Script on the device' }
     case 'failed':
       return { tone: 'danger' as const, text: 'The script could not be set up' }
     default:
-      return { tone: 'idle' as const, text: 'Load a video with a stroke script' }
+      return { tone: 'idle' as const, text: 'Load a video with a stroke script, or start the motion generator' }
   }
 })
 
@@ -923,6 +929,9 @@ const logOpen = ref(false)
             <div class="text-[12px] px-2.5 rounded-[var(--radius-sm)] bg-surface-950/60 flex gap-2 h-8 items-center">
               <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="DOT[handyScriptLine.tone]" />
               <span class="text-fg-muted truncate">{{ handyScriptLine.text }}</span>
+              <span v-tip="'Round trip to Handy\'s server, measured on connect. Live moves leave half of it early.'" class="text-[11px] text-fg-faint num ml-auto shrink-0">
+                {{ handy.roundTripMs.value }} ms
+              </span>
             </div>
             <UiSlider
               v-model="handy.offsetMs.value"
@@ -939,7 +948,8 @@ const logOpen = ref(false)
           <p v-else class="hint">
             For a Handy on WiFi with firmware 4. playhound sends the stroke script a few seconds ahead and the Handy plays
             it itself, kept in time with the video through Handy's server, so fast scripts play as written. The intensity
-            knob, edges and the stroke range still apply. Needs an internet connection.
+            knob, edges and the stroke range still apply, and the motion generator (music, tap tempo, gamepad) drives it
+            too. Needs an internet connection.
           </p>
 
           <div class="flex flex-col">
@@ -961,9 +971,7 @@ const logOpen = ref(false)
                       <UiSegmented v-model="handy.protocol.value" :options="HANDY_PROTOCOLS" size="xs" block />
                     </div>
                     <p class="hint">
-                      {{ handy.protocol.value === 'hsp'
-                        ? 'Streamed: a few seconds at a time, so the knob and edges apply within a second. Try Whole script if strokes stutter on a slow connection.'
-                        : 'Whole script: uploaded to Handy\'s script hosting and played from there, so a poor connection matters less. A knob change uploads it again, and an edge stops the Handy instead of easing off.' }}
+                      {{ HANDY_PROTOCOL_HINT[handy.protocol.value] }} The motion generator always goes live, since it has no script to send ahead.
                     </p>
                     <UiInput
                       v-model="handy.appIdOverride.value"
