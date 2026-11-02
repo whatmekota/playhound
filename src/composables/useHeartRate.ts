@@ -3,6 +3,7 @@ import type { Ref } from 'vue'
 import type { HeartGuardSettings, HeartRateReading } from '~/lib/heartRate'
 import { useLocalStorage } from '@vueuse/core'
 import { effectScope, reactive, readonly, ref, shallowRef, triggerRef } from 'vue'
+import { desktop } from '~/lib/browserApi'
 import { createGuardState, createHeartRateProcessor, DEFAULT_GUARD, parseHeartRateMeasurement, stepGuard } from '~/lib/heartRate'
 import { KEYS } from '~/lib/persist'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -214,6 +215,7 @@ async function connect() {
       state.error = 'Bluetooth is off or this computer has no Bluetooth adapter.'
       return
     }
+    desktop?.bluetooth?.expect('heart')
     const d = await navigator.bluetooth.requestDevice({ filters: [{ services: ['heart_rate'] }] })
     await attach(d)
     remember(d)

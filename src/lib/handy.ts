@@ -2,12 +2,14 @@ import type { FunscriptAction } from './funscriptParser'
 import { backOff, intensityParams, scaleScript } from './scriptScale'
 
 /**
- * The Handy over WiFi, through Handy's own cloud API (v3).
+ * The Handy (firmware 4): what to send it, over WiFi through Handy's own
+ * cloud API (v3), or over Bluetooth (handyBle.ts) in the same protocols.
  *
- * Over Bluetooth the player streams every stroke as it plays, and fast
- * scripts choke the link. Over WiFi the device plays timed points itself,
- * and client and device agree on time through the server's clock, so the
- * only per-session measurement is this client's offset to it. Two ways in:
+ * Sending every stroke as it plays chokes on fast scripts. Instead the
+ * device plays timed points itself, and client and device agree on time
+ * through a shared clock: Handy's server over WiFi, playhound itself over
+ * Bluetooth. So the only per-session measurement is the offset to that
+ * clock. Two ways in:
  *
  * - HSP (streaming): the player keeps the next few seconds of the script in
  *   the device's buffer, shaped as they are sent, so the intensity knob and

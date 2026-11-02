@@ -71,6 +71,7 @@ export const KEYS = {
   handyEnabled: def('ph:handy.enabled', 'setting', 'Handy on/off'),
   handyOffset: def('ph:handy.offset', 'setting', 'Handy sync offset'),
   handyProtocol: def('ph:handy.protocol', 'setting', 'Handy streaming or whole-script mode'),
+  handyLink: def('ph:handy.link', 'setting', 'Handy over WiFi or Bluetooth'),
   heartDevice: def('ph:heart.device', 'setting', 'Heart-rate monitor'),
   heartGuard: def('ph:heart.guard', 'setting', 'Heart-rate guard'),
   eroscriptsCookie: def('ph:eroscripts.cookie', 'setting', 'EroScripts session'),

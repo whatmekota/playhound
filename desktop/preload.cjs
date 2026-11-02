@@ -126,6 +126,12 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   window: windowApi,
   presence: presenceApi,
   eroscripts: eroscriptsApi,
+  bluetooth: winState
+    ? Object.freeze({
+        /** What the next requestDevice() is for: 'heart' or 'handy'. */
+        expect: kind => void ipcRenderer.sendSync('ph:bt:expect', kind === 'handy' ? 'handy' : 'heart'),
+      })
+    : undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

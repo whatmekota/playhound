@@ -108,6 +108,8 @@ function lanAddresses() {
 let win = null
 /** Origin of the page the main window loads; IPC from anything else is ignored. */
 let appOrigin = null
+/** The main window's Bluetooth chooser, told by the page what it is about to ask for. */
+let bluetooth = null
 
 if (!app.requestSingleInstanceLock()) {
   // Another playhound already owns the window and the ports; it gets focused
@@ -282,6 +284,12 @@ async function boot() {
       return
     await esSession().clearStorageData()
     esNotify(false)
+  })
+  // Sent synchronously just before requestDevice(), so it lands first.
+  ipcMain.on('ph:bt:expect', (event, kind) => {
+    if (fromMainWindow(event))
+      bluetooth?.expect(kind)
+    event.returnValue = true
   })
   ipcMain.on('ph:bg', (_event, color) => {
     const hex = toHex(color)
@@ -458,12 +466,15 @@ function createWindow(url) {
 
   const wc = win.webContents
 
-  // Web Bluetooth (the heart-rate monitor) picks its device per window.
-  setupBluetooth(wc, {
+  // Web Bluetooth (the heart-rate monitor, the Handy) picks its device per window.
+  bluetooth = setupBluetooth(wc, {
     origin: appOrigin,
-    lastDevice: () => state.bluetoothDevice,
-    rememberDevice: (id) => {
-      state.bluetoothDevice = id
+    lastDevice: kind => (kind === 'handy' ? state.handyDevice : state.bluetoothDevice),
+    rememberDevice: (kind, id) => {
+      if (kind === 'handy')
+        state.handyDevice = id
+      else
+        state.bluetoothDevice = id
       saveState()
     },
   })

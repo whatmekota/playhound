@@ -427,7 +427,7 @@ declare global {
   export type { GamepadActions } from './src/composables/useGamepad'
   import('./src/composables/useGamepad')
   // @ts-ignore
-  export type { HandyProtocol } from './src/composables/useHandy'
+  export type { HandyProtocol, HandyLink } from './src/composables/useHandy'
   import('./src/composables/useHandy')
   // @ts-ignore
   export type { HeartStatus, HeartTimelinePoint } from './src/composables/useHeartRate'
