@@ -33,14 +33,14 @@ describe('analysis performance', () => {
   })
 
   it('scales roughly linearly, not quadratically, with script length', () => {
-    // A 2x size gap put linear (~2x) and the noise floor uncomfortably close on
-    // a busy machine, so this compares 1x against 4x: linear lands near 4x and
-    // quadratic near 16x, which survives scheduler jitter. Timings take the
-    // best of several runs for the same reason, and each run repeats the call
-    // for at least 20 ms: the quarter takes about a millisecond, and one
-    // scheduler hiccup on a CI runner was enough to read 9x for linear code.
+    // Linear code does not time as linear: allocation and garbage collection
+    // grow with the input too, and a 4x size gap read 9-10x on a busy runner.
+    // So this compares 1x against 8x, where linear lands around 8-20x and
+    // quadratic at 64x. Timings take the best of several runs, and each run
+    // repeats the call for at least 20 ms, since the small one takes well
+    // under a millisecond.
     const base = longScript()
-    const quarter = base.slice(0, Math.floor(base.length / 4))
+    const eighth = base.slice(0, Math.floor(base.length / 8))
 
     const perCall = (a: typeof base) => {
       let calls = 0
@@ -59,12 +59,11 @@ describe('analysis performance', () => {
     }
 
     // Warm up so JIT compilation does not land inside a measured run.
-    best(quarter)
+    best(eighth)
     best(base)
 
-    // Linear is ~4x, quadratic ~16x.
-    const ratio = best(base) / best(quarter)
-    expect(ratio).toBeLessThan(10)
+    const ratio = best(base) / best(eighth)
+    expect(ratio).toBeLessThan(32)
   })
 
   it('stays fast for repeated phase lookups during playback', () => {
