@@ -53,3 +53,25 @@ describe('edge envelope', () => {
     expect(e.sample(at(15), T).phase).toBe('idle')
   })
 })
+
+describe('soft start (startAtDepth)', () => {
+  const SOFT = { cooldownSec: 0, rebuildSec: 2, depth: 0.8 }
+
+  it('begins at the hold depth with no fall, and is back to full travel after the rebuild', () => {
+    const e = createEdgeEnvelope()
+    e.startAtDepth(at(5), SOFT)
+    const first = e.sample(at(5), SOFT)
+    expect(first.holdBack).toBeCloseTo(0.8)
+    expect(first.phase).toBe('rebuilding')
+    expect(e.sample(at(6), SOFT).holdBack).toBeCloseTo(0.4)
+    expect(e.sample(at(7.01), SOFT)).toEqual({ holdBack: 0, phase: 'idle', remainingSec: 0 })
+  })
+
+  it('a second start (another seek) begins again from the depth', () => {
+    const e = createEdgeEnvelope()
+    e.startAtDepth(at(0), SOFT)
+    expect(e.sample(at(1.5), SOFT).holdBack).toBeLessThan(0.2)
+    e.startAtDepth(at(1.5), SOFT)
+    expect(e.sample(at(1.5), SOFT).holdBack).toBeCloseTo(0.8)
+  })
+})

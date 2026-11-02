@@ -257,7 +257,9 @@ export function useVideoSync() {
           playing: !videoEl.paused && !videoEl.seeking && videoEl.readyState >= 3,
           at: timeMs + (offsetMs ?? 0),
           rate: speed,
-          hold: holdsNow(),
+          // Edges only: the Handy moves between points at its own pace, so a
+          // resume needs no soft start, and under Whole script any hold stops it.
+          hold: control.holdBack,
         })
         if (settle) {
           void bp.sendLinear(pos, SEND_INTERVAL_MS)
