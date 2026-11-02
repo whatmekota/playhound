@@ -1,4 +1,5 @@
-import { ref, watch } from 'vue'
+import type { TappedTempo } from '~/lib/tapTempo'
+import { computed, ref, shallowRef, watch } from 'vue'
 import {
   createOnsetDetector,
   estimatePeriod,
@@ -7,6 +8,7 @@ import {
 } from '~/lib/beatDetect'
 import { phaseError } from '~/lib/funscriptAnalysis'
 import { createBeatGrid, createEnergyFollower } from '~/lib/musicMotion'
+import { createTapper, scaleTempo, tappedBeats, tappedBpm, TAPS_FOR_TEMPO } from '~/lib/tapTempo'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -88,6 +90,55 @@ function playingVideo(): HTMLVideoElement | null {
   return videoEl
 }
 
+// ─── The tapped tempo ─────────────────────────────────────────────────────────
+// A few taps on the beat (T) set the tempo by hand, for a track the analysis
+// gets wrong or cannot hear. It wins over both other sources, lives on the
+// video's clock so a pause or a speed change keeps it, and is forgotten when
+// the video changes.
+
+const tapper = createTapper()
+const tapped = shallowRef<TappedTempo | null>(null)
+/** Taps in the current run, to say how many more a tempo needs. */
+const tapCount = ref(0)
+
+function tappedReading() {
+  const t = tapped.value
+  const el = t && playingVideo()
+  if (!t || !el)
+    return null
+  return { beats: tappedBeats(t, el.currentTime), bpm: tappedBpm(t) * (el.playbackRate || 1) }
+}
+
+/** One tap on the beat. False when there is no video to tap along to. */
+export function tapTempo(): boolean {
+  const el = playingVideo()
+  if (!el)
+    return false
+  tapped.value = tapper.tap(el.currentTime, tapped.value)
+  tapCount.value = tapper.count
+  return true
+}
+
+/** Back to the analysed or heard beat. */
+export function clearTapTempo() {
+  tapper.reset()
+  tapped.value = null
+  tapCount.value = 0
+}
+
+/** Double or halve the tapped tempo (a track tapped on every other beat). */
+export function scaleTapTempo(factor: number) {
+  if (tapped.value)
+    tapped.value = scaleTempo(tapped.value, factor) ?? tapped.value
+}
+
+/** The tapped tempo in bpm at normal speed, or null, and how many taps a tempo still needs. */
+export const tapState = computed(() => ({
+  bpm: tapped.value ? Math.round(tappedBpm(tapped.value)) : null,
+  taps: tapCount.value,
+  needed: Math.max(0, TAPS_FOR_TEMPO - tapCount.value),
+}))
+
 /** The analysed grid at the video's current position, tempo in real time. */
 function analysedReading() {
   const g = getAnalysedGrid()
@@ -107,6 +158,9 @@ function analysedReading() {
  * onset to ~250ms and makes the tempo estimate impossible to settle.
  */
 export function getBeatClock(): { phase: number, rateHz: number } | null {
+  const t = tappedReading()
+  if (t)
+    return { phase: t.beats - Math.floor(t.beats), rateHz: t.bpm / 60 }
   const r = analysedReading()
   if (r)
     return { phase: r.beats - Math.floor(r.beats), rateHz: r.bpm / 60 }
@@ -121,7 +175,7 @@ export function getBeatClock(): { phase: number, rateHz: number } | null {
 
 /** Reactive: true once the soundtrack has given up a tempo and a downbeat. */
 export function isBeatReady(): boolean {
-  return isAnalysedGridReady() || beatReady.value
+  return tapped.value !== null || isAnalysedGridReady() || beatReady.value
 }
 
 /**
@@ -133,6 +187,9 @@ export function isBeatReady(): boolean {
  * on the analysed downbeats — and from live listening otherwise.
  */
 export function getBeatGrid(): { beats: number, bpm: number, confidence: number, energy: number } | null {
+  const t = tappedReading()
+  if (t)
+    return { beats: t.beats, bpm: t.bpm, confidence: 1, energy: analysedReading()?.energy ?? loudness.energy }
   const r = analysedReading()
   if (r)
     return { beats: r.beats, bpm: r.bpm, confidence: r.confidence, energy: r.energy }
@@ -259,7 +316,12 @@ export function useVideoBeat() {
       lastPublishMs = tMs
       energy.value = analysed ? analysed.energy : loudness.energy
       confidence.value = analysed ? analysed.confidence : grid.confidence()
-      if (analysed) {
+      const tapReading = tappedReading()
+      if (tapReading) {
+        bpm.value = Math.round(tapReading.bpm)
+        beatPeriodMs.value = 60000 / tapReading.bpm
+      }
+      else if (analysed) {
         bpm.value = Math.round(analysed.bpm)
         beatPeriodMs.value = 60000 / analysed.bpm
       }
@@ -281,7 +343,7 @@ export function useVideoBeat() {
         if (p) {
           grid.setPeriod(p)
           periodMs = grid.periodMs
-          if (!analysed) {
+          if (!analysed && !tapped.value) {
             beatPeriodMs.value = periodMs
             bpm.value = Math.round(periodToBpm(periodMs))
           }
@@ -333,8 +395,11 @@ export function useVideoBeat() {
     reset()
   }
 
-  // Re-learn the tempo when the track changes.
-  watch(() => player.videoPath, reset)
+  // Re-learn the tempo when the track changes; a tapped one was for that track.
+  watch(() => player.videoPath, () => {
+    reset()
+    clearTapTempo()
+  })
   watch(() => player.videoUrl, (url) => {
     videoSrc = url ?? ''
     videoEl = null

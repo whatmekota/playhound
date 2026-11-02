@@ -30,7 +30,7 @@ import { useSessionAudio } from '~/composables/useSessionAudio'
 import { useSettings } from '~/composables/useSettings'
 import { toast } from '~/composables/useToast'
 import { useVibeSync } from '~/composables/useVibeSync'
-import { useVideoBeat } from '~/composables/useVideoBeat'
+import { clearTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { desktop, openVideoFile, storage } from '~/lib/browserApi'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { KEYS } from '~/lib/persist'
@@ -325,7 +325,28 @@ function runShellAction(action: ShellAction) {
     case 'next-peak': session.nextPeak(); break
     case 'finish': session.finish(); break
     case 'came': session.came(); break
+    case 'tap-tempo': tapBeat(); break
+    case 'tap-clear':
+      clearTapTempo()
+      toast('Tapped tempo forgotten', { detail: 'Back to the beat heard in the music', icon: 'i-carbon-music', key: 'tap' })
+      break
   }
+}
+
+/** T: one tap on the beat. Says how many more a tempo needs, then what it is. */
+function tapBeat() {
+  if (!player.videoPath || !tapTempo()) {
+    toast('Play a video to tap along to', { icon: 'i-carbon-music', key: 'tap' })
+    return
+  }
+  const s = tapState.value
+  const elsewhere = motion.source === 'music' ? undefined : 'Used by the Music motion source'
+  if (s.bpm === null)
+    toast(s.needed > 0 ? `Tap ${s.needed} more on the beat` : 'Tap steadily on the beat', { icon: 'i-carbon-music', key: 'tap', duration: 2000 })
+  else if (s.needed > 0)
+    toast(`Beat put back · ${s.bpm} bpm`, { detail: elsewhere ?? 'Keep tapping to set a new tempo', icon: 'i-carbon-music', key: 'tap', duration: 2000 })
+  else
+    toast(`${s.bpm} bpm tapped`, { detail: elsewhere ?? 'Keep tapping to refine it; Shift + T forgets it', icon: 'i-carbon-music', key: 'tap', duration: 2000 })
 }
 
 function onGlobalKeyDown(e: KeyboardEvent) {
