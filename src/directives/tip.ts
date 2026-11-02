@@ -41,12 +41,13 @@ function ensureEl() {
   const style = document.createElement('style')
   style.textContent = `
 .ph-tip{position:fixed;z-index:2000;pointer-events:none;display:flex;align-items:center;gap:8px;
-  padding:5px 8px;border-radius:7px;font:500 12px/1.2 Geist,Inter,system-ui,sans-serif;
+  padding:5px 8px;border-radius:7px;font:500 12px/1.35 Geist,Inter,system-ui,sans-serif;
   color:var(--text);background:var(--bg-700);box-shadow:var(--shadow-pop);
   opacity:0;transform:translateY(2px) scale(.98);transition:opacity .12s var(--ease-out),transform .16s var(--ease-out);
-  white-space:nowrap;max-width:320px}
+  width:max-content;max-width:min(300px,calc(100vw - 8px));text-wrap:pretty;overflow-wrap:break-word}
 .ph-tip.on{opacity:1;transform:none}
-.ph-tip kbd{font:500 10.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);
+.ph-tip span{min-width:0}
+.ph-tip kbd{flex-shrink:0;white-space:nowrap;font:500 10.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);
   padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--text) 8%,transparent)}`
   document.head.appendChild(style)
   return tipEl
