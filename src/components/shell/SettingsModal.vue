@@ -89,6 +89,7 @@ const library = useLibraryStore()
 
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
+const resumeOnStart = useLocalStorage(KEYS.resumeOnStart.key, true)
 
 type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
@@ -377,16 +378,16 @@ function openBackup() {
               <div class="px-4 py-3 card flex flex-col gap-3">
                 <UiSwitch v-model="splash" label="Intro animation" hint="Plays once per browser session; reloads go straight in. Add ?nosplash to the address to skip it once." />
               </div>
-              <div class="px-4 py-3.5 card flex gap-3">
-                <span class="i-carbon-restart text-[18px] text-accent-300 mt-0.5 shrink-0" />
-                <div class="flex flex-col gap-1">
-                  <span class="text-[13px] text-fg">Resumes where you left off</span>
-                  <span class="hint">
-                    At startup playhound reopens your last folder, rebuilds the queue and loads the video you were
-                    watching — paused, a few seconds before where you stopped. If the browser asks for permission
-                    again, a single Reconnect click on the welcome screen brings it all back.
-                  </span>
-                </div>
+              <div class="px-4 py-3 card flex flex-col gap-3">
+                <UiSwitch
+                  v-model="resumeOnStart"
+                  label="Resume where you left off"
+                  hint="Loads the video you were watching, paused a few seconds before where you stopped, with its queue. Off, startup opens on the home screen."
+                />
+                <p class="hint m-0">
+                  Your last folder reopens either way. If the browser asks for permission again, one Reconnect click on
+                  the home screen brings it back.
+                </p>
               </div>
             </template>
 

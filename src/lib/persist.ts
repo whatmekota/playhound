@@ -85,6 +85,7 @@ export const KEYS = {
   panicOnBlur: def('ph:safety.panicOnBlur', 'setting', 'Panic when the window loses focus'),
   idleStopMinutes: def('ph:safety.idleStopMinutes', 'setting', 'Idle device stop'),
   splash: def('ph:ui.splash', 'setting', 'Splash screen'),
+  resumeOnStart: def('ph:ui.resumeOnStart', 'setting', 'Resume the last video at startup'),
   slideshow: def('ph:slideshow.settings', 'setting', 'Slideshow'),
   wallSnap: def('ph:wall.snap', 'setting', 'Media wall snapping'),
   wallGrid: def('ph:wall.grid', 'setting', 'Media wall grid'),

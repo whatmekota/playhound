@@ -11,11 +11,13 @@ import type { ScriptMatch, VideoEntry } from './libraryStore'
  * The <video> element itself belongs to VideoPlayer, which registers its
  * controls with `bindPlayer` on mount.
  */
+import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { toast } from '~/composables/useToast'
+import { KEYS } from '~/lib/persist'
 import { useDeviceStore } from './deviceStore'
 import { useLibraryStore } from './libraryStore'
 import { usePlayerStore } from './playerStore'
@@ -350,8 +352,10 @@ export const usePlaybackStore = defineStore('playback', () => {
   })
 
   const restored = ref(false)
+  /** Settings → Startup. Off, startup lands on the welcome screen with the library open. */
+  const resumeOnStart = useLocalStorage(KEYS.resumeOnStart.key, true)
   async function restoreSession() {
-    if (restored.value || player.videoUrl)
+    if (restored.value || player.videoUrl || !resumeOnStart.value)
       return
     const saved = loadSavedQueue()
     if (!saved || !library.videos.length)

@@ -453,10 +453,23 @@ function setMax(axis: AxisConfig, e: Event) {
 /** Linear and rotary axes rest centred; vibration and suction rest off. */
 const restDefault = (ch: string) => (ch.startsWith('L') || ch.startsWith('R') ? 0.5 : 0)
 
+let handySweep: ReturnType<typeof setTimeout>[] = []
+
 function test(ch: string) {
   void testAxis(ch)
+  // The Handy is the stroke axis too: same sweep, through the same range
+  // and direction, as live moves.
+  const onHandy = ch === 'L0' && handy.connected.value && handy.enabled.value
+  if (onHandy) {
+    handySweep.forEach(clearTimeout)
+    handy.liveMove(0, 1000)
+    handySweep = [
+      setTimeout(() => handy.liveMove(1, 1000), 1100),
+      setTimeout(() => handy.liveRest(500), 2200),
+    ]
+  }
   toast(`Testing ${device.axisConfigs[ch]?.label ?? ch}`, {
-    detail: device.connected ? 'Bottom, top, then back to rest' : 'No device connected: the emulator shows it',
+    detail: device.connected || onHandy ? 'Bottom, top, then back to rest' : 'No device connected: the emulator shows it',
     icon: 'i-carbon-play',
     key: 'axis-test',
   })
