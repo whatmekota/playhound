@@ -69,6 +69,12 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   seconds ahead and the Handy plays it on its own clock, kept in step with the
   video, so fast scripts play as written, and edges and the intensity knob
   still apply.
+- **Pop-out player.** **O** puts the video in a small window that stays on
+  top of other apps, with the device still in sync. In the desktop app it can
+  be made see-through and let clicks pass to the window underneath, so it can
+  sit over a game.
+- **VR too.** Side-by-side VR plays in a look-around view: 180°, 190° and 200°,
+  equirectangular or fisheye.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
   that you can save and edit. If it hears the beat wrong, tap it in with **T**.
@@ -229,6 +235,7 @@ The ones you'll use most:
 | Key              | Does                                                |
 | ---------------- | --------------------------------------------------- |
 | Space · ← → · F  | play/pause · seek 5 s · fullscreen                  |
+| **O**            | pop-out player, on top of other windows             |
 | N · P · R        | next · previous · random scripted video             |
 | , · .            | previous / next chapter of the script               |
 | **E** · Shift+E  | edge (back everything off) · "I'm OK", end the hold |
@@ -325,7 +332,8 @@ it full screen on your second display, and it needs no relay or setup.
   EroScripts, Organizer, Stats.
 - **Right rail:** Queue, Scripts, Bookmarks, Device, Motion, Programme, Remote,
   Face, Binaural, Hypno, Director, Backup. Middle-click a panel icon to pin it.
-- **Library:** search, filter chips, script intensity and speed sparklines,
+- **Library:** one folder or several (a collection split across drives),
+  search, filter chips, sort by folder, script intensity and speed sparklines,
   hover-scrub previews, and an **auto-director** that picks the next video
   to suit the moment.
 - **Organizer:** rename a video and all its scripts together, keeping the
@@ -335,6 +343,8 @@ it full screen on your second display, and it needs no relay or setup.
   [The EroScripts browser](#the-eroscripts-browser)).
 - **Stats:** watch time, plays, finishes and edges, per video and per day.
 - **Themes:** dark, light, Catppuccin and Dracula, plus a choice of logos.
+  In the desktop app, **Interface size** makes everything up to twice as big,
+  for a screen across the room.
 
 ## Safety
 
@@ -418,10 +428,13 @@ Conventions that keep it in one piece:
 ## Status
 
 This is a personal project, built for and tested on one setup (Windows, Chrome,
-an OSR2). Two things are written but haven't been tried with real hardware yet:
+an OSR2). Forum testers have since run the Handy on real hardware: a Handy 2
+over WiFi and Bluetooth, and a Handy 1 over WiFi. Still waiting on real
+hardware:
 
-- vibrators through Intiface
-- the Handy, through Intiface, over WiFi or over Bluetooth
+- the Handy's Live mode and generated motion over WiFi (fixed in 1.4.0, not yet
+  confirmed)
+- vibrators through Intiface, and the Handy through Intiface
 
 Reports and fixes are welcome.
 
