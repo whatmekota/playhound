@@ -428,6 +428,37 @@ function seekWithOsd(delta: number) {
   )
 }
 
+// ─── Wheel: volume ───────────────────────────────────────────────────────────
+let wheelAcc = 0
+
+/**
+ * The wheel over the picture sets the volume, 5% a notch. Not in the mini
+ * player (it sits over a list you scroll), not in the VR view (the wheel
+ * zooms there), and not over anything of the player's own that scrolls.
+ */
+function onWheel(e: WheelEvent) {
+  if (isMini.value || player.sbs180 || !hasVideo.value || !e.deltaY)
+    return
+  if ((e.target as Element | null)?.closest?.('aside, input, .scroll-y'))
+    return
+  e.preventDefault()
+  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY
+  let notches: number
+  if (Math.abs(dy) >= 50) {
+    // A mouse wheel: one step per click, however far the system scrolls.
+    notches = Math.sign(dy)
+    wheelAcc = 0
+  }
+  else {
+    // A touchpad sends many small deltas; add them up.
+    wheelAcc += dy
+    notches = Math.trunc(wheelAcc / 100)
+    wheelAcc -= notches * 100
+  }
+  if (notches)
+    setVolume(Math.round(Math.max(0, Math.min(1, player.volume - notches * 0.05)) * 100) / 100)
+}
+
 // ─── Clicks on the video ─────────────────────────────────────────────────────
 /** A second click inside this window makes it a double-click. */
 const DOUBLE_MS = 280
@@ -842,6 +873,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       :class="hideCursor ? 'cursor-none' : ''"
       @pointermove="poke"
       @pointerleave="onPointerLeave"
+      @wheel="onWheel"
     >
       <Teleport :to="popout.parking" :disabled="!parked">
         <video
@@ -911,8 +943,9 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       <!-- ═══ Mini player ═══════════════════════════════════════════════════ -->
       <template v-if="isMini && hasVideo">
         <div class="pointer-events-none inset-0 absolute z-20">
+          <!-- Behind the title only: the picture itself stays as it is. -->
           <div
-            class="transition-opacity duration-200 inset-0 absolute from-black/65 to-black/55 via-black/10 bg-gradient-to-b group-hover/vp:opacity-100"
+            class="h-14 transition-opacity duration-200 inset-x-0 top-0 absolute from-black/55 to-transparent bg-gradient-to-b group-hover/vp:opacity-100"
             :class="player.isPlaying ? 'opacity-0' : 'opacity-100'"
           />
           <div
@@ -956,7 +989,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         <Transition name="t-fade">
           <div
             v-if="chromeVisible && !popped"
-            class="pb-10 pointer-events-none inset-x-0 top-0 absolute z-20 from-black/75 to-transparent via-black/30 bg-gradient-to-b"
+            class="vp-shadow pb-6 pointer-events-none inset-x-0 top-0 absolute z-20 from-black/50 to-transparent bg-gradient-to-b"
           >
             <div class="px-5 pt-4 flex gap-3 items-start">
               <Transition name="vp-title" mode="out-in">
@@ -1423,6 +1456,14 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
 </template>
 
 <style scoped>
+/* Text over the picture keeps its own contrast, so the scrim behind it can
+   stay light. */
+.vp-shadow {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.7),
+    0 0 8px rgba(0, 0, 0, 0.35);
+}
+
 /* The frameless desktop pop-out is moved by its top strip, like a title bar. */
 .pop-drag {
   -webkit-app-region: drag;

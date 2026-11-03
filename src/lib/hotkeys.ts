@@ -72,6 +72,7 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
     title: 'Audio',
     keys: [
       { keys: '↑ / ↓', label: 'Volume up / down', owner: 'player' },
+      { keys: 'Wheel over the video', label: 'Volume up / down', owner: 'player' },
       { keys: 'M', label: 'Mute', owner: 'player' },
     ],
   },
