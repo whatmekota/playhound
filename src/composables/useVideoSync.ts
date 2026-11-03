@@ -9,6 +9,7 @@ import { nextActionAt } from '~/lib/funscriptParser'
 import { clampLatency } from '~/lib/latency'
 import { KEYS } from '~/lib/persist'
 import { backOff, intensityParams, sampleScaled, scaleScript } from '~/lib/scriptScale'
+import { createSteadyClock } from '~/lib/steadyClock'
 import { frameCommand, holdCommand, SEND_INTERVAL_MS } from '~/lib/tcodeEncoder'
 import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
@@ -59,6 +60,9 @@ function isLevelChannel(channel: string): boolean {
   return channel[0] === 'V' || channel[0] === 'A'
 }
 
+/** The video's time standing still this long, while meant to play, is a stall. */
+const STILL_MS = 60
+
 export function useVideoSync() {
   const control = useSessionControlStore()
   const scriptStore = useScriptStore()
@@ -80,7 +84,9 @@ export function useVideoSync() {
   const syncing = ref(false)
 
   let snap = true
-  let stillFrames = 0
+  /** When the video's time last moved (performance.now()). */
+  let stillSince = 0
+  const clock = createSteadyClock()
   let prevVideoMs = -1
   let wasHolding = false
   let lastDir: Record<string, number> = {}
@@ -146,10 +152,11 @@ export function useVideoSync() {
     syncing.value = true
     bpSegmentAt = Number.NaN
     prevVideoMs = -1
-    stillFrames = 0
+    stillSince = 0
     wasHolding = false
     lastDir = {}
     snap = true
+    clock.reset()
     if (motion.softStart)
       control.softStart()
     tick()
@@ -160,7 +167,7 @@ export function useVideoSync() {
     prevStrokePos = null
     prevTs = 0
     prevVideoMs = -1
-    stillFrames = 0
+    stillSince = 0
     wasHolding = false
     lastDir = {}
     snap = true
@@ -224,16 +231,25 @@ export function useVideoSync() {
     if (!syncing.value || !videoEl)
       return
 
-    const timeMs = videoEl.currentTime * 1000
+    const rawMs = videoEl.currentTime * 1000
     const speed = videoEl.playbackRate
 
-    stillFrames = timeMs === prevVideoMs ? stillFrames + 1 : 0
-    prevVideoMs = timeMs
-    const hold = snap || stillFrames >= 2
+    const now = performance.now()
+    // Stalled (buffering, a frame that will not decode): hold where it is.
+    // Judged by time, not frames: on a fast screen currentTime can sit on
+    // one value for two or three frames while playing perfectly well, and
+    // holding then puts a flat spot and a jump into every stroke.
+    if (rawMs !== prevVideoMs) {
+      prevVideoMs = rawMs
+      stillSince = now
+    }
+    const hold = snap || now - stillSince >= STILL_MS
     const settle = hold && !wasHolding
     wasHolding = hold
 
-    const now = performance.now()
+    // Positions come off a steadied clock: currentTime itself moves in uneven
+    // steps, which would put a wobble into every stroke (lib/steadyClock).
+    const timeMs = clock.read(rawMs, now, speed, !hold && !videoEl.paused && !videoEl.seeking)
     const dtSec = prevTs ? Math.min(0.1, (now - prevTs) / 1000) : 0
     prevTs = now
     let strokePos: number | null = null
@@ -284,6 +300,7 @@ export function useVideoSync() {
 
   function onSeeked() {
     bpSegmentAt = Number.NaN
+    clock.reset()
     // After seek, immediately send current position without waiting for next RAF
     if (!videoEl || !syncing.value)
       return
@@ -294,7 +311,8 @@ export function useVideoSync() {
     const lead = leadMs(speed)
     snap = true
     prevVideoMs = timeMs
-    stillFrames = 1
+    // Still until the new frame plays: hold from the first tick on.
+    stillSince = performance.now() - STILL_MS
     wasHolding = false
     lastDir = {}
     for (const script of scriptStore.activeScripts) {
