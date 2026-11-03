@@ -276,6 +276,12 @@ async function boot() {
       win.close()
     }
   })
+  // Interface size: the page's zoom, which scales everything evenly.
+  ipcMain.on('ph:zoom', (event, factor) => {
+    if (!win || !fromMainWindow(event) || !Number.isFinite(factor))
+      return
+    win.webContents.setZoomFactor(Math.max(0.5, Math.min(3, factor)))
+  })
   // Discord Rich Presence: the page decides what to show, this owns the pipe.
   // Only the main window may set it, and its payload is sanitised regardless.
   ipcMain.on('ph:presence', (event, payload) => {

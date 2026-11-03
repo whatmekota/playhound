@@ -12,6 +12,7 @@ import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/composables/useDiscordPresence'
 import { netProxy, netProxyError, netProxyInfo, refreshNetProxy } from '~/composables/useNetProxy'
 import { toast } from '~/composables/useToast'
+import { UI_SCALES, useUiScale } from '~/composables/useUiScale'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
 import { KEYS } from '~/lib/persist'
@@ -90,6 +91,8 @@ const library = useLibraryStore()
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
 const resumeOnStart = useLocalStorage(KEYS.resumeOnStart.key, true)
+const uiScale = useUiScale()
+const SCALE_OPTIONS = UI_SCALES.map(s => ({ value: s as number, label: `${Math.round(s * 100)}%` }))
 
 type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
@@ -361,6 +364,17 @@ function openBackup() {
 
               <div class="px-4 py-3 card">
                 <UiSwitch v-model="ui.navExpanded" label="Sidebar labels" hint="Show view names next to the icons in the left bar" />
+              </div>
+
+              <div class="px-4 py-3 card flex flex-col gap-3">
+                <UiField
+                  label="Interface size"
+                  :hint="uiScale.supported
+                    ? 'Everything larger, for a big screen far away. Ctrl + = and Ctrl + − change it too, Ctrl + 0 goes back.'
+                    : 'In a browser, use its own zoom: Ctrl + = and Ctrl + −, Ctrl + 0 to go back. The desktop app has it here.'"
+                >
+                  <UiSegmented v-if="uiScale.supported" v-model="uiScale.scale.value" :options="SCALE_OPTIONS" size="xs" />
+                </UiField>
               </div>
             </template>
 

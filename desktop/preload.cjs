@@ -31,6 +31,8 @@ if (winState) {
 const windowApi = winState
   ? Object.freeze({
       minimize: () => ipcRenderer.send('ph:win', 'minimize'),
+      /** Zoom the whole page, 1 = 100%: Settings → Interface size. */
+      setZoom: factor => ipcRenderer.send('ph:zoom', Number(factor)),
       toggleMaximize: () => ipcRenderer.send('ph:win', 'toggle-maximize'),
       close: () => ipcRenderer.send('ph:win', 'close'),
       /** { maximized, fullScreen } right now. */

@@ -305,6 +305,8 @@ export interface DesktopWindowState {
 }
 
 export interface DesktopWindow {
+  /** The window's zoom (1 = 100%), for Settings → Appearance → Interface size. Absent in older builds. */
+  setZoom?: (factor: number) => void
   minimize: () => void
   toggleMaximize: () => void
   close: () => void

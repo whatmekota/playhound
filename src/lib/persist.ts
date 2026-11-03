@@ -86,6 +86,7 @@ export const KEYS = {
   idleStopMinutes: def('ph:safety.idleStopMinutes', 'setting', 'Idle device stop'),
   splash: def('ph:ui.splash', 'setting', 'Splash screen'),
   resumeOnStart: def('ph:ui.resumeOnStart', 'setting', 'Resume the last video at startup'),
+  uiScale: def('ph:ui.scale', 'setting', 'Interface size'),
   slideshow: def('ph:slideshow.settings', 'setting', 'Slideshow'),
   wallSnap: def('ph:wall.snap', 'setting', 'Media wall snapping'),
   wallGrid: def('ph:wall.grid', 'setting', 'Media wall grid'),
