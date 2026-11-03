@@ -6,6 +6,7 @@ import UiBadge from '~/components/ui/UiBadge.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
+import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
@@ -22,6 +23,7 @@ import { KEYS } from '~/lib/persist'
 import { getStrip } from '~/lib/previews'
 import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
+import { VR_FORMATS, vrFormat } from '~/lib/vrFormat'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -50,6 +52,7 @@ import SpeedControl from './SpeedControl.vue'
  * menu first, then the status readouts, then the volume slider.
  */
 const ui = useUiStore()
+const vrOptions = VR_FORMATS.map(f => ({ value: f.id, label: f.label }))
 const popout = usePopout()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
@@ -655,16 +658,24 @@ const needsOverflow = computed(() => level.value > 0)
           <SpeedControl />
           <LoopControls />
           <ScriptOffsetControl />
-          <button
-            v-tip="'180° side-by-side VR'"
-            type="button"
-            class="text-[11.5px] font-semibold num px-2 focusable rounded-[var(--radius-sm)] h-7 pressable"
-            :class="player.sbs180 ? 'text-accent-300 bg-accent-soft' : 'text-fg-muted hover:text-fg hover:bg-fg/7'"
-            :aria-pressed="player.sbs180"
-            @click="player.toggleSbs()"
-          >
-            180°
-          </button>
+          <UiPopover placement="top" align="end" width="260px">
+            <template #trigger="{ toggle, open }">
+              <button
+                v-tip="'Side-by-side VR view'"
+                type="button"
+                class="text-[11.5px] font-semibold num px-2 focusable rounded-[var(--radius-sm)] h-7 pressable"
+                :class="player.sbs180 ? 'text-accent-300 bg-accent-soft' : open ? 'bg-fg/8 text-fg' : 'text-fg-muted hover:text-fg hover:bg-fg/7'"
+                :aria-pressed="player.sbs180"
+                @click="toggle"
+              >
+                {{ vrFormat(player.vrFormat).short }}
+              </button>
+            </template>
+            <div class="p-1 flex flex-col gap-3">
+              <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
+              <UiSelect v-model="player.vrFormat" label="Format" :options="vrOptions" />
+            </div>
+          </UiPopover>
           <div class="mx-1.5 divider-x" />
         </template>
 
@@ -767,7 +778,8 @@ const needsOverflow = computed(() => level.value > 0)
               <div class="divider-y" />
               <ScriptOffsetControl inline />
               <div class="divider-y" />
-              <UiSwitch v-model="player.sbs180" label="180° VR view" hint="Side-by-side 180° video, drag to look around" />
+              <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
+              <UiSelect v-if="player.sbs180" v-model="player.vrFormat" label="VR format" :options="vrOptions" />
             </template>
           </div>
         </UiPopover>

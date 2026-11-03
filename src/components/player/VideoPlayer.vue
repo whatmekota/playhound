@@ -19,6 +19,7 @@ import { KEYS } from '~/lib/persist'
 import { requestStrip } from '~/lib/previews'
 import { ensureThumb, prefetchThumbs } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
+import { vrFormat } from '~/lib/vrFormat'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -878,6 +879,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       <SbsViewer
         v-if="player.sbs180 && player.videoUrl"
         :video-el="videoEl"
+        :format="vrFormat(player.vrFormat)"
         class="inset-0 absolute z-[1]"
         @click="onSbsClick"
         @dblclick="onSbsDblClick"

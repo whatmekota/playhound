@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { DEFAULT_VR_FORMAT, guessVrFormat, VR_FORMATS } from '~/lib/vrFormat'
 
 // Legacy storage key kept so existing data survives the rename.
 const LS_KEY = 'ph:player.prefs'
@@ -22,8 +23,10 @@ export const usePlayerStore = defineStore('player', () => {
   const volume = ref<number>(saved.volume ?? 1.0)
   const isMuted = ref<boolean>(saved.isMuted ?? false)
 
-  // SBS 180° mode
+  // SBS VR view (named for the 180° it started with)
   const sbs180 = ref(false)
+  /** Layout of the VR video, an id from VR_FORMATS. */
+  const vrFormat = ref<string>(VR_FORMATS.some(f => f.id === saved.vrFormat) ? saved.vrFormat : DEFAULT_VR_FORMAT)
 
   function toggleSbs() { sbs180.value = !sbs180.value }
 
@@ -53,17 +56,21 @@ export const usePlayerStore = defineStore('player', () => {
   )
 
   // Persist volume + speed
-  watch([volume, isMuted, playbackSpeed], () => {
+  watch([volume, isMuted, playbackSpeed, vrFormat], () => {
     localStorage.setItem(LS_KEY, JSON.stringify({
       volume: volume.value,
       isMuted: isMuted.value,
       playbackSpeed: playbackSpeed.value,
+      vrFormat: vrFormat.value,
     }))
   })
 
   // Actions
   function setVideo(path: string, url: string, kind: 'file' | 'hls' = 'file') {
     videoPath.value = path
+    // A file name that says how it is laid out (_MKX200, _180_LR) wins over
+    // the last choice; one that says nothing keeps it.
+    vrFormat.value = guessVrFormat(path) ?? vrFormat.value
     videoUrl.value = url
     videoKind.value = kind
     currentTime.value = 0
@@ -106,6 +113,7 @@ export const usePlayerStore = defineStore('player', () => {
     volume,
     isMuted,
     sbs180,
+    vrFormat,
     controlsVisible,
     controlsTimeout,
     loopEnabled,

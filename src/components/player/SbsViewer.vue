@@ -1,16 +1,22 @@
 <script setup lang="ts">
+import type { VrFormat } from '~/lib/vrFormat'
 import * as THREE from 'three'
 /**
- * SbsViewer — 180° SBS equirectangular viewer using Three.js
+ * SbsViewer — side-by-side VR viewer using Three.js
  *
- * Takes a <video> element as prop, samples only the LEFT half as texture,
- * maps it onto the inside of a sphere (180° equirect), and lets the user
- * pan with mouse drag and zoom with scroll wheel — like desktop YouTube 360.
+ * Takes a <video> element as prop, shows its LEFT half on the inside of a
+ * sphere, and lets the user pan with mouse drag and zoom with scroll wheel —
+ * like desktop YouTube 360. The half is unwrapped by a shader, as
+ * equirectangular or fisheye at any field of view (see lib/vrFormat).
+ *
+ * Colour passes through untouched: the shader samples the video and writes
+ * it out as is. A colour-managed material would treat the video as linear
+ * light and brighten it on the way out, which washes the picture out.
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 
-const props = defineProps<{ videoEl: HTMLVideoElement | null }>()
+const props = defineProps<{ videoEl: HTMLVideoElement | null, format: VrFormat }>()
 
 const emit = defineEmits<{ click: [], dblclick: [] }>()
 
@@ -22,10 +28,13 @@ let camera: THREE.PerspectiveCamera | null = null
 let sphere: THREE.Mesh | null = null
 let texture: THREE.VideoTexture | null = null
 let rafId: number | null = null
+/** Video time of the last frame uploaded; -1 forces the next one. */
+let uploadedAt = -1
 
 // ─── View state ───────────────────────────────────────────────────────────────
-// Yaw = horizontal pan (left/right), Pitch = vertical tilt (up/down)
-let yaw = 180
+// Yaw = horizontal pan (left/right), Pitch = vertical tilt (up/down).
+// 0, 0 looks at the middle of the frame.
+let yaw = 0
 let pitch = 0
 let fov = 90 // degrees — scroll to zoom
 
@@ -100,6 +109,44 @@ function initThree() {
   startLoop()
 }
 
+/** Direction from the eye, in view space where -Z is the middle of the frame. */
+const VERT = /* glsl */`
+varying vec3 vDir;
+void main() {
+  vDir = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`
+
+/**
+ * Where a direction lands in the left eye's half of the frame.
+ *   equirect: longitude across the field of view, latitude over 180°
+ *   fisheye:  equidistant, the angle off centre grows evenly to the rim
+ */
+const FRAG = /* glsl */`
+uniform sampler2D map;
+uniform float halfFov;
+uniform bool fisheye;
+varying vec3 vDir;
+const float PI = 3.14159265358979;
+void main() {
+  vec3 d = normalize(vDir);
+  vec2 uv;
+  if (fisheye) {
+    float theta = acos(clamp(-d.z, -1.0, 1.0));
+    if (theta > halfFov) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    float r = 0.5 * theta / halfFov;
+    float phi = atan(d.y, d.x);
+    uv = vec2(0.5 + r * cos(phi), 0.5 + r * sin(phi));
+  }
+  else {
+    float lon = atan(d.x, -d.z);
+    float lat = asin(clamp(d.y, -1.0, 1.0));
+    if (abs(lon) > halfFov) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    uv = vec2(0.5 + 0.5 * lon / halfFov, 0.5 + lat / PI);
+  }
+  gl_FragColor = texture2D(map, vec2(uv.x * 0.5, uv.y));
+}`
+
 function buildSphere() {
   if (!props.videoEl || !scene)
     return
@@ -108,35 +155,40 @@ function buildSphere() {
   if (sphere) { scene.remove(sphere); sphere.geometry.dispose(); (sphere.material as THREE.Material).dispose() }
   if (texture)
     texture.dispose()
+  uploadedAt = -1
 
-  // VideoTexture — Three.js will call texImage2D every frame automatically
+  // VideoTexture — Three.js will call texImage2D every frame automatically.
+  // No colour space: the samples go straight through (see the note above).
   texture = new THREE.VideoTexture(props.videoEl)
   texture.minFilter = THREE.LinearFilter
   texture.magFilter = THREE.LinearFilter
-  texture.format = THREE.RGBAFormat
+  texture.generateMipmaps = false
 
-  // Offset + repeat to sample ONLY the left half of the SBS frame
-  // Left eye occupies U: 0.0 → 0.5
-  texture.offset.set(0, 0)
-  texture.repeat.set(0.5, 1)
-
-  // Sphere geometry — large, viewed from inside
-  const geo = new THREE.SphereGeometry(
-    500, // radius
-    60, // widthSegments
-    40, // heightSegments
-    0, // phiStart  — start at 0
-    Math.PI, // phiLength — only front 180° (half sphere)
-    0,
-    Math.PI, // thetaLength — full vertical
-  )
-
-  // Flip normals so we see the inside
-  geo.scale(-1, 1, 1)
-
-  const mat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.FrontSide })
+  // The whole sphere, seen from inside; the shader decides what each
+  // direction shows, and leaves what the video does not cover black.
+  const geo = new THREE.SphereGeometry(500, 96, 64)
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: texture },
+      halfFov: { value: 0 },
+      fisheye: { value: false },
+    },
+    vertexShader: VERT,
+    fragmentShader: FRAG,
+    side: THREE.BackSide,
+    depthWrite: false,
+  })
   sphere = new THREE.Mesh(geo, mat)
+  applyFormat()
   scene!.add(sphere)
+}
+
+function applyFormat() {
+  const mat = sphere?.material as THREE.ShaderMaterial | undefined
+  if (!mat)
+    return
+  mat.uniforms.halfFov.value = THREE.MathUtils.degToRad(props.format.fov / 2)
+  mat.uniforms.fisheye.value = props.format.projection === 'fisheye'
 }
 
 function startLoop() {
@@ -145,9 +197,12 @@ function startLoop() {
     if (!renderer || !scene || !camera)
       return
 
-    // Update texture from video every frame
-    if (texture && props.videoEl && !props.videoEl.paused) {
+    // Upload the video's frame: every frame while it plays, and once after
+    // a seek or a fresh start while paused, or a paused video shows black.
+    const v = props.videoEl
+    if (texture && v && v.readyState >= 2 && (!v.paused || v.currentTime !== uploadedAt)) {
       texture.needsUpdate = true
+      uploadedAt = v.currentTime
     }
 
     // Apply yaw/pitch to camera
@@ -169,21 +224,29 @@ function onResize() {
     return
   const w = canvasRef.value.clientWidth
   const h = canvasRef.value.clientHeight
+  if (!w || !h)
+    return
+  renderer.setPixelRatio(canvasRef.value.ownerDocument.defaultView?.devicePixelRatio ?? window.devicePixelRatio)
   renderer.setSize(w, h, false)
   camera.aspect = w / h
   camera.updateProjectionMatrix()
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
+// The canvas, not the window: the player can be a corner, the stage, or in
+// the pop-out window.
+let ro: ResizeObserver | null = null
 onMounted(() => {
   initThree()
-  window.addEventListener('resize', onResize)
+  ro = new ResizeObserver(onResize)
+  if (canvasRef.value)
+    ro.observe(canvasRef.value)
 })
 
 onUnmounted(() => {
   if (rafId !== null)
     cancelFrame(rafId)
-  window.removeEventListener('resize', onResize)
+  ro?.disconnect()
   texture?.dispose()
   sphere?.geometry.dispose()
   ;(sphere?.material as THREE.Material | undefined)?.dispose()
@@ -195,6 +258,7 @@ watch(() => props.videoEl, (el) => {
   if (el)
     buildSphere()
 })
+watch(() => props.format, applyFormat)
 </script>
 
 <template>
