@@ -3,6 +3,7 @@ import type { DesktopWindowState } from '~/lib/browserApi'
 import { useEventListener, useWindowFocus } from '@vueuse/core'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
+import { useUpdates } from '~/composables/useUpdates'
 import { desktop } from '~/lib/browserApi'
 import { findView } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -24,6 +25,7 @@ import BrandMark from './BrandMark.vue'
  */
 
 const win = desktop?.window ?? null
+const updates = useUpdates()
 const ui = useUiStore()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
@@ -107,6 +109,18 @@ const viewDef = computed(() => findView(ui.view))
           <span class="truncate">{{ viewDef.label }}</span>
         </template>
       </component>
+
+      <!-- An update waiting: restart into it, or (portable) go and get it. -->
+      <button
+        v-if="updates.offer.value"
+        v-tip="{ text: updates.state.value?.status === 'ready' ? `Restart and update to ${updates.state.value?.version}. It also installs when you quit.` : `Download ${updates.state.value?.version} from GitHub`, placement: 'bottom' }"
+        type="button"
+        class="app-no-drag text-[11.5px] text-accent-300 font-medium px-2.5 focusable rounded-full bg-accent-soft flex shrink-0 gap-1.5 h-[22px] transition-colors items-center hover:bg-accent/25"
+        @click="updates.state.value?.status === 'ready' ? updates.install() : updates.download()"
+      >
+        <span :class="updates.state.value?.status === 'ready' ? 'i-carbon-renew' : 'i-carbon-download'" class="text-[12px]" aria-hidden="true" />
+        {{ updates.state.value?.status === 'ready' ? 'Restart to update' : `${updates.state.value?.version} is out` }}
+      </button>
 
       <button
         type="button"

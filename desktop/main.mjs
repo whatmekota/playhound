@@ -8,6 +8,7 @@ import { startProxy } from '../es-proxy.mjs'
 import { setupBluetooth, setupDevices } from './devices.mjs'
 import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
 import { probe, serveStatic } from './serve.mjs'
+import { createUpdater, UPDATER_SESSION } from './updater.mjs'
 
 /**
  * playhound desktop shell.
@@ -110,6 +111,9 @@ let win = null
 let appOrigin = null
 /** The main window's Bluetooth chooser, told by the page what it is about to ask for. */
 let bluetooth = null
+
+/** Updates from GitHub Releases (desktop/updater.mjs); made at boot. */
+let updater = null
 
 /** The pop-out player's window (see popout below), while it is open. */
 let popout = null
@@ -258,6 +262,7 @@ async function boot() {
       // popup has a native frame and gets null here.
       window: win && event.sender === win.webContents ? windowState() : null,
       presence: win && event.sender === win.webContents ? presenceStatus : null,
+      updates: win && event.sender === win.webContents ? updater?.state() ?? null : null,
     }
   })
   ipcMain.on('ph:win', (event, action) => {
@@ -301,6 +306,16 @@ async function boot() {
       return
     await esSession().clearStorageData()
     esNotify(false)
+  })
+  ipcMain.on('ph:update', (event, action, arg) => {
+    if (!updater || !fromMainWindow(event))
+      return
+    if (action === 'check')
+      updater.check()
+    else if (action === 'install')
+      updater.install()
+    else if (action === 'auto')
+      updater.setAuto(!!arg)
   })
   ipcMain.on('ph:popout', (event, o) => {
     if (!fromMainWindow(event) || !popout || popout.isDestroyed())
@@ -348,10 +363,24 @@ async function boot() {
       void applyProxy(session.fromPartition('resolver'), proxy)
       void applyProxy(session.defaultSession, proxy)
       void applyProxy(esSession(), proxy)
+      void applyProxy(session.fromPartition(UPDATER_SESSION, { cache: false }), proxy)
     },
   })
   await applyProxy(session.defaultSession, envProxy())
   await applyProxy(esSession(), envProxy())
+  await applyProxy(session.fromPartition(UPDATER_SESSION, { cache: false }), envProxy())
+
+  updater = createUpdater({
+    send: (s) => {
+      if (win && !win.isDestroyed())
+        win.webContents.send('ph:update:state', s)
+    },
+    getAuto: () => state.autoUpdate !== false,
+    setAuto: (on) => {
+      state.autoUpdate = on
+      saveState()
+    },
+  })
 
   let url = DEV ? DEV_URL : APP_URL
   if (!DEV) {
@@ -376,6 +405,7 @@ async function boot() {
   }
 
   createWindow(url)
+  updater.start()
 }
 
 // ── Window ───────────────────────────────────────────────────────────────────

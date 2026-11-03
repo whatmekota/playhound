@@ -43,6 +43,7 @@
     "@xhayper/discord-rpc": "catalog:desktop",
     "electron": "catalog:desktop",
     "electron-builder": "catalog:desktop",
+    "electron-updater": "catalog:desktop",
     "eslint": "catalog:dev",
     "eslint-plugin-format": "catalog:dev",
     "jsdom": "catalog:build",

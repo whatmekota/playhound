@@ -232,6 +232,36 @@ export interface DesktopInfo {
   bluetooth?: DesktopBluetooth
   /** The pop-out player's window. Main window only; absent in older builds. */
   popout?: DesktopPopout
+  /** Updates from GitHub Releases. Main window only; absent in older builds. */
+  updates?: DesktopUpdates
+}
+
+export type UpdateStatus = 'off' | 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'available' | 'error'
+
+export interface UpdateState {
+  status: UpdateStatus
+  /** The running version. */
+  current: string
+  /** The new one, once known. */
+  version: string | null
+  /** Download progress, 0–100. */
+  percent: number
+  error: string | null
+  /** The portable .exe: it can only say a new version is out. */
+  portable: boolean
+  /** Checks on its own (at startup and every few hours). */
+  auto: boolean
+  /** Where to download it by hand (portable). */
+  url: string | null
+}
+
+export interface DesktopUpdates {
+  state: () => UpdateState
+  onState: (cb: (s: UpdateState) => void) => () => void
+  check: () => void
+  /** Quit, install the downloaded update and start again. */
+  install: () => void
+  setAuto: (on: boolean) => void
 }
 
 export interface DesktopPopoutState {

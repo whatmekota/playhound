@@ -13,7 +13,8 @@ import { makeIcons } from './icons.mjs'
  *   .desktop/icons   icon.png / icon.ico rendered from public/favicon.svg
  *   .desktop/app     what goes into app.asar: dist/, the bundled main process,
  *                    the preload and a package.json with no dependencies
- *   release/         NSIS installer, portable .exe and win-unpacked/
+ *   release/         NSIS installer, portable .exe, latest.yml (the update
+ *                    feed: upload it with each release) and win-unpacked/
  *
  * The main process (plus es-proxy.mjs and ws) is bundled into one file, so the
  * package carries no node_modules at all — the renderer's dependencies are
@@ -90,6 +91,7 @@ console.log(`[app:build] packaging with Electron ${electronVersion}${dirOnly ? '
 const artifacts = await builder({
   projectDir: root,
   targets: Platform.WINDOWS.createTarget(dirOnly ? ['dir'] : ['nsis', 'portable'], Arch.x64),
+  publish: 'never',
   config: {
     appId: 'local.playhound',
     productName: 'playhound',
@@ -108,7 +110,10 @@ const artifacts = await builder({
     npmRebuild: false,
     nodeGypRebuild: false,
     buildDependenciesFromSource: false,
-    publish: null,
+    // Updates come from GitHub Releases: this writes release/latest.yml (to
+    // upload with each release) and app-update.yml into the app, which
+    // electron-updater reads. Nothing is uploaded from here.
+    publish: { provider: 'github', owner: 'whatmekota', repo: 'playhound', releaseType: 'release' },
     win: {
       icon: icons.ico,
       // Unsigned: a personal build. SmartScreen will ask once on first run.

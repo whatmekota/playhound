@@ -157,6 +157,42 @@ const popoutApi = winState
     })
   : null
 
+// ── Updates (main window only) ──────────────────────────────────────────────
+// The main process checks GitHub Releases (desktop/updater.mjs); the page
+// shows the state and asks for a check or a restart.
+let updateState = info.updates ? { ...info.updates } : null
+const updateListeners = new Set()
+if (updateState) {
+  ipcRenderer.on('ph:update:state', (_event, s) => {
+    updateState = { ...s }
+    for (const cb of updateListeners) {
+      try {
+        cb({ ...updateState })
+      }
+      catch (err) {
+        console.error('[playhound] update listener failed', err)
+      }
+    }
+  })
+}
+const updatesApi = updateState
+  ? Object.freeze({
+      /** { status, current, version, percent, error, portable, auto, url } right now. */
+      state: () => ({ ...updateState }),
+      /** Calls `cb(state)` on every change; returns an unsubscribe. */
+      onState: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        updateListeners.add(cb)
+        return () => void updateListeners.delete(cb)
+      },
+      check: () => ipcRenderer.send('ph:update', 'check'),
+      /** Quit, install the downloaded update and start again. */
+      install: () => ipcRenderer.send('ph:update', 'install'),
+      setAuto: on => ipcRenderer.send('ph:update', 'auto', !!on),
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -177,6 +213,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
       })
     : undefined,
   popout: popoutApi ?? undefined,
+  updates: updatesApi ?? undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

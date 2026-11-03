@@ -162,6 +162,7 @@ declare global {
   const snapRect: typeof import('./src/composables/wallGeometry').snapRect
   const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
   const startUiScale: typeof import('./src/composables/useUiScale').startUiScale
+  const startUpdates: typeof import('./src/composables/useUpdates').startUpdates
   const stepUiScale: typeof import('./src/composables/useUiScale').stepUiScale
   const storeToRefs: typeof import('pinia').storeToRefs
   const syncRef: typeof import('@vueuse/core').syncRef
@@ -378,6 +379,7 @@ declare global {
   const useToggle: typeof import('@vueuse/core').useToggle
   const useTransition: typeof import('@vueuse/core').useTransition
   const useUiScale: typeof import('./src/composables/useUiScale').useUiScale
+  const useUpdates: typeof import('./src/composables/useUpdates').useUpdates
   const useUrlSearchParams: typeof import('@vueuse/core').useUrlSearchParams
   const useUserMedia: typeof import('@vueuse/core').useUserMedia
   const useVModel: typeof import('@vueuse/core').useVModel
@@ -644,6 +646,7 @@ declare module 'vue' {
     readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
     readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
     readonly startUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['startUiScale']>
+    readonly startUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['startUpdates']>
     readonly stepUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['stepUiScale']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
@@ -860,6 +863,7 @@ declare module 'vue' {
     readonly useToggle: UnwrapRef<typeof import('@vueuse/core')['useToggle']>
     readonly useTransition: UnwrapRef<typeof import('@vueuse/core')['useTransition']>
     readonly useUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['useUiScale']>
+    readonly useUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['useUpdates']>
     readonly useUrlSearchParams: UnwrapRef<typeof import('@vueuse/core')['useUrlSearchParams']>
     readonly useUserMedia: UnwrapRef<typeof import('@vueuse/core')['useUserMedia']>
     readonly useVModel: UnwrapRef<typeof import('@vueuse/core')['useVModel']>

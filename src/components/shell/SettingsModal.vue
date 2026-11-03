@@ -7,12 +7,14 @@ import UiButton from '~/components/ui/UiButton.vue'
 import UiField from '~/components/ui/UiField.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiModal from '~/components/ui/UiModal.vue'
+import UiProgress from '~/components/ui/UiProgress.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/composables/useDiscordPresence'
 import { netProxy, netProxyError, netProxyInfo, refreshNetProxy } from '~/composables/useNetProxy'
 import { toast } from '~/composables/useToast'
 import { UI_SCALES, useUiScale } from '~/composables/useUiScale'
+import { useUpdates } from '~/composables/useUpdates'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
 import { KEYS } from '~/lib/persist'
@@ -92,9 +94,27 @@ const library = useLibraryStore()
 const splash = useLocalStorage('ph:ui.splash', true)
 const resumeOnStart = useLocalStorage(KEYS.resumeOnStart.key, true)
 const uiScale = useUiScale()
+const updates = useUpdates()
+const upd = computed(() => updates.state.value)
+const updateLine = computed(() => {
+  const s = upd.value
+  if (!s)
+    return ''
+  switch (s.status) {
+    case 'off': return 'A development build: updates are off.'
+    case 'idle': return s.auto ? 'Checks shortly after startup.' : 'Not checked yet.'
+    case 'checking': return 'Asking GitHub…'
+    case 'none': return 'Up to date.'
+    case 'downloading': return `Downloading ${s.version ?? 'the update'}… ${s.percent}%`
+    case 'ready': return `${s.version} is downloaded. It installs when you quit, or restart now.`
+    case 'available': return `${s.version} is out. The portable version updates by hand.`
+    case 'error': return s.error ?? 'The last check failed.'
+  }
+  return ''
+})
 const SCALE_OPTIONS = UI_SCALES.map(s => ({ value: s as number, label: `${Math.round(s * 100)}%` }))
 
-type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'about'
+type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'updates' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
   { id: 'playback', label: 'Playback', icon: 'i-carbon-play-outline' },
@@ -104,6 +124,7 @@ const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'network', label: 'Network', icon: 'i-carbon-network-3' },
   { id: 'keyboard', label: 'Keyboard', icon: 'i-carbon-keyboard' },
   { id: 'discord', label: 'Discord', icon: 'i-carbon-logo-discord' },
+  { id: 'updates', label: 'Updates', icon: 'i-carbon-renew' },
   { id: 'about', label: 'About', icon: 'i-carbon-information' },
 ]
 const section = ref<SectionId>('appearance')
@@ -384,6 +405,56 @@ function openBackup() {
                 <UiField label="Before the next video" hint="How long the Up next card waits when a video ends. Instant skips the card.">
                   <UiSegmented v-model="upNextDelay" :options="UPNEXT_OPTIONS" size="xs" />
                 </UiField>
+              </div>
+            </template>
+
+            <!-- Updates -->
+            <template v-else-if="section === 'updates'">
+              <div v-if="updates.supported && upd" class="p-4 card flex flex-col gap-4">
+                <div class="flex gap-3 items-center">
+                  <span class="text-accent-300 rounded-[var(--radius-md)] bg-accent-soft center shrink-0 h-10 w-10">
+                    <span :class="upd.status === 'checking' || upd.status === 'downloading' ? 'i-carbon-renew animate-spin' : 'i-carbon-renew'" class="text-[19px]" />
+                  </span>
+                  <div class="flex flex-1 flex-col gap-0.5 min-w-0">
+                    <span class="text-[14px] text-fg font-medium">playhound {{ upd.current }}{{ upd.portable ? ' (portable)' : '' }}</span>
+                    <span class="hint">{{ updateLine }}</span>
+                  </div>
+                </div>
+                <UiProgress v-if="upd.status === 'downloading'" :value="upd.percent / 100" />
+                <div class="flex flex-wrap gap-2">
+                  <UiButton v-if="upd.status === 'ready'" variant="primary" icon="i-carbon-renew" @click="updates.install()">
+                    Restart and update
+                  </UiButton>
+                  <UiButton v-else-if="upd.status === 'available'" variant="primary" icon="i-carbon-download" @click="updates.download()">
+                    Download {{ upd.version }}
+                  </UiButton>
+                  <UiButton
+                    v-if="upd.status !== 'ready' && upd.status !== 'off'"
+                    icon="i-carbon-search"
+                    :loading="upd.status === 'checking'"
+                    :disabled="upd.status === 'downloading'"
+                    @click="updates.check()"
+                  >
+                    Check now
+                  </UiButton>
+                </div>
+              </div>
+              <div v-if="updates.supported && upd" class="px-4 py-3 card">
+                <UiSwitch
+                  :model-value="upd.auto"
+                  label="Check for updates on my own"
+                  :hint="upd.portable
+                    ? 'At startup and every few hours. The portable version only says when one is out; download it by hand.'
+                    : 'At startup and every few hours. A new version downloads in the background and installs when you quit, or when you restart from the title bar.'"
+                  :disabled="upd.status === 'off'"
+                  @update:model-value="updates.setAuto($event)"
+                />
+              </div>
+              <div v-else-if="!updates.supported" class="px-4 py-3 card">
+                <p class="hint m-0">
+                  The browser version is always the latest: it updates when the page does. The desktop app updates
+                  itself from GitHub.
+                </p>
               </div>
             </template>
 

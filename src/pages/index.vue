@@ -32,6 +32,7 @@ import { useSessionAudio } from '~/composables/useSessionAudio'
 import { useSettings } from '~/composables/useSettings'
 import { toast } from '~/composables/useToast'
 import { startUiScale } from '~/composables/useUiScale'
+import { startUpdates } from '~/composables/useUpdates'
 import { useVibeSync } from '~/composables/useVibeSync'
 import { clearTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { desktop, openVideoFile, storage } from '~/lib/browserApi'
@@ -64,6 +65,7 @@ const sessionControl = useSessionControlStore()
 const session = useSessionActions()
 const popout = usePopout()
 startUiScale()
+startUpdates()
 
 // Instantiate these once at the shell level so they keep running whichever
 // view or inspector happens to be open.
