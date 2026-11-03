@@ -19,6 +19,7 @@ declare global {
   const STREAM_PROXY: typeof import('./src/composables/useStreams').STREAM_PROXY
   const StreamError: typeof import('./src/composables/useStreams').StreamError
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
+  const UI_SCALES: typeof import('./src/composables/useUiScale').UI_SCALES
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
   const analyseSoundtrack: typeof import('./src/composables/useSoundtrack').analyseSoundtrack
   const analysisKey: typeof import('./src/composables/useScriptAnalysis').analysisKey
@@ -160,6 +161,8 @@ declare global {
   const shallowRef: typeof import('vue').shallowRef
   const snapRect: typeof import('./src/composables/wallGeometry').snapRect
   const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
+  const startUiScale: typeof import('./src/composables/useUiScale').startUiScale
+  const stepUiScale: typeof import('./src/composables/useUiScale').stepUiScale
   const storeToRefs: typeof import('pinia').storeToRefs
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
@@ -374,6 +377,7 @@ declare global {
   const useToast: typeof import('./src/composables/useToast').useToast
   const useToggle: typeof import('@vueuse/core').useToggle
   const useTransition: typeof import('@vueuse/core').useTransition
+  const useUiScale: typeof import('./src/composables/useUiScale').useUiScale
   const useUrlSearchParams: typeof import('@vueuse/core').useUrlSearchParams
   const useUserMedia: typeof import('@vueuse/core').useUserMedia
   const useVModel: typeof import('@vueuse/core').useVModel
@@ -497,6 +501,7 @@ declare module 'vue' {
     readonly STREAM_PROXY: UnwrapRef<typeof import('./src/composables/useStreams')['STREAM_PROXY']>
     readonly StreamError: UnwrapRef<typeof import('./src/composables/useStreams')['StreamError']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
+    readonly UI_SCALES: UnwrapRef<typeof import('./src/composables/useUiScale')['UI_SCALES']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
     readonly analyseSoundtrack: UnwrapRef<typeof import('./src/composables/useSoundtrack')['analyseSoundtrack']>
     readonly analysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analysisKey']>
@@ -638,6 +643,8 @@ declare module 'vue' {
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
     readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
+    readonly startUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['startUiScale']>
+    readonly stepUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['stepUiScale']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
@@ -852,6 +859,7 @@ declare module 'vue' {
     readonly useToast: UnwrapRef<typeof import('./src/composables/useToast')['useToast']>
     readonly useToggle: UnwrapRef<typeof import('@vueuse/core')['useToggle']>
     readonly useTransition: UnwrapRef<typeof import('@vueuse/core')['useTransition']>
+    readonly useUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['useUiScale']>
     readonly useUrlSearchParams: UnwrapRef<typeof import('@vueuse/core')['useUrlSearchParams']>
     readonly useUserMedia: UnwrapRef<typeof import('@vueuse/core')['useUserMedia']>
     readonly useVModel: UnwrapRef<typeof import('@vueuse/core')['useVModel']>
