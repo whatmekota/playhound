@@ -324,7 +324,10 @@ const wifi: Driver = {
     await api('PUT', `/${proto}/synctime`, { current_time: Math.round(at), server_time: serverNow() })
   },
   async move(xp, t) {
-    await api('PUT', '/hdsp/xpt', { xp, t, stop_on_target: true, immediate_rsp: true })
+    // 0–1, as over Bluetooth. Handy's API reference says 0–100, but the
+    // device takes anything above 1 as the very top: a Handy 1 pinned there,
+    // clanking, with only exact zeros bringing it down.
+    await api('PUT', '/hdsp/xpt', { xp: xp / 100, t, stop_on_target: true, immediate_rsp: true })
   },
 }
 
