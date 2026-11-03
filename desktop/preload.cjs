@@ -113,6 +113,48 @@ const eroscriptsApi = winState
     })
   : null
 
+// ── Pop-out player (main window only) ───────────────────────────────────────
+// The page opens the window itself (window.open into an empty document it
+// fills); the main process gives it its shape: on top, frameless, see-through.
+const popoutListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:popout:state', (_event, s) => {
+    const state = { clickThrough: !!s?.clickThrough, shortcut: typeof s?.shortcut === 'string' ? s.shortcut : null }
+    for (const cb of popoutListeners) {
+      try {
+        cb(state)
+      }
+      catch (err) {
+        console.error('[playhound] pop-out listener failed', err)
+      }
+    }
+  })
+}
+const popoutApi = winState
+  ? Object.freeze({
+      /** { opacity, clickThrough, hidden, aspect }, any subset. */
+      set: (opts) => {
+        const o = {}
+        if (typeof opts?.opacity === 'number')
+          o.opacity = opts.opacity
+        if (typeof opts?.clickThrough === 'boolean')
+          o.clickThrough = opts.clickThrough
+        if (typeof opts?.hidden === 'boolean')
+          o.hidden = opts.hidden
+        if (typeof opts?.aspect === 'number')
+          o.aspect = opts.aspect
+        ipcRenderer.send('ph:popout', o)
+      },
+      /** Calls `cb({ clickThrough, shortcut })` when the global key flips it; returns an unsubscribe. */
+      onState: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        popoutListeners.add(cb)
+        return () => void popoutListeners.delete(cb)
+      },
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -132,6 +174,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
         expect: kind => void ipcRenderer.sendSync('ph:bt:expect', kind === 'handy' ? 'handy' : 'heart'),
       })
     : undefined,
+  popout: popoutApi ?? undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

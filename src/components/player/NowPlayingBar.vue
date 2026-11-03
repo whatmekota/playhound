@@ -12,6 +12,7 @@ import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
 import { heartRate } from '~/composables/useHeartRate'
+import { usePopout } from '~/composables/usePopout'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { KNOB_STEP, useSessionActions } from '~/composables/useSessionActions'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
@@ -49,6 +50,7 @@ import SpeedControl from './SpeedControl.vue'
  * menu first, then the status readouts, then the volume slider.
  */
 const ui = useUiStore()
+const popout = usePopout()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
 const queue = useQueueStore()
@@ -770,6 +772,15 @@ const needsOverflow = computed(() => level.value > 0)
           </div>
         </UiPopover>
 
+        <UiIconButton
+          :icon="popout.active.value ? 'i-carbon-pop-in' : 'i-carbon-popup'"
+          :label="popout.active.value ? 'Back into playhound' : 'Pop out — a small window that stays on top'"
+          kbd="O"
+          size="sm"
+          :active="popout.active.value"
+          :disabled="!hasTrack && !popout.active.value"
+          @click="playback.togglePopout()"
+        />
         <UiIconButton
           icon="i-carbon-maximize"
           label="Fullscreen"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { breathRadius, flashOpacity, parseWords, spiralAngle, wordIndex } from '~/lib/hypno'
 import { useAudioStore } from '~/stores/audio'
 import { useHypnoStore } from '~/stores/hypnoStore'
@@ -168,7 +169,7 @@ function frame(ts: number) {
     wordAlpha.value = 0
   }
 
-  raf = requestAnimationFrame(frame)
+  raf = requestFrame(frame)
 }
 
 onMounted(() => {
@@ -176,12 +177,12 @@ onMounted(() => {
   ro = new ResizeObserver(resize)
   if (canvasEl.value)
     ro.observe(canvasEl.value)
-  raf = requestAnimationFrame(frame)
+  raf = requestFrame(frame)
 })
 
 function stop() {
   if (raf !== null)
-    cancelAnimationFrame(raf)
+    cancelFrame(raf)
   raf = null
 }
 
@@ -196,7 +197,7 @@ onDeactivated(stop)
 onActivated(() => {
   if (raf === null) {
     lastTs = 0
-    raf = requestAnimationFrame(frame)
+    raf = requestFrame(frame)
   }
 })
 </script>

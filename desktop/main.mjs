@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, session, shell } from 'electron'
 import { startProxy } from '../es-proxy.mjs'
 import { setupBluetooth, setupDevices } from './devices.mjs'
 import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
@@ -110,6 +110,17 @@ let win = null
 let appOrigin = null
 /** The main window's Bluetooth chooser, told by the page what it is about to ask for. */
 let bluetooth = null
+
+/** The pop-out player's window (see popout below), while it is open. */
+let popout = null
+let popoutClickThrough = false
+/** How the click-through key is written, or null when another app holds it. */
+let popoutShortcut = null
+
+const POPOUT_NAME = 'ph-popout'
+const POPOUT_MIN_OPACITY = 0.2
+const POPOUT_KEY = 'CommandOrControl+Alt+P'
+const POPOUT_KEY_LABEL = process.platform === 'darwin' ? '⌘ + ⌥ + P' : 'Ctrl + Alt + P'
 
 if (!app.requestSingleInstanceLock()) {
   // Another playhound already owns the window and the ports; it gets focused
@@ -285,6 +296,20 @@ async function boot() {
     await esSession().clearStorageData()
     esNotify(false)
   })
+  ipcMain.on('ph:popout', (event, o) => {
+    if (!fromMainWindow(event) || !popout || popout.isDestroyed())
+      return
+    if (typeof o?.opacity === 'number' && Number.isFinite(o.opacity))
+      popout.setOpacity(Math.max(POPOUT_MIN_OPACITY, Math.min(1, o.opacity)))
+    if (typeof o?.clickThrough === 'boolean' && o.clickThrough !== popoutClickThrough)
+      setPopoutClickThrough(o.clickThrough)
+    if (o?.hidden === true && popout.isVisible())
+      popout.hide()
+    else if (o?.hidden === false && !popout.isVisible())
+      popout.showInactive()
+    if (typeof o?.aspect === 'number' && Number.isFinite(o.aspect) && o.aspect > 0.2 && o.aspect < 5)
+      fitPopout(o.aspect)
+  })
   // Sent synchronously just before requestDevice(), so it lands first.
   ipcMain.on('ph:bt:expect', (event, kind) => {
     if (fromMainWindow(event))
@@ -404,6 +429,95 @@ function faceWindowOptions() {
   }
 }
 
+// ── Pop-out player ───────────────────────────────────────────────────────────
+// The page opens an empty window (window.open('', POPOUT_NAME)) and moves the
+// video into it; this side only gives that window its shape: frameless, over
+// everything, see-through on request, and click-through with a key that works
+// from any app, since a click-through window cannot be clicked to undo it.
+
+function isPopout(details) {
+  return details.frameName === POPOUT_NAME && (details.url === 'about:blank' || details.url === '')
+}
+
+/** Where it was last time, or the bottom-right corner of the main window's screen. */
+function popoutWindowOptions() {
+  const saved = state.popoutBounds
+  const onScreen = saved && screen.getAllDisplays().some(({ workArea: w }) =>
+    saved.x < w.x + w.width - 40 && saved.x + saved.width > w.x + 40
+    && saved.y < w.y + w.height - 40 && saved.y + 40 > w.y)
+  let bounds = onScreen ? saved : null
+  if (!bounds) {
+    const area = (win ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay()).workArea
+    const width = 480
+    const height = 270
+    bounds = { x: area.x + area.width - width - 24, y: area.y + area.height - height - 24, width, height }
+  }
+  return {
+    ...bounds,
+    minWidth: 200,
+    minHeight: 112,
+    frame: false,
+    alwaysOnTop: true,
+    // Stays in the taskbar, so a pop-out lost behind something can be found.
+    skipTaskbar: false,
+    backgroundColor: '#000000',
+    title: 'playhound',
+    icon: iconPath(),
+    webPreferences: { sandbox: true, contextIsolation: true, backgroundThrottling: false },
+  }
+}
+
+function pushPopoutState() {
+  if (win && !win.isDestroyed())
+    win.webContents.send('ph:popout:state', { clickThrough: popoutClickThrough, shortcut: popoutShortcut })
+}
+
+function setPopoutClickThrough(on) {
+  if (!popout || popout.isDestroyed())
+    return
+  popoutClickThrough = on
+  popout.setIgnoreMouseEvents(on)
+  pushPopoutState()
+}
+
+/** Keep the window the video's shape, growing or shrinking its height. */
+function fitPopout(ratio) {
+  popout.setAspectRatio(ratio)
+  const b = popout.getBounds()
+  const height = Math.round(b.width / ratio)
+  if (Math.abs(height - b.height) <= 2)
+    return
+  const area = screen.getDisplayMatching(b).workArea
+  const y = Math.max(area.y, Math.min(b.y, area.y + area.height - height))
+  popout.setBounds({ x: b.x, y, width: b.width, height })
+}
+
+function adoptPopout(child) {
+  popout = child
+  popoutClickThrough = false
+  // Above other apps' always-on-top windows too, and borderless fullscreen games.
+  child.setAlwaysOnTop(true, 'screen-saver')
+  if (!popoutShortcut && globalShortcut.register(POPOUT_KEY, () => setPopoutClickThrough(!popoutClickThrough)))
+    popoutShortcut = POPOUT_KEY_LABEL
+  pushPopoutState()
+  child.on('close', () => {
+    if (!child.isFullScreen()) {
+      state.popoutBounds = child.getBounds()
+      saveState()
+    }
+  })
+  child.on('closed', () => {
+    if (popout !== child)
+      return
+    popout = null
+    popoutClickThrough = false
+    if (popoutShortcut)
+      globalShortcut.unregister(POPOUT_KEY)
+    popoutShortcut = null
+    pushPopoutState()
+  })
+}
+
 function windowState() {
   return { maximized: !!win?.isMaximized(), fullScreen: !!win?.isFullScreen() }
 }
@@ -446,6 +560,9 @@ function createWindow(url) {
   win.on('close', () => {
     if (!win)
       return
+    // It lives off this window's page; it cannot outlive it.
+    if (popout && !popout.isDestroyed())
+      popout.close()
     state.maximized = win.isMaximized()
     // Normal bounds, so un-maximising next time lands where it used to.
     state.bounds = win.getNormalBounds()
@@ -481,7 +598,10 @@ function createWindow(url) {
 
   // External links go to the system browser. Our own pages (the remote's
   // "preview on this machine") open as a small phone-sized window.
-  wc.setWindowOpenHandler(({ url: target }) => {
+  wc.setWindowOpenHandler((details) => {
+    const target = details.url
+    if (isPopout(details))
+      return { action: 'allow', overrideBrowserWindowOptions: popoutWindowOptions() }
     if (isOurs(target) && new URL(target).pathname.endsWith('/face'))
       return { action: 'allow', overrideBrowserWindowOptions: faceWindowOptions() }
     if (isOurs(target)) {
@@ -502,7 +622,12 @@ function createWindow(url) {
     openExternal(target)
     return { action: 'deny' }
   })
-  wc.on('did-create-window', (child, { url: target }) => {
+  wc.on('did-create-window', (child, details) => {
+    if (isPopout(details)) {
+      adoptPopout(child)
+      return
+    }
+    const target = details.url
     if (!isOurs(target) || !new URL(target).pathname.endsWith('/face') || !otherDisplay().other)
       return
     // As if the user had asked: a page may only go full screen on a gesture.
@@ -548,6 +673,7 @@ function openExternal(target) {
 
 app.on('window-all-closed', () => app.quit())
 app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
   presence.dispose()
   proxy?.close()
   server?.close()

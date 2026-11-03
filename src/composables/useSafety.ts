@@ -4,6 +4,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useBinauralBeats } from './useBinauralBeats'
+import { popoutFocused } from './usePopout'
 import { useTCode } from './useTCode'
 
 /**
@@ -102,14 +103,25 @@ export function useSafety(controls: {
 
   const IDLE_EVENTS = ['pointerdown', 'keydown', 'wheel'] as const
 
+  let blurTimer: ReturnType<typeof setTimeout> | undefined
   function onBlur() {
-    if (safety.panicOnBlur)
-      panic()
+    if (!safety.panicOnBlur)
+      return
+    // Focus moving between the main window and the pop-out player stays in
+    // the app. The other window only reports focus a moment after this one
+    // loses it, so look once it has settled.
+    clearTimeout(blurTimer)
+    blurTimer = setTimeout(() => {
+      if (!document.hasFocus() && !popoutFocused())
+        panic()
+    }, 150)
   }
 
   for (const ev of IDLE_EVENTS)
     window.addEventListener(ev, resetIdle, { passive: true })
+  window.addEventListener('ph:popout-activity', resetIdle)
   window.addEventListener('blur', onBlur)
+  window.addEventListener('ph:popout-blur', onBlur)
 
   watch(() => safety.idleStopMinutes, resetIdle, { immediate: true })
 
@@ -119,7 +131,10 @@ export function useSafety(controls: {
     safety.toggleHandler = null
     for (const ev of IDLE_EVENTS)
       window.removeEventListener(ev, resetIdle)
+    window.removeEventListener('ph:popout-activity', resetIdle)
     window.removeEventListener('blur', onBlur)
+    window.removeEventListener('ph:popout-blur', onBlur)
+    clearTimeout(blurTimer)
     if (idleTimer !== null)
       clearTimeout(idleTimer)
   })

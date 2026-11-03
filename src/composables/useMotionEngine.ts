@@ -1,4 +1,5 @@
 import { computed, watch } from 'vue'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { clampLatency } from '~/lib/latency'
 import {
   advancePhase,
@@ -304,7 +305,7 @@ export function useMotionEngine() {
     motion.currentDepth = depth
     motion.currentPos = pos
 
-    rafId = requestAnimationFrame(tick)
+    rafId = requestFrame(tick)
   }
 
   function start() {
@@ -312,7 +313,7 @@ export function useMotionEngine() {
       return
     running = true
     lastTs = null
-    rafId = requestAnimationFrame(tick)
+    rafId = requestFrame(tick)
   }
 
   /**
@@ -324,7 +325,7 @@ export function useMotionEngine() {
       return
     running = false
     if (rafId !== null) {
-      cancelAnimationFrame(rafId)
+      cancelFrame(rafId)
       rafId = null
     }
     lastTs = null

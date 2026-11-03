@@ -8,6 +8,7 @@ import * as THREE from 'three'
  * pan with mouse drag and zoom with scroll wheel — like desktop YouTube 360.
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 
 const props = defineProps<{ videoEl: HTMLVideoElement | null }>()
 
@@ -140,7 +141,7 @@ function buildSphere() {
 
 function startLoop() {
   function loop() {
-    rafId = requestAnimationFrame(loop)
+    rafId = requestFrame(loop)
     if (!renderer || !scene || !camera)
       return
 
@@ -181,7 +182,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (rafId !== null)
-    cancelAnimationFrame(rafId)
+    cancelFrame(rafId)
   window.removeEventListener('resize', onResize)
   texture?.dispose()
   sphere?.geometry.dispose()

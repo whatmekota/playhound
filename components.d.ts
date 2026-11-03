@@ -52,6 +52,7 @@ declare module 'vue' {
     PlaylistsInspector: typeof import('./src/components/inspectors/PlaylistsInspector.vue')['default']
     PlaylistsView: typeof import('./src/components/views/PlaylistsView.vue')['default']
     PlayPauseIcon: typeof import('./src/components/player/PlayPauseIcon.vue')['default']
+    PopoutCard: typeof import('./src/components/player/PopoutCard.vue')['default']
     ProgrammeInspector: typeof import('./src/components/inspectors/ProgrammeInspector.vue')['default']
     QueueInspector: typeof import('./src/components/inspectors/QueueInspector.vue')['default']
     RemoteInspector: typeof import('./src/components/inspectors/RemoteInspector.vue')['default']

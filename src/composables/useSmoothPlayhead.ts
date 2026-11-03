@@ -1,4 +1,5 @@
 import { onScopeDispose, watch } from 'vue'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { usePlayerStore } from '~/stores/playerStore'
 
 /**
@@ -31,14 +32,14 @@ export function useSmoothPlayhead(draw: (t: number) => void) {
 
   function frame() {
     draw(now())
-    raf = requestAnimationFrame(frame)
+    raf = requestFrame(frame)
   }
 
   function sync() {
-    cancelAnimationFrame(raf)
+    cancelFrame(raf)
     raf = 0
     if (player.isPlaying)
-      raf = requestAnimationFrame(frame)
+      raf = requestFrame(frame)
     else
       draw(base)
   }
@@ -55,7 +56,7 @@ export function useSmoothPlayhead(draw: (t: number) => void) {
   })
 
   sync()
-  onScopeDispose(() => cancelAnimationFrame(raf))
+  onScopeDispose(() => cancelFrame(raf))
 
   /** Redraw now, e.g. after the element it draws into was resized. */
   return { redraw: () => draw(now()) }

@@ -9,6 +9,7 @@ import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { toast } from '~/composables/useToast'
 import { chapterAt, chaptersForScript } from '~/lib/chapters'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { getStrip, isStripBuilding, previewProgress } from '~/lib/previews'
 import { formatTime } from '~/lib/time'
@@ -471,7 +472,7 @@ function scrubTo(t: number) {
   redraw()
   if (seekRaf)
     return
-  seekRaf = requestAnimationFrame(() => {
+  seekRaf = requestFrame(() => {
     seekRaf = 0
     playback.seek(pendingSeek)
   })
@@ -671,7 +672,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   ro?.disconnect()
   themeObs?.disconnect()
-  cancelAnimationFrame(seekRaf)
+  cancelFrame(seekRaf)
 })
 
 const ariaNow = computed(() => Math.round(player.currentTime))

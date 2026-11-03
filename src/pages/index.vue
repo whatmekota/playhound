@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import OsrEmulator from '~/components/device/OsrEmulator.vue'
 import HypnoOverlay from '~/components/player/HypnoOverlay.vue'
 import NowPlayingBar from '~/components/player/NowPlayingBar.vue'
+import PopoutCard from '~/components/player/PopoutCard.vue'
 import VideoPlayer from '~/components/player/VideoPlayer.vue'
 import AppNav from '~/components/shell/AppNav.vue'
 import CommandPalette from '~/components/shell/CommandPalette.vue'
@@ -22,6 +23,7 @@ import { useGamepad } from '~/composables/useGamepad'
 import { useHeartRate } from '~/composables/useHeartRate'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { startNetProxySync } from '~/composables/useNetProxy'
+import { usePopout } from '~/composables/usePopout'
 import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
@@ -32,6 +34,7 @@ import { toast } from '~/composables/useToast'
 import { useVibeSync } from '~/composables/useVibeSync'
 import { clearTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { desktop, openVideoFile, storage } from '~/lib/browserApi'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { KEYS } from '~/lib/persist'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
@@ -58,6 +61,7 @@ const safety = useSafetyStore()
 const hypno = useHypnoStore()
 const sessionControl = useSessionControlStore()
 const session = useSessionActions()
+const popout = usePopout()
 
 // Instantiate these once at the shell level so they keep running whichever
 // view or inspector happens to be open.
@@ -105,10 +109,10 @@ useRemoteHost({
 let controlRaf = 0
 function controlLoop() {
   sessionControl.tick()
-  controlRaf = requestAnimationFrame(controlLoop)
+  controlRaf = requestFrame(controlLoop)
 }
-onMounted(() => (controlRaf = requestAnimationFrame(controlLoop)))
-onBeforeUnmount(() => cancelAnimationFrame(controlRaf))
+onMounted(() => (controlRaf = requestFrame(controlLoop)))
+onBeforeUnmount(() => cancelFrame(controlRaf))
 // Panic cancels a running edge outright: on resume things come back as they
 // were, not halfway through a hold nobody remembers calling.
 watch(() => safety.panicked, p => p && sessionControl.reset())
@@ -159,7 +163,8 @@ watch(() => playback.trackSeq, () => (miniDismissed.value = false))
 watch(() => ui.onPlayer, on => on && (miniDismissed.value = false))
 
 const mini = computed(() => !ui.onPlayer)
-const playerVisible = computed(() => ui.onPlayer || (!!player.videoUrl && !miniDismissed.value))
+// Popped out, the video is in its own window; the corner stays empty.
+const playerVisible = computed(() => ui.onPlayer || (!!player.videoUrl && !miniDismissed.value && !popout.active.value))
 
 const MINI_W = 352
 const MINI_MARGIN = 16
@@ -444,7 +449,8 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
             </template>
           </VideoPlayer>
           <Transition name="t-fade">
-            <WelcomeScreen v-if="!player.videoUrl && !mini" class="inset-0 absolute z-20" @open-file="openSingleVideo" />
+            <PopoutCard v-if="popout.active.value && !mini" class="inset-0 absolute z-20" />
+            <WelcomeScreen v-else-if="!player.videoUrl && !mini" class="inset-0 absolute z-20" @open-file="openSingleVideo" />
           </Transition>
         </div>
       </main>

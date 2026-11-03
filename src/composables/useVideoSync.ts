@@ -4,6 +4,7 @@ import type { ScaledScript } from '~/lib/scriptScale'
 import { useLocalStorage } from '@vueuse/core'
 import { onUnmounted, ref } from 'vue'
 import { advanceTwistPhase, estimateVelocity, synthAxes, synthTargets } from '~/lib/axisSynth'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { nextActionAt } from '~/lib/funscriptParser'
 import { clampLatency } from '~/lib/latency'
 import { KEYS } from '~/lib/persist'
@@ -164,7 +165,7 @@ export function useVideoSync() {
     lastDir = {}
     snap = true
     if (rafId !== null) {
-      cancelAnimationFrame(rafId)
+      cancelFrame(rafId)
       rafId = null
     }
     homeAllAxes(500)
@@ -278,7 +279,7 @@ export function useVideoSync() {
     }
 
     snap = false
-    rafId = requestAnimationFrame(tick)
+    rafId = requestFrame(tick)
   }
 
   function onSeeked() {

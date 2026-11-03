@@ -6,6 +6,7 @@ import {
   periodToBpm,
   spectralFlux,
 } from '~/lib/beatDetect'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 import { phaseError } from '~/lib/funscriptAnalysis'
 import { createBeatGrid, createEnergyFollower } from '~/lib/musicMotion'
 import { createTapper, scaleTempo, tappedBeats, tappedBpm, TAPS_FOR_TEMPO } from '~/lib/tapTempo'
@@ -376,7 +377,7 @@ export function useVideoBeat() {
       locked.value = false
     }
 
-    raf = requestAnimationFrame(tick)
+    raf = requestFrame(tick)
   }
 
   function start(el: HTMLVideoElement) {
@@ -384,12 +385,12 @@ export function useVideoBeat() {
       return
     void ctx?.resume()
     if (raf === null)
-      raf = requestAnimationFrame(tick)
+      raf = requestFrame(tick)
   }
 
   function stop() {
     if (raf !== null) {
-      cancelAnimationFrame(raf)
+      cancelFrame(raf)
       raf = null
     }
     reset()

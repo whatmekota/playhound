@@ -10,6 +10,7 @@ declare global {
   const FACE_CHANNEL: typeof import('./src/composables/useFaceScreen').FACE_CHANNEL
   const KNOB_STEP: typeof import('./src/composables/useSessionActions').KNOB_STEP
   const MIN_H: typeof import('./src/composables/wallGeometry').MIN_H
+  const MIN_OPACITY: typeof import('./src/composables/usePopout').MIN_OPACITY
   const MIN_W: typeof import('./src/composables/wallGeometry').MIN_W
   const MOVE_EDGES: typeof import('./src/composables/wallGeometry').MOVE_EDGES
   const PHASE_TRANSITIONS: typeof import('./src/composables/useSlideshowEngine').PHASE_TRANSITIONS
@@ -120,6 +121,7 @@ declare global {
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const pickMediaFiles: typeof import('./src/composables/useMediaDrop').pickMediaFiles
   const playSource: typeof import('./src/composables/useStreams').playSource
+  const popoutFocused: typeof import('./src/composables/usePopout').popoutFocused
   const presenceStatus: typeof import('./src/composables/useDiscordPresence').presenceStatus
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
@@ -304,6 +306,7 @@ declare global {
   const usePointer: typeof import('@vueuse/core').usePointer
   const usePointerLock: typeof import('@vueuse/core').usePointerLock
   const usePointerSwipe: typeof import('@vueuse/core').usePointerSwipe
+  const usePopout: typeof import('./src/composables/usePopout').usePopout
   const usePreferredColorScheme: typeof import('@vueuse/core').usePreferredColorScheme
   const usePreferredContrast: typeof import('@vueuse/core').usePreferredContrast
   const usePreferredDark: typeof import('@vueuse/core').usePreferredDark
@@ -439,6 +442,9 @@ declare global {
   export type { NetProxyInfo } from './src/composables/useNetProxy'
   import('./src/composables/useNetProxy')
   // @ts-ignore
+  export type { PopoutKind } from './src/composables/usePopout'
+  import('./src/composables/usePopout')
+  // @ts-ignore
   export type { DownloadJob, DownloadRequest } from './src/composables/usePostDownload'
   import('./src/composables/usePostDownload')
   // @ts-ignore
@@ -482,6 +488,7 @@ declare module 'vue' {
     readonly FACE_CHANNEL: UnwrapRef<typeof import('./src/composables/useFaceScreen')['FACE_CHANNEL']>
     readonly KNOB_STEP: UnwrapRef<typeof import('./src/composables/useSessionActions')['KNOB_STEP']>
     readonly MIN_H: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_H']>
+    readonly MIN_OPACITY: UnwrapRef<typeof import('./src/composables/usePopout')['MIN_OPACITY']>
     readonly MIN_W: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_W']>
     readonly MOVE_EDGES: UnwrapRef<typeof import('./src/composables/wallGeometry')['MOVE_EDGES']>
     readonly PHASE_TRANSITIONS: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['PHASE_TRANSITIONS']>
@@ -592,6 +599,7 @@ declare module 'vue' {
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly pickMediaFiles: UnwrapRef<typeof import('./src/composables/useMediaDrop')['pickMediaFiles']>
     readonly playSource: UnwrapRef<typeof import('./src/composables/useStreams')['playSource']>
+    readonly popoutFocused: UnwrapRef<typeof import('./src/composables/usePopout')['popoutFocused']>
     readonly presenceStatus: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['presenceStatus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
@@ -776,6 +784,7 @@ declare module 'vue' {
     readonly usePointer: UnwrapRef<typeof import('@vueuse/core')['usePointer']>
     readonly usePointerLock: UnwrapRef<typeof import('@vueuse/core')['usePointerLock']>
     readonly usePointerSwipe: UnwrapRef<typeof import('@vueuse/core')['usePointerSwipe']>
+    readonly usePopout: UnwrapRef<typeof import('./src/composables/usePopout')['usePopout']>
     readonly usePreferredColorScheme: UnwrapRef<typeof import('@vueuse/core')['usePreferredColorScheme']>
     readonly usePreferredContrast: UnwrapRef<typeof import('@vueuse/core')['usePreferredContrast']>
     readonly usePreferredDark: UnwrapRef<typeof import('@vueuse/core')['usePreferredDark']>

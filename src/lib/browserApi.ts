@@ -202,6 +202,33 @@ export interface DesktopInfo {
   eroscripts?: DesktopEroScripts | null
   /** The desktop app's Bluetooth chooser. Absent in older builds. */
   bluetooth?: DesktopBluetooth
+  /** The pop-out player's window. Main window only; absent in older builds. */
+  popout?: DesktopPopout
+}
+
+export interface DesktopPopoutState {
+  clickThrough: boolean
+  /** The global key that toggles click-through, as the cheat sheet writes it; null if taken. */
+  shortcut: string | null
+}
+
+/**
+ * The pop-out player's window (see usePopout). The page opens it with
+ * window.open; these act on the window the desktop app made for it.
+ */
+export interface DesktopPopout {
+  set: (opts: {
+    /** 0.2 – 1. */
+    opacity?: number
+    /** Mouse goes through to whatever is underneath. */
+    clickThrough?: boolean
+    /** Out of sight, for panic. */
+    hidden?: boolean
+    /** The video's width / height, to keep the window that shape. */
+    aspect?: number
+  }) => void
+  /** Click-through changed from the global key; returns an unsubscribe. */
+  onState: (cb: (s: DesktopPopoutState) => void) => () => void
 }
 
 export interface DesktopBluetooth {

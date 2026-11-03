@@ -6,9 +6,10 @@ import type { Directive } from 'vue'
  *   v-tip="'Shuffle'"
  *   v-tip="{ text: 'Next', kbd: 'N', placement: 'bottom' }"
  *
- * One shared element for the whole app, shown after a short delay and then
- * instantly while the pointer moves between tipped elements (the "warm"
- * window), the way native toolbars behave.
+ * One shared element per document (the main window, and the pop-out player's
+ * when the video is popped out), shown after a short delay and then instantly
+ * while the pointer moves between tipped elements (the "warm" window), the
+ * way native toolbars behave.
  */
 
 export interface TipOptions {
@@ -22,7 +23,9 @@ type TipValue = string | TipOptions | undefined | null
 const SHOW_DELAY = 450
 const WARM_MS = 600
 
-let tipEl: HTMLDivElement | null = null
+const tipEls = new WeakMap<Document, HTMLDivElement>()
+/** The document whose tip is showing. */
+let shownIn: Document | null = null
 let showTimer: ReturnType<typeof setTimeout> | null = null
 let warmUntil = 0
 let current: HTMLElement | null = null
@@ -31,14 +34,16 @@ let pending: HTMLElement | null = null
 
 const store = new WeakMap<HTMLElement, TipOptions>()
 
-function ensureEl() {
-  if (tipEl)
+function ensureEl(doc: Document) {
+  let tipEl = tipEls.get(doc)
+  if (tipEl?.isConnected)
     return tipEl
-  tipEl = document.createElement('div')
+  tipEl = doc.createElement('div')
   tipEl.setAttribute('role', 'tooltip')
   tipEl.className = 'ph-tip'
-  document.body.appendChild(tipEl)
-  const style = document.createElement('style')
+  doc.body.appendChild(tipEl)
+  tipEls.set(doc, tipEl)
+  const style = doc.createElement('style')
   style.textContent = `
 .ph-tip{position:fixed;z-index:2000;pointer-events:none;display:flex;align-items:center;gap:8px;
   padding:5px 8px;border-radius:7px;font:500 12px/1.35 Geist,Inter,system-ui,sans-serif;
@@ -49,7 +54,7 @@ function ensureEl() {
 .ph-tip span{min-width:0}
 .ph-tip kbd{flex-shrink:0;white-space:nowrap;font:500 10.5px 'Geist Mono',ui-monospace,monospace;color:var(--text-muted);
   padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--text) 8%,transparent)}`
-  document.head.appendChild(style)
+  doc.head.appendChild(style)
   return tipEl
 }
 
@@ -60,13 +65,18 @@ function normalise(v: TipValue): TipOptions {
 }
 
 function place(target: HTMLElement, opts: TipOptions) {
-  const el = ensureEl()
+  const doc = target.ownerDocument
+  const view = doc.defaultView ?? window
+  if (shownIn && shownIn !== doc)
+    tipEls.get(shownIn)?.classList.remove('on')
+  shownIn = doc
+  const el = ensureEl(doc)
   el.innerHTML = ''
-  const span = document.createElement('span')
+  const span = doc.createElement('span')
   span.textContent = opts.text ?? ''
   el.appendChild(span)
   if (opts.kbd) {
-    const k = document.createElement('kbd')
+    const k = doc.createElement('kbd')
     k.textContent = opts.kbd
     el.appendChild(k)
   }
@@ -79,7 +89,7 @@ function place(target: HTMLElement, opts: TipOptions) {
     placement = 'bottom'
   if (placement === 'left' && r.left - w - gap < 4)
     placement = 'right'
-  if (placement === 'right' && r.right + w + gap > window.innerWidth - 4)
+  if (placement === 'right' && r.right + w + gap > view.innerWidth - 4)
     placement = 'left'
   let x: number
   let y: number
@@ -91,8 +101,8 @@ function place(target: HTMLElement, opts: TipOptions) {
     x = placement === 'left' ? r.left - w - gap : r.right + gap
     y = r.top + r.height / 2 - h / 2
   }
-  x = Math.max(4, Math.min(window.innerWidth - w - 4, x))
-  y = Math.max(4, Math.min(window.innerHeight - h - 4, y))
+  x = Math.max(4, Math.min(view.innerWidth - w - 4, x))
+  y = Math.max(4, Math.min(view.innerHeight - h - 4, y))
   el.style.left = `${x}px`
   el.style.top = `${y}px`
 }
@@ -105,7 +115,7 @@ function show(target: HTMLElement) {
     return
   current = target
   place(target, opts)
-  ensureEl().classList.add('on')
+  ensureEl(target.ownerDocument).classList.add('on')
 }
 
 function hide() {
@@ -116,7 +126,8 @@ function hide() {
   if (current)
     warmUntil = Date.now() + WARM_MS
   current = null
-  tipEl?.classList.remove('on')
+  if (shownIn)
+    tipEls.get(shownIn)?.classList.remove('on')
 }
 
 function onEnter(e: Event) {

@@ -1,4 +1,5 @@
 import { reactive, ref } from 'vue'
+import { cancelFrame, requestFrame } from '~/lib/frames'
 
 // Singleton LFO state — shared across the app
 const values = reactive({ opacity: 1, zoom: 1, panX: 0, panY: 0 })
@@ -41,7 +42,7 @@ function tick(ts: number) {
     ? config.panDepth * dm * 0.7 * Math.cos(2 * Math.PI * config.panFreq * t * 1.3)
     : 0
 
-  rafId = requestAnimationFrame(tick)
+  rafId = requestFrame(tick)
 }
 
 export function useLFO() {
@@ -49,12 +50,12 @@ export function useLFO() {
     if (rafId !== null)
       return
     active.value = true
-    rafId = requestAnimationFrame(tick)
+    rafId = requestFrame(tick)
   }
 
   function stop() {
     if (rafId !== null) {
-      cancelAnimationFrame(rafId)
+      cancelFrame(rafId)
       rafId = null
       startTime = null
     }

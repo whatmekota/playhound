@@ -1,4 +1,5 @@
 import type { SessionPhase } from '~/stores/audio'
+import { requestFrame } from '~/lib/frames'
 import { useAudioStore } from '~/stores/audio'
 import { useBinauralBeats } from './useBinauralBeats'
 import { useLFO } from './useLFO'
@@ -134,9 +135,9 @@ export function useSessionEngine() {
       const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2
       store.beatDelta.value = from + (to - from) * eased
       if (t < 1)
-        requestAnimationFrame(frame)
+        requestFrame(frame)
     }
-    requestAnimationFrame(frame)
+    requestFrame(frame)
   }
 
   /**
@@ -160,11 +161,11 @@ export function useSessionEngine() {
       const eased = 1 - (1 - p) ** 3
       store.intensity.value = from + (target - from) * eased
       if (p < 1)
-        requestAnimationFrame(frame)
+        requestFrame(frame)
       else
         onDone()
     }
-    requestAnimationFrame(frame)
+    requestFrame(frame)
   }
 
   function scheduleEdgedPeak() {

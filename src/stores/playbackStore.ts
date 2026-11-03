@@ -32,6 +32,8 @@ export interface PlayerControls {
   setVolume: (volume: number) => void
   toggleMute: () => void
   toggleFullscreen: () => void
+  /** Into the pop-out window and back. Needs a click or key press to open. */
+  togglePopout: () => void
 }
 
 /** "Previous" restarts the current video when you are this far into it. */
@@ -380,6 +382,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const setVolume = (v: number) => controls.value?.setVolume(v)
   const toggleMute = () => controls.value?.toggleMute()
   const toggleFullscreen = () => controls.value?.toggleFullscreen()
+  const togglePopout = () => controls.value?.togglePopout()
 
   function toggleShuffle() {
     queue.toggleShuffle()
@@ -425,6 +428,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     setVolume,
     toggleMute,
     toggleFullscreen,
+    togglePopout,
     toggleShuffle,
     cycleRepeat,
   }
