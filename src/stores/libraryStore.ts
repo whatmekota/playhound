@@ -3,7 +3,7 @@ import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { AXIS_MAP } from '~/lib/axisMap'
-import { openFolderWithHandle } from '~/lib/browserApi'
+import { collectHandleFiles, filePath, openFolderWithHandle, pickDirectory } from '~/lib/browserApi'
 import { handleDb, metaDb } from '~/lib/idb'
 import { sniffScript } from '~/lib/scriptSniff'
 
@@ -38,6 +38,10 @@ export interface VideoEntry {
   thumbnailUrl: string | null
   duration: number | null // seconds, populated on first thumbnail/metadata load
   scriptType: ScriptType
+  /** From its library folder down: "Videos/sub/clip.mp4". Just the name for a dropped file. */
+  path: string
+  /** The library folder it came from, as listed in `folders`; '' for a dropped file. */
+  folder: string
   scriptMeta?: VideoMeta
   userMeta?: VideoMeta
   starred: boolean
@@ -166,8 +170,11 @@ export const useLibraryStore = defineStore('library', () => {
         const axisFiles = matches.filter(m => !m.isAlt)
         const altFiles = matches.filter(m => m.isAlt)
 
+        const path = filePath(f)
         entries.push({
           file: f,
+          path,
+          folder: path.includes('/') ? path.slice(0, path.indexOf('/')) : '',
           name: f.name,
           basename: f.name.replace(/\.[^.]+$/, ''),
           hasScript: matches.length > 0,
@@ -225,47 +232,170 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   // ── Folder lifecycle ──────────────────────────────────────────────────────
-  // Lives here rather than in the library panel so the folder comes back at
+  // Lives here rather than in the library panel so the folders come back at
   // startup whether or not that panel happens to be open.
+  //
+  // A library is one or more folders: a collection split across drives has
+  // no single parent to open. Each folder's files are kept apart (`rootFiles`)
+  // so adding or removing one does not mean reading the others again.
+  /** The first folder, under its pre-multi-folder key, kept for older code paths. */
   const HANDLE_KEY = 'lastDirHandle'
+  const FOLDERS_KEY = 'libraryFolders'
   const restoring = ref(false)
   /** A folder is remembered but the browser wants a click before reading it again. */
   const needsReconnect = ref(false)
-  /** Name of the remembered folder, for the reconnect prompt. */
+  /** Names of the remembered folders, for the reconnect prompt. */
   const savedFolderName = ref('')
+  /** The library's folders, as shown (a repeated name gets a number). */
+  const folders = ref<string[]>([])
   const isWatching = ref(false)
   const watchNewCount = ref(0)
   /** Bumped after every completed scan, so views can react to a fresh library. */
   const loadedAt = ref(0)
   let watchTimer: ReturnType<typeof setInterval> | null = null
-  let watchedHandle: FileSystemDirectoryHandle | null = null
+  /** One per folder; null for one opened without a handle (a browser without the folder API). */
+  let roots: (FileSystemDirectoryHandle | null)[] = []
+  let rootFiles: (File[] | null)[] = []
   const WATCH_INTERVAL_MS = 30_000
   const VIDEO_EXTS = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 
-  async function loadFrom(files: File[], handle: FileSystemDirectoryHandle | null) {
-    await setFiles(files)
-    if (handle) {
-      folderName.value = handle.name || folderName.value
-      startWatching(handle)
-    }
-    needsReconnect.value = false
-    loadedAt.value = Date.now()
+  /** "Videos", "Videos (2)": the label each folder's paths start with. */
+  function labelsFor(names: string[]) {
+    const seen = new Map<string, number>()
+    return names.map((n) => {
+      const name = n || 'Folder'
+      const k = (seen.get(name) ?? 0) + 1
+      seen.set(name, k)
+      return k > 1 ? `${name} (${k})` : name
+    })
   }
 
-  /** Ask the user for a folder. Returns false when they cancel. */
+  function describe(labels: string[]) {
+    return labels.length > 1 ? `${labels.length} folders` : labels[0] ?? ''
+  }
+
+  async function saveRoots() {
+    const handles = roots.filter((h): h is FileSystemDirectoryHandle => !!h)
+    try {
+      if (handles.length) {
+        await handleDb.setList(FOLDERS_KEY, handles)
+        await handleDb.set(HANDLE_KEY, handles[0])
+      }
+      else {
+        await handleDb.del(FOLDERS_KEY)
+        await handleDb.del(HANDLE_KEY)
+      }
+    }
+    catch {}
+  }
+
+  async function savedRoots(): Promise<FileSystemDirectoryHandle[]> {
+    try {
+      const list = await handleDb.getList(FOLDERS_KEY)
+      if (Array.isArray(list) && list.length)
+        return list
+      const one = await handleDb.get(HANDLE_KEY)
+      return one ? [one] : []
+    }
+    catch {
+      return []
+    }
+  }
+
+  /** Build the library from every folder read so far. */
+  async function rebuild() {
+    await setFiles(rootFiles.flatMap(f => f ?? []))
+    folderName.value = describe(folders.value)
+    needsReconnect.value = rootFiles.some(f => !f)
+    loadedAt.value = Date.now()
+    if (roots.some(Boolean))
+      startWatching()
+    else
+      stopWatching()
+  }
+
+  /** Read `handles` afresh and make them the library. */
+  async function loadRoots(handles: (FileSystemDirectoryHandle | null)[], prompt: boolean): Promise<boolean> {
+    const labels = labelsFor(handles.map(h => h?.name ?? ''))
+    const files: (File[] | null)[] = []
+    for (let i = 0; i < handles.length; i++) {
+      const h = handles[i]
+      files.push(h ? await readHandle(h, prompt, labels[i]) : rootFiles[i] ?? null)
+    }
+    roots = handles
+    rootFiles = files
+    folders.value = labels
+    savedFolderName.value = labels.join(', ')
+    if (files.every(f => !f)) {
+      needsReconnect.value = true
+      return false
+    }
+    await rebuild()
+    return files.some(f => f && f.length)
+  }
+
+  /** Ask the user for a folder and make it the whole library. Returns false when they cancel. */
   async function pickFolder(): Promise<boolean> {
     const { files, handle } = await openFolderWithHandle()
     if (!files.length)
       return false
-    if (handle) {
-      await handleDb.set(HANDLE_KEY, handle)
-      savedFolderName.value = handle.name
-    }
-    await loadFrom(files, handle)
+    roots = [handle]
+    rootFiles = [files]
+    folders.value = labelsFor([handle?.name ?? files[0]?.webkitRelativePath?.split('/')[0] ?? 'Folder'])
+    savedFolderName.value = folders.value[0]
+    await saveRoots()
+    await rebuild()
     return true
   }
 
-  async function readHandle(handle: FileSystemDirectoryHandle, prompt: boolean): Promise<File[] | null> {
+  /** Add another folder to the library. Returns false when cancelled or already there. */
+  async function addFolder(): Promise<boolean> {
+    if (!roots.length)
+      return pickFolder()
+    let handle: FileSystemDirectoryHandle | null = null
+    let files: File[]
+    if ('showDirectoryPicker' in window) {
+      handle = await pickDirectory()
+      if (!handle)
+        return false
+      for (const r of roots) {
+        if (r && await (r as any).isSameEntry?.(handle))
+          return false
+      }
+      files = []
+    }
+    else {
+      files = (await openFolderWithHandle()).files
+      if (!files.length)
+        return false
+    }
+    const labels = labelsFor([...roots.map(r => r?.name ?? ''), handle?.name ?? files[0]?.webkitRelativePath?.split('/')[0] ?? ''])
+    if (handle)
+      files = await collectHandleFiles(handle, labels.at(-1))
+    roots = [...roots, handle]
+    rootFiles = [...rootFiles, files]
+    folders.value = labels
+    savedFolderName.value = labels.join(', ')
+    await saveRoots()
+    await rebuild()
+    return true
+  }
+
+  /** Take one folder out of the library (the files stay where they are). */
+  async function removeFolder(index: number) {
+    if (index < 0 || index >= roots.length)
+      return
+    if (roots.length === 1)
+      return forgetFolder()
+    roots = roots.filter((_, i) => i !== index)
+    rootFiles = rootFiles.filter((_, i) => i !== index)
+    folders.value = folders.value.filter((_, i) => i !== index)
+    savedFolderName.value = folders.value.join(', ')
+    await saveRoots()
+    await rebuild()
+  }
+
+  async function readHandle(handle: FileSystemDirectoryHandle, prompt: boolean, prefix?: string): Promise<File[] | null> {
     const h = handle as any
     if (!h || !('queryPermission' in h))
       return null
@@ -275,7 +405,7 @@ export const useLibraryStore = defineStore('library', () => {
         perm = await h.requestPermission({ mode: 'read' })
       if (perm !== 'granted')
         return null
-      return await collectFiles(handle)
+      return await collectHandleFiles(handle, prefix ?? handle.name)
     }
     catch {
       return null
@@ -283,35 +413,22 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /**
-   * Bring back the last folder.
+   * Bring back the last folders.
    *
    * Without a user gesture the browser will not show its permission prompt, so
    * a silent restore that comes back 'prompt' just flags `needsReconnect` and
-   * leaves a one-click reconnect to the UI.
+   * leaves a one-click reconnect to the UI. Folders that do read load at once.
    */
   async function restoreFolder(opts: { prompt?: boolean } = {}): Promise<boolean> {
-    if (hasVideos.value)
+    if (hasVideos.value && !needsReconnect.value)
       return true
-    let handle: FileSystemDirectoryHandle | undefined
-    try {
-      handle = await handleDb.get(HANDLE_KEY)
-    }
-    catch {
+    const handles = roots.length && roots.every(Boolean) ? roots as FileSystemDirectoryHandle[] : await savedRoots()
+    if (!handles.length)
       return false
-    }
-    if (!handle)
-      return false
-    savedFolderName.value = handle.name
+    savedFolderName.value = labelsFor(handles.map(h => h.name)).join(', ')
     restoring.value = true
     try {
-      const files = await readHandle(handle, !!opts.prompt)
-      if (!files) {
-        needsReconnect.value = true
-        return false
-      }
-      if (files.length)
-        await loadFrom(files, handle)
-      return files.length > 0
+      return await loadRoots(handles, !!opts.prompt)
     }
     finally {
       restoring.value = false
@@ -325,25 +442,24 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function forgetFolder() {
     stopWatching()
-    await handleDb.del(HANDLE_KEY).catch(() => {})
+    roots = []
+    rootFiles = []
+    folders.value = []
+    await saveRoots()
     savedFolderName.value = ''
     needsReconnect.value = false
     clear()
   }
 
   /**
-   * The library folder, writable, for saving downloads into. Must be called
-   * from a click: the first time it shows the browser's permission prompt.
-   * Null without a folder, or when the user says no.
+   * The (first) library folder, writable, for saving downloads into. Must be
+   * called from a click: the first time it shows the browser's permission
+   * prompt. Null without a folder, or when the user says no.
    */
   async function writableFolder(): Promise<FileSystemDirectoryHandle | null> {
-    let handle: FileSystemDirectoryHandle | null | undefined = watchedHandle
-    if (!handle) {
-      try {
-        handle = await handleDb.get(HANDLE_KEY)
-      }
-      catch {}
-    }
+    let handle: FileSystemDirectoryHandle | null | undefined = roots.find(Boolean)
+    if (!handle)
+      handle = (await savedRoots())[0]
     const h = handle as any
     if (!h || !('queryPermission' in h))
       return null
@@ -359,27 +475,38 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   async function rescan() {
-    if (!watchedHandle)
+    if (!roots.some(Boolean))
       return
-    const files = await readHandle(watchedHandle, false)
-    if (files)
-      await loadFrom(files, watchedHandle)
+    await loadRoots(roots, false)
   }
 
-  function startWatching(handle: FileSystemDirectoryHandle) {
+  /** Look for new videos in every folder now and then. */
+  function startWatching() {
     stopWatching()
-    watchedHandle = handle
     isWatching.value = true
     watchNewCount.value = 0
     watchTimer = setInterval(async () => {
-      const files = await readHandle(handle, false)
-      if (!files)
-        return
       const prevNames = new Set(videos.value.map(v => v.name))
-      const fresh = files.filter(f => VIDEO_EXTS.test(f.name) && !prevNames.has(f.name))
-      if (fresh.length) {
-        watchNewCount.value += fresh.length
-        await setFiles(files)
+      let fresh = 0
+      const next = [...rootFiles]
+      for (let i = 0; i < roots.length; i++) {
+        const h = roots[i]
+        if (!h)
+          continue
+        const files = await readHandle(h, false, folders.value[i])
+        if (!files)
+          continue
+        const added = files.filter(f => VIDEO_EXTS.test(f.name) && !prevNames.has(f.name)).length
+        if (added) {
+          fresh += added
+          next[i] = files
+        }
+      }
+      if (fresh) {
+        watchNewCount.value += fresh
+        rootFiles = next
+        await setFiles(rootFiles.flatMap(f => f ?? []))
+        folderName.value = describe(folders.value)
         loadedAt.value = Date.now()
       }
     }, WATCH_INTERVAL_MS)
@@ -403,6 +530,7 @@ export const useLibraryStore = defineStore('library', () => {
     restoring,
     needsReconnect,
     savedFolderName,
+    folders,
     isWatching,
     watchNewCount,
     loadedAt,
@@ -411,6 +539,8 @@ export const useLibraryStore = defineStore('library', () => {
     clear,
     toggleStar,
     pickFolder,
+    addFolder,
+    removeFolder,
     restoreFolder,
     reconnect,
     forgetFolder,
@@ -420,20 +550,3 @@ export const useLibraryStore = defineStore('library', () => {
     stopWatching,
   }
 })
-
-/** Every file under a directory handle, recursing into sub-folders. */
-async function collectFiles(dirHandle: any): Promise<File[]> {
-  const files: File[] = []
-  for await (const entry of dirHandle.values()) {
-    if (entry.kind === 'file') {
-      files.push(await entry.getFile())
-    }
-    else if (entry.kind === 'directory') {
-      try {
-        files.push(...await collectFiles(entry))
-      }
-      catch {}
-    }
-  }
-  return files
-}

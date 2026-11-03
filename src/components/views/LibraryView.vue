@@ -23,6 +23,7 @@ import UiMenu from '~/components/ui/UiMenu.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
 import UiProgress from '~/components/ui/UiProgress.vue'
 import UiSegmented from '~/components/ui/UiSegmented.vue'
+import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import { toast } from '~/composables/useToast'
@@ -53,6 +54,16 @@ const cardSize = useLocalStorage(KEYS.libraryCard.key, 220)
 
 // ─── Search, filters, sort (the same machinery as the drawer panel) ───────────
 const lq = useLibraryQueryState(() => library.videos)
+
+/** The folder switcher: '' is every folder. */
+const folderPick = computed({
+  get: () => lq.folder ?? '',
+  set: (v: string) => (lq.folder = v || null),
+})
+const folderOptions = computed(() => [
+  { value: '', label: `All ${library.folders.length} folders` },
+  ...library.folders.map(f => ({ value: f, label: f })),
+])
 const scripts = lq.scripts
 
 // ─── Now playing ──────────────────────────────────────────────────────────────
@@ -163,7 +174,13 @@ const folderMenu = computed<MenuItem[]>(() => [
   library.isWatching
     ? { label: 'Stop watching folder', icon: 'i-carbon-view-off', run: library.stopWatching }
     : { label: 'Rescan folder', icon: 'i-carbon-renew', run: () => void rescan(), disabled: !library.hasVideos },
-  { label: 'Forget folder', icon: 'i-carbon-folder-off', danger: true, run: () => void library.forgetFolder(), disabled: !library.hasVideos && !library.savedFolderName },
+  ...(library.folders.length > 1
+    ? [
+        { separator: true } as MenuItem,
+        ...library.folders.map((f, i): MenuItem => ({ label: `Remove “${f}”`, icon: 'i-carbon-subtract-alt', run: () => void library.removeFolder(i) })),
+      ]
+    : []),
+  { label: library.folders.length > 1 ? 'Forget all folders' : 'Forget folder', icon: 'i-carbon-folder-off', danger: true, run: () => void library.forgetFolder(), disabled: !library.hasVideos && !library.savedFolderName },
 ])
 
 // ─── Windowed grid / list ─────────────────────────────────────────────────────
@@ -259,7 +276,11 @@ function onBackgroundClick(e: MouseEvent) {
         </h1>
         <div class="text-[12.5px] text-fg-muted mt-1 flex flex-wrap gap-x-2 gap-y-1 min-h-5 items-center">
           <template v-if="library.hasVideos">
-            <span class="flex gap-1.5 min-w-0 items-center">
+            <span v-if="library.folders.length > 1" class="flex gap-1.5 min-w-0 items-center">
+              <span class="i-carbon-folders text-fg-faint shrink-0" />
+              <UiSelect v-model="folderPick" :options="folderOptions" class="max-w-56" />
+            </span>
+            <span v-else class="flex gap-1.5 min-w-0 items-center">
               <span class="i-carbon-folder text-fg-faint shrink-0" />
               <span class="text-fg font-medium truncate">{{ library.folderName }}</span>
             </span>
@@ -305,6 +326,14 @@ function onBackgroundClick(e: MouseEvent) {
           :disabled="rescanning"
           @click="rescan"
         />
+        <UiButton
+          v-if="library.hasVideos"
+          v-tip="'Another folder in the same library: one on another drive, say'"
+          icon="i-carbon-folder-add"
+          @click="library.addFolder()"
+        >
+          Add folder
+        </UiButton>
         <UiButton icon="i-carbon-folder-open" :loading="library.scanning && library.hasVideos" @click="library.pickFolder()">
           {{ library.hasVideos ? 'Change folder' : 'Open folder' }}
         </UiButton>

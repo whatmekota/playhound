@@ -4,9 +4,10 @@ import type { FilterKey, SortKey, SortState } from '~/lib/libraryQuery'
 import type { IntensityBand } from '~/lib/scriptIntensity'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { refDebounced, useLocalStorage } from '@vueuse/core'
-import { computed, reactive, ref, shallowRef } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { bandCounts, filterCounts, nextSort, queryLibrary, SCRIPT_SORTS, SORT_LABELS, toggleBand as toggleBandIn, toggleFilter as toggleFilterIn, usesSummaries } from '~/lib/libraryQuery'
 import { KEYS } from '~/lib/persist'
+import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useScriptSummaries } from './useScriptSummaries'
@@ -27,6 +28,7 @@ export const FILTER_CHIPS: { key: FilterKey, label: string, icon: string }[] = [
  */
 export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   const playback = usePlaybackStore()
+  const library = useLibraryStore()
   const queue = useQueueStore()
   const scripts = useScriptSummaries()
 
@@ -34,6 +36,12 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   const search = ref('')
   const query = refDebounced(search, 120)
   const filters = shallowRef(new Set<FilterKey>())
+  /** One library folder, or null for all; a folder that leaves the library drops back to all. */
+  const folder = ref<string | null>(null)
+  watch(() => library.folders, (list) => {
+    if (folder.value && !list.includes(folder.value))
+      folder.value = null
+  })
   const bands = shallowRef(new Set<IntensityBand>())
 
   function setSort(key: SortKey, asc?: boolean) {
@@ -49,14 +57,15 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
     filters.value = new Set()
     bands.value = new Set()
     search.value = ''
+    folder.value = null
   }
 
-  const filtering = computed(() => !!query.value.trim() || filters.value.size > 0 || bands.value.size > 0)
+  const filtering = computed(() => !!query.value.trim() || filters.value.size > 0 || bands.value.size > 0 || !!folder.value)
   /** Sorting or filtering on script shape, where lazy analysis would shuffle rows under the pointer. */
   const scriptAware = computed(() => usesSummaries({ bands: bands.value, sort: sort.value }))
 
   const results = computed(() => {
-    const q = { query: query.value, filters: filters.value, bands: bands.value, sort: sort.value }
+    const q = { query: query.value, filters: filters.value, bands: bands.value, sort: sort.value, folder: folder.value }
     // Only a script-aware query re-runs as analyses land, and then calmly.
     if (usesSummaries(q))
       void scripts.settledCount.value
@@ -115,6 +124,7 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
     query,
     filters,
     bands,
+    folder,
     sort,
     setSort,
     toggleFilter,

@@ -428,7 +428,7 @@ function openBackup() {
                     <span class="i-carbon-folder text-[19px]" />
                   </span>
                   <div class="flex flex-1 flex-col gap-0.5 min-w-0">
-                    <span class="text-[14px] text-fg font-medium truncate">{{ folder || 'No folder yet' }}</span>
+                    <span v-tip="library.folders.length > 1 ? library.folders.join(' · ') : ''" class="text-[14px] text-fg font-medium truncate">{{ folder || 'No folder yet' }}</span>
                     <span class="hint">
                       <template v-if="library.hasVideos">{{ library.videos.length.toLocaleString() }} videos · {{ scripted.toLocaleString() }} with scripts</template>
                       <template v-else-if="folder">Remembered, not loaded</template>
@@ -443,8 +443,11 @@ function openBackup() {
                   <UiButton v-if="library.needsReconnect" variant="primary" icon="i-carbon-connect" @click="reconnect">
                     Reconnect
                   </UiButton>
-                  <UiButton :variant="folder ? 'secondary' : 'primary'" icon="i-carbon-folder-add" :loading="picking" @click="pickFolder">
-                    {{ folder ? 'Choose another folder' : 'Open a folder' }}
+                  <UiButton :variant="folder ? 'secondary' : 'primary'" icon="i-carbon-folder-open" :loading="picking" @click="pickFolder">
+                    {{ folder ? 'Change folder' : 'Open a folder' }}
+                  </UiButton>
+                  <UiButton v-if="library.hasVideos" icon="i-carbon-folder-add" @click="library.addFolder()">
+                    Add folder
                   </UiButton>
                   <UiButton v-if="library.isWatching" icon="i-carbon-renew" :loading="rescanning" @click="rescan">
                     Rescan

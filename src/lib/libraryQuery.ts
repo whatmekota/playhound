@@ -11,13 +11,14 @@ import type { VideoEntry } from '~/stores/libraryStore'
 import { effectiveMeta } from './entryInfo'
 import { intensityBand } from './scriptIntensity'
 
-export type SortKey = 'name' | 'size' | 'date' | 'duration' | 'intensity' | 'peak'
+export type SortKey = 'name' | 'path' | 'size' | 'date' | 'duration' | 'intensity' | 'peak'
 export interface SortState { key: SortKey, asc: boolean }
 
 export type FilterKey = 'scripted' | 'multi' | 'starred' | 'unscripted'
 
 export const SORT_LABELS: Record<SortKey, string> = {
   name: 'Name',
+  path: 'Folder',
   size: 'Size',
   date: 'Date modified',
   duration: 'Duration',
@@ -38,7 +39,7 @@ export function nextSort(cur: SortState, key: SortKey, asc?: boolean): SortState
     return { key, asc }
   if (cur.key === key)
     return { key, asc: !cur.asc }
-  return { key, asc: key === 'name' }
+  return { key, asc: key === 'name' || key === 'path' }
 }
 
 /** Toggle a chip, dropping whichever chips it contradicts. */
@@ -86,10 +87,14 @@ export interface LibraryQuery {
   filters: ReadonlySet<FilterKey>
   bands: ReadonlySet<IntensityBand>
   sort: SortState
+  /** One library folder only (an entry's `folder`); null or absent for all of them. */
+  folder?: string | null
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 export const byName = (a: VideoEntry, b: VideoEntry) => collator.compare(a.basename, b.basename)
+/** Folder by folder, sub-folders together, then by name inside each. */
+export const byPath = (a: VideoEntry, b: VideoEntry) => collator.compare(a.path ?? a.name, b.path ?? b.name)
 
 function sortValue(v: VideoEntry, key: SortKey, summaryOf: SummaryOf): number | undefined {
   switch (key) {
@@ -111,6 +116,8 @@ export function sortEntries(list: VideoEntry[], sort: SortState, summaryOf: Summ
   const { key, asc } = sort
   if (key === 'name')
     return list.sort((a, b) => (asc ? byName(a, b) : byName(b, a)))
+  if (key === 'path')
+    return list.sort((a, b) => (asc ? byPath(a, b) : byPath(b, a)))
 
   // Read every key once rather than twice per comparison.
   const val = new Map<VideoEntry, number | undefined>()
@@ -134,6 +141,8 @@ export function filterEntries(videos: readonly VideoEntry[], q: Omit<LibraryQuer
   const f = q.filters
   const bands = q.bands
   return videos.filter((v) => {
+    if (q.folder && v.folder !== q.folder)
+      return false
     if (f.has('scripted') && !v.hasScript)
       return false
     if (f.has('unscripted') && v.hasScript)

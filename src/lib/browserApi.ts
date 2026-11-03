@@ -92,22 +92,50 @@ export async function openFolderInput(): Promise<File[]> {
   return files
 }
 
-async function collectHandleFiles(dirHandle: any): Promise<File[]> {
+/**
+ * Where each file sits, from the library folder down: "Videos/sub/clip.mp4".
+ * A File read through a directory handle does not carry its path the way a
+ * folder <input> does (webkitRelativePath), so the walk records it here.
+ */
+const filePaths = new WeakMap<File, string>()
+
+/** A file's path from its library folder, or just its name when it came loose (a drop). */
+export function filePath(f: File): string {
+  return filePaths.get(f) || f.webkitRelativePath || f.name
+}
+
+/** Every file under a directory, recursively, each with its path recorded (see filePath). */
+export async function collectHandleFiles(dirHandle: any, prefix: string = dirHandle.name): Promise<File[]> {
   const files: File[] = []
   for await (const entry of dirHandle.values()) {
     if (entry.kind === 'file') {
-      files.push(await entry.getFile())
+      try {
+        const f = await entry.getFile()
+        filePaths.set(f, `${prefix}/${entry.name}`)
+        files.push(f)
+      }
+      catch {}
     }
     else if (entry.kind === 'directory') {
-      // recurse one level for sub-folders (e.g. organised libraries)
       try {
-        const sub = await collectHandleFiles(entry)
-        files.push(...sub)
+        files.push(...await collectHandleFiles(entry, `${prefix}/${entry.name}`))
       }
       catch {}
     }
   }
   return files
+}
+
+/** The browser's folder picker alone. Null when cancelled or unavailable. */
+export async function pickDirectory(): Promise<FileSystemDirectoryHandle | null> {
+  if (!('showDirectoryPicker' in window))
+    return null
+  try {
+    return await (window as any).showDirectoryPicker({ mode: 'read' })
+  }
+  catch {
+    return null
+  }
 }
 
 function webkitDirInput(): Promise<File[]> {

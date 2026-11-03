@@ -93,6 +93,8 @@ export const metaDb = {
 export const handleDb = {
   get: (key: string) => idbGet<FileSystemDirectoryHandle>('handles', key),
   set: (key: string, value: FileSystemDirectoryHandle) => idbSet('handles', key, value),
+  getList: (key: string) => idbGet<FileSystemDirectoryHandle[]>('handles', key),
+  setList: (key: string, value: FileSystemDirectoryHandle[]) => idbSet('handles', key, value),
   del: async (key: string) => {
     await openDB()
     return new Promise<void>((resolve, reject) => {

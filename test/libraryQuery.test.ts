@@ -19,6 +19,8 @@ function entry(name: string, over: Partial<VideoEntry> = {}): VideoEntry {
     file: { size: 100, lastModified: 0 } as File,
     name: `${name}.mp4`,
     basename: name,
+    path: `${name}.mp4`,
+    folder: '',
     hasScript: true,
     scriptCount: 1,
     altCount: 0,
@@ -146,5 +148,30 @@ describe('sortEntries', () => {
     expect(usesSummaries({ bands: none, sort: { key: 'name', asc: true } })).toBe(false)
     expect(usesSummaries({ bands: none, sort: { key: 'peak', asc: true } })).toBe(true)
     expect(usesSummaries({ bands: new Set(['gentle'] as const), sort: { key: 'name', asc: true } })).toBe(true)
+  })
+})
+
+describe('folders', () => {
+  const lib = [
+    entry('b', { path: 'Videos/b.mp4', folder: 'Videos' }),
+    entry('a', { path: 'Videos/sub/a.mp4', folder: 'Videos' }),
+    entry('c', { path: 'Videos/c.mp4', folder: 'Videos' }),
+    entry('d', { path: 'Archive/x/d.mp4', folder: 'Archive' }),
+    entry('e', { path: 'Videos/sub/e.mp4', folder: 'Videos' }),
+  ]
+  const q = { query: '', filters: none, bands: none }
+
+  it('sorts by path: each folder together, sub-folders grouped', () => {
+    expect(names(sortEntries([...lib], { key: 'path', asc: true }, () => undefined))).toEqual(['d', 'b', 'c', 'a', 'e'])
+    expect(names(sortEntries([...lib], { key: 'path', asc: false }, () => undefined))).toEqual(['e', 'a', 'c', 'b', 'd'])
+  })
+
+  it('starts the path sort A→Z', () => {
+    expect(nextSort({ key: 'size', asc: false }, 'path')).toEqual({ key: 'path', asc: true })
+  })
+
+  it('shows one folder, or all', () => {
+    expect(names(filterEntries(lib, { ...q, folder: 'Archive' }, () => undefined))).toEqual(['d'])
+    expect(filterEntries(lib, { ...q, folder: null }, () => undefined)).toHaveLength(5)
   })
 })
