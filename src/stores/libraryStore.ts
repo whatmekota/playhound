@@ -248,6 +248,8 @@ export const useLibraryStore = defineStore('library', () => {
   const savedFolderName = ref('')
   /** The library's folders, as shown (a repeated name gets a number). */
   const folders = ref<string[]>([])
+  /** Per folder in `folders`: read this session (false: waiting on a reconnect). */
+  const folderLoaded = ref<boolean[]>([])
   const isWatching = ref(false)
   const watchNewCount = ref(0)
   /** Bumped after every completed scan, so views can react to a fresh library. */
@@ -304,6 +306,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   /** Build the library from every folder read so far. */
   async function rebuild() {
+    folderLoaded.value = rootFiles.map(f => !!f)
     await setFiles(rootFiles.flatMap(f => f ?? []))
     folderName.value = describe(folders.value)
     needsReconnect.value = rootFiles.some(f => !f)
@@ -325,6 +328,7 @@ export const useLibraryStore = defineStore('library', () => {
     roots = handles
     rootFiles = files
     folders.value = labels
+    folderLoaded.value = files.map(f => !!f)
     savedFolderName.value = labels.join(', ')
     if (files.every(f => !f)) {
       needsReconnect.value = true
@@ -395,6 +399,46 @@ export const useLibraryStore = defineStore('library', () => {
     await rebuild()
   }
 
+  /**
+   * Put another folder in place of the one at `index`, keeping its spot in the
+   * list. Returns false when cancelled or when that folder is already in.
+   */
+  async function replaceFolder(index: number): Promise<boolean> {
+    if (index < 0 || index >= roots.length)
+      return false
+    if (roots.length === 1 || !('showDirectoryPicker' in window))
+      return roots.length === 1 ? pickFolder() : false
+    const handle = await pickDirectory()
+    if (!handle)
+      return false
+    for (let i = 0; i < roots.length; i++) {
+      const r = roots[i]
+      if (r && await (r as any).isSameEntry?.(handle))
+        return i === index
+    }
+    const names = roots.map(r => r?.name ?? '')
+    names[index] = handle.name
+    const labels = labelsFor(names)
+    // A renumbered label moves every path under that folder, so re-read the
+    // ones whose label changed; the rest keep their files.
+    const files: (File[] | null)[] = []
+    for (let i = 0; i < roots.length; i++) {
+      if (i === index)
+        files.push(await collectHandleFiles(handle, labels[i]))
+      else if (labels[i] !== folders.value[i] && roots[i])
+        files.push(await readHandle(roots[i]!, false, labels[i]))
+      else
+        files.push(rootFiles[i])
+    }
+    roots = roots.map((r, i) => (i === index ? handle : r))
+    rootFiles = files
+    folders.value = labels
+    savedFolderName.value = labels.join(', ')
+    await saveRoots()
+    await rebuild()
+    return true
+  }
+
   async function readHandle(handle: FileSystemDirectoryHandle, prompt: boolean, prefix?: string): Promise<File[] | null> {
     const h = handle as any
     if (!h || !('queryPermission' in h))
@@ -445,6 +489,7 @@ export const useLibraryStore = defineStore('library', () => {
     roots = []
     rootFiles = []
     folders.value = []
+    folderLoaded.value = []
     await saveRoots()
     savedFolderName.value = ''
     needsReconnect.value = false
@@ -531,6 +576,7 @@ export const useLibraryStore = defineStore('library', () => {
     needsReconnect,
     savedFolderName,
     folders,
+    folderLoaded,
     isWatching,
     watchNewCount,
     loadedAt,
@@ -541,6 +587,7 @@ export const useLibraryStore = defineStore('library', () => {
     pickFolder,
     addFolder,
     removeFolder,
+    replaceFolder,
     restoreFolder,
     reconnect,
     forgetFolder,

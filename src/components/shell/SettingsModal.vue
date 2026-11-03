@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiField from '~/components/ui/UiField.vue'
+import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiModal from '~/components/ui/UiModal.vue'
 import UiProgress from '~/components/ui/UiProgress.vue'
@@ -166,6 +167,45 @@ const folderState = computed<{ label: string, tone: 'ok' | 'warn' | 'neutral' | 
   return { label: 'No folder', tone: 'neutral' }
 })
 const scripted = computed(() => library.videos.reduce((n, v) => n + (v.hasScript ? 1 : 0), 0))
+
+/** Swapping one of several folders needs the folder picker (not in every browser). */
+const canSwap = computed(() => library.folders.length === 1 || 'showDirectoryPicker' in window)
+/** One row per library folder, with how many videos came from it. */
+const folderRows = computed(() => {
+  const counts = new Map<string, number>()
+  for (const v of library.videos) {
+    if (v.folder)
+      counts.set(v.folder, (counts.get(v.folder) ?? 0) + 1)
+  }
+  return library.folders.map((label, index) => ({
+    label,
+    index,
+    loaded: library.folderLoaded[index] ?? false,
+    count: counts.get(label) ?? 0,
+  }))
+})
+
+async function addFolder() {
+  if (await library.addFolder())
+    toast.success(`Added ${library.folders.at(-1)}`, { icon: 'i-carbon-folder-add' })
+}
+
+async function replaceFolder(index: number) {
+  const old = library.folders[index]
+  try {
+    if (await library.replaceFolder(index) && library.folders[index] !== old)
+      toast.success(`${old} → ${library.folders[index]}`, { icon: 'i-carbon-folder' })
+  }
+  catch (err) {
+    console.error('Folder pick failed:', err)
+  }
+}
+
+async function removeFolder(index: number) {
+  const name = library.folders[index]
+  await library.removeFolder(index)
+  toast(`Removed ${name}`, { detail: 'The files stay where they are', icon: 'i-carbon-folder' })
+}
 
 const picking = ref(false)
 async function pickFolder() {
@@ -513,7 +553,7 @@ function openBackup() {
                     <span class="i-carbon-folder text-[19px]" />
                   </span>
                   <div class="flex flex-1 flex-col gap-0.5 min-w-0">
-                    <span v-tip="library.folders.length > 1 ? library.folders.join(' · ') : ''" class="text-[14px] text-fg font-medium truncate">{{ folder || 'No folder yet' }}</span>
+                    <span class="text-[14px] text-fg font-medium truncate">{{ folderRows.length > 1 ? `${folderRows.length} folders` : folder || 'No folder yet' }}</span>
                     <span class="hint">
                       <template v-if="library.hasVideos">{{ library.videos.length.toLocaleString() }} videos · {{ scripted.toLocaleString() }} with scripts</template>
                       <template v-else-if="folder">Remembered, not loaded</template>
@@ -524,21 +564,38 @@ function openBackup() {
                     {{ folderState.label }}
                   </UiBadge>
                 </div>
+                <ul v-if="folderRows.length" class="m-0 p-0 list-none border border-edge rounded-[var(--radius-md)]" aria-label="Library folders">
+                  <li
+                    v-for="f in folderRows"
+                    :key="f.index"
+                    class="pl-3 pr-1.5 border-t border-edge flex gap-2.5 h-10 items-center first:border-t-0"
+                  >
+                    <span class="i-carbon-folder text-[15px] text-fg-muted shrink-0" />
+                    <span class="text-[13px] text-fg flex-1 min-w-0 truncate">{{ f.label }}</span>
+                    <span class="hint shrink-0" :class="!f.loaded && 'text-warn'">
+                      {{ f.loaded ? `${f.count.toLocaleString()} ${f.count === 1 ? 'video' : 'videos'}` : 'Needs reconnect' }}
+                    </span>
+                    <span class="flex shrink-0 gap-0.5">
+                      <UiIconButton v-if="canSwap" icon="i-carbon-edit" label="Swap for another folder" size="xs" @click="replaceFolder(f.index)" />
+                      <UiIconButton v-if="folderRows.length > 1" icon="i-carbon-close" label="Remove from library" size="xs" @click="removeFolder(f.index)" />
+                    </span>
+                  </li>
+                </ul>
                 <div class="flex flex-wrap gap-2">
                   <UiButton v-if="library.needsReconnect" variant="primary" icon="i-carbon-connect" @click="reconnect">
                     Reconnect
                   </UiButton>
-                  <UiButton :variant="folder ? 'secondary' : 'primary'" icon="i-carbon-folder-open" :loading="picking" @click="pickFolder">
-                    {{ folder ? 'Change folder' : 'Open a folder' }}
+                  <UiButton v-if="!folder" variant="primary" icon="i-carbon-folder-open" :loading="picking" @click="pickFolder">
+                    Open a folder
                   </UiButton>
-                  <UiButton v-if="library.hasVideos" icon="i-carbon-folder-add" @click="library.addFolder()">
+                  <UiButton v-else icon="i-carbon-folder-add" @click="addFolder">
                     Add folder
                   </UiButton>
                   <UiButton v-if="library.isWatching" icon="i-carbon-renew" :loading="rescanning" @click="rescan">
                     Rescan
                   </UiButton>
                   <UiButton v-if="folder" variant="danger" icon="i-carbon-trash-can" class="ml-auto" @click="forget">
-                    {{ confirmForget ? 'Click again to forget' : 'Forget folder' }}
+                    {{ confirmForget ? 'Click again to forget' : folderRows.length > 1 ? 'Forget all' : 'Forget folder' }}
                   </UiButton>
                 </div>
               </div>
