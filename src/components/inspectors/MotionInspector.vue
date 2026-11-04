@@ -2,6 +2,7 @@
 import type { MotionSourceId, StrokeShape } from '~/stores/motionStore'
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
 import MusicScriptCard from '~/components/player/MusicScriptCard.vue'
+import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSoundtrack } from '~/composables/useSoundtrack'
@@ -18,6 +19,7 @@ import { useUiStore } from '~/stores/uiStore'
 const motion = useMotionStore()
 const audio = useAudioStore()
 const device = useDeviceStore()
+const anyDevice = useAnyDevice()
 const scripts = useScriptStore()
 const player = usePlayerStore()
 const ui = useUiStore()
@@ -374,7 +376,7 @@ const PAD_MAP = [
         </div>
       </div>
 
-      <div v-if="!device.connected" class="text-[12px] text-fg-muted px-2.5 py-2 rounded-[var(--radius-md)] bg-fg/4 flex gap-2 items-center">
+      <div v-if="!anyDevice" class="text-[12px] text-fg-muted px-2.5 py-2 rounded-[var(--radius-md)] bg-fg/4 flex gap-2 items-center">
         <span class="i-carbon-plug text-[14px] text-fg-faint shrink-0" />
         <span class="flex-1 min-w-0">No device connected. The trace and emulator still show the output.</span>
         <UiButton size="xs" variant="ghost" @click="ui.openInspector('device')">

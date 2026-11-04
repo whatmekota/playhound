@@ -161,9 +161,30 @@ describe('folders', () => {
   ]
   const q = { query: '', filters: none, bands: none }
 
-  it('sorts by path: each folder together, sub-folders grouped', () => {
-    expect(names(sortEntries([...lib], { key: 'path', asc: true }, () => undefined))).toEqual(['d', 'b', 'c', 'a', 'e'])
+  it('sorts by path: each folder together, sub-folders before the files beside them', () => {
+    expect(names(sortEntries([...lib], { key: 'path', asc: true }, () => undefined))).toEqual(['d', 'a', 'e', 'b', 'c'])
     expect(names(sortEntries([...lib], { key: 'path', asc: false }, () => undefined))).toEqual(['e', 'a', 'c', 'b', 'd'])
+  })
+
+  it('does not slot a sub-folder in among the root files by its name', () => {
+    const root = ['a', 'b', 'p', 'q', 'u', 'z'].map(n => entry(`root-${n}`, { path: `Main/${n} root file.mp4`, folder: 'Main' }))
+    const one = ['b', 'a'].map(n => entry(`one-${n}`, { path: `Main/one/file ${n}.mp4`, folder: 'Main' }))
+    const two = ['c', 'a', 'b'].map(n => entry(`two-${n}`, { path: `Main/two/file ${n}.mp4`, folder: 'Main' }))
+    const deep = entry('deep', { path: 'Main/one/inner/x.mp4', folder: 'Main' })
+    expect(names(sortEntries([...root, ...two, deep, ...one], { key: 'path', asc: true }, () => undefined))).toEqual([
+      'deep',
+      'one-a',
+      'one-b',
+      'two-a',
+      'two-b',
+      'two-c',
+      'root-a',
+      'root-b',
+      'root-p',
+      'root-q',
+      'root-u',
+      'root-z',
+    ])
   })
 
   it('starts the path sort A→Z', () => {

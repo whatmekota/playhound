@@ -10,6 +10,7 @@ import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
+import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
 import { heartRate } from '~/composables/useHeartRate'
@@ -25,7 +26,6 @@ import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { VR_FORMATS, vrFormat } from '~/lib/vrFormat'
 import { useAudioStore } from '~/stores/audio'
-import { useDeviceStore } from '~/stores/deviceStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -59,7 +59,7 @@ const playback = usePlaybackStore()
 const queue = useQueueStore()
 const scriptStore = useScriptStore()
 const library = useLibraryStore()
-const device = useDeviceStore()
+const anyDevice = useAnyDevice()
 const motion = useMotionStore()
 const audio = useAudioStore()
 const director = useAutoDirector()
@@ -598,13 +598,13 @@ const needsOverflow = computed(() => level.value > 0)
 
         <template v-if="showStatus">
           <button
-            v-tip="device.connected ? 'Device connected' : 'No device — open the device panel'"
+            v-tip="anyDevice ? 'Device connected' : 'No device — open the device panel'"
             type="button"
             class="np-chip"
             :class="ui.inspector === 'device' ? 'bg-fg/8 text-fg' : ''"
             @click="ui.toggleInspector('device')"
           >
-            <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="device.connected ? 'bg-ok animate-pulse-dot text-ok' : 'bg-fg/25'" />
+            <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="anyDevice ? 'bg-ok animate-pulse-dot text-ok' : 'bg-fg/25'" />
             <span class="i-carbon-plug text-[14px]" />
           </button>
           <!-- Only once a monitor is paired; nothing to show otherwise. -->
@@ -745,8 +745,8 @@ const needsOverflow = computed(() => level.value > 0)
               <div class="flex flex-col gap-1">
                 <span class="eyebrow mb-0.5">Status</span>
                 <button type="button" class="np-row" @click="ui.toggleInspector('device')">
-                  <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="device.connected ? 'bg-ok' : 'bg-fg/25'" />
-                  <span class="flex-1">{{ device.connected ? 'Device connected' : 'No device' }}</span>
+                  <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="anyDevice ? 'bg-ok' : 'bg-fg/25'" />
+                  <span class="flex-1">{{ anyDevice ? 'Device connected' : 'No device' }}</span>
                   <span class="i-carbon-chevron-right text-fg-faint" />
                 </button>
                 <button type="button" class="np-row" @click="ui.toggleInspector('motion')">

@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import type { FloatingId, InspectorId } from '~/lib/views'
 import { computed } from 'vue'
+import { useAnyDevice } from '~/composables/useAnyDevice'
 import { INSPECTOR_GROUPS } from '~/lib/views'
 import { useAudioStore } from '~/stores/audio'
-import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { useProgrammeStore } from '~/stores/programmeStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useUiStore } from '~/stores/uiStore'
 
 const ui = useUiStore()
-const device = useDeviceStore()
+const anyDevice = useAnyDevice()
 const motion = useMotionStore()
 const audio = useAudioStore()
 const queue = useQueueStore()
@@ -34,7 +34,7 @@ function pin(id: InspectorId | FloatingId) {
 
 /** Small live indicators on rail icons, so state is visible with the drawer shut. */
 const status = computed<Partial<Record<InspectorId | FloatingId, 'ok' | 'info' | 'accent' | null>>>(() => ({
-  device: device.connected ? 'ok' : null,
+  device: anyDevice.value ? 'ok' : null,
   motion: motion.running ? 'ok' : null,
   binaural: audio.isPlaying.value ? 'info' : null,
   programme: programme.status === 'running' || programme.status === 'stopping' ? 'accent' : programme.status === 'paused' ? 'info' : null,

@@ -93,8 +93,28 @@ export interface LibraryQuery {
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
 export const byName = (a: VideoEntry, b: VideoEntry) => collator.compare(a.basename, b.basename)
-/** Folder by folder, sub-folders together, then by name inside each. */
-export const byPath = (a: VideoEntry, b: VideoEntry) => collator.compare(a.path ?? a.name, b.path ?? b.name)
+
+/** A path's folders and then its file name. */
+const pathParts = (v: VideoEntry) => (v.path ?? v.name).split('/')
+
+/**
+ * Paths in file-explorer order: folder by folder, and inside each, its
+ * sub-folders before the files that sit beside them. `asc` flips the names at
+ * every level but keeps sub-folders first.
+ */
+export function comparePaths(a: string[], b: string[], asc = true): number {
+  const n = Math.min(a.length, b.length)
+  for (let i = 0; i < n; i++) {
+    const aFile = i === a.length - 1
+    const bFile = i === b.length - 1
+    if (aFile !== bFile)
+      return aFile ? 1 : -1
+    const c = collator.compare(a[i], b[i])
+    if (c)
+      return asc ? c : -c
+  }
+  return a.length - b.length
+}
 
 function sortValue(v: VideoEntry, key: SortKey, summaryOf: SummaryOf): number | undefined {
   switch (key) {
@@ -116,8 +136,10 @@ export function sortEntries(list: VideoEntry[], sort: SortState, summaryOf: Summ
   const { key, asc } = sort
   if (key === 'name')
     return list.sort((a, b) => (asc ? byName(a, b) : byName(b, a)))
-  if (key === 'path')
-    return list.sort((a, b) => (asc ? byPath(a, b) : byPath(b, a)))
+  if (key === 'path') {
+    const parts = new Map(list.map(v => [v, pathParts(v)]))
+    return list.sort((a, b) => comparePaths(parts.get(a)!, parts.get(b)!, asc) || byName(a, b))
+  }
 
   // Read every key once rather than twice per comparison.
   const val = new Map<VideoEntry, number | undefined>()
