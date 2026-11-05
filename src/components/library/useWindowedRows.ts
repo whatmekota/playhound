@@ -1,6 +1,6 @@
 import type { MaybeRefOrGetter, Ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { computed, onBeforeUnmount, ref, toValue, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, ref, toValue, watch } from 'vue'
 
 export interface WindowRow<T> {
   index: number
@@ -40,6 +40,26 @@ export function useWindowedRows<T>(opts: {
 
   // The scroller is re-created when the body switches between states.
   watch(opts.scroller, el => (scrollTop.value = el?.scrollTop ?? 0))
+
+  // Inside the shell's KeepAlive the view is taken out of the page while
+  // another one shows, and the browser forgets the scroller's position. Put
+  // it back on return, and read what the browser settled on: otherwise the
+  // rows are drawn where the list used to be scrolled to while the scroller
+  // sits at the top, and the view looks empty.
+  let kept = 0
+  onDeactivated(() => {
+    kept = scrollTop.value
+  })
+  onActivated(() => {
+    void nextTick(() => {
+      const el = opts.scroller.value
+      if (!el)
+        return
+      if (kept && el.scrollTop !== kept)
+        el.scrollTop = kept
+      scrollTop.value = el.scrollTop
+    })
+  })
 
   const cols = computed(() => Math.max(1, opts.cols?.(width.value) ?? 1))
   const rowH = computed(() => Math.max(1, typeof opts.rowH === 'number' ? opts.rowH : opts.rowH(width.value, cols.value)))
