@@ -1,5 +1,5 @@
 import type { StrokeShape } from '~/stores/motionStore'
-import { applyDepth } from './motionMath'
+import { applyDepth, SAW_TOP } from './motionMath'
 
 /**
  * Motion as moves — "go to P, taking T ms" — for devices that take moves
@@ -26,9 +26,9 @@ export interface Move {
 
 const TAU = Math.PI * 2
 
-/** Where in a cycle the top of the stroke is: half way for the smooth shapes, a third for pulse's quick rise. */
+/** Where in a cycle the top of the stroke is: half way for the even shapes, a third for pulse's quick rise, three quarters for saw's long push. */
 function topPhase(shape: StrokeShape): number {
-  return shape === 'pulse' ? TAU / 3 : Math.PI
+  return shape === 'pulse' ? TAU / 3 : shape === 'saw' ? TAU * SAW_TOP : Math.PI
 }
 
 export interface OscillatorState {

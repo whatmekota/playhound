@@ -5,9 +5,11 @@
  * safety-relevant parts (speed ceiling, ramping) are easy to reason about.
  */
 
-export type StrokeShape = 'sine' | 'ease' | 'pulse'
+export type StrokeShape = 'sine' | 'ease' | 'pulse' | 'saw' | 'sharp'
 
 const TAU = Math.PI * 2
+/** Where saw's top is, as a share of the cycle. */
+export const SAW_TOP = 0.75
 
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v
@@ -43,8 +45,23 @@ export function strokePosition(phase: number, shape: StrokeShape = 'sine'): numb
     return s * s * (3 - 2 * s)
   }
 
-  // pulse: quick rise over the first third, slower fall over the rest.
   const t = p / TAU
+
+  // sharp: the same speed all the way, hard turns at both ends (a triangle).
+  if (shape === 'sharp')
+    return t < 0.5 ? t * 2 : 2 - t * 2
+
+  // saw: a steady push up over three quarters of the cycle, then a quick
+  // drop. Not an instant one, which a device can only slam: the drop takes
+  // the last quarter, eased at both ends.
+  if (shape === 'saw') {
+    if (t < SAW_TOP)
+      return t / SAW_TOP
+    const u = (t - SAW_TOP) / (1 - SAW_TOP)
+    return 1 - u * u * (3 - 2 * u)
+  }
+
+  // pulse: quick rise over the first third, slower fall over the rest.
   if (t < 1 / 3) {
     const u = t * 3
     return 1 - (1 - u) ** 3

@@ -241,7 +241,16 @@ const SHAPES: { value: StrokeShape, label: string }[] = [
   { value: 'sine', label: 'Sine' },
   { value: 'ease', label: 'Ease' },
   { value: 'pulse', label: 'Pulse' },
+  { value: 'saw', label: 'Saw' },
+  { value: 'sharp', label: 'Sharp' },
 ]
+const SHAPE_HINT: Record<StrokeShape, string> = {
+  sine: 'Smooth and even',
+  ease: 'Lingers at the ends',
+  pulse: 'Quick strike, slow return',
+  saw: 'Steady push, quick drop',
+  sharp: 'Even speed, hard turns',
+}
 
 // ─── Derived axes ─────────────────────────────────────────────────────────────
 const SYNTH_AXES = [
@@ -583,7 +592,7 @@ const PAD_MAP = [
 
     <!-- ─── Generated motion shape ────────────────────────────────────────── -->
     <UiSection v-if="motion.isGenerated" title="Stroke" icon="i-carbon-waveform">
-      <UiField label="Shape" :hint="motion.shape === 'sine' ? 'Smooth and even' : motion.shape === 'ease' ? 'Lingers at the ends' : 'Quick strike, slow return'">
+      <UiField label="Shape" :hint="SHAPE_HINT[motion.shape]">
         <UiSegmented v-model="motion.shape" :options="SHAPES" size="xs" />
       </UiField>
       <UiSlider v-model="motion.center" label="Centre" :format="pct" :reset="0.5" hint="Where in the range the stroke is centred" />

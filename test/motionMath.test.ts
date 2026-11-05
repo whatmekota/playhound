@@ -12,7 +12,7 @@ import {
 
 describe('strokePosition', () => {
   it('starts retracted and peaks mid-cycle for every shape', () => {
-    for (const shape of ['sine', 'ease', 'pulse'] as const) {
+    for (const shape of ['sine', 'ease', 'pulse', 'saw', 'sharp'] as const) {
       expect(strokePosition(0, shape)).toBeCloseTo(0, 5)
       const peak = Math.max(
         ...Array.from({ length: 200 }, (_, i) => strokePosition((i / 200) * Math.PI * 2, shape)),
@@ -22,7 +22,7 @@ describe('strokePosition', () => {
   })
 
   it('stays within 0-1 across the whole cycle', () => {
-    for (const shape of ['sine', 'ease', 'pulse'] as const) {
+    for (const shape of ['sine', 'ease', 'pulse', 'saw', 'sharp'] as const) {
       for (let i = 0; i < 500; i++) {
         const v = strokePosition((i / 500) * Math.PI * 4 - Math.PI, shape)
         expect(v).toBeGreaterThanOrEqual(0)
@@ -32,7 +32,7 @@ describe('strokePosition', () => {
   })
 
   it('is continuous — no jumps between adjacent samples', () => {
-    for (const shape of ['sine', 'ease', 'pulse'] as const) {
+    for (const shape of ['sine', 'ease', 'pulse', 'saw', 'sharp'] as const) {
       let prev = strokePosition(0, shape)
       for (let i = 1; i <= 1000; i++) {
         const v = strokePosition((i / 1000) * Math.PI * 2, shape)

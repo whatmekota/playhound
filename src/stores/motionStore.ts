@@ -21,7 +21,7 @@ export const MOTION_SOURCES: { id: MotionSourceId, label: string, hint: string }
 ]
 
 /** Waveform used to turn the stroke phase into a position. */
-export type StrokeShape = 'sine' | 'ease' | 'pulse'
+export type StrokeShape = 'sine' | 'ease' | 'pulse' | 'saw' | 'sharp'
 
 /** The speed ceiling's range: up to CEILING_MAX normally, CEILING_MAX_UNLOCKED once the user unlocks it. */
 export const CEILING_MAX = 240
