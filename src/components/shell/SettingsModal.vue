@@ -2,6 +2,7 @@
 import type { ThemeId } from '~/stores/themeStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
+import PluginsSettings from '~/components/plugins/PluginsSettings.vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiField from '~/components/ui/UiField.vue'
@@ -115,7 +116,7 @@ const updateLine = computed(() => {
 })
 const SCALE_OPTIONS = UI_SCALES.map(s => ({ value: s as number, label: `${Math.round(s * 100)}%` }))
 
-type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'updates' | 'about'
+type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
 const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
   { id: 'playback', label: 'Playback', icon: 'i-carbon-play-outline' },
@@ -125,6 +126,7 @@ const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'network', label: 'Network', icon: 'i-carbon-network-3' },
   { id: 'keyboard', label: 'Keyboard', icon: 'i-carbon-keyboard' },
   { id: 'discord', label: 'Discord', icon: 'i-carbon-logo-discord' },
+  { id: 'plugins', label: 'Plugins', icon: 'i-carbon-application' },
   { id: 'updates', label: 'Updates', icon: 'i-carbon-renew' },
   { id: 'about', label: 'About', icon: 'i-carbon-information' },
 ]
@@ -263,6 +265,13 @@ watch(() => ui.settingsOpen, (open) => {
   if (!open)
     confirmForget.value = false
 })
+// Something asked for a particular section (a plugin's "settings" link).
+watch(() => [ui.settingsOpen, ui.settingsSection] as const, ([open, want]) => {
+  if (open && want && SECTIONS.some(s => s.id === want)) {
+    section.value = want as SectionId
+    ui.settingsSection = null
+  }
+}, { immediate: true })
 
 // ─── Network ─────────────────────────────────────────────────────────────────
 // Edited as a draft and applied on Enter or the button, so the server is not
@@ -449,6 +458,10 @@ function openBackup() {
             </template>
 
             <!-- Updates -->
+            <template v-else-if="section === 'plugins'">
+              <PluginsSettings />
+            </template>
+
             <template v-else-if="section === 'updates'">
               <div v-if="updates.supported && upd" class="p-4 card flex flex-col gap-4">
                 <div class="flex gap-3 items-center">

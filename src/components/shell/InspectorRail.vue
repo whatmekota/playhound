@@ -5,6 +5,7 @@ import { useAnyDevice } from '~/composables/useAnyDevice'
 import { INSPECTOR_GROUPS } from '~/lib/views'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
+import { usePluginStore } from '~/stores/pluginStore'
 import { useProgrammeStore } from '~/stores/programmeStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -15,6 +16,12 @@ const motion = useMotionStore()
 const audio = useAudioStore()
 const queue = useQueueStore()
 const programme = useProgrammeStore()
+const pluginStore = usePluginStore()
+
+/** The Plugins drawer only shows once a switched-on plugin has a panel. */
+const groups = computed(() => INSPECTOR_GROUPS
+  .map(g => ({ ...g, items: g.items.filter(i => i.id !== 'plugins' || pluginStore.plugins.some(p => p.panel)) }))
+  .filter(g => g.items.length))
 
 function isOn(id: InspectorId | FloatingId) {
   return id === 'emulator' ? ui.isFloatingOpen('emulator') : ui.inspector === id || ui.pinned === id
@@ -48,7 +55,7 @@ const upcomingCount = computed(() => queue.upcoming.length)
     class="py-2 scroll-y border-l border-edge bg-surface-900 flex shrink-0 flex-col gap-0.5 w-[var(--rail-w)] select-none items-center relative z-20"
     aria-label="Tools"
   >
-    <template v-for="(group, gi) in INSPECTOR_GROUPS" :key="group.id">
+    <template v-for="(group, gi) in groups" :key="group.id">
       <div v-if="gi > 0" class="my-1.5 bg-edge-strong shrink-0 h-px w-5" role="separator" />
       <button
         v-for="item in group.items"

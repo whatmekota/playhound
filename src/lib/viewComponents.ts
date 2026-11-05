@@ -10,6 +10,7 @@ import HypnoInspector from '~/components/inspectors/HypnoInspector.vue'
 import LibraryInspector from '~/components/inspectors/LibraryInspector.vue'
 import MotionInspector from '~/components/inspectors/MotionInspector.vue'
 import PlaylistsInspector from '~/components/inspectors/PlaylistsInspector.vue'
+import PluginsInspector from '~/components/inspectors/PluginsInspector.vue'
 import ProgrammeInspector from '~/components/inspectors/ProgrammeInspector.vue'
 import QueueInspector from '~/components/inspectors/QueueInspector.vue'
 import RemoteInspector from '~/components/inspectors/RemoteInspector.vue'
@@ -53,4 +54,5 @@ export const INSPECTOR_COMPONENTS: Record<InspectorId, Component> = {
   'hypno': HypnoInspector,
   'director': DirectorInspector,
   'backup': BackupInspector,
+  'plugins': PluginsInspector,
 }

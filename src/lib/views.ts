@@ -24,7 +24,7 @@ export type InspectorId
     | 'queue' | 'scripts' | 'bookmarks'
     | 'device' | 'motion' | 'remote'
     | 'binaural' | 'hypno' | 'director' | 'programme' | 'face'
-    | 'backup'
+    | 'backup' | 'plugins'
 
 export type FloatingId = 'emulator'
 
@@ -127,6 +127,7 @@ export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
     label: 'Data',
     items: [
       { id: 'backup', kind: 'inspector', label: 'Backup', icon: 'i-carbon-save', hint: 'What is stored here, and export / import it' },
+      { id: 'plugins', kind: 'inspector', label: 'Plugins', icon: 'i-carbon-application', hint: 'Panels of the plugins you switched on' },
     ],
   },
 ]

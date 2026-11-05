@@ -46,6 +46,7 @@ import { useLibraryStore } from '~/stores/libraryStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { usePluginStore } from '~/stores/pluginStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
@@ -66,6 +67,8 @@ const session = useSessionActions()
 const popout = usePopout()
 startUiScale()
 startUpdates()
+// Switched-on plugins load once the page is up, so a slow one can't hold it back.
+onMounted(() => void usePluginStore().start())
 
 // Instantiate these once at the shell level so they keep running whichever
 // view or inspector happens to be open.

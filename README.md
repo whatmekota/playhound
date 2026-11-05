@@ -100,6 +100,11 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   gamepad, or an [ESP32 "Cheap Yellow Display"](firmware/cyd-face) face that
   watches the session and reacts. The face also comes as Kerfus, the cat robot,
   and can fill a second monitor instead of a board.
+- **Plugins.** Extra features from a plugin store (GitHub repositories you
+  follow) or a zip, with their own settings and panel. The first is
+  [playmate](https://github.com/whatmekota/playmate), an AI partner that
+  talks, moves the device and can run a whole session. Writing one is
+  described in [docs/plugins.md](docs/plugins.md).
 - **Desktop app.** A Windows build with a frameless window. It keeps driving the
   device while minimised, remembers your library folder, and can show Discord
   Rich Presence (off by default).
@@ -222,10 +227,15 @@ Exactly one source drives the device at a time, and you can switch live in the
 | Session | the session's phase and intensity                                                                         |
 | Beat    | the binaural beat, divided down to a usable rate                                                          |
 | Pulse   | the audible session pulse                                                                                 |
-| Manual  | the rate and depth sliders                                                                                |
+| Manual  | the rate and depth sliders (also what a plugin drives)                                                    |
 
 A loaded script always wins while it plays, so a generator never fights video
 sync for the same axis.
+
+The **speed ceiling** under Safety limits caps every generated stroke. It goes
+up to 240 spm; past that it needs an explicit opt-in (up to 400), because most
+strokers can't keep up there. Stroke shapes: sine, ease, pulse, saw (a steady
+push and a quick drop) and sharp (even speed with hard turns).
 
 ### Keyboard
 
@@ -331,7 +341,11 @@ it full screen on your second display, and it needs no relay or setup.
 - **Left nav:** Player, Library, Playlists, Media Wall, Slideshow,
   EroScripts, Organizer, Stats.
 - **Right rail:** Queue, Scripts, Bookmarks, Device, Motion, Programme, Remote,
-  Face, Binaural, Hypno, Director, Backup. Middle-click a panel icon to pin it.
+  Face, Binaural, Hypno, Director, Backup, and Plugins once a plugin has a
+  panel. Middle-click a panel icon to pin it.
+- **Plugins:** Settings → Plugins installs them from the store or a zip and
+  holds their settings. A plugin runs with playhound's own access, so install
+  only ones you trust.
 - **Library:** one folder or several (a collection split across drives),
   search, filter chips, sort by folder, script intensity and speed sparklines,
   hover-scrub previews, and an **auto-director** that picks the next video

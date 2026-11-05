@@ -7,12 +7,14 @@
  *   "previews"  — key: name|size|mtime, value: PreviewRecord (scrub sprite sheets; a cache)
  *   "soundtracks" — key: name|size|mtime, value: SoundtrackRecord (beat analyses; a cache)
  *   "chapters"  — key: script name|size|mtime, value: ChapterIndexRecord (per-video chapters; a cache)
+ *   "plugins"   — key: pkg:<id> | settings:<id> | data:<id>:<key>; installed plugins, their settings
+ *                 and their own data. Kept out of backups: settings may hold API keys.
  */
 
 // Storage identifier, not a brand string. Renaming it would orphan every
 // user's playlists, video metadata and saved directory handles.
 const DB_NAME = 'mwhoplayer'
-const DB_VERSION = 7
+const DB_VERSION = 8
 let db: IDBDatabase | null = null
 
 function openDB(): Promise<IDBDatabase> {
@@ -43,6 +45,9 @@ function openDB(): Promise<IDBDatabase> {
       // v7: the chapter index programmes build highlight reels from.
       if (!d.objectStoreNames.contains('chapters'))
         d.createObjectStore('chapters')
+      // v8: installed plugins (see src/plugins).
+      if (!d.objectStoreNames.contains('plugins'))
+        d.createObjectStore('plugins')
     }
     req.onsuccess = () => {
       db = req.result
@@ -326,6 +331,30 @@ export const chapterIndexDb = {
     return new Promise((resolve, reject) => {
       const req = db!.transaction('chapters', 'readwrite').objectStore('chapters').clear()
       req.onsuccess = () => resolve()
+      req.onerror = () => reject(req.error)
+    })
+  },
+}
+
+/** Installed plugins, their settings and their data (see src/plugins). Not backed up. */
+export const pluginDb = {
+  get: <T>(key: string) => idbGet<T>('plugins', key),
+  set: (key: string, value: unknown) => idbSet('plugins', key, value),
+  async del(key: string): Promise<void> {
+    await openDB()
+    return new Promise((resolve, reject) => {
+      const req = db!.transaction('plugins', 'readwrite').objectStore('plugins').delete(key)
+      req.onsuccess = () => resolve()
+      req.onerror = () => reject(req.error)
+    })
+  },
+  /** Every key starting with `prefix`. */
+  async keys(prefix: string): Promise<string[]> {
+    await openDB()
+    return new Promise((resolve, reject) => {
+      const range = IDBKeyRange.bound(prefix, `${prefix}￿`)
+      const req = db!.transaction('plugins', 'readonly').objectStore('plugins').getAllKeys(range)
+      req.onsuccess = () => resolve((req.result ?? []).map(String))
       req.onerror = () => reject(req.error)
     })
   },

@@ -234,6 +234,8 @@ export interface DesktopInfo {
   popout?: DesktopPopout
   /** Updates from GitHub Releases. Main window only; absent in older builds. */
   updates?: DesktopUpdates
+  /** fetch() from the main process, for plugins (desktop/netbridge.mjs). */
+  net?: DesktopNet
 }
 
 export type UpdateStatus = 'off' | 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'available' | 'error'
@@ -253,6 +255,22 @@ export interface UpdateState {
   auto: boolean
   /** Where to download it by hand (portable). */
   url: string | null
+}
+
+export interface DesktopNetRequest {
+  url: string
+  method: string
+  headers: [string, string][]
+  body: Uint8Array | null
+}
+
+export interface DesktopNet {
+  fetch: (req: DesktopNetRequest, on: {
+    head: (status: number, statusText: string, headers: [string, string][]) => void
+    chunk: (data: Uint8Array) => void
+    end: () => void
+    error: (message: string) => void
+  }) => () => void
 }
 
 export interface DesktopUpdates {

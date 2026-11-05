@@ -803,11 +803,33 @@ function closeMini() {
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 onMounted(() => {
-  playback.bindPlayer({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume, toggleMute, toggleFullscreen, togglePopout })
+  playback.bindPlayer({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume, toggleMute, toggleFullscreen, togglePopout, frame })
   window.addEventListener('keydown', onKeyDown)
   document.addEventListener('fullscreenchange', onFullscreenChange)
   poke()
 })
+
+/** The picture showing now, as a small JPEG (for plugins that want a look). */
+function frame(maxWidth: number, quality: number): string | null {
+  const v = videoEl.value
+  if (!v || !v.videoWidth || v.readyState < 2)
+    return null
+  const scale = Math.min(1, maxWidth / v.videoWidth)
+  const c = document.createElement('canvas')
+  c.width = Math.round(v.videoWidth * scale)
+  c.height = Math.round(v.videoHeight * scale)
+  const g = c.getContext('2d')
+  if (!g)
+    return null
+  try {
+    g.drawImage(v, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', quality)
+  }
+  catch {
+    // A cross-origin stream taints the canvas: no picture to give.
+    return null
+  }
+}
 
 // ─── Pop-out picture ─────────────────────────────────────────────────────────
 // The parked video's frames, drawn into the pop-out whenever either window

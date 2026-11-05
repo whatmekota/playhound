@@ -55,6 +55,8 @@ export const useUiStore = defineStore('ui', () => {
   const paletteOpen = ref(false)
   const shortcutsOpen = ref(false)
   const settingsOpen = ref(false)
+  /** A Settings section to open at, picked up (and cleared) by the modal. */
+  const settingsSection = ref<string | null>(null)
   /** "Play a link…": paste a link to stream. */
   const playLinkOpen = ref(false)
   /** A file is being dragged over the window. */
@@ -164,6 +166,7 @@ export const useUiStore = defineStore('ui', () => {
     paletteOpen,
     shortcutsOpen,
     settingsOpen,
+    settingsSection,
     playLinkOpen,
     dragging,
     drawerOpen,

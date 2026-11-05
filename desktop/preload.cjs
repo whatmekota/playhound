@@ -193,6 +193,52 @@ const updatesApi = updateState
     })
   : null
 
+// ── Network for plugins ─────────────────────────────────────────────────────
+// fetch() made by the main process (desktop/netbridge.mjs), streamed back
+// through callbacks: the page turns it into a Response.
+const netApi = winState
+  ? Object.freeze({
+      /**
+       * req: { url, method, headers: [[k, v]], body: Uint8Array | null }
+       * on: { head(status, statusText, headers), chunk(Uint8Array), end(), error(message) }
+       * Returns an abort function.
+       */
+      fetch: (req, on) => {
+        const { port1, port2 } = new MessageChannel()
+        port1.onmessage = (e) => {
+          const m = e.data
+          try {
+            if (m.type === 'head')
+              on.head(m.status, m.statusText, m.headers)
+            else if (m.type === 'chunk')
+              on.chunk(m.data)
+            else if (m.type === 'end')
+              on.end()
+            else if (m.type === 'error')
+              on.error(m.message)
+          }
+          catch (err) {
+            console.error('[playhound] net callback failed', err)
+          }
+          if (m.type === 'end' || m.type === 'error')
+            port1.close()
+        }
+        ipcRenderer.postMessage('ph:net:fetch', {
+          url: String(req.url),
+          method: String(req.method || 'GET'),
+          headers: Array.isArray(req.headers) ? req.headers.map(([k, v]) => [String(k), String(v)]) : [],
+          body: req.body instanceof Uint8Array ? req.body : null,
+        }, [port2])
+        return () => {
+          try {
+            port1.postMessage({ type: 'abort' })
+          }
+          catch {}
+        }
+      },
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -214,6 +260,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
     : undefined,
   popout: popoutApi ?? undefined,
   updates: updatesApi ?? undefined,
+  net: netApi ?? undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

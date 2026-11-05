@@ -36,6 +36,8 @@ export interface PlayerControls {
   toggleFullscreen: () => void
   /** Into the pop-out window and back. Needs a click or key press to open. */
   togglePopout: () => void
+  /** The picture showing now as a JPEG data URL, at most `maxWidth` wide; null without one. */
+  frame?: (maxWidth: number, quality: number) => string | null
 }
 
 /** "Previous" restarts the current video when you are this far into it. */
@@ -379,6 +381,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   // ── Passthrough controls ──────────────────────────────────────────────────
   const togglePlay = () => controls.value?.togglePlay()
   const pause = () => controls.value?.pause()
+  /** The current picture of the video, small, for whoever wants a look (plugins). */
+  const grabFrame = (maxWidth = 512, quality = 0.72) => controls.value?.frame?.(maxWidth, quality) ?? null
   const resume = () => controls.value?.play()
   const seek = (t: number) => controls.value?.seek(t)
   const seekRelative = (d: number) => controls.value?.seekRelative(d)
@@ -425,6 +429,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     restoreSession,
     togglePlay,
     pause,
+    grabFrame,
     resume,
     seek,
     seekRelative,
