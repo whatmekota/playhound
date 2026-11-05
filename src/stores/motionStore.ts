@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 /**
  * Where the device's stroke position comes from.
@@ -23,6 +23,10 @@ export const MOTION_SOURCES: { id: MotionSourceId, label: string, hint: string }
 /** Waveform used to turn the stroke phase into a position. */
 export type StrokeShape = 'sine' | 'ease' | 'pulse'
 
+/** The speed ceiling's range: up to CEILING_MAX normally, CEILING_MAX_UNLOCKED once the user unlocks it. */
+export const CEILING_MAX = 240
+export const CEILING_MAX_UNLOCKED = 400
+
 export const useMotionStore = defineStore('motion', () => {
   const source = ref<MotionSourceId>('funscript')
   const enabled = ref(false)
@@ -31,6 +35,14 @@ export const useMotionStore = defineStore('motion', () => {
   // Hard ceiling on generated speed. The generator never exceeds this no matter
   // what the session or beat asks for.
   const maxSpm = ref(150)
+  /** The user has unlocked ceilings past CEILING_MAX (fast scripts go there; most devices don't follow). */
+  const ceilingUnlocked = ref(false)
+  const ceilingTop = computed(() => (ceilingUnlocked.value ? CEILING_MAX_UNLOCKED : CEILING_MAX))
+  // Locking it again brings the ceiling back inside the normal range.
+  watch(ceilingUnlocked, (on) => {
+    if (!on && maxSpm.value > CEILING_MAX)
+      maxSpm.value = CEILING_MAX
+  }, { flush: 'sync' })
   // Maximum rate of change, so a phase transition ramps instead of slamming.
   const spmRampPerSec = ref(25)
   const depthRampPerSec = ref(0.4)
@@ -104,6 +116,7 @@ export const useMotionStore = defineStore('motion', () => {
     return {
       source: source.value,
       maxSpm: maxSpm.value,
+      ceilingUnlocked: ceilingUnlocked.value,
       softStart: softStart.value,
       shape: shape.value,
       center: center.value,
@@ -148,6 +161,10 @@ export const useMotionStore = defineStore('motion', () => {
       if (typeof data[key] === 'number')
         target.value = data[key]
     }
+    if (typeof data.ceilingUnlocked === 'boolean')
+      ceilingUnlocked.value = data.ceilingUnlocked
+    // Never load a ceiling past what is unlocked.
+    maxSpm.value = Math.min(Math.max(20, maxSpm.value), ceilingTop.value)
     if (data.source)
       source.value = data.source
     if (typeof data.softStart === 'boolean')
@@ -176,6 +193,8 @@ export const useMotionStore = defineStore('motion', () => {
     source,
     enabled,
     maxSpm,
+    ceilingUnlocked,
+    ceilingTop,
     softStart,
     spmRampPerSec,
     depthRampPerSec,

@@ -11,7 +11,7 @@ import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '
 import { synthTargets } from '~/lib/axisSynth'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
-import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
+import { CEILING_MAX, CEILING_MAX_UNLOCKED, MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -650,11 +650,25 @@ const PAD_MAP = [
           label="Speed ceiling"
           unit=" spm"
           :min="20"
-          :max="240"
+          :max="motion.ceilingTop"
           :step="5"
           :reset="150"
           :tone="motion.maxSpm > CEILING_WARN ? 'danger' : 'warn'"
         />
+        <UiSwitch
+          v-model="motion.ceilingUnlocked"
+          size="sm"
+          :label="`Allow up to ${CEILING_MAX_UNLOCKED} spm`"
+          :hint="`Fast scripts sustain well past ${CEILING_MAX}; the ceiling can follow them.`"
+        />
+        <Transition name="t-fade">
+          <div v-if="motion.ceilingUnlocked" class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20">
+            <span class="i-carbon-warning-filled text-[14px] mt-px shrink-0" />
+            <span>
+              Past {{ CEILING_MAX }} spm the generated motion asks more of the device than most strokers can do: they skip, shorten the stroke or slam the ends, and they heat up. Raise it only for a device you know keeps up, keep the stroke short, and keep Esc in reach. You use it at your own risk.
+            </span>
+          </div>
+        </Transition>
         <Transition name="t-fade">
           <div v-if="motion.maxSpm > CEILING_WARN" class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20">
             <span class="i-carbon-warning-filled text-[14px] mt-px shrink-0" />
