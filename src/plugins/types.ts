@@ -48,7 +48,13 @@ interface FieldBase {
 export interface SelectOption { value: string, label: string }
 
 export interface PanelDef {
+  /** Shown as the drawer's title and the rail button's tooltip; the plugin's name if absent. */
   title?: string
+  /**
+   * The rail button's icon: an inline SVG drawn in currentColor, about 16×16
+   * (stroke or fill). A generic icon stands in without one.
+   */
+  icon?: string
   /** Build the panel's DOM into `el`; return a cleanup. Called each time the panel opens. */
   mount: (el: HTMLElement) => void | (() => void)
 }

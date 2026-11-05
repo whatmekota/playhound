@@ -18,10 +18,20 @@ const queue = useQueueStore()
 const programme = useProgrammeStore()
 const pluginStore = usePluginStore()
 
-/** The Plugins drawer only shows once a switched-on plugin has a panel. */
+/** The built-in panels; plugins get a button each, below them (see the template). */
 const groups = computed(() => INSPECTOR_GROUPS
-  .map(g => ({ ...g, items: g.items.filter(i => i.id !== 'plugins' || pluginStore.plugins.some(p => p.panel)) }))
+  .map(g => ({ ...g, items: g.items.filter(i => i.id !== 'plugins') }))
   .filter(g => g.items.length))
+
+const showsPlugin = (id: string) => (ui.inspector === 'plugins' || ui.pinned === 'plugins') && pluginStore.shownPanel?.manifest.id === id
+function openPlugin(id: string) {
+  if (ui.inspector === 'plugins' && pluginStore.shownPanel?.manifest.id === id) {
+    ui.closeInspector('plugins')
+    return
+  }
+  pluginStore.activePanel = id
+  ui.openInspector('plugins')
+}
 
 function isOn(id: InspectorId | FloatingId) {
   return id === 'emulator' ? ui.isFloatingOpen('emulator') : ui.inspector === id || ui.pinned === id
@@ -93,6 +103,29 @@ const upcomingCount = computed(() => queue.upcoming.length)
           v-if="item.id === 'queue' && upcomingCount > 0"
           class="text-[9px] text-fg font-semibold num px-1 rounded-full bg-surface-600 center h-3.5 min-w-3.5 right-0 top-0 absolute"
         >{{ upcomingCount > 99 ? '99+' : upcomingCount }}</span>
+      </button>
+    </template>
+
+    <!-- A button per plugin with a panel, with the plugin's own icon -->
+    <template v-if="pluginStore.panels.length">
+      <div class="my-1.5 bg-edge-strong shrink-0 h-px w-5" role="separator" />
+      <button
+        v-for="p in pluginStore.panels"
+        :key="p.manifest.id"
+        v-tip="{ text: p.panel?.title || p.manifest.name, placement: 'left' }"
+        type="button"
+        class="group focusable rounded-[var(--radius-md)] flex shrink-0 h-9 w-9 transition-colors items-center justify-center relative"
+        :class="showsPlugin(p.manifest.id) ? 'text-accent-300 bg-accent-soft' : 'text-fg-muted hover:text-fg hover:bg-fg/6'"
+        :aria-label="p.panel?.title || p.manifest.name"
+        :aria-pressed="showsPlugin(p.manifest.id)"
+        @click="openPlugin(p.manifest.id)"
+      >
+        <span v-if="p.panel?.icon" class="plugin-icon text-[17px] transition-transform duration-200 group-active:scale-90" v-html="p.panel.icon" />
+        <span v-else class="i-carbon-application text-[17px] transition-transform duration-200 group-active:scale-90" />
+        <span
+          class="rounded-full bg-accent w-[3px] transition-all duration-300 ease-[var(--ease-out)] right-[-7px] absolute"
+          :class="ui.inspector === 'plugins' && showsPlugin(p.manifest.id) ? 'h-4 opacity-100' : 'h-0 opacity-0'"
+        />
       </button>
     </template>
   </nav>

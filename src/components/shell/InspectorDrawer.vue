@@ -3,9 +3,18 @@ import type { InspectorId } from '~/lib/views'
 import { computed, ref } from 'vue'
 import { INSPECTOR_COMPONENTS } from '~/lib/viewComponents'
 import { findView } from '~/lib/views'
+import { usePluginStore } from '~/stores/pluginStore'
 import { DRAWER_MAX, DRAWER_MIN, useUiStore } from '~/stores/uiStore'
 
 const ui = useUiStore()
+const pluginStore = usePluginStore()
+
+/** The Plugins drawer is titled after the plugin it shows. */
+function titleOf(id: InspectorId) {
+  const p = id === 'plugins' ? pluginStore.shownPanel : null
+  return p ? p.panel?.title || p.manifest.name : findView(id)?.label
+}
+const pluginIcon = (id: InspectorId) => (id === 'plugins' ? pluginStore.shownPanel?.panel?.icon : undefined)
 
 const slots = computed(() => {
   const out: { id: InspectorId, pinned: boolean }[] = []
@@ -81,9 +90,10 @@ function onSplitDown(e: PointerEvent) {
             :style="slot.pinned && slots.length > 1 ? { height: `${ui.pinnedHeight}%` } : undefined"
           >
             <header class="pl-4 pr-2 border-b border-edge flex shrink-0 gap-2 h-12 items-center">
-              <span :class="findView(slot.id)?.icon" class="text-[16px] text-accent-300 shrink-0" />
+              <span v-if="pluginIcon(slot.id)" class="plugin-icon text-[16px] text-accent-300 shrink-0" v-html="pluginIcon(slot.id)" />
+              <span v-else :class="findView(slot.id)?.icon" class="text-[16px] text-accent-300 shrink-0" />
               <h2 class="text-[14px] tracking-[-0.01em] font-semibold truncate">
-                {{ findView(slot.id)?.label }}
+                {{ titleOf(slot.id) }}
               </h2>
               <div class="ml-auto flex shrink-0 gap-0.5 items-center">
                 <UiIconButton

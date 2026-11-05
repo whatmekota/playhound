@@ -2,7 +2,7 @@ import type { SourceRelease } from '~/plugins/sources'
 import type { LibraryVideo, MotionControl, MotionReadout, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, ScriptNow, SettingField } from '~/plugins/types'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { markRaw, ref, shallowRef, watch } from 'vue'
+import { computed, markRaw, ref, shallowRef, watch } from 'vue'
 import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { analyseActions, analysisKey } from '~/composables/useScriptAnalysis'
@@ -757,5 +757,10 @@ export const usePluginStore = defineStore('plugins', () => {
     }
   }
 
-  return { plugins, activePanel, focusSettings, ready, start, install, remove, setEnabled, setValue, motionHolder, sourceList, sources, checkSources, addSource, removeSource, installFromSource, installedFrom, updateFor, checkDaily }
+  /** Plugins that are on and have a panel, in the order they're listed. */
+  const panels = computed(() => plugins.value.filter(p => p.panel && p.status === 'on'))
+  /** The panel the Plugins drawer shows: the chosen one, else the first. */
+  const shownPanel = computed(() => panels.value.find(p => p.manifest.id === activePanel.value) ?? panels.value[0] ?? null)
+
+  return { plugins, panels, shownPanel, activePanel, focusSettings, ready, start, install, remove, setEnabled, setValue, motionHolder, sourceList, sources, checkSources, addSource, removeSource, installFromSource, installedFrom, updateFor, checkDaily }
 })

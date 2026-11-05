@@ -173,6 +173,17 @@ html {
   color-scheme: only light;
 }
 
+/* A plugin's own icon (inline SVG), sized like the icon fonts around it. */
+.plugin-icon {
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+}
+.plugin-icon > svg {
+  width: 100%;
+  height: 100%;
+}
+
 /* Dropdowns: Chromium's stylable <select> (135+), so the open list follows
    the theme instead of the OS's light pop-up. Every <select> in the app gets
    it, plugins' too; older engines keep the native list. */
