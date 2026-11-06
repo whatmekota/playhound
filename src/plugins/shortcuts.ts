@@ -1,4 +1,5 @@
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
+import { MOD_KEY } from '~/lib/platform'
 
 /**
  * Keyboard shortcuts for plugin commands.
@@ -54,7 +55,8 @@ export function parseKbd(input: unknown): Chord | null {
 /** The chord as keycaps: ['Ctrl', 'Shift', 'Y']. */
 export function kbdKeys(c: Chord): string[] {
   const key = c.code.startsWith('Key') ? c.code.slice(3) : c.code.startsWith('Digit') ? c.code.slice(5) : c.code
-  return [c.ctrl && 'Ctrl', c.alt && 'Alt', c.shift && 'Shift', key].filter((k): k is string => !!k)
+  // Cmd counts as Ctrl (see chordOf), so a Mac shows it as ⌘.
+  return [c.ctrl && MOD_KEY, c.alt && 'Alt', c.shift && 'Shift', key].filter((k): k is string => !!k)
 }
 
 /** One string per chord, for comparing. */
