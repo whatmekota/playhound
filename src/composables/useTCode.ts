@@ -16,7 +16,20 @@ export const setEmuRef = setEmuInstance
  */
 export const axisOutput: Record<string, number> = {}
 
-function track(channel: string, position: number, limits: AxisLimits) {
+/**
+ * Every position any part of the app sends, before range and inversion:
+ * script, generators, plugins, derived axes, homing. The session recorder
+ * listens here; null when nothing does, so it costs nothing then.
+ * `intervalMs` 0 means "it is here now" (a script's reported position).
+ */
+export type AxisTap = (channel: string, position: number, intervalMs: number) => void
+let axisTap: AxisTap | null = null
+export function setAxisTap(fn: AxisTap | null) {
+  axisTap = fn
+}
+
+function track(channel: string, position: number, limits: AxisLimits, intervalMs: number) {
+  axisTap?.(channel, position, intervalMs)
   let p = limits.invert ? 1 - position : position
   p = limits.min + p * (limits.max - limits.min)
   axisOutput[channel] = Math.max(0, Math.min(1, p))
@@ -42,7 +55,8 @@ export function useTCode() {
       : { min: 0, max: 1, invert: false }
 
     const cmd = encodeTCode({ channel, position, interval }, limits, ver)
-    track(channel, opts.reported ?? position, limits)
+    // A script's frame command aims ahead; `reported` is where it is now.
+    track(channel, opts.reported ?? position, limits, opts.reported === undefined ? interval : 0)
 
     logCommand(cmd)
     emuInstance?.write(cmd)
@@ -69,7 +83,7 @@ export function useTCode() {
         continue
       const limits: AxisLimits = { min: axisCfg.min, max: axisCfg.max, invert: axisCfg.invert }
       const cmd = encodeTCode({ channel, position: axisCfg.defaultPos, interval }, limits, ver)
-      track(channel, axisCfg.defaultPos, limits)
+      track(channel, axisCfg.defaultPos, limits, interval)
       logCommand(cmd)
       emuInstance?.write(cmd)
     }
@@ -93,7 +107,7 @@ export function useTCode() {
     const limits: AxisLimits = { min: axisCfg.min, max: axisCfg.max, invert: axisCfg.invert }
     const send = (pos: number, ivl: number) => {
       const cmd = encodeTCode({ channel, position: pos, interval: ivl }, limits, ver)
-      track(channel, pos, limits)
+      track(channel, pos, limits, ivl)
       logCommand(cmd)
       emuInstance?.write(cmd)
       if (deviceStore.connected)

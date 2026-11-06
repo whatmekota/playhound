@@ -64,6 +64,7 @@ declare module 'vue' {
     PopoutCard: typeof import('./src/components/player/PopoutCard.vue')['default']
     ProgrammeInspector: typeof import('./src/components/inspectors/ProgrammeInspector.vue')['default']
     QueueInspector: typeof import('./src/components/inspectors/QueueInspector.vue')['default']
+    RecordingSheet: typeof import('./src/components/shell/RecordingSheet.vue')['default']
     RemoteInspector: typeof import('./src/components/inspectors/RemoteInspector.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

@@ -13,6 +13,7 @@ import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
 import InspectorRail from '~/components/shell/InspectorRail.vue'
 import PanicCover from '~/components/shell/PanicCover.vue'
 import PlayLinkModal from '~/components/shell/PlayLinkModal.vue'
+import RecordingSheet from '~/components/shell/RecordingSheet.vue'
 import SettingsModal from '~/components/shell/SettingsModal.vue'
 import ShortcutsModal from '~/components/shell/ShortcutsModal.vue'
 import SplashScreen from '~/components/shell/SplashScreen.vue'
@@ -49,6 +50,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { usePluginStore } from '~/stores/pluginStore'
+import { useRecordingStore } from '~/stores/recordingStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
@@ -70,6 +72,8 @@ const subtitles = useSubtitleStore()
 const session = useSessionActions()
 const popout = usePopout()
 const plugins = usePluginStore()
+// Made here so it is listening (panic, a device dropping) whatever is open.
+const recorder = useRecordingStore()
 startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
@@ -354,6 +358,7 @@ function runShellAction(action: ShellAction) {
     case 'next-peak': session.nextPeak(); break
     case 'finish': session.finish(); break
     case 'came': session.came(); break
+    case 'record': recorder.toggle(); break
     case 'tap-tempo': tapBeat(); break
     case 'tap-clear':
       clearTapTempo()
@@ -502,6 +507,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <ShortcutsModal />
     <SettingsModal />
     <PlayLinkModal />
+    <RecordingSheet />
 
     <!-- Floating windows over whichever view is open -->
     <OsrEmulator v-if="ui.isFloatingOpen('emulator')" />

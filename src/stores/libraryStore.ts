@@ -5,6 +5,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { AXIS_MAP } from '~/lib/axisMap'
 import { collectHandleFiles, filePath, openFolderWithHandle, pickDirectory } from '~/lib/browserApi'
+import { canWrite } from '~/lib/funscriptSave'
 import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
 import { sniffScript } from '~/lib/scriptSniff'
 import { isSubtitleName, pairSubtitles, subtitleLabel } from '~/lib/subtitles'
@@ -598,6 +599,29 @@ export const useLibraryStore = defineStore('library', () => {
     }
   }
 
+  /**
+   * The folder a library file sits in ("Videos/sub/clip.mp4" → Videos/sub), as
+   * a handle; with no path, the first library folder. With `write`, read-write:
+   * call it from a click then, as the first time it shows the browser's prompt.
+   * Null for a dropped file, a folder opened without a handle, or a refusal.
+   */
+  async function folderHandleFor(path: string | null, write = false): Promise<FileSystemDirectoryHandle | null> {
+    const parts = path ? path.split('/') : []
+    const i = path ? folders.value.indexOf(parts[0]) : roots.findIndex(Boolean)
+    const root = i >= 0 ? roots[i] : null
+    if (!root || (write && !await canWrite(root)))
+      return null
+    let dir = root
+    try {
+      for (const p of parts.slice(1, -1))
+        dir = await dir.getDirectoryHandle(p)
+    }
+    catch {
+      return null
+    }
+    return dir
+  }
+
   async function rescan() {
     if (!roots.some(Boolean))
       return
@@ -673,6 +697,7 @@ export const useLibraryStore = defineStore('library', () => {
     forgetFolder,
     rescan,
     writableFolder,
+    folderHandleFor,
     startWatching,
     stopWatching,
   }

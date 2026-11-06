@@ -21,6 +21,12 @@ import { useTCode } from './useTCode'
 
 let latency: Ref<number> | null = null
 
+/** The <video> the device follows. The session recorder times a take by its clock. */
+let attachedVideo: HTMLVideoElement | null = null
+export function syncedVideo(): HTMLVideoElement | null {
+  return attachedVideo
+}
+
 /**
  * Global device latency in ms, on top of every script's own offset and with
  * the same sign: positive reads the script that much further ahead, for a
@@ -145,6 +151,7 @@ export function useVideoSync() {
 
   function attach(el: HTMLVideoElement) {
     videoEl = el
+    attachedVideo = el
   }
 
   function start() {

@@ -154,6 +154,7 @@ declare global {
   const savedPosts: typeof import('./src/composables/useSavedPosts').savedPosts
   const scaleTapTempo: typeof import('./src/composables/useVideoBeat').scaleTapTempo
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
+  const setAxisTap: typeof import('./src/composables/useTCode').setAxisTap
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
   const shallowReactive: typeof import('vue').shallowReactive
@@ -167,6 +168,7 @@ declare global {
   const storeToRefs: typeof import('pinia').storeToRefs
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
+  const syncedVideo: typeof import('./src/composables/useVideoSync').syncedVideo
   const tapState: typeof import('./src/composables/useVideoBeat').tapState
   const tapTempo: typeof import('./src/composables/useVideoBeat').tapTempo
   const templateRef: typeof import('@vueuse/core').templateRef
@@ -479,6 +481,9 @@ declare global {
   export type { StreamError } from './src/composables/useStreams'
   import('./src/composables/useStreams')
   // @ts-ignore
+  export type { AxisTap } from './src/composables/useTCode'
+  import('./src/composables/useTCode')
+  // @ts-ignore
   export type { ToastKind, Toast, ToastOptions } from './src/composables/useToast'
   import('./src/composables/useToast')
   // @ts-ignore
@@ -639,6 +644,7 @@ declare module 'vue' {
     readonly savedPosts: UnwrapRef<typeof import('./src/composables/useSavedPosts')['savedPosts']>
     readonly scaleTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['scaleTapTempo']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
+    readonly setAxisTap: UnwrapRef<typeof import('./src/composables/useTCode')['setAxisTap']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
@@ -652,6 +658,7 @@ declare module 'vue' {
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
+    readonly syncedVideo: UnwrapRef<typeof import('./src/composables/useVideoSync')['syncedVideo']>
     readonly tapState: UnwrapRef<typeof import('./src/composables/useVideoBeat')['tapState']>
     readonly tapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['tapTempo']>
     readonly templateRef: UnwrapRef<typeof import('@vueuse/core')['templateRef']>

@@ -240,6 +240,14 @@ up to 240 spm; past that it needs an explicit opt-in (up to 400), because most
 strokers can't keep up there. Stroke shapes: sine, ease, pulse, saw (a steady
 push and a quick drop) and sharp (even speed with hard turns).
 
+**Record** (Motion panel, Shift+C or the palette) saves what the device does as
+a funscript, whatever drives it: a generator, a plugin, a script under the
+intensity knob and edges. With a video playing it is timed to the video (only
+playing time counts; seek back and you record over that part) and saved beside
+it, as `<video>.funscript` or, if that exists, `<video>.recorded.funscript`.
+Without one it is `session-YYYY-MM-DD-HHMM.funscript` in the library folder.
+One file per axis that moved.
+
 ### Keyboard
 
 Press **?** in the app for the full list and **Ctrl+K** for the command palette.
@@ -255,6 +263,7 @@ The ones you'll use most:
 | **-** · **=**    | intensity down / up                                 |
 | **G** · Shift+G  | next peak · jump to the finish                      |
 | **C**            | I came: marks it on the video and in Stats          |
+| Shift+C          | record what the device does · stop and save         |
 | **T** · Shift+T  | tap tempo for the Music source · forget it          |
 | B · S            | bookmark here · star the video                      |
 | **Esc** or **`** | **panic**: stop everything and cover the screen     |
