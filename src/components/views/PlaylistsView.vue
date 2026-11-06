@@ -8,7 +8,9 @@ import EntryInfoModal from '~/components/library/EntryInfoModal.vue'
 import Equaliser from '~/components/library/Equaliser.vue'
 import IntensityMeter from '~/components/library/IntensityMeter.vue'
 import NewPlaylistModal from '~/components/library/NewPlaylistModal.vue'
+import TagsModal from '~/components/library/TagsModal.vue'
 import { useEntryActions } from '~/components/library/useEntryActions'
+import { useLibraryTags } from '~/components/library/useLibraryTags'
 import { cleanName, isBuiltinSmart, usePlaylistRows } from '~/components/library/usePlaylistRows'
 import { useScriptSummaries } from '~/components/library/useScriptSummaries'
 import UiButton from '~/components/ui/UiButton.vue'
@@ -20,6 +22,7 @@ import UiPopover from '~/components/ui/UiPopover.vue'
 import { toast } from '~/composables/useToast'
 import { effectiveMeta, formatTotal, plural, scriptBadge } from '~/lib/entryInfo'
 import { KEYS } from '~/lib/persist'
+import { normalizeTag } from '~/lib/tags'
 import { ensureDurations, hydrateLibrary, prefetchThumbs, vLazyThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -263,6 +266,7 @@ const RULES: { type: SmartRule['type'], label: string, icon: string }[] = [
   { type: 'multi_axis', label: 'Multi-axis', icon: 'i-carbon-chart-multi-line' },
   { type: 'starred', label: 'Starred', icon: 'i-carbon-star' },
   { type: 'has_tag', label: 'Tagged', icon: 'i-carbon-tag' },
+  { type: 'lacks_tag', label: 'Not tagged', icon: 'i-carbon-tag' },
   { type: 'min_rating', label: 'Rated at least', icon: 'i-carbon-star-review' },
 ]
 const ruleDef = (t: SmartRule['type']) => RULES.find(r => r.type === t)!
@@ -273,20 +277,17 @@ function ruleSummary(rules: SmartRule[]): string {
   return rules.map((r) => {
     if (r.type === 'has_tag')
       return r.tag ? `#${r.tag}` : 'Tagged'
+    if (r.type === 'lacks_tag')
+      return r.tag ? `not #${r.tag}` : 'Not tagged'
     if (r.type === 'min_rating')
       return `${'★'.repeat(r.rating)}+`
     return ruleDef(r.type).label
   }).join(' · ')
 }
 
-const allTags = computed(() => {
-  const set = new Set<string>()
-  for (const v of library.videos) {
-    for (const t of effectiveMeta(v).tags ?? [])
-      set.add(t)
-  }
-  return [...set].sort()
-})
+/** Manual and (unless hidden) automatic tags, for the rule's autocomplete. */
+const tagView = useLibraryTags()
+const allTags = computed(() => tagView.all.value.map(t => t.tag))
 
 function setRules(rules: SmartRule[]) {
   if (activeSmart.value)
@@ -297,8 +298,8 @@ const addRuleMenu = computed<MenuItem[]>(() => RULES.map(r => ({
   label: r.label,
   icon: r.icon,
   run: () => {
-    const rule: SmartRule = r.type === 'has_tag'
-      ? { type: 'has_tag', tag: allTags.value[0] ?? '' }
+    const rule: SmartRule = r.type === 'has_tag' || r.type === 'lacks_tag'
+      ? { type: r.type, tag: allTags.value[0] ?? '' }
       : r.type === 'min_rating'
         ? { type: 'min_rating', rating: 3 }
         : { type: r.type } as SmartRule
@@ -317,9 +318,10 @@ function removeRule(i: number) {
 }
 
 const smartCounts = computed(() => {
+  void scripts.settledCount.value
   const out: Record<string, number> = {}
   for (const pl of plStore.smartPlaylists)
-    out[pl.id] = library.hasVideos ? evaluateSmartPlaylist(pl, library.videos).length : 0
+    out[pl.id] = library.hasVideos ? evaluateSmartPlaylist(pl, library.videos, scripts.peek).length : 0
   return out
 })
 
@@ -356,7 +358,7 @@ function onDragEnd() {
 
 // ─── Row menu ─────────────────────────────────────────────────────────────────
 const actions = useEntryActions({ play: playFrom })
-const { ctx, infoEntry, newPlaylistFor } = actions
+const { ctx, infoEntry, newPlaylistFor, tagsFor } = actions
 
 function openRowMenu(e: MouseEvent, row: Row) {
   const edit = rowEditItems(row)
@@ -555,14 +557,14 @@ function smartIcon(pl: SmartPlaylist) {
               >
                 <span :class="ruleDef(rule.type).icon" class="text-[13px] text-accent-300" />
                 <span>{{ ruleDef(rule.type).label }}</span>
-                <template v-if="rule.type === 'has_tag'">
+                <template v-if="rule.type === 'has_tag' || rule.type === 'lacks_tag'">
                   <input
                     :value="rule.tag"
                     :disabled="!canEdit"
                     list="ph-pl-tags"
                     class="text-[12px] text-fg px-1.5 outline-none rounded bg-surface-900 h-5 w-24 ring-1 ring-edge-strong focus:ring-accent/60"
                     placeholder="tag"
-                    @change="updateRule(i, { type: 'has_tag', tag: ($event.target as HTMLInputElement).value.trim().toLowerCase() })"
+                    @change="updateRule(i, { type: rule.type, tag: normalizeTag(($event.target as HTMLInputElement).value) })"
                   >
                 </template>
                 <template v-else-if="rule.type === 'min_rating'">
@@ -740,6 +742,7 @@ function smartIcon(pl: SmartPlaylist) {
     <UiContextMenu v-model="ctx" />
     <EntryInfoModal v-model="infoEntry" />
     <NewPlaylistModal v-model="newPlaylistFor" />
+    <TagsModal v-model="tagsFor" />
   </div>
 </template>
 

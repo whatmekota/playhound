@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ScriptSummary } from '~/lib/idb'
+import type { ShownTag } from '~/lib/tags'
 import type { VideoEntry } from '~/stores/libraryStore'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import { scriptBadge } from '~/lib/entryInfo'
@@ -7,16 +8,19 @@ import { thumbFailed } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import Equaliser from './Equaliser.vue'
 import IntensityMeter from './IntensityMeter.vue'
+import TagPill from './TagPill.vue'
 
 /**
  * One dense row for the drawer panels: picture, title, length, script and
- * intensity. `entry` is null for a playlist item whose file is not in the
- * library; it still shows, by `name`, so it can be removed.
+ * intensity, and its first couple of tags. `entry` is null for a playlist
+ * item whose file is not in the library; it still shows, by `name`, so it
+ * can be removed.
  */
 defineProps<{
   entry: VideoEntry | null
   name: string
   summary?: ScriptSummary | null
+  tags?: ShownTag[]
   current?: boolean
   playing?: boolean
 }>()
@@ -66,6 +70,9 @@ defineEmits<{
           </span>
           <span v-else>No script</span>
           <IntensityMeter :summary="summary" />
+          <span v-if="tags?.length" class="flex gap-1 min-w-0 overflow-hidden">
+            <TagPill v-for="t in tags.slice(0, 2)" :key="t.tag" :tag="t.tag" :auto="t.auto" class="!h-4" />
+          </span>
         </template>
         <span v-else class="text-warn">Not in the library</span>
       </span>

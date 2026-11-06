@@ -4,6 +4,7 @@ import type { Playlist } from '~/stores/playlistStore'
 import { ref } from 'vue'
 import { toast } from '~/composables/useToast'
 import { plural } from '~/lib/entryInfo'
+import { manualTags, tagCounts } from '~/lib/tags'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlaylistStore } from '~/stores/playlistStore'
@@ -13,9 +14,9 @@ export interface CtxMenu { x: number, y: number, items: MenuItem[] }
 
 /**
  * What can be done to one or more library videos: star, queue, add to a
- * playlist, edit info. Each list owns one of these, and renders its context
- * menu and the two dialogs (EntryInfoModal, NewPlaylistModal) itself, so the
- * view and the drawer panel never open each other's.
+ * playlist, tag, edit info. Each list owns one of these, and renders its
+ * context menu and the three dialogs (EntryInfoModal, NewPlaylistModal,
+ * TagsModal) itself, so the view and the drawer panel never open each other's.
  */
 export function useEntryActions(opts: {
   /** Play one video in the list's own context. */
@@ -33,6 +34,8 @@ export function useEntryActions(opts: {
   const infoEntry = ref<VideoEntry | null>(null)
   /** Videos waiting for a name for the new playlist they will go into. */
   const newPlaylistFor = ref<VideoEntry[] | null>(null)
+  /** Videos whose Tags dialog is open. */
+  const tagsFor = ref<VideoEntry[] | null>(null)
 
   function setStar(entries: VideoEntry[], on: boolean) {
     for (const e of entries) {
@@ -81,6 +84,49 @@ export function useEntryActions(opts: {
     ]
   }
 
+  async function toggleTag(entries: VideoEntry[], tag: string, on: boolean) {
+    try {
+      await library.editTags(entries, on ? [tag] : [], on ? [] : [tag])
+      toast(on ? `Tagged ${tag}` : `Removed ${tag}`, {
+        detail: entries.length === 1 ? entries[0].basename : plural(entries.length, 'video'),
+        icon: 'i-carbon-tag',
+        key: 'tags',
+      })
+    }
+    catch {
+      toast.error('Could not save tags')
+    }
+  }
+
+  /**
+   * Quick tagging from the menu: the tags these videos already have, then
+   * the library's most used, ticked when every target has it. Anything
+   * longer than a short list belongs in the Tags dialog.
+   */
+  function tagItems(entries: VideoEntry[]): MenuItem[] {
+    const QUICK = 10
+    const own = new Map<string, number>()
+    for (const e of entries) {
+      for (const t of manualTags(e))
+        own.set(t, (own.get(t) ?? 0) + 1)
+    }
+    const names = [...own].sort((a, b) => b[1] - a[1]).map(([t]) => t).slice(0, QUICK)
+    for (const t of tagCounts(library.videos, { auto: false })) {
+      if (names.length >= QUICK)
+        break
+      if (!own.has(t.tag))
+        names.push(t.tag)
+    }
+    return [
+      ...names.map((tag): MenuItem => {
+        const all = own.get(tag) === entries.length
+        return { label: tag, icon: 'i-carbon-tag', checked: all, run: () => void toggleTag(entries, tag, !all) }
+      }),
+      ...(names.length ? [{ separator: true } as MenuItem] : []),
+      { label: names.length ? 'Edit tags…' : 'Add tags…', icon: 'i-carbon-tag-edit', run: () => (tagsFor.value = entries) },
+    ]
+  }
+
   async function copyName(entry: VideoEntry) {
     try {
       await navigator.clipboard.writeText(entry.name)
@@ -105,6 +151,7 @@ export function useEntryActions(opts: {
       // The menu closes after an item runs, so the playlist list opens on the next tick in its place.
       { label: 'Add to playlist ▸', icon: 'i-carbon-playlist', run: () => setTimeout(() => (ctx.value = { ...at, items: [{ heading: true, label: 'Add to playlist' }, ...playlistItems(targets)] })) },
       { label: allStarred ? 'Unstar' : 'Star', icon: allStarred ? 'i-carbon-star-filled' : 'i-carbon-star', run: () => setStar(targets, !allStarred) },
+      { label: 'Tags ▸', icon: 'i-carbon-tag', run: () => setTimeout(() => (ctx.value = { ...at, items: [{ heading: true, label: 'Tags' }, ...tagItems(targets)] })) },
     )
     if (one) {
       items.push(
@@ -123,5 +170,5 @@ export function useEntryActions(opts: {
     ctx.value = { ...at, items: menuFor(targets, at, extra) }
   }
 
-  return { ctx, infoEntry, newPlaylistFor, setStar, playlistItems, menuFor, openMenu, copyName }
+  return { ctx, infoEntry, newPlaylistFor, tagsFor, setStar, playlistItems, tagItems, menuFor, openMenu, copyName }
 }

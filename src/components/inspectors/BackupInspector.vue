@@ -2,7 +2,7 @@
 import type { Backup, RestoreResult, StorageInventory } from '~/lib/backup'
 import { computed, onMounted, ref } from 'vue'
 import { toast } from '~/composables/useToast'
-import { createBackup, downloadBackup, inventory, restoreBackup } from '~/lib/backup'
+import { countTagged, createBackup, downloadBackup, inventory, restoreBackup } from '~/lib/backup'
 
 const inv = ref<StorageInventory | null>(null)
 const refreshing = ref(false)
@@ -77,6 +77,7 @@ const pendingSummary = computed(() => {
   return {
     keys: Object.keys(b.local ?? {}).length,
     records: Object.values(b.idb ?? {}).reduce((s, r) => s + (r?.length ?? 0), 0),
+    tagged: countTagged(b.idb?.vidmeta),
     when: b._exportedAt ? new Date(b._exportedAt).toLocaleString() : 'unknown',
     from: b._origin ?? 'unknown',
     sameOrigin: b._origin === origin,
@@ -171,6 +172,17 @@ function fmtBytes(n: number) {
             none
           </UiBadge>
         </li>
+        <li class="text-[12.5px] flex gap-2 h-7 items-center">
+          <span :class="inv?.tagged ? 'text-fg-muted' : 'text-fg-faint'" class="i-carbon-tag text-[14px] shrink-0" />
+          <span :class="inv?.tagged ? 'text-fg' : 'text-fg-faint'" class="flex-1">Tags</span>
+          <span v-if="!inv" class="skeleton rounded h-3 w-10" />
+          <UiBadge v-else-if="inv.tagged" tone="ok" size="xs" dot>
+            {{ inv.tagged.toLocaleString() }} {{ inv.tagged === 1 ? 'video' : 'videos' }}
+          </UiBadge>
+          <UiBadge v-else size="xs">
+            none
+          </UiBadge>
+        </li>
       </ul>
     </UiSection>
 
@@ -219,7 +231,7 @@ function fmtBytes(n: number) {
     <!-- Back up / restore -->
     <UiSection title="Back up" icon="i-carbon-data-backup">
       <p class="hint">
-        One file with settings, playlists, bookmarks, stats and video notes. Keep a copy before
+        One file with settings, playlists, bookmarks, stats, tags and video notes. Keep a copy before
         changing ports or browsers.
       </p>
       <div class="gap-2 grid grid-cols-2">
@@ -275,10 +287,11 @@ function fmtBytes(n: number) {
       :persistent="restoring"
     >
       <div v-if="pendingSummary" class="flex flex-col gap-4">
-        <div class="p-3 well gap-3 grid grid-cols-2">
+        <div class="p-3 well gap-3 grid grid-cols-3">
           <UiStat label="Settings" :value="pendingSummary.keys" size="sm" />
           <UiStat label="Records" :value="pendingSummary.records" size="sm" />
-          <div class="flex flex-col gap-0.5 col-span-2">
+          <UiStat label="Tagged videos" :value="pendingSummary.tagged" size="sm" />
+          <div class="flex flex-col gap-0.5 col-span-3">
             <span class="eyebrow">Exported</span>
             <span class="text-[12.5px] text-fg">{{ pendingSummary.when }}</span>
             <span class="text-[11.5px] text-fg-muted font-mono flex flex-wrap gap-2 break-all items-center">

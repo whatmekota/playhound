@@ -8,7 +8,9 @@ import EntryInfoModal from '~/components/library/EntryInfoModal.vue'
 import Equaliser from '~/components/library/Equaliser.vue'
 import LibraryRow from '~/components/library/LibraryRow.vue'
 import NewPlaylistModal from '~/components/library/NewPlaylistModal.vue'
+import TagsModal from '~/components/library/TagsModal.vue'
 import { useEntryActions } from '~/components/library/useEntryActions'
+import { useLibraryTags } from '~/components/library/useLibraryTags'
 import { cleanName, usePlaylistRows } from '~/components/library/usePlaylistRows'
 import { useScriptSummaries } from '~/components/library/useScriptSummaries'
 import { useWindowedRows } from '~/components/library/useWindowedRows'
@@ -43,6 +45,7 @@ const queue = useQueueStore()
 const player = usePlayerStore()
 const ui = useUiStore()
 const scripts = useScriptSummaries()
+const tagView = useLibraryTags()
 
 watch(() => library.loadedAt, () => void hydrateLibrary(library.videos, library.loadedAt), { immediate: true })
 
@@ -71,11 +74,12 @@ function quickPlay(sel: PlaylistSel, shuffle = false) {
 }
 
 const smartCounts = computed(() => {
+  void scripts.settledCount.value
   const out: Record<string, number> = {}
   if (!library.hasVideos)
     return out
   for (const s of plStore.smartPlaylists)
-    out[s.id] = evaluateSmartPlaylist(s, library.videos).length
+    out[s.id] = evaluateSmartPlaylist(s, library.videos, scripts.peek).length
   return out
 })
 
@@ -85,6 +89,7 @@ const SMART_ICONS: Record<string, string> = {
   multi_axis: 'i-carbon-chart-multi-line',
   starred: 'i-carbon-star',
   has_tag: 'i-carbon-tag',
+  lacks_tag: 'i-carbon-tag',
   min_rating: 'i-carbon-star-review',
 }
 const smartIcon = (s: SmartPlaylist) => SMART_ICONS[s.rules[0]?.type ?? ''] ?? 'i-carbon-filter'
@@ -128,7 +133,7 @@ watch(() => plStore.playlists.map(p => p.entries[0]?.videoName), () => {
 
 // ─── Menus ────────────────────────────────────────────────────────────────
 const actions = useEntryActions({ play: e => pl.playFrom(e) })
-const { ctx, infoEntry, newPlaylistFor } = actions
+const { ctx, infoEntry, newPlaylistFor, tagsFor } = actions
 
 function onRowMenu(e: MouseEvent, row: PlaylistRow) {
   const edit = pl.rowEditItems(row)
@@ -326,6 +331,7 @@ function newPlaylist() {
               :entry="item.entry"
               :name="item.name"
               :summary="item.entry ? scripts.summaryOf(item.entry) : null"
+              :tags="item.entry ? tagView.shown(item.entry, true) : undefined"
               :current="!!item.entry && item.entry.name === currentName"
               :playing="player.isPlaying"
               @play="pl.onRowClick(item)"
@@ -365,6 +371,7 @@ function newPlaylist() {
       <UiContextMenu v-model="ctx" />
       <EntryInfoModal v-model="infoEntry" />
       <NewPlaylistModal v-model="newPlaylistFor" />
+      <TagsModal v-model="tagsFor" />
     </UiPanel>
   </Transition>
 </template>

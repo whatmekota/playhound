@@ -5,7 +5,7 @@ import type { IntensityBand } from '~/lib/scriptIntensity'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { refDebounced, useLocalStorage } from '@vueuse/core'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
-import { bandCounts, filterCounts, nextSort, queryLibrary, SCRIPT_SORTS, SORT_LABELS, toggleBand as toggleBandIn, toggleFilter as toggleFilterIn, usesSummaries } from '~/lib/libraryQuery'
+import { bandCounts, filterCounts, nextSort, queryLibrary, SCRIPT_SORTS, SORT_LABELS, toggleBand as toggleBandIn, toggleFilter as toggleFilterIn, toggleTag as toggleTagIn, usesSummaries } from '~/lib/libraryQuery'
 import { KEYS } from '~/lib/persist'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -43,6 +43,8 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
       folder.value = null
   })
   const bands = shallowRef(new Set<IntensityBand>())
+  /** Tag chips; a video needs all of them. */
+  const tags = shallowRef(new Set<string>())
 
   function setSort(key: SortKey, asc?: boolean) {
     sort.value = nextSort(sort.value, key, asc)
@@ -53,19 +55,28 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   function toggleBand(b: IntensityBand) {
     bands.value = toggleBandIn(bands.value, b)
   }
+  function toggleTag(tag: string) {
+    tags.value = toggleTagIn(tags.value, tag)
+  }
   function clearFilters() {
     filters.value = new Set()
     bands.value = new Set()
+    tags.value = new Set()
     search.value = ''
     folder.value = null
   }
+  /** Just this tag: what "Filter library by tag" from elsewhere means. */
+  function showTag(tag: string) {
+    clearFilters()
+    tags.value = new Set([tag])
+  }
 
-  const filtering = computed(() => !!query.value.trim() || filters.value.size > 0 || bands.value.size > 0 || !!folder.value)
+  const filtering = computed(() => !!query.value.trim() || filters.value.size > 0 || bands.value.size > 0 || tags.value.size > 0 || !!folder.value)
   /** Sorting or filtering on script shape, where lazy analysis would shuffle rows under the pointer. */
-  const scriptAware = computed(() => usesSummaries({ bands: bands.value, sort: sort.value }))
+  const scriptAware = computed(() => usesSummaries({ bands: bands.value, sort: sort.value, tags: tags.value, query: query.value }))
 
   const results = computed(() => {
-    const q = { query: query.value, filters: filters.value, bands: bands.value, sort: sort.value, folder: folder.value }
+    const q = { query: query.value, filters: filters.value, bands: bands.value, tags: tags.value, sort: sort.value, folder: folder.value }
     // Only a script-aware query re-runs as analyses land, and then calmly.
     if (usesSummaries(q))
       void scripts.settledCount.value
@@ -124,11 +135,14 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
     query,
     filters,
     bands,
+    tags,
     folder,
     sort,
     setSort,
     toggleFilter,
     toggleBand,
+    toggleTag,
+    showTag,
     clearFilters,
     filtering,
     scriptAware,

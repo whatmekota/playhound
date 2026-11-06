@@ -2,6 +2,7 @@
 import type { ThemeId } from '~/stores/themeStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
+import { useShowAutoTags } from '~/components/library/useLibraryTags'
 import PluginsSettings from '~/components/plugins/PluginsSettings.vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
@@ -95,6 +96,7 @@ const library = useLibraryStore()
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
 const resumeOnStart = useLocalStorage(KEYS.resumeOnStart.key, true)
+const showAutoTags = useShowAutoTags()
 const uiScale = useUiScale()
 const updates = useUpdates()
 const upd = computed(() => updates.state.value)
@@ -612,9 +614,16 @@ function openBackup() {
                   </UiButton>
                 </div>
               </div>
+              <div class="px-4 py-3 card">
+                <UiSwitch
+                  v-model="showAutoTags"
+                  label="Show automatic tags"
+                  hint="Worked out from each video and its script: fast, long, vr and so on. Shown outlined. Off, they leave cards and tag lists, but searches that name one still work."
+                />
+              </div>
               <p class="hint m-0">
                 Files never leave this browser. playhound keeps a handle to the folder so it can reopen it, plus
-                thumbnails, stars, stats and playlists — see the Backup panel to export them.
+                thumbnails, stars, tags, stats and playlists — see the Backup panel to export them.
               </p>
               <div>
                 <UiButton variant="ghost" icon="i-carbon-save" @click="openBackup">

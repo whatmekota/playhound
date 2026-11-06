@@ -2,12 +2,17 @@
 import type { LibraryQueryState } from './useLibraryQuery'
 import { computed } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
+import UiPopover from '~/components/ui/UiPopover.vue'
 import { BANDS } from '~/lib/scriptIntensity'
+import { autoTagDef } from '~/lib/tags'
+import TagFilterMenu from './TagFilterMenu.vue'
 import { FILTER_CHIPS } from './useLibraryQuery'
 
 /**
- * The library's filter chips: what kind of script, then how intense. The same
- * chips in the full view and the drawer panel, just smaller in the drawer.
+ * The library's filter chips: what kind of script, how intense, then tags.
+ * The same chips in the full view and the drawer panel, just smaller in the
+ * drawer. Tags are picked from a menu, since a library can have dozens; the
+ * picked ones show as chips of their own.
  */
 const props = defineProps<{
   lq: LibraryQueryState
@@ -18,6 +23,11 @@ const props = defineProps<{
 const showBands = computed(() => props.lq.scripts.coverage.done > 0 || props.lq.bands.size > 0)
 
 const BAND_LEVEL = { gentle: 1, medium: 3, intense: 5 } as const
+
+function tagTip(tag: string) {
+  const d = autoTagDef(tag)
+  return d ? `Automatic · ${d.hint}` : undefined
+}
 </script>
 
 <template>
@@ -56,6 +66,39 @@ const BAND_LEVEL = { gentle: 1, medium: 3, intense: 5 } as const
       </button>
     </template>
 
+    <span class="mx-0.5 bg-edge-strong h-4 w-px" aria-hidden="true" />
+    <button
+      v-for="t in lq.tags"
+      :key="t"
+      v-tip="tagTip(t)"
+      type="button"
+      class="chip chip-on focusable pressable"
+      :class="compact ? 'is-compact' : ''"
+      :aria-label="`Stop filtering by ${t}`"
+      @click="lq.toggleTag(t)"
+    >
+      <span class="i-carbon-tag text-[13px]" />
+      {{ t }}
+      <span class="i-carbon-close text-[12px] opacity-70" />
+    </button>
+    <UiPopover placement="bottom" align="start" flush>
+      <template #trigger="{ toggle, open }">
+        <button
+          type="button"
+          class="chip focusable pressable"
+          :class="[open ? 'chip-open' : '', compact ? 'is-compact' : '']"
+          :aria-expanded="open"
+          aria-haspopup="menu"
+          @click="toggle"
+        >
+          <span class="i-carbon-tag text-[13px]" />
+          {{ lq.tags.size ? 'More tags' : 'Tags' }}
+          <span class="i-carbon-chevron-down text-[11px] opacity-60" />
+        </button>
+      </template>
+      <TagFilterMenu :selected="lq.tags" @toggle="lq.toggleTag" />
+    </UiPopover>
+
     <Transition name="t-fade">
       <UiButton v-if="lq.filtering" variant="ghost" size="xs" icon="i-carbon-close" @click="lq.clearFilters()">
         Clear
@@ -84,6 +127,10 @@ const BAND_LEVEL = { gentle: 1, medium: 3, intense: 5 } as const
   font-size: 11.5px;
 }
 .chip:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.chip-open {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }

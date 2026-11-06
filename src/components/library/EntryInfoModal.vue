@@ -10,21 +10,23 @@ import UiModal from '~/components/ui/UiModal.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiStat from '~/components/ui/UiStat.vue'
 import { toast } from '~/composables/useToast'
-import { effectiveMeta, formatDate, formatSize, scriptBadge } from '~/lib/entryInfo'
+import { formatDate, formatSize, scriptBadge } from '~/lib/entryInfo'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { videoMetaDb } from '~/lib/idb'
 import { scriptProfile, speedUnits } from '~/lib/scriptIntensity'
+import { autoTags, normalizeTags, splitTagInput } from '~/lib/tags'
 import { formatTime } from '~/lib/time'
-import { useLibraryStore } from '~/stores/libraryStore'
 import IntensityMeter from './IntensityMeter.vue'
 import SpeedSparkline from './SpeedSparkline.vue'
+import TagPill from './TagPill.vue'
+import { useLibraryTags } from './useLibraryTags'
 import { useScriptSummaries } from './useScriptSummaries'
 
 /** Info & tags for one video: facts, a script profile, and the editable metadata. */
 const entry = defineModel<VideoEntry | null>({ default: null })
 
-const library = useLibraryStore()
 const scripts = useScriptSummaries()
+const tagView = useLibraryTags()
 
 const draft = ref<VideoMeta | null>(null)
 const tagInput = ref('')
@@ -62,7 +64,7 @@ watch(entry, async (e) => {
   if (entry.value !== e)
     return
   const d: VideoMeta = { ...(e.scriptMeta ?? {}), ...stored }
-  d.tags = Array.isArray(d.tags) ? [...d.tags] : []
+  d.tags = normalizeTags(d.tags)
   tagInput.value = ''
   draft.value = d
   void loadProfile(e)
@@ -107,9 +109,8 @@ const busiest = computed(() => {
 function addTag() {
   if (!draft.value)
     return
-  for (const raw of tagInput.value.split(',')) {
-    const t = raw.trim().toLowerCase()
-    if (t && !draft.value.tags!.includes(t))
+  for (const t of splitTagInput(tagInput.value)) {
+    if (!draft.value.tags!.includes(t))
       draft.value.tags!.push(t)
   }
   tagInput.value = ''
@@ -125,15 +126,15 @@ function onTagKey(e: KeyboardEvent) {
   }
 }
 
-const allTags = computed(() => {
-  if (!entry.value)
+/** Tags used elsewhere in the library, for the autocomplete. */
+const allTags = computed(() => entry.value ? tagView.manualNames.value.filter(t => !draft.value?.tags?.includes(t)) : [])
+
+/** Worked out from the video, so shown but not editable; the ones also given by hand are left out. */
+const derived = computed(() => {
+  const e = entry.value
+  if (!e || !tagView.showAuto.value)
     return []
-  const set = new Set<string>()
-  for (const v of library.videos) {
-    for (const t of effectiveMeta(v).tags ?? [])
-      set.add(t)
-  }
-  return [...set].sort()
+  return autoTags(e, scripts.summaryOf(e)).filter(t => !draft.value?.tags?.includes(t))
 })
 
 async function save() {
@@ -142,6 +143,7 @@ async function save() {
     return
   addTag()
   const clean: VideoMeta = JSON.parse(JSON.stringify(draft.value))
+  clean.tags = normalizeTags(clean.tags)
   try {
     await videoMetaDb.set(e.name, clean)
     e.userMeta = clean
@@ -267,12 +269,7 @@ const listId = `ph-tags-${Math.random().toString(36).slice(2, 8)}`
         <span class="label">Tags</span>
         <div class="p-1.5 border border-edge-strong rounded-[var(--radius-sm)] bg-surface-900 flex flex-wrap gap-1 min-h-8 transition-[border-color,box-shadow] items-center focus-within:border-accent/70 focus-within:ring-3 focus-within:ring-accent-soft">
           <TransitionGroup name="t-pop">
-            <span v-for="tag in draft.tags" :key="tag" class="text-[11.5px] text-accent-300 pl-2 pr-1 rounded-[var(--radius-xs)] bg-accent-soft flex gap-1 h-6 items-center">
-              {{ tag }}
-              <button type="button" class="rounded center h-4 w-4 hover:bg-fg/10" :aria-label="`Remove ${tag}`" @click="draft.tags = draft.tags!.filter(t => t !== tag)">
-                <span class="i-carbon-close text-[11px]" />
-              </button>
-            </span>
+            <TagPill v-for="tag in draft.tags" :key="tag" :tag="tag" removable @remove="draft.tags = draft.tags!.filter(t => t !== tag)" />
           </TransitionGroup>
           <input
             v-model="tagInput"
@@ -285,6 +282,10 @@ const listId = `ph-tags-${Math.random().toString(36).slice(2, 8)}`
           <datalist :id="listId">
             <option v-for="t in allTags" :key="t" :value="t" />
           </datalist>
+        </div>
+        <div v-if="derived.length" class="flex flex-wrap gap-1 items-center">
+          <span class="hint mr-1">Automatic</span>
+          <TagPill v-for="t in derived" :key="t" :tag="t" auto />
         </div>
       </div>
 

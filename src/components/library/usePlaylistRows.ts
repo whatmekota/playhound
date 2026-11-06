@@ -6,8 +6,9 @@ import { computed } from 'vue'
 import { toast } from '~/composables/useToast'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
-import { evaluateSmartPlaylist, usePlaylistStore } from '~/stores/playlistStore'
+import { evaluateSmartPlaylist, smartUsesSummaries, usePlaylistStore } from '~/stores/playlistStore'
 import { useQueueStore } from '~/stores/queueStore'
+import { useScriptSummaries } from './useScriptSummaries'
 
 export interface PlaylistSel { kind: 'list' | 'smart', id: string }
 
@@ -32,6 +33,7 @@ export function usePlaylistRows(sel: Ref<PlaylistSel | null>) {
   const library = useLibraryStore()
   const playback = usePlaybackStore()
   const queue = useQueueStore()
+  const scripts = useScriptSummaries()
 
   const byName = computed(() => new Map(library.videos.map(v => [v.name, v])))
 
@@ -53,7 +55,10 @@ export function usePlaylistRows(sel: Ref<PlaylistSel | null>) {
       }))
     }
     if (activeSmart.value) {
-      return evaluateSmartPlaylist(activeSmart.value, library.videos)
+      // Rules on intensity or pace tags fill in as scripts get analysed.
+      if (smartUsesSummaries(activeSmart.value))
+        void scripts.settledCount.value
+      return evaluateSmartPlaylist(activeSmart.value, library.videos, scripts.peek)
         .map((entry, index) => ({ key: entry.name, index, name: entry.name, entry }))
     }
     return []
