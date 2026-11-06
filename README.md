@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="public/logos/sly-grin.svg" alt="playhound logo: a magenta face with a sly grin" width="128" height="128">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/header-light.webp">
+    <img src="docs/header-dark.webp" alt="playhound: a magenta face with a sly grin next to the word playhound. Funscript player, device sync, sessions, 18+" width="100%">
+  </picture>
 </p>
-
-<h1 align="center">playhound</h1>
 
 <p align="center">
   <a href="https://github.com/whatmekota/playhound/releases/latest"><img src="https://img.shields.io/github/v/release/whatmekota/playhound?style=flat&colorA=18181B&colorB=d946ef&label=release" alt="Latest release"></a>
