@@ -1,8 +1,14 @@
 <script setup lang="ts">
 import type { Toast } from '~/composables/useToast'
+import { ref } from 'vue'
 import { useToast } from '~/composables/useToast'
+import { useOccluder } from '~/lib/occluders'
 
 const { toasts, dismiss, hold, release } = useToast()
+
+// A plugin's web page would draw over the toasts: it steps aside while one is up over it.
+const stack = ref<HTMLElement | null>(null)
+useOccluder(() => toasts.length > 0, () => stack.value)
 
 const KIND_ICON: Record<Toast['kind'], string> = {
   info: 'i-carbon-information-filled',
@@ -20,6 +26,7 @@ const KIND_TONE: Record<Toast['kind'], string> = {
 
 <template>
   <div
+    ref="stack"
     class="flex flex-col-reverse gap-2 max-w-[calc(100vw-32px)] w-[360px] pointer-events-none items-center bottom-[calc(var(--dock-h)+44px)] left-1/2 fixed z-[1200] -translate-x-1/2"
     aria-live="polite"
   >

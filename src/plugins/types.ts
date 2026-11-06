@@ -13,7 +13,7 @@
  */
 
 /** What a plugin can ask to do; see PERMISSIONS in src/plugins/manifest.ts. */
-export type PluginPermission = 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'network' | 'stage'
+export type PluginPermission = 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'network' | 'stage' | 'web'
 
 export interface PluginManifest {
   /** Lower-case letters, digits and dashes; the plugin's identity. */
@@ -221,6 +221,65 @@ export interface ScriptSnapshot {
  */
 export type MotionFilter = (pos: number, info: { axis: string, t: number }) => number
 
+/** What a web view shows, as of its last change. */
+export interface WebViewState {
+  /** The page's address; '' before anything has loaded. */
+  url: string
+  title: string
+  /** Something is loading (the page, or a navigation inside it). */
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  /** Why the last page didn't load (no network, a bad address, a crash), or null. */
+  error: { code: number, description: string, url: string } | null
+  /** Video or audio is playing in it. */
+  media: boolean
+  /** It makes sound right now. */
+  audible: boolean
+  /** A video in it has taken the whole window. */
+  fullscreen: boolean
+  /** The keyboard is in the page. */
+  focused: boolean
+  /** It is on screen: attached to an element that shows, and nothing of playhound's is over it. */
+  shown: boolean
+}
+
+export interface WebViewOptions {
+  /** Load this page at once (http or https). */
+  url?: string
+  /** The page's zoom, 1 = 100% (0.25–5). */
+  zoom?: number
+}
+
+/**
+ * A real web page inside playhound (desktop app only). It is drawn by the
+ * desktop app on top of playhound's own page, so it can't sit under your DOM:
+ * it goes where the element you attach it to is, and playhound hides it
+ * while one of its dialogs, menus or toasts would be under it, and on panic.
+ */
+export interface WebViewHandle {
+  /**
+   * Keep the view on `el`'s box, following it as it moves and resizes (and
+   * when the interface size changes). It shows only while `el` is in the
+   * document and visible. Attaching elsewhere moves it; null hides it.
+   */
+  attach: (el: HTMLElement | null) => void
+  /** Load a page: http or https. Anything else throws. */
+  navigate: (url: string) => void
+  back: () => void
+  forward: () => void
+  reload: () => void
+  stop: () => void
+  /** The page's zoom, 1 = 100% (0.25–5). */
+  setZoom: (factor: number) => void
+  state: () => WebViewState
+  /** Called with the whole state whenever any of it changes; returns an unsubscribe. */
+  onState: (fn: (s: WebViewState) => void) => () => void
+  /** Close the page. Done for you when the plugin is switched off. */
+  destroy: () => void
+  readonly destroyed: boolean
+}
+
 export interface PluginContext {
   readonly manifest: PluginManifest
   settings: {
@@ -360,6 +419,18 @@ export interface PluginContext {
     /** Add (or replace, by id) a command. False if its shortcut is taken: the command is then added without one. */
     register: (def: CommandDef) => boolean
     unregister: (id: string) => void
+  }
+  /** Real web pages inside playhound. */
+  webview: {
+    /** False outside the desktop app: there, create() throws. */
+    readonly available: boolean
+    /**
+     * A new web view, hidden until attached. Pages run in a browsing session
+     * of their own (cookies and logins kept, apart from playhound's) and can't
+     * reach playhound. At most 4 are open at once, across all plugins; past
+     * that, and outside the desktop app, this throws.
+     */
+    create: (opts?: WebViewOptions) => WebViewHandle
   }
   /** A blob: URL for a file from the plugin's zip, or null. */
   asset: (path: string) => string | null

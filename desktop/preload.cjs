@@ -275,6 +275,58 @@ const pluginsApi = winState
     })
   : null
 
+// ── Web views for plugins (main window only) ────────────────────────────────
+// Real web pages the main process lays over the window (desktop/webview.mjs).
+// The page says where each one goes and when to hide it; the main process
+// says what happens in it.
+const webStateListeners = new Set()
+const webKeyListeners = new Set()
+const webActivityListeners = new Set()
+function fanOut(set, label, ...args) {
+  for (const cb of set) {
+    try {
+      cb(...args)
+    }
+    catch (err) {
+      console.error(`[playhound] ${label} listener failed`, err)
+    }
+  }
+}
+if (winState) {
+  ipcRenderer.on('ph:web:state', (_event, id, patch) => fanOut(webStateListeners, 'web view', Number(id), { ...patch }))
+  ipcRenderer.on('ph:web:key', (_event, key) => fanOut(webKeyListeners, 'web view key', String(key)))
+  ipcRenderer.on('ph:web:activity', () => fanOut(webActivityListeners, 'web view activity'))
+}
+function listen(set) {
+  return (cb) => {
+    if (typeof cb !== 'function')
+      return () => {}
+    set.add(cb)
+    return () => void set.delete(cb)
+  }
+}
+const webApi = winState
+  ? Object.freeze({
+      /** A new view, hidden until laid out: { id } or { error }. */
+      create: () => ipcRenderer.invoke('ph:web:create'),
+      destroy: id => ipcRenderer.send('ph:web:destroy', Number(id)),
+      /** Where it goes, in CSS pixels ({ x, y, width, height, radius }), or null to hide it. */
+      layout: (id, rect) => ipcRenderer.send('ph:web:layout', Number(id), rect
+        ? { x: Number(rect.x), y: Number(rect.y), width: Number(rect.width), height: Number(rect.height), radius: Number(rect.radius ?? 0) }
+        : null),
+      /** 'load' (with a URL), 'back', 'forward', 'reload', 'stop', or 'zoom' (with a factor). */
+      nav: (id, action, arg) => ipcRenderer.send('ph:web:nav', Number(id), String(action), action === 'zoom' ? Number(arg) : arg === undefined ? undefined : String(arg)),
+      /** Panic on or off: every view hidden, muted and paused. */
+      panic: on => ipcRenderer.send('ph:web:panic', !!on),
+      /** Calls `cb(id, patch)` when something about a view changes; returns an unsubscribe. */
+      onState: listen(webStateListeners),
+      /** Calls `cb(key)` with a key of the app's pressed inside a page ('Escape', 'Backquote', 'KeyK'). */
+      onKey: listen(webKeyListeners),
+      /** Calls `cb()` (at most once a second) while the user clicks or types in a page. */
+      onActivity: listen(webActivityListeners),
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -300,6 +352,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   updates: updatesApi ?? undefined,
   net: netApi ?? undefined,
   plugins: pluginsApi ?? undefined,
+  web: webApi ?? undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

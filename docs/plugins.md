@@ -67,10 +67,11 @@ the plugin gets only what it lists; asking for nothing is fine.
 | `library`  | Read your library: video names, stats and playlists      | `library.*`                                                                 |
 | `network`  | Connect to servers through playhound                     | `net.fetch`                                                                 |
 | `stage`    | Show its own page and draw over the video                | `ui.page / openPage / showStage / overlay`                                  |
+| `web`      | Open web pages inside playhound                          | `webview.create`                                                            |
 
 Everything else needs none: settings, storage, the panel, commands, styles,
-toasts, `ui.stage / onStageChange`, `motion.readout`, `safety.*`, `asset`,
-`log`. A call outside the list throws an `Error` naming the permission to add.
+toasts, `ui.stage / onStageChange`, `motion.readout`, `safety.*`,
+`webview.available`, `asset`, `log`. A call outside the list throws an `Error` naming the permission to add.
 
 A first install always shows the list and waits for the user to agree. An
 update shows it again only if it asks for something the installed version
@@ -137,6 +138,7 @@ The full contract, with comments, is in
 | `motion.readout`                                                          | what the device is doing: the generator's rate and depth, and the stroke position (a script's, while one plays)                                                                                                                                                                                                                                                                  |
 | `safety.panicked / onPanic`                                               | panic (Esc). Stop everything you're doing.                                                                                                                                                                                                                                                                                                                                       |
 | `net.fetch(url, init)`                                                    | `fetch()`; in the desktop app it's made from the app itself, so local servers without CORS headers answer, and it streams                                                                                                                                                                                                                                                        |
+| `webview.create({ url, zoom })`                                           | a real web page inside playhound (desktop app only); see [Web pages](#web-pages)                                                                                                                                                                                                                                                                                                 |
 | `asset(path)`                                                             | a `blob:` URL for a file from the plugin's zip                                                                                                                                                                                                                                                                                                                                   |
 | `log(...)`                                                                | `console.log` with the plugin's name in front                                                                                                                                                                                                                                                                                                                                    |
 
@@ -163,6 +165,74 @@ goes to the device: `pos` and the result are 0–1, `axis` is the TCode channel
   script changes. A filter whose output drifts over time reaches the Handy
   only when you set it again; under Whole script each set uploads the script
   again, so don't do that every second.
+
+## Web pages
+
+`ctx.webview.create()` puts a real web page inside playhound: any site,
+including the many that refuse to be shown in an `<iframe>`. It needs the
+`web` permission and the **desktop app**. In a browser `ctx.webview.available`
+is `false` and `create()` throws `Web pages need the playhound desktop app`;
+check `available` first and say so in your page.
+
+```js
+export default function activate(ctx) {
+  ctx.ui.page({
+    title: 'Web',
+    mount(el) {
+      if (!ctx.webview.available) {
+        el.textContent = 'This needs the playhound desktop app.'
+        return
+      }
+      const box = document.createElement('div')
+      box.style.cssText = 'flex: 1; min-height: 0'
+      el.append(box)
+      const view = ctx.webview.create({ url: 'https://example.com' })
+      view.attach(box)
+      view.onState(s => ctx.log(s.loading ? 'loading…' : s.title, s.url))
+      return () => view.destroy()
+    },
+  })
+}
+```
+
+- The page isn't part of your DOM. The desktop app draws it over
+  playhound's window, where the element you `attach()` it to is, and keeps it
+  there as the element moves or resizes, and when the user changes the
+  interface size. It shows only while that element is in the document and
+  visible: when your stage page leaves the stage, it hides. Destroy the view
+  in your cleanup, as above, unless you want the page kept loaded for next
+  time (attach it again then). Views are destroyed for you when the plugin
+  is switched off.
+- Nothing can be drawn over it, not even by you. playhound hides it while
+  any of its own layers would be under it (a dialog, the command palette, a
+  menu, a toast, the drop cover), and always on panic, when its sound is
+  also muted and its videos paused. Keep your own menus and popups beside
+  it, or `attach(null)` while they're open.
+- `navigate(url)` takes http and https addresses only; anything else throws.
+  `back / forward / reload / stop / setZoom` do what they say.
+  `onState(fn)` gets `{ url, title, loading, canGoBack, canGoForward, error,
+media, audible, fullscreen, focused, shown }` whenever any of it changes.
+- At most 4 views are open at once, across all plugins; `create()` throws
+  past that.
+- What pages may do: links meant for a new tab or window open in the same
+  view (pop-unders are dropped; nothing goes to the system browser). Pages
+  get no permissions except full screen and the clipboard: no camera,
+  microphone, location, notifications or devices. A video in full screen
+  takes the whole window until it leaves. Downloads ask where to save.
+- Esc and \` pressed inside a page panic, as everywhere in playhound, and
+  Ctrl K (⌘ K) opens the palette.
+- Pages run in a browsing session of their own (`persist:browsing`): cookies
+  and logins are kept between runs, shared by all plugins' views, and kept
+  apart from playhound's own. Sites see a plain Chrome; requests go through
+  the proxy set in Settings → Network, like the rest of the app.
+
+**What the permission means for the user.** The pages themselves are
+sandboxed: no Node, no preload, no way to send anything to playhound or read
+its data. But which page shows is the plugin's choice, and it shows inside
+playhound's window: a plugin could put up a site made to look like a login
+page or like playhound itself. The install screen says it plainly ("Open web
+pages inside playhound"). Show the address of whatever you load, as a
+browser would, so the user always knows where they are.
 
 ## An example
 

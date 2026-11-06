@@ -36,6 +36,9 @@ export const PERMISSIONS: PermissionInfo[] = [
   { id: 'library', label: 'Read your library: video names, stats and playlists', api: 'library.*' },
   { id: 'network', label: 'Connect to servers through playhound', api: 'net.fetch' },
   { id: 'stage', label: 'Show its own page and draw over the video', api: 'ui.page, ui.openPage, ui.showStage, ui.overlay' },
+  // Any site, including one made to look like something else: the pages
+  // themselves can't reach playhound, but what they show is the plugin's pick.
+  { id: 'web', label: 'Open web pages inside playhound', api: 'webview.create' },
 ]
 
 const KNOWN = new Set<string>(PERMISSIONS.map(p => p.id))

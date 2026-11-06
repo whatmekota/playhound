@@ -1,7 +1,7 @@
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { LibraryVideo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField } from '~/plugins/types'
+import type { LibraryVideo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
@@ -27,6 +27,7 @@ import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
 import { chordId, chordOf, parseKbd, reservedBy } from '~/plugins/shortcuts'
 import { DEFAULT_SOURCES, fetchRelease, newer, parseRepo } from '~/plugins/sources'
 import { parseStage, stageOf } from '~/plugins/stage'
+import { createWebview } from '~/plugins/webview'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -1323,6 +1324,15 @@ export const usePluginStore = defineStore('plugins', () => {
         },
       },
       net: { fetch: gate('network', 'net.fetch', pluginFetch) },
+      webview: {
+        available: !!desktop?.web,
+        create: gate('web', 'webview.create', (opts?: WebViewOptions) => {
+          const view = createWebview(id, opts)
+          // Its pages close with it.
+          later(() => view.destroy())
+          return view
+        }),
+      },
       asset: (path: string) => urls.get(path.replace(/^\.?\//, '')) ?? null,
       // eslint-disable-next-line no-console
       log: (...args: unknown[]) => console.log(`[plugin ${id}]`, ...args),

@@ -2,6 +2,7 @@
 import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { setEmuInstance } from '~/composables/useTCode'
+import { useOccluder } from '~/lib/occluders'
 import { useUiStore } from '~/stores/uiStore'
 
 /**
@@ -108,6 +109,9 @@ onBeforeUnmount(() => window.removeEventListener('resize', clamp))
 
 // ─── Open / close ─────────────────────────────────────────────────────────────
 const shown = ref(true)
+const windowEl = ref<HTMLElement | null>(null)
+// It floats over the stage: a plugin's web page under it steps aside.
+useOccluder(() => shown.value, () => windowEl.value)
 function close() {
   shown.value = false
 }
@@ -169,6 +173,7 @@ onBeforeUnmount(() => {
   <Transition name="emu" appear @after-leave="afterLeave">
     <div
       v-if="shown"
+      ref="windowEl"
       class="emu-window rounded-[var(--radius-lg)] glass flex flex-col ring-1 ring-edge-strong shadow-[var(--shadow-lg)] fixed z-[700] overflow-hidden"
       :class="gesture ? 'select-none' : ''"
       :style="box"

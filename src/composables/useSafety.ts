@@ -1,4 +1,5 @@
 import { onUnmounted, watch } from 'vue'
+import { webviewFocused } from '~/plugins/webview'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -108,11 +109,12 @@ export function useSafety(controls: {
     if (!safety.panicOnBlur)
       return
     // Focus moving between the main window and the pop-out player stays in
-    // the app. The other window only reports focus a moment after this one
-    // loses it, so look once it has settled.
+    // the app, and so does a click into a plugin's web page. The other window
+    // (or page) only reports focus a moment after this one loses it, so look
+    // once it has settled.
     clearTimeout(blurTimer)
     blurTimer = setTimeout(() => {
-      if (!document.hasFocus() && !popoutFocused())
+      if (!document.hasFocus() && !popoutFocused() && !webviewFocused())
         panic()
     }, 150)
   }
@@ -120,6 +122,7 @@ export function useSafety(controls: {
   for (const ev of IDLE_EVENTS)
     window.addEventListener(ev, resetIdle, { passive: true })
   window.addEventListener('ph:popout-activity', resetIdle)
+  window.addEventListener('ph:webview-activity', resetIdle)
   window.addEventListener('blur', onBlur)
   window.addEventListener('ph:popout-blur', onBlur)
 
@@ -132,6 +135,7 @@ export function useSafety(controls: {
     for (const ev of IDLE_EVENTS)
       window.removeEventListener(ev, resetIdle)
     window.removeEventListener('ph:popout-activity', resetIdle)
+    window.removeEventListener('ph:webview-activity', resetIdle)
     window.removeEventListener('blur', onBlur)
     window.removeEventListener('ph:popout-blur', onBlur)
     clearTimeout(blurTimer)

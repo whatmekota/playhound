@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, watch } from 'vue'
+import { useOccluder } from '~/lib/occluders'
 
 /**
  * Dialog. Teleported, backdrop-blurred, closes on Escape and backdrop click
@@ -39,6 +40,9 @@ watch(open, (v) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
+
+// Its backdrop covers the window, plugins' web pages included.
+useOccluder(() => open.value)
 </script>
 
 <template>
