@@ -9,8 +9,33 @@ import type { PluginManifest } from './types'
  * release's tag and the repository's name stand in for them.
  */
 
-/** Shipped as the first source; the user can add and remove others. */
-export const DEFAULT_SOURCES = ['whatmekota/playmate']
+/**
+ * The official plugins, followed out of the box; the user can add and remove
+ * sources. A new one here reaches existing users once (see addNewDefaults):
+ * one they removed stays removed.
+ */
+export const DEFAULT_SOURCES = ['whatmekota/playmate', 'whatmekota/ph2gether', 'whatmekota/phbrowser']
+
+/** What 1.5 shipped as the only default, before defaults were tracked. */
+const FIRST_DEFAULTS = ['whatmekota/playmate']
+
+/**
+ * Add the defaults this user hasn't been offered yet to their list. `seen` is
+ * null when nothing was tracked yet: then the list predates tracking, and only
+ * the first default had been offered. Returns the new list and the new `seen`.
+ */
+export function addNewDefaults(list: string[], seen: string[] | null): { list: string[], seen: string[] } {
+  const offered = new Set(seen ?? FIRST_DEFAULTS)
+  const next = [...list]
+  for (const repo of DEFAULT_SOURCES) {
+    if (offered.has(repo))
+      continue
+    offered.add(repo)
+    if (!next.some(r => r.toLowerCase() === repo.toLowerCase()))
+      next.push(repo)
+  }
+  return { list: next, seen: [...offered] }
+}
 
 /** Plugins from this owner's repositories are playhound's own. */
 export const OFFICIAL_OWNER = 'whatmekota'

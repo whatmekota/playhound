@@ -25,7 +25,7 @@ import { accessOf, addedPermissions, allows, permissionError, readManifest } fro
 import { pluginFetch } from '~/plugins/net'
 import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
 import { chordId, chordOf, parseKbd, reservedBy } from '~/plugins/shortcuts'
-import { DEFAULT_SOURCES, fetchRelease, newer, parseRepo } from '~/plugins/sources'
+import { addNewDefaults, DEFAULT_SOURCES, fetchRelease, newer, parseRepo } from '~/plugins/sources'
 import { parseStage, stageOf } from '~/plugins/stage'
 import { createWebview } from '~/plugins/webview'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
@@ -1350,6 +1350,19 @@ export const usePluginStore = defineStore('plugins', () => {
   // ─── Sources (the plugin store) ───────────────────────────────────────────
 
   const sourceList = useLocalStorage<string[]>(KEYS.pluginSources.key, [...DEFAULT_SOURCES])
+  // New official plugins join the list of someone who already has one, once.
+  {
+    const hadList = localStorage.getItem(KEYS.pluginSources.key) !== null
+    let seen: string[] | null = null
+    try {
+      seen = JSON.parse(localStorage.getItem(KEYS.pluginDefaultsSeen.key) ?? 'null')
+    }
+    catch {}
+    const r = addNewDefaults(sourceList.value, hadList ? (Array.isArray(seen) ? seen : null) : [...DEFAULT_SOURCES])
+    if (r.list.length !== sourceList.value.length)
+      sourceList.value = r.list
+    localStorage.setItem(KEYS.pluginDefaultsSeen.key, JSON.stringify(r.seen))
+  }
   const checkedAt = useLocalStorage<number>(KEYS.pluginsChecked.key, 0)
   const sources = ref<Record<string, SourceState>>({})
 
