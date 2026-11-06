@@ -126,21 +126,54 @@ function icing(k, i) {
   return `${p} Q${f((at + x0) / 2)} ${f(edge + 8)} ${f(x0)} ${f(edge)} Z`
 }
 
+// ── Decorations, where the design sheet's wordmark card has them ───────────
+// The sheet centres the word on x=760; here it starts at 0, so shift by the difference.
+const DX = 760 - (x - SPACING) / 2
+const sparkle = (sx, sy, r) => `<path transform="translate(${f(sx - DX)} ${sy}) scale(${f(r / 10)})" d="M0 -10 C1.2 -2.4 2.4 -1.2 10 0 C2.4 1.2 1.2 2.4 0 10 C-1.2 2.4 -2.4 1.2 -10 0 C-2.4 -1.2 -1.2 -2.4 0 -10Z"/>`
+const heartDeco = (hx, hy, sz, rot) => `<path d="${heartAt(hx - DX, hy, sz, rot)}"/>`
+function wave(wx, wy, sz, rot) {
+  const h = sz * 0.32
+  const step = sz / 5
+  let p = `M${f(-sz / 2)} 0`
+  for (let i = 0; i < 5; i++) {
+    const x0 = -sz / 2 + i * step
+    const up = i % 2 === 0 ? -h : h
+    p += ` C${f(x0 + step * 0.35)} ${f(up)} ${f(x0 + step * 0.65)} ${f(up)} ${f(x0 + step)} 0`
+  }
+  return `<path transform="translate(${f(wx - DX)} ${wy}) rotate(${rot})" d="${p}" fill="none" stroke-width="${f(Math.max(2.5, sz / 11))}" stroke-linecap="round"/>`
+}
+const paw = (px, py, sz, rot) => `<g transform="translate(${f(px - DX)} ${py}) rotate(${rot}) scale(${f(sz / 20)})"><path d="M0 2 C6 2 9 7 8 10.5 C7 13.5 3 12.5 0 12.5 C-3 12.5 -7 13.5 -8 10.5 C-9 7 -6 2 0 2Z"/><ellipse cx="-9" cy="-2" rx="3" ry="4" transform="rotate(-20 -9 -2)"/><ellipse cx="-3.4" cy="-7.4" rx="3" ry="4.2" transform="rotate(-6 -3.4 -7.4)"/><ellipse cx="3.4" cy="-7.4" rx="3" ry="4.2" transform="rotate(6 3.4 -7.4)"/><ellipse cx="9" cy="-2" rx="3" ry="4" transform="rotate(20 9 -2)"/></g>`
+const DECO = [
+  sparkle(140, 110, 22),
+  sparkle(1250, 70, 14),
+  sparkle(1440, 470, 18),
+  sparkle(230, 480, 14),
+  sparkle(760, 60, 12),
+  heartDeco(80, 290, 26, -16),
+  wave(560, 70, 56, -8),
+  wave(1010, 520, 64, 6),
+  wave(1480, 330, 48, -12),
+  heartDeco(120, 440, 16, 10),
+  paw(1120, 64, 30, 18),
+  paw(380, 520, 26, -22),
+]
+
 // ── Assemble ────────────────────────────────────────────────────────────────
 const shape = i => [ch[i].d, ...extra[i], ...(i === di ? [tailTip] : [])].map(p => `<path d="${p}"/>`).join('')
 const layer = (body, attrs) => `<g ${attrs}>${ch.map((k, i) => `<g class="wl" style="--i:${i}">${body(i)}</g>`).join('')}</g>`
 const tailFor = (i, w) => (i === di ? `<path d="${tail}" fill="none" stroke-width="${w}"/>` : '')
 
-const minX = Math.min(...ch.map(k => k.x0)) - 40
-const maxX = d.x1 + 150
-const minY = o.top - 0.74 * r - 40
-const maxY = BASE + 90
+const minX = Math.min(Math.min(...ch.map(k => k.x0)) - 40, 50 - DX)
+const maxX = Math.max(d.x1 + 150, 1520 - DX)
+const minY = Math.min(o.top - 0.74 * r - 40, 30)
+const maxY = Math.max(BASE + 90, 550)
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(minX)} ${f(minY)} ${f(maxX - minX)} ${f(maxY - minY)}" class="wordmark" role="img" aria-label="playhound">
 <defs>
 <linearGradient id="wmf" x1="0" y1="${f(o.top - 80)}" x2="0" y2="${BASE + 40}" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color:var(--wm-top)"/><stop offset=".55" style="stop-color:var(--wm-mid)"/><stop offset="1" style="stop-color:var(--wm-bot)"/></linearGradient>
 <linearGradient id="wmi" x1="0" y1="${f(o.top - 80)}" x2="0" y2="${BASE}" gradientUnits="userSpaceOnUse"><stop offset="0" style="stop-color:var(--wm-icing)"/><stop offset="1" style="stop-color:var(--wm-icing-shade)"/></linearGradient>
 ${ch.map((k, i) => `<clipPath id="wmc${i}">${shape(i)}</clipPath>`).join('')}
 </defs>
+<g class="wm-deco" stroke-width="0" style="fill:var(--wm-deco);stroke:var(--wm-deco)">${DECO.map((el, i) => `<g style="--d:${(i * 97) % 600}ms">${el}</g>`).join('')}</g>
 ${layer(i => shape(i) + tailFor(i, 59), 'class="wm-halo" stroke-linejoin="round" stroke-linecap="round" stroke-width="39" style="fill:var(--wm-halo);stroke:var(--wm-halo)"')}
 ${layer(i => shape(i) + tailFor(i, 40), 'class="wm-rim" stroke-linejoin="round" stroke-linecap="round" stroke-width="20" style="fill:var(--wm-rim);stroke:var(--wm-rim)"')}
 ${layer(i => (i === di ? `<path d="${tail}" fill="none" stroke="url(#wmf)" stroke-width="20" stroke-linecap="round"/>` : '') + (i === oi ? `<path d="${fang}" fill="#fff" stroke-width="6" stroke-linejoin="round" style="stroke:var(--wm-rim)"/>` : ''), 'class="wm-under"')}
