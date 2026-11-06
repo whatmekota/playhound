@@ -94,6 +94,8 @@ export interface PlayerSnapshot {
   time: number
   duration: number
   hasScript: boolean
+  /** The playback speed, 1 is normal (the one player.setRate sets). */
+  rate: number
 }
 
 /** A video in the library, with what playhound knows about it. */
@@ -331,7 +333,7 @@ export interface PluginContext {
     script: () => ScriptNow | null
     /** The video's current picture as a JPEG data URL (default 512 px wide); null without one. */
     frame: (opts?: { maxWidth?: number, quality?: number }) => string | null
-    /** When what plays, or whether it plays, changes (not on every clock tick). */
+    /** When what plays, whether it plays, or its speed changes (not on every clock tick). */
     onChange: (fn: (s: PlayerSnapshot) => void) => () => void
     /**
      * Where playback is now, in seconds: read off the video at the moment of

@@ -856,6 +856,7 @@ export const usePluginStore = defineStore('plugins', () => {
       time: player.currentTime,
       duration: player.videoDuration,
       hasScript: scripts.hasScripts,
+      rate: player.playbackSpeed,
     })
 
     // ─── Library and playback ──────────────────────────────────────────────
@@ -1278,7 +1279,7 @@ export const usePluginStore = defineStore('plugins', () => {
         frame: gate('player', 'player.frame', (o: { maxWidth?: number, quality?: number } = {}) => playback.grabFrame(Math.max(64, Math.min(1280, o.maxWidth ?? 512)), Math.max(0.3, Math.min(0.95, o.quality ?? 0.72)))),
         onChange: gate('player', 'player.onChange', (fn: (s: PlayerSnapshot) => void) => {
           // What plays and whether it plays; not every tick of the clock.
-          const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts], () => fn(snapshot()))
+          const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts, player.playbackSpeed], () => fn(snapshot()))
           return later(stop)
         }),
         clock: gate('player', 'player.clock', clockNow),
