@@ -1,3 +1,4 @@
+import process from 'node:process'
 import { BrowserWindow, dialog } from 'electron'
 
 /**
@@ -9,6 +10,13 @@ import { BrowserWindow, dialog } from 'electron'
  * only ever loads its own origin, so the rule is simple: our origin gets what
  * it asks for, anything else (an embedded third-party frame) gets nothing.
  */
+
+/** Where to look when no serial port shows up at all. */
+const NO_PORT_HINT = {
+  win32: 'Plug the device in over USB and check it shows up as a COM port in Device Manager, then connect again.',
+  darwin: 'Plug the device in over USB (a data cable, not a charge-only one) and check it shows up as /dev/cu.usbserial-… or /dev/cu.usbmodem…, then connect again.',
+  linux: 'Plug the device in over USB and check it shows up as /dev/ttyUSB0 or /dev/ttyACM0. If it does, your user may need to be in the dialout group (uucp on Arch): log out and back in after adding it.',
+}
 
 /** USB-serial bridges the OSR2 and its relatives ship with, most likely first. */
 const SERIAL_VENDORS = {
@@ -289,7 +297,7 @@ async function choosePort(ses, portList, win, last) {
       type: 'info',
       title: 'playhound',
       message: 'No serial device found',
-      detail: 'Plug the device in over USB and check it shows up as a COM port in Device Manager, then connect again.',
+      detail: NO_PORT_HINT[process.platform] ?? NO_PORT_HINT.win32,
       buttons: ['OK'],
       noLink: true,
     })

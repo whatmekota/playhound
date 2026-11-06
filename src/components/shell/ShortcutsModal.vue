@@ -5,6 +5,7 @@ import UiInput from '~/components/ui/UiInput.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiModal from '~/components/ui/UiModal.vue'
 import { HOTKEY_GROUPS } from '~/lib/hotkeys'
+import { keyLabel, MOD_KEY } from '~/lib/platform'
 import { useUiStore } from '~/stores/uiStore'
 
 /**
@@ -47,7 +48,7 @@ const groups = computed(() => {
       icon: GROUP_ICON[g.title] ?? 'i-carbon-keyboard',
       keys: g.keys
         .filter(k => !q || k.label.toLowerCase().includes(q) || k.keys.toLowerCase().includes(q) || g.title.toLowerCase().includes(q))
-        .map(k => ({ ...k, parts: parse(k.keys) })),
+        .map(k => ({ ...k, parts: parse(keyLabel(k.keys)) })),
     }))
     .filter(g => g.keys.length)
 })
@@ -62,7 +63,7 @@ function openPalette() {
   <UiModal
     v-model:open="ui.shortcutsOpen"
     title="Keyboard shortcuts"
-    subtitle="Keys are ignored while you type in a field — except Ctrl K."
+    :subtitle="`Keys are ignored while you type in a field — except ${MOD_KEY} K.`"
     icon="i-carbon-keyboard"
     width="820px"
   >

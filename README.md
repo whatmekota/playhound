@@ -142,6 +142,8 @@ Bluetooth in the browser needs Chrome or Edge.
   moves them to the Windows app later.
 - **Windows app:** the installer or the portable .exe from
   [Releases](https://github.com/whatmekota/playhound/releases). Then skip to [Using it](#using-it).
+- **macOS and Linux app:** the `.dmg` or `.AppImage` from the same page; see
+  [installing on macOS and Linux](docs/install-mac-linux.md) for the first launch.
 - **From source:** for other systems, or to change things. Read on.
 
 ### From source

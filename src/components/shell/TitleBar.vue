@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import { useUpdates } from '~/composables/useUpdates'
 import { desktop } from '~/lib/browserApi'
+import { MOD_KEY } from '~/lib/platform'
 import { findView } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -23,9 +24,14 @@ import BrandMark from './BrandMark.vue'
  * right-click system menu all come from the OS, not from here. The flip side
  * is that drag areas swallow mouse events, so anything clickable or hoverable
  * has to be marked no-drag.
+ *
+ * On macOS the window keeps its native traffic lights (titleBarStyle 'hidden'
+ * in desktop/main.mjs, centred on this bar): the brand moves right to clear
+ * them and the Windows caption buttons are left out.
  */
 
 const win = desktop?.window ?? null
+const mac = desktop?.platform === 'darwin'
 const updates = useUpdates()
 const ui = useUiStore()
 const player = usePlayerStore()
@@ -74,13 +80,13 @@ const viewDef = computed(() => {
     <!-- Windows resolves a drag region before its resize border, so without
          these the top and left edges of the bar could not be grabbed to
          resize. Maximised windows do not resize, so the bar drags edge to edge. -->
-    <template v-if="!state.maximized">
+    <template v-if="!state.maximized && !mac">
       <span class="app-no-drag h-[5px] left-0 right-0 top-0 absolute" aria-hidden="true" />
       <span class="app-no-drag w-[5px] bottom-0 left-0 top-0 absolute" aria-hidden="true" />
     </template>
 
-    <!-- Brand, lined up over the nav's icon column -->
-    <div class="fade-blur pl-[21px] flex gap-2 min-w-0 items-center">
+    <!-- Brand, lined up over the nav's icon column (after the traffic lights on macOS) -->
+    <div class="fade-blur flex gap-2 min-w-0 items-center" :class="mac ? 'pl-[80px]' : 'pl-[21px]'">
       <BrandMark :size="18" />
       <span class="text-[12.5px] tracking-[-0.02em] font-semibold whitespace-nowrap">play<span class="text-accent-300">hound</span></span>
       <span
@@ -139,14 +145,16 @@ const viewDef = computed(() => {
         <span class="i-carbon-search text-[11px]" aria-hidden="true" />
         <span>Search</span>
         <UiKbd class="!text-[10px] !px-1 !h-4 !min-w-4">
-          Ctrl K
+          {{ MOD_KEY }} K
         </UiKbd>
       </button>
     </div>
 
     <!-- Caption buttons, in the Windows layout. Out of the tab order like the
-         native ones: Alt+F4 and Win+arrows cover the keyboard. -->
-    <div class="flex h-full justify-end">
+         native ones: Alt+F4 and Win+arrows cover the keyboard. macOS has its
+         traffic lights on the left instead. -->
+    <div v-if="mac" aria-hidden="true" />
+    <div v-else class="flex h-full justify-end">
       <button
         v-tip="{ text: 'Minimise', placement: 'bottom' }"
         type="button"

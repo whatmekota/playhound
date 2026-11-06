@@ -217,6 +217,8 @@ export interface DesktopInfo {
   version: string
   port: number
   dev: boolean
+  /** Node's process.platform: 'win32', 'darwin' or 'linux'. Absent in older builds. */
+  platform?: string
   /** This machine's IPv4 addresses, physical adapters first. */
   lan: readonly { name: string, address: string }[]
   /**
@@ -251,9 +253,14 @@ export interface UpdateState {
   error: string | null
   /** The portable .exe: it can only say a new version is out. */
   portable: boolean
+  /**
+   * Updates by hand: it only says a new version is out (the portable .exe,
+   * the unsigned macOS app, Linux outside an AppImage). Absent in older builds.
+   */
+  manual?: boolean
   /** Checks on its own (at startup and every few hours). */
   auto: boolean
-  /** Where to download it by hand (portable). */
+  /** Where to download it by hand (manual). */
   url: string | null
 }
 

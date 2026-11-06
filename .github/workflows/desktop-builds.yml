@@ -1,0 +1,154 @@
+# Builds the macOS and Linux apps. Windows is still built by hand on a
+# Windows machine (pnpm app:build, then gh release create with the installer,
+# the portable .exe, the blockmap and latest.yml). Publishing that release
+# starts this, which adds the macOS and Linux files to the same release.
+#
+# Run by hand (Actions → Desktop builds → Run workflow) it builds the chosen
+# branch and keeps the files as workflow artifacts; give it a tag to also add
+# them to that tag's existing release (to retry a failed run, say).
+#
+# The Handy application ID is baked into the app like the Windows build's
+# (an ID is meant to ship in clients; the app key and tokens never are). It
+# comes from the HANDY_APP_ID repository secret, or the HANDY_APP_ID variable
+# the Pages build already uses.
+name: Desktop builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload to, e.g. v2.0.0. Leave empty to build the branch and only keep workflow artifacts.
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop-builds-${{ github.event.release.tag_name || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple silicon runner; builds the x64 app alongside the arm64 one.
+          - os: macos-latest
+            name: macOS
+            files: |
+              release/*.dmg
+              release/*.zip
+              release/*.blockmap
+              release/latest-mac.yml
+          - os: ubuntu-latest
+            name: Linux
+            files: |
+              release/*.AppImage
+              release/*.blockmap
+              release/latest-linux.yml
+
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The files are named after package.json's version; a release for some
+      # other version would get the wrong ones.
+      - name: Check the tag matches package.json
+        if: env.TAG != ''
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::package.json says $version, but the release is $TAG"
+            exit 1
+          fi
+
+      - name: Build
+        shell: bash
+        env:
+          VITE_HANDY_APP_ID: ${{ secrets.HANDY_APP_ID || vars.HANDY_APP_ID }}
+        run: |
+          if [ -z "$VITE_HANDY_APP_ID" ]; then
+            echo "::warning::No HANDY_APP_ID secret or variable: this build will ask for a Handy application ID."
+          fi
+          pnpm app:build
+
+      - name: Collect the files
+        id: files
+        shell: bash
+        env:
+          PATTERNS: ${{ matrix.files }}
+        run: |
+          files=()
+          for pattern in $PATTERNS; do
+            for f in $pattern; do
+              if [ -f "$f" ]; then files+=("$f"); fi
+            done
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::The build produced nothing to upload"
+            exit 1
+          fi
+          # The Windows files, latest.yml above all, are uploaded by hand.
+          # Never let this job replace them.
+          for f in "${files[@]}"; do
+            case "$(basename "$f")" in
+              latest.yml | *.exe | *.exe.blockmap)
+                echo "::error::Refusing to upload $f: Windows files are released by hand"
+                exit 1
+                ;;
+            esac
+          done
+          printf '%s\n' "${files[@]}"
+          {
+            echo 'list<<EOF'
+            printf '%s\n' "${files[@]}"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Keep as workflow artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playhound-${{ matrix.name }}
+          path: ${{ steps.files.outputs.list }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # --clobber so a re-run replaces this job's own files; the list above
+      # holds nothing else, so latest.yml is never touched.
+      - name: Add to the release
+        if: env.TAG != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FILES: ${{ steps.files.outputs.list }}
+        run: |
+          # Bash 3 on the macOS runner: no mapfile.
+          files=()
+          while IFS= read -r f; do
+            if [ -n "$f" ]; then files+=("$f"); fi
+          done <<< "$FILES"
+          gh release upload "$TAG" "${files[@]}" --clobber

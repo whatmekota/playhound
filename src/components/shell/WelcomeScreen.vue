@@ -6,6 +6,7 @@ import UiKbd from '~/components/ui/UiKbd.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import { toast } from '~/composables/useToast'
 import { thumbDb } from '~/lib/idb'
+import { MOD_KEY } from '~/lib/platform'
 import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -343,7 +344,7 @@ const WAVE_B = wavePath(14, 1.3)
           Drop a video to play it, or a folder to add it to the library
         </div>
         <div class="text-[12px] text-fg-faint flex flex-wrap gap-x-5 gap-y-2 items-center justify-center">
-          <span class="flex gap-1.5 items-center"><UiKbd>Ctrl</UiKbd><UiKbd>K</UiKbd> Search &amp; commands</span>
+          <span class="flex gap-1.5 items-center"><UiKbd>{{ MOD_KEY }}</UiKbd><UiKbd>K</UiKbd> Search &amp; commands</span>
           <span class="flex gap-1.5 items-center"><UiKbd>?</UiKbd> Shortcuts</span>
           <span class="flex gap-1.5 items-center"><UiKbd>Esc</UiKbd> Panic</span>
         </div>
