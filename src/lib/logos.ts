@@ -31,7 +31,12 @@ export function isLogoId(v: unknown): v is LogoId {
   return typeof v === 'string' && LOGOS.some(l => l.id === v)
 }
 
-/** Each colouring also comes with the tongue out (`<id>-tongue.svg`). */
-export function logoUrl(id: LogoId, tongue = false): string {
-  return `${import.meta.env.BASE_URL}logos/${id}${tongue ? '-tongue' : ''}.svg`
+/**
+ * Each colouring also comes with the tongue out (`<id>-tongue.svg`), and as a
+ * sticker (`…-sticker.svg`: a halo, a rim and goo dripping off the tile) for
+ * big moments like the splash. The plain mark is what small places and the
+ * app icon use; drips turn to noise at those sizes.
+ */
+export function logoUrl(id: LogoId, tongue = false, sticker = false): string {
+  return `${import.meta.env.BASE_URL}logos/${id}${tongue ? '-tongue' : ''}${sticker ? '-sticker' : ''}.svg`
 }
