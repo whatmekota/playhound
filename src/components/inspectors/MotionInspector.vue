@@ -9,10 +9,12 @@ import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput } from '~/composables/useTCode'
 import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { synthTargets } from '~/lib/axisSynth'
+import { formatTime } from '~/lib/time'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { CEILING_MAX, CEILING_MAX_UNLOCKED, MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { useRecordingStore } from '~/stores/recordingStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -23,6 +25,7 @@ const anyDevice = useAnyDevice()
 const scripts = useScriptStore()
 const player = usePlayerStore()
 const ui = useUiStore()
+const rec = useRecordingStore()
 const { shouldRun, sourceLive, funscriptBusy } = useMotionEngine()
 const pad = useGamepadStatus()
 const videoBeat = useVideoBeat()
@@ -231,6 +234,13 @@ const depthReadout = computed(() =>
 )
 const nearCeiling = computed(() => motion.isGenerated && motion.currentSpm >= motion.maxSpm - 1 && motion.maxSpm > 0)
 
+// ─── Recording ────────────────────────────────────────────────────────────────
+const recordHint = computed(() => {
+  if (rec.recording)
+    return rec.mode === 'video' ? 'In time with the video' : 'Timed from when it started'
+  return 'Save what the device does as a funscript (⇧C)'
+})
+
 // ─── Manual ───────────────────────────────────────────────────────────────────
 const MANUAL_MODES = [
   { value: 'oscillate' as const, label: 'Rate', icon: 'i-carbon-wave-height' },
@@ -383,6 +393,19 @@ const PAD_MAP = [
             At ceiling
           </span>
         </div>
+      </div>
+
+      <div class="flex gap-2.5 items-center">
+        <UiButton
+          size="sm"
+          :variant="rec.recording ? 'danger' : 'secondary'"
+          :icon="rec.recording ? 'i-carbon-stop-filled-alt' : 'i-carbon-recording-filled text-danger'"
+          class="shrink-0"
+          @click="rec.toggle()"
+        >
+          {{ rec.recording ? `Stop · ${formatTime(rec.elapsed)}` : 'Record' }}
+        </UiButton>
+        <span class="hint truncate">{{ recordHint }}</span>
       </div>
 
       <div v-if="!anyDevice" class="text-[12px] text-fg-muted px-2.5 py-2 rounded-[var(--radius-md)] bg-fg/4 flex gap-2 items-center">

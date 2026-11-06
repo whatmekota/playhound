@@ -31,6 +31,7 @@ import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useQueueStore } from '~/stores/queueStore'
+import { useRecordingStore } from '~/stores/recordingStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -67,6 +68,7 @@ const director = useAutoDirector()
 const binaural = useBinauralBeats()
 const control = useSessionControlStore()
 const sessionActions = useSessionActions()
+const rec = useRecordingStore()
 
 const heatmap = useLocalStorage(KEYS.timelineHeatmap.key, true)
 
@@ -582,6 +584,18 @@ const needsOverflow = computed(() => level.value > 0)
 
       <!-- ═══ Tools and status ═══ -->
       <div ref="rightEl" class="flex gap-1 min-w-0 items-center justify-end">
+        <!-- Recording: on screen whichever view is open, and one click stops it -->
+        <button
+          v-if="rec.recording"
+          v-tip="'Recording · click to stop (⇧C)'"
+          type="button"
+          class="np-chip num !text-danger"
+          aria-label="Stop recording"
+          @click="rec.stop()"
+        >
+          <span class="text-danger rounded-full bg-danger shrink-0 h-2 w-2 animate-pulse-dot" />
+          {{ formatTime(rec.elapsed) }}
+        </button>
         <!-- Session: the edge button and the intensity knob -->
         <EdgeBadge />
         <UiIconButton v-if="hasTrack" icon="i-carbon-rain-drop" label="I came — mark it" kbd="C" size="sm" class="hover:!text-[#f472b6]" @click="sessionActions.came()" />

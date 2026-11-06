@@ -62,11 +62,16 @@ export function extractSuffix(videoBasename: string, scriptFilename: string): st
     return 'default'
   }
 
-  // Check if it starts with videoBase
-  const prefix = `${videoBase}.`
-  if (base.toLowerCase().startsWith(prefix.toLowerCase())) {
-    return base.slice(prefix.length)
-  }
-
-  return 'default'
+  if (!base.toLowerCase().startsWith(videoBase.toLowerCase()))
+    return 'default'
+  // ".twist", ".recorded", ".recorded.twist", " (alt 2).twist"
+  const rest = base.slice(videoBase.length)
+  const whole = rest.startsWith('.') ? rest.slice(1) : null
+  if (whole !== null && whole.toLowerCase() in AXIS_MAP)
+    return whole
+  // Another take of an axis ("video.recorded.twist") still drives that axis.
+  const last = /\.([^.]+)$/.exec(rest)?.[1]
+  if (last && last.toLowerCase() in AXIS_MAP)
+    return last
+  return whole ?? 'default'
 }

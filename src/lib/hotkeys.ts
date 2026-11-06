@@ -12,7 +12,7 @@ export type ShellAction
     | 'view-player' | 'view-library' | 'view-playlists'
     | 'queue' | 'library-panel' | 'device' | 'shuffle' | 'repeat' | 'palette'
     | 'edge' | 'edge-release' | 'intensity-up' | 'intensity-down' | 'next-peak' | 'finish' | 'came'
-    | 'tap-tempo' | 'tap-clear'
+    | 'tap-tempo' | 'tap-clear' | 'record'
 
 export interface Hotkey {
   /** How the key is written in the cheat sheet. */
@@ -95,6 +95,7 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: 'G', label: 'Jump to the next peak', owner: 'shell', code: 'KeyG', action: 'next-peak' },
       { keys: 'Shift + G', label: 'Jump to the finish — the most intense part', owner: 'shell', code: 'KeyG', action: 'finish' },
       { keys: 'C', label: 'I came — mark it on this video', owner: 'shell', code: 'KeyC', action: 'came' },
+      { keys: 'Shift + C', label: 'Record what the device does; again to stop', owner: 'shell', code: 'KeyC', action: 'record' },
       { keys: 'T', label: 'Tap tempo — tap on the beat a few times; once to put the beat back', owner: 'shell', code: 'KeyT', action: 'tap-tempo' },
       { keys: 'Shift + T', label: 'Forget the tapped tempo', owner: 'shell', code: 'KeyT', action: 'tap-clear' },
     ],
