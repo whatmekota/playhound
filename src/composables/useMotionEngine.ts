@@ -31,6 +31,13 @@ import { useDeviceLatency } from './useVideoSync'
 let rafId: number | null = null
 let lastTs: number | null = null
 let phase = 0
+/**
+ * The stroke phase followed without wrapping at one stroke (it wraps at four):
+ * twist and roll turn at a half and a quarter of the stroke's rate, and taking
+ * those fractions of a phase that wraps every stroke made them jump once a stroke.
+ */
+let slowPhase = 0
+let lastPhase = 0
 let spm = 0
 let depth = 0
 let running = false
@@ -282,15 +289,23 @@ export function useMotionEngine() {
     sendPosition('L0', pos, interval)
     driveMovers(pos, motion.source === 'manual' && motion.manualMode === 'direct', ts)
 
+    // However the phase moved this frame (advanced, wrapped, steered or locked
+    // to a clock), carry the same step into the slow phase, taking the short way round.
+    let step = (((phase - lastPhase) % TAU) + TAU) % TAU
+    if (step > Math.PI)
+      step -= TAU
+    lastPhase = phase
+    slowPhase = (slowPhase + step + 4 * TAU) % (4 * TAU)
+
     if (motion.secondaryAxes) {
       // Offset rotations so they read as a related motion, not a copy of L0.
       const twist = applyDepth(
-        strokePosition(phase * 0.5 + Math.PI / 2, 'sine'),
+        strokePosition(slowPhase * 0.5 + Math.PI / 2, 'sine'),
         0.5,
         depth * motion.secondaryDepth,
       )
       const roll = applyDepth(
-        strokePosition(phase * 0.25, 'sine'),
+        strokePosition(slowPhase * 0.25, 'sine'),
         0.5,
         depth * motion.secondaryDepth,
       )
