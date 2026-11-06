@@ -41,6 +41,7 @@ import PlayPauseIcon from './PlayPauseIcon.vue'
 import ScriptOffsetControl from './ScriptOffsetControl.vue'
 import ScrubPreview from './ScrubPreview.vue'
 import SpeedControl from './SpeedControl.vue'
+import SubtitleControl from './SubtitleControl.vue'
 
 /**
  * The dock: what is playing, the transport, and the session's vital signs.
@@ -679,6 +680,7 @@ const needsOverflow = computed(() => level.value > 0)
           <div class="mx-1.5 divider-x" />
         </template>
 
+        <SubtitleControl v-if="hasTrack" />
         <div class="flex gap-1 items-center" @wheel="onVolumeWheel">
           <UiIconButton :icon="volumeIcon" :label="player.isMuted ? 'Unmute' : 'Mute'" kbd="M" size="sm" @click="playback.toggleMute()" />
           <UiSlider

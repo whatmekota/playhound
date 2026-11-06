@@ -170,6 +170,12 @@ function scriptAfter(p: OrgPair, s: FsEntry): string | null {
   return to && to !== stem(s.name) ? to + extOf(s.name) : null
 }
 
+/** A subtitle's name after a pair rename, keeping its language tag (".en"). */
+function subtitleAfter(p: OrgPair, s: FsEntry): string | null {
+  const next = plan.value.get(p.key)
+  return next ? next + s.name.slice(p.basename.length) : null
+}
+
 function discardAll() {
   drafts.clear()
   scriptDrafts.clear()
@@ -563,6 +569,9 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
                   <span v-if="p.scripts.length" v-tip="p.scripts.map(s => s.name).join('\n')" class="flex gap-1 items-center">
                     <span class="i-carbon-chart-line" /> {{ p.scripts.length }}
                   </span>
+                  <span v-if="p.subtitles.length" v-tip="p.subtitles.map(s => s.name).join('\n')" class="flex gap-1 items-center">
+                    <span class="i-carbon-closed-caption" /> {{ p.subtitles.length }}
+                  </span>
                 </div>
 
                 <div class="w-24">
@@ -669,6 +678,14 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
                 <p v-if="!openPair.scripts.length" class="hint px-1">
                   No script matched. Scripts pair up when their name starts with the video's name.
                 </p>
+
+                <div v-for="s in openPair.subtitles" :key="s.relPath" class="text-[12px] px-2.5 py-2 well flex gap-2 items-start">
+                  <span class="i-carbon-closed-caption text-fg-muted mt-0.5 shrink-0" />
+                  <div class="flex flex-col min-w-0">
+                    <span class="text-fg break-all">{{ s.name }}</span>
+                    <span v-if="subtitleAfter(openPair, s)" class="text-accent-300 break-all">→ {{ subtitleAfter(openPair, s) }}</span>
+                  </div>
+                </div>
               </div>
 
               <div class="flex gap-2">
@@ -731,6 +748,7 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
             <span :class="c.kind === 'pair' ? 'i-carbon-video' : 'i-carbon-chart-line'" />
             {{ c.pair.dir || organizer.rootName }}
             <span v-if="c.kind === 'pair' && c.pair.scripts.length">· with {{ c.pair.scripts.length }} script{{ c.pair.scripts.length === 1 ? '' : 's' }}</span>
+            <span v-if="c.kind === 'pair' && c.pair.subtitles.length">· {{ c.pair.subtitles.length }} subtitle file{{ c.pair.subtitles.length === 1 ? '' : 's' }}</span>
           </div>
           <div class="text-[12.5px] gap-2 grid grid-cols-[1fr_auto_1fr] items-center">
             <span class="text-fg-muted truncate">{{ c.from }}</span>

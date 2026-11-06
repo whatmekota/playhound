@@ -1,3 +1,4 @@
+import type { SubtitleMatch } from './subtitleStore'
 import type { VideoMeta } from '~/lib/idb'
 import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
@@ -6,6 +7,7 @@ import { AXIS_MAP } from '~/lib/axisMap'
 import { collectHandleFiles, filePath, openFolderWithHandle, pickDirectory } from '~/lib/browserApi'
 import { handleDb, metaDb } from '~/lib/idb'
 import { sniffScript } from '~/lib/scriptSniff'
+import { isSubtitleName, pairSubtitles, subtitleLabel } from '~/lib/subtitles'
 
 export interface ScriptMatch {
   file: File
@@ -45,6 +47,52 @@ export interface VideoEntry {
   scriptMeta?: VideoMeta
   userMeta?: VideoMeta
   starred: boolean
+  /** Subtitle files in the same folder named after it ("clip.srt", "clip.en.vtt"). */
+  subtitles?: SubtitleMatch[]
+}
+
+/** "Videos/sub" for "Videos/sub/clip.mp4"; '' for a file with no folder. */
+function dirOf(path: string) {
+  const i = path.lastIndexOf('/')
+  return i < 0 ? '' : path.slice(0, i)
+}
+
+/**
+ * Subtitles for each entry. Unlike scripts, which pair by name anywhere in the
+ * library, subtitles pair only within a folder: "intro.srt" is too common a
+ * name to hand to every "intro.mp4" there is.
+ */
+function attachSubtitles(entries: VideoEntry[], files: File[]) {
+  const subsByDir = new Map<string, File[]>()
+  for (const f of files) {
+    if (!isSubtitleName(f.name))
+      continue
+    const d = dirOf(filePath(f))
+    const list = subsByDir.get(d)
+    if (list)
+      list.push(f)
+    else
+      subsByDir.set(d, [f])
+  }
+  if (!subsByDir.size)
+    return
+  const videosByDir = new Map<string, VideoEntry[]>()
+  for (const e of entries) {
+    const d = dirOf(e.path)
+    if (!subsByDir.has(d))
+      continue
+    const list = videosByDir.get(d)
+    if (list)
+      list.push(e)
+    else
+      videosByDir.set(d, [e])
+  }
+  for (const [d, videos] of videosByDir) {
+    for (const p of pairSubtitles(videos.map(v => v.name), subsByDir.get(d)!)) {
+      const v = videos[p.video]
+      ;(v.subtitles ??= []).push({ file: p.file, name: p.name, label: subtitleLabel(p.name, p.file.name) })
+    }
+  }
 }
 
 /**
@@ -194,6 +242,7 @@ export const useLibraryStore = defineStore('library', () => {
       await new Promise(r => setTimeout(r, 0))
     }
 
+    attachSubtitles(entries, files)
     entries.sort((a, b) => a.name.localeCompare(b.name))
     videos.value = entries
     scanning.value = false
