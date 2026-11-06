@@ -246,6 +246,8 @@ const netApi = winState
  */
 contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   version: info.version,
+  /** 'win32', 'darwin' or 'linux': how to draw the title bar and write keys. */
+  platform: info.platform,
   port: info.port,
   dev: info.dev,
   lan: Object.freeze(info.lan.map(a => Object.freeze({ ...a }))),

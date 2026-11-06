@@ -2,6 +2,7 @@
 import type { ViewId } from '~/lib/views'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { desktop } from '~/lib/browserApi'
+import { MOD_KEY } from '~/lib/platform'
 import { VIEW_GROUPS } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -156,7 +157,7 @@ const pageTitle = (p: (typeof pluginStore.pages)[number]) => p.page?.title || p.
     <div class="px-2.5 py-2.5 border-t border-edge flex shrink-0 flex-col gap-0.5 overflow-x-hidden">
       <button
         v-for="a in [
-          { icon: 'i-carbon-search', label: 'Search & commands', kbd: 'Ctrl K', run: () => (ui.paletteOpen = true) },
+          { icon: 'i-carbon-search', label: 'Search & commands', kbd: `${MOD_KEY} K`, run: () => (ui.paletteOpen = true) },
           { icon: 'i-carbon-document-add', label: 'Open a video', kbd: undefined, run: () => emit('open') },
           { icon: 'i-carbon-shuffle', label: 'Play something random', kbd: 'R', run: () => playback.random() },
           { icon: 'i-carbon-settings', label: 'Settings', kbd: undefined, run: () => (ui.settingsOpen = true) },

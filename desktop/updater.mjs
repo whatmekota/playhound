@@ -12,27 +12,34 @@ import { newer } from './version.mjs'
  * on the next quit or when the user says restart. The portable .exe cannot
  * replace itself, so it only reads latest.yml and says a new version is out.
  *
+ * macOS and Linux builds come from CI (.github/workflows/desktop-builds.yml).
+ * A Linux AppImage updates itself like the installer, from latest-linux.yml.
+ * The macOS app is unsigned, and Squirrel.Mac only installs signed updates,
+ * so there it works like the portable .exe: read latest-mac.yml, say a new
+ * version is out, link to the release. So does Linux run any other way than
+ * from an AppImage, which electron-updater cannot replace.
+ *
  * Unsigned builds update fine: electron-updater checks a signature only when
  * the running app is signed, and its downloads carry no mark of the web, so
  * SmartScreen does not ask again.
  *
  * State goes to the page as { status, current, version, percent, error,
- * portable, auto, url }:
+ * portable, manual, auto, url }:
  *   off          not a packaged build (dev), nothing to update
  *   idle         not checked yet
  *   checking     asking GitHub
  *   none         up to date
  *   downloading  a new version is coming down (percent)
  *   ready        downloaded; installs on quit, or now on restart
- *   available    portable: a new version is out, download it by hand (url)
+ *   available    manual: a new version is out, download it by hand (url)
  *   error        the last check or download failed (error)
  */
 
-const { autoUpdater } = electronUpdater
-
 const REPO = 'whatmekota/playhound'
 const RELEASES = `https://github.com/${REPO}/releases/latest`
-const LATEST_YML = `https://github.com/${REPO}/releases/latest/download/latest.yml`
+/** The update feed electron-builder writes for this platform. */
+const FEED = { darwin: 'latest-mac.yml', linux: 'latest-linux.yml' }[process.platform] ?? 'latest.yml'
+const LATEST_YML = `https://github.com/${REPO}/releases/latest/download/${FEED}`
 /** electron-updater's own network session (see its electronHttpExecutor). */
 export const UPDATER_SESSION = 'electron-updater'
 const FIRST_CHECK_MS = 20_000
@@ -46,10 +53,17 @@ const CHECK_EVERY_MS = 6 * 60 * 60_000
  */
 export function createUpdater({ send, getAuto, setAuto }) {
   const portable = !!process.env.PORTABLE_EXECUTABLE_DIR
+  // Copies that cannot install an update, only say one is out (see above).
+  const manual = portable
+    || process.platform === 'darwin'
+    || (process.platform === 'linux' && !process.env.APPIMAGE)
   // For trying the updater against a local server: a folder URL holding
   // latest.yml and the installer. Never set in a real install.
   const testFeed = process.env.PH_UPDATE_URL || ''
   const active = app.isPackaged || !!testFeed
+  // Made only when it will be used: electron-updater picks its updater by
+  // platform on first access, and Squirrel.Mac is no use to an unsigned app.
+  const autoUpdater = active && !manual ? electronUpdater.autoUpdater : null
   let state = {
     status: active ? 'idle' : 'off',
     current: app.getVersion(),
@@ -57,6 +71,7 @@ export function createUpdater({ send, getAuto, setAuto }) {
     percent: 0,
     error: null,
     portable,
+    manual,
     auto: getAuto(),
     url: null,
   }
@@ -77,12 +92,12 @@ export function createUpdater({ send, getAuto, setAuto }) {
     const msg = String(err?.message ?? err ?? 'Unknown error')
     if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ERR_INTERNET|ERR_NAME|ERR_CONNECTION|ERR_PROXY|net::/i.test(msg))
       return 'Could not reach GitHub. Check the connection, or set a proxy in Settings → Network.'
-    if (/latest\.yml|404/i.test(msg))
+    if (/latest(?:-mac|-linux)?\.yml|404/i.test(msg))
       return 'The newest release has no update information yet.'
     return msg.split('\n')[0].slice(0, 200)
   }
 
-  if (active && !portable) {
+  if (autoUpdater) {
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.disableWebInstaller = true
@@ -105,16 +120,16 @@ export function createUpdater({ send, getAuto, setAuto }) {
     autoUpdater.on('error', err => set({ status: 'error', error: short(err) }))
   }
 
-  /** Portable: read the version from latest.yml and say so; downloading is the user's. */
-  async function checkPortable() {
+  /** Manual: read the version from the feed and say so; downloading is the user's. */
+  async function checkManual() {
     set({ status: 'checking', error: null })
     try {
-      const res = await session.fromPartition(UPDATER_SESSION, { cache: false }).fetch(testFeed ? `${testFeed.replace(/\/$/, '')}/latest.yml` : LATEST_YML)
+      const res = await session.fromPartition(UPDATER_SESSION, { cache: false }).fetch(testFeed ? `${testFeed.replace(/\/$/, '')}/${FEED}` : LATEST_YML)
       if (!res.ok)
-        throw new Error(`latest.yml: HTTP ${res.status}`)
+        throw new Error(`${FEED}: HTTP ${res.status}`)
       const version = /^version:\s*['"]?([^\s'"]+)/m.exec(await res.text())?.[1]
       if (!version)
-        throw new Error('latest.yml has no version')
+        throw new Error(`${FEED} has no version`)
       if (newer(version, state.current))
         set({ status: 'available', version, url: RELEASES })
       else
@@ -128,11 +143,11 @@ export function createUpdater({ send, getAuto, setAuto }) {
   function check() {
     if (!active || state.status === 'checking' || state.status === 'downloading' || state.status === 'ready')
       return
-    if (portable) {
-      void checkPortable()
+    if (manual) {
+      void checkManual()
       return
     }
-    autoUpdater.checkForUpdates().catch(err => set({ status: 'error', error: short(err) }))
+    autoUpdater?.checkForUpdates().catch(err => set({ status: 'error', error: short(err) }))
   }
 
   function schedule() {
@@ -152,8 +167,8 @@ export function createUpdater({ send, getAuto, setAuto }) {
     check,
     /** Quit and install now; the installer runs silently and starts the app again. */
     install() {
-      if (state.status === 'ready' && !portable)
-        autoUpdater.quitAndInstall(true, true)
+      if (state.status === 'ready')
+        autoUpdater?.quitAndInstall(true, true)
     },
     setAuto(on) {
       setAuto(!!on)

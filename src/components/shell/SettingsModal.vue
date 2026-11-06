@@ -20,6 +20,7 @@ import { useUpdates } from '~/composables/useUpdates'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
 import { KEYS } from '~/lib/persist'
+import { MOD_KEY } from '~/lib/platform'
 import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
@@ -109,7 +110,7 @@ const updateLine = computed(() => {
     case 'none': return 'Up to date.'
     case 'downloading': return `Downloading ${s.version ?? 'the update'}… ${s.percent}%`
     case 'ready': return `${s.version} is downloaded. It installs when you quit, or restart now.`
-    case 'available': return `${s.version} is out. The portable version updates by hand.`
+    case 'available': return `${s.version} is out. ${s.portable ? 'The portable version' : 'This copy'} updates by hand.`
     case 'error': return s.error ?? 'The last check failed.'
   }
   return ''
@@ -440,8 +441,8 @@ function openBackup() {
                 <UiField
                   label="Interface size"
                   :hint="uiScale.supported
-                    ? 'Everything larger, for a big screen far away. Ctrl + = and Ctrl + − change it too, Ctrl + 0 goes back.'
-                    : 'In a browser, use its own zoom: Ctrl + = and Ctrl + −, Ctrl + 0 to go back. The desktop app has it here.'"
+                    ? `Everything larger, for a big screen far away. ${MOD_KEY} + = and ${MOD_KEY} + − change it too, ${MOD_KEY} + 0 goes back.`
+                    : `In a browser, use its own zoom: ${MOD_KEY} + = and ${MOD_KEY} + −, ${MOD_KEY} + 0 to go back. The desktop app has it here.`"
                 >
                   <UiSegmented v-if="uiScale.supported" v-model="uiScale.scale.value" :options="SCALE_OPTIONS" size="xs" />
                 </UiField>
@@ -496,8 +497,8 @@ function openBackup() {
                 <UiSwitch
                   :model-value="upd.auto"
                   label="Check for updates on my own"
-                  :hint="upd.portable
-                    ? 'At startup and every few hours. The portable version only says when one is out; download it by hand.'
+                  :hint="upd.manual ?? upd.portable
+                    ? `At startup and every few hours. ${upd.portable ? 'The portable version' : 'This copy'} only says when one is out; download it by hand.`
                     : 'At startup and every few hours. A new version downloads in the background and installs when you quit, or when you restart from the title bar.'"
                   :disabled="upd.status === 'off'"
                   @update:model-value="updates.setAuto($event)"
@@ -651,7 +652,7 @@ function openBackup() {
             <template v-else-if="section === 'keyboard'">
               <div class="gap-3 grid grid-cols-2">
                 <button type="button" class="group p-4 text-left focusable card flex flex-col gap-2 transition-colors hover:bg-surface-800" @click="openPalette">
-                  <span class="flex gap-1"><UiKbd>Ctrl</UiKbd><UiKbd>K</UiKbd></span>
+                  <span class="flex gap-1"><UiKbd>{{ MOD_KEY }}</UiKbd><UiKbd>K</UiKbd></span>
                   <span class="text-[13px] text-fg font-medium">Command palette</span>
                   <span class="hint">Every view, command and video, a few letters away.</span>
                 </button>

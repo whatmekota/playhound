@@ -30,6 +30,7 @@ const APP_PORT = 6969
 const APP_URL = `http://localhost:${APP_PORT}`
 const DEV = !!process.env.PH_DEV
 const DEV_URL = process.env.PH_DEV_URL || APP_URL
+const MAC = process.platform === 'darwin'
 
 // The repo root in development, the app.asar root once packaged — the layout
 // under it (desktop/, dist/) is the same in both.
@@ -87,9 +88,10 @@ function toHex(color) {
 // ── LAN addresses (the phone needs one; "localhost" means nothing to it) ─────
 
 // This kind of box tends to carry a pile of VPN and VM adapters, none of which
-// a phone on the sofa can reach. Node cannot ask Windows which adapters are
-// physical, so go by name and push the obvious virtual ones to the back.
-const VIRTUAL = /vpn|virtual|vmware|vmnet|vbox|vethernet|hyper-v|wsl|docker|nordlynx|radmin|tap|tun|wireguard|zerotier|tailscale|hamachi|loopback|bluetooth/i
+// a phone on the sofa can reach. Node cannot ask the OS which adapters are
+// physical, so go by name and push the obvious virtual ones to the back
+// (Windows names, then Linux bridges and veths, then macOS's awdl/llw/bridge).
+const VIRTUAL = /vpn|virtual|vmware|vmnet|vbox|vethernet|hyper-v|wsl|docker|nordlynx|radmin|tap|tun|wireguard|zerotier|tailscale|hamachi|loopback|bluetooth|^(?:virbr|veth|br-|bridge\d|awdl|llw)/i
 
 function lanAddresses() {
   const out = []
@@ -125,7 +127,7 @@ let popoutShortcut = null
 const POPOUT_NAME = 'ph-popout'
 const POPOUT_MIN_OPACITY = 0.2
 const POPOUT_KEY = 'CommandOrControl+Alt+P'
-const POPOUT_KEY_LABEL = process.platform === 'darwin' ? '⌘ + ⌥ + P' : 'Ctrl + Alt + P'
+const POPOUT_KEY_LABEL = MAC ? '⌘ + ⌥ + P' : 'Ctrl + Alt + P'
 
 if (!app.requestSingleInstanceLock()) {
   // Another playhound already owns the window and the ports; it gets focused
@@ -241,8 +243,35 @@ async function resolverFetch() {
   await applyProxy(ses, envProxy())
   return (url, init) => ses.fetch(url, init)
 }
+
+/**
+ * macOS: a minimal standard menu, since without one ⌘Q, ⌘C/⌘V, ⌘H and ⌘M do
+ * nothing there. No View menu: its zoom and reload keys would take ⌘= and
+ * ⌘R from the page, which has its own (Settings → Interface size).
+ * Windows and Linux keep no menu at all: the page draws the title bar.
+ */
+function appMenu() {
+  if (!MAC)
+    return null
+  return Menu.buildFromTemplate([
+    { role: 'appMenu' },
+    { role: 'editMenu' },
+    {
+      role: 'window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { role: 'togglefullscreen' },
+        { type: 'separator' },
+        { role: 'close' },
+        { role: 'front' },
+      ],
+    },
+  ])
+}
+
 async function boot() {
-  Menu.setApplicationMenu(null)
+  Menu.setApplicationMenu(appMenu())
 
   setupDevices(session.defaultSession, {
     origin: new URL(DEV ? DEV_URL : APP_URL).origin,
@@ -256,6 +285,7 @@ async function boot() {
   ipcMain.on('ph:info', (event) => {
     event.returnValue = {
       version: app.getVersion(),
+      platform: process.platform,
       port: APP_PORT,
       lan: lanAddresses(),
       dev: DEV,
@@ -575,7 +605,11 @@ function createWindow(url) {
     // Windows still treats the window as resizable (thickFrame stays on), so
     // edge resizing, Aero Snap, Win+arrows and the drag-region double-click
     // to maximise all come from the OS.
-    frame: false,
+    // macOS keeps its own traffic lights over the page's bar instead, centred
+    // in its 34 px; the bar leaves room for them and draws no buttons.
+    ...(MAC
+      ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 13, y: 11 } }
+      : { frame: false }),
     // Painted before the page is: the theme the app was last closed in, so
     // there is no white frame on launch (index.html takes over from there).
     backgroundColor: state.bg ?? '#08080a',
@@ -681,11 +715,14 @@ function createWindow(url) {
     }
   })
 
-  // No menu means no default accelerators, so DevTools needs its own key.
+  // No menu means no default accelerators, so DevTools needs its own key
+  // (on macOS the usual ⌘⌥I, which the minimal menu does not carry either).
   wc.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown')
       return
-    const devtools = input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')
+    const devtools = input.key === 'F12'
+      || (input.control && input.shift && input.key.toLowerCase() === 'i')
+      || (MAC && input.meta && input.alt && input.code === 'KeyI')
     if (devtools) {
       event.preventDefault()
       wc.toggleDevTools()
