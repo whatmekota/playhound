@@ -6,9 +6,21 @@ import { Resvg } from '@resvg/resvg-js'
 /**
  * App icons from public/favicon.svg, so the brand mark has one source.
  *
- * Writes icon.png (512, for the window and electron-builder) and icon.ico
- * (16–256, PNG-compressed entries, which every Windows since Vista reads).
+ * Writes icon.png (512, for the window and electron-builder's Linux icon),
+ * icon.ico (16–256, PNG-compressed entries, which every Windows since Vista
+ * reads) and icon-1024.png, which electron-builder turns into the macOS .icns.
  */
+
+/**
+ * macOS icons leave a margin round the tile (824 of 1024 px in Apple's grid),
+ * where Windows and Linux ones fill the canvas. The mark's tile spans 2–62 of
+ * the SVG's 64 units, so widen the view box until those 60 units are 824/1024.
+ */
+function withMacMargin(svg) {
+  const side = 60 * 1024 / 824
+  const at = 32 - side / 2
+  return Buffer.from(String(svg).replace(/viewBox="0 0 64 64"/, `viewBox="${at} ${at} ${side} ${side}"`))
+}
 
 const ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
@@ -46,9 +58,11 @@ export function makeIcons(root, outDir) {
   fs.mkdirSync(outDir, { recursive: true })
   const png = path.join(outDir, 'icon.png')
   const icoPath = path.join(outDir, 'icon.ico')
+  const large = path.join(outDir, 'icon-1024.png')
   fs.writeFileSync(png, render(svg, 512))
   fs.writeFileSync(icoPath, ico(ICO_SIZES.map(size => ({ size, png: render(svg, size) }))))
-  return { png, ico: icoPath }
+  fs.writeFileSync(large, render(withMacMargin(svg), 1024))
+  return { png, ico: icoPath, large }
 }
 
 /** makeIcons, unless they already exist and are newer than the SVG. */
