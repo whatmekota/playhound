@@ -5,7 +5,7 @@ import Vue from '@vitejs/plugin-vue'
 import UnoCSS from 'unocss/vite'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import { VueRouterAutoImports } from 'vue-router/unplugin'
 import VueRouter from 'vue-router/vite'
 
@@ -78,5 +78,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['test/setup.ts'],
+    // Git worktrees (Claude Code puts them under .claude/) hold whole copies of the repo.
+    exclude: [...configDefaults.exclude, '.claude/**'],
   },
 })
