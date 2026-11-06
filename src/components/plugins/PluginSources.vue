@@ -5,6 +5,7 @@ import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
 import { toast } from '~/composables/useToast'
+import { trustOf } from '~/plugins/sources'
 import { usePluginStore } from '~/stores/pluginStore'
 
 /**
@@ -18,6 +19,12 @@ const checking = ref(false)
 const busy = ref<string | null>(null)
 const adding = ref(false)
 const newRepo = ref('')
+
+/** What the marks next to a plugin's name mean. */
+const TRUST_TIP = {
+  official: 'Official: made by playhound\'s author',
+  trusted: 'Trusted author: known to playhound',
+}
 
 const rows = computed(() => store.sourceList.map(repo => store.sources[repo] ?? { repo, status: 'idle', error: '', release: null } as SourceState))
 
@@ -85,8 +92,17 @@ const mb = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024)
         <div class="flex flex-1 flex-col gap-0.5 min-w-0">
           <div class="flex gap-2 min-w-0 items-baseline">
             <span class="text-[13px] text-fg font-medium truncate">{{ s.release?.manifest?.name ?? s.repo.split('/')[1] }}</span>
+            <span
+              v-if="trustOf(s.repo)"
+              v-tip="TRUST_TIP[trustOf(s.repo)!]"
+              class="text-[13px] shrink-0 self-center"
+              :class="trustOf(s.repo) === 'official' ? 'i-carbon-checkmark-filled text-accent-300' : 'i-carbon-favorite-filled text-fg-muted'"
+              :aria-label="trustOf(s.repo) === 'official' ? 'Official plugin' : 'Trusted author'"
+            />
             <span v-if="s.release" class="text-[11.5px] text-fg-faint num shrink-0">{{ s.release.version }}</span>
-            <a :href="`https://github.com/${s.repo}`" target="_blank" rel="noopener" class="text-[11px] text-fg-faint truncate hover:text-fg hover:underline">{{ s.repo }}</a>
+            <a :href="`https://github.com/${s.repo}`" target="_blank" rel="noopener" class="text-[11px] text-fg-faint truncate hover:text-fg hover:underline">
+              <span :class="trustOf(s.repo) === 'official' ? 'text-accent-300 font-medium' : trustOf(s.repo) === 'trusted' ? 'text-fg-muted font-medium' : ''">{{ s.repo.split('/')[0] }}</span>/{{ s.repo.split('/')[1] }}
+            </a>
           </div>
           <span v-if="s.status === 'error'" class="text-[11.5px] text-danger">{{ s.error }}</span>
           <span v-else-if="s.status === 'checking' && !s.release" class="hint">Checking…</span>

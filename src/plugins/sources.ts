@@ -12,6 +12,27 @@ import type { PluginManifest } from './types'
 /** Shipped as the first source; the user can add and remove others. */
 export const DEFAULT_SOURCES = ['whatmekota/playmate']
 
+/** Plugins from this owner's repositories are playhound's own. */
+export const OFFICIAL_OWNER = 'whatmekota'
+
+/**
+ * Authors whose plugins playhound vouches for: people who've made good
+ * plugins and are known to the project. Their repositories get a "trusted"
+ * mark in the store. It's a statement about the author, not a review of
+ * every release, and plugins still aren't sandboxed.
+ */
+export const TRUSTED_OWNERS: string[] = []
+
+export type SourceTrust = 'official' | 'trusted' | null
+
+/** Whether a repository ("owner/repo") is playhound's own, a trusted author's, or neither. */
+export function trustOf(repo: string): SourceTrust {
+  const owner = repo.split('/')[0]?.toLowerCase() ?? ''
+  if (owner === OFFICIAL_OWNER.toLowerCase())
+    return 'official'
+  return TRUSTED_OWNERS.some(o => o.toLowerCase() === owner) ? 'trusted' : null
+}
+
 /** "owner/repo" from that or a github.com URL; null if it's neither. */
 export function parseRepo(input: string): string | null {
   const s = input.trim().replace(/\.git$/, '').replace(/\/+$/, '')
