@@ -16,6 +16,10 @@ name: Desktop builds
 on:
   release:
     types: [published]
+  # 2.0 beta: test builds of the v2 branch for testers (a manual run needs this
+  # file on master first). Remove before 2.0 is released.
+  push:
+    branches: [v2]
   workflow_dispatch:
     inputs:
       tag:
@@ -128,7 +132,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Keep as workflow artifacts
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: playhound-${{ matrix.name }}
