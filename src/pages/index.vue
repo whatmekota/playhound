@@ -369,10 +369,7 @@ function runShellAction(action: ShellAction) {
 
 /** T: one tap on the beat. Says how many more a tempo needs, then what it is. */
 function tapBeat() {
-  if (!player.videoPath || !tapTempo()) {
-    toast('Play a video to tap along to', { icon: 'i-carbon-music', key: 'tap' })
-    return
-  }
+  tapTempo()
   const s = tapState.value
   const elsewhere = motion.source === 'music' ? undefined : 'Used by the Music motion source'
   if (s.bpm === null)

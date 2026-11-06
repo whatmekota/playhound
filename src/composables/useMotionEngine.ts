@@ -23,7 +23,7 @@ import { useBinauralBeats } from './useBinauralBeats'
 import { useButtplug } from './useButtplug'
 import { useHandy } from './useHandy'
 import { useTCode } from './useTCode'
-import { getBeatGrid, isBeatReady } from './useVideoBeat'
+import { getBeatGrid, hasFreeTapTempo, isBeatReady } from './useVideoBeat'
 import { useDeviceLatency } from './useVideoSync'
 
 // ─── Singleton loop state ─────────────────────────────────────────────────────
@@ -141,8 +141,9 @@ export function useMotionEngine() {
         return audio.isPlaying.value && getPulseClock() !== null
       case 'music':
         // Needs a tempo, and the track has to be running for one to mean
-        // anything. Deliberately does not require the binaural engine.
-        return player.isPlaying && isBeatReady()
+        // anything. Deliberately does not require the binaural engine. A
+        // tempo tapped with no video (on the wall clock) needs no track.
+        return (player.isPlaying && isBeatReady()) || hasFreeTapTempo()
       default:
         return false
     }

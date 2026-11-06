@@ -96,28 +96,55 @@ function playingVideo(): HTMLVideoElement | null {
 // gets wrong or cannot hear. It wins over both other sources, lives on the
 // video's clock so a pause or a speed change keeps it, and is forgotten when
 // the video changes.
+//
+// With no video loaded it runs on the wall clock instead, so the beat of
+// anything else (music in another app, a video in a plugin's web page) can be
+// tapped and followed.
 
 const tapper = createTapper()
 const tapped = shallowRef<TappedTempo | null>(null)
 /** Taps in the current run, to say how many more a tempo needs. */
 const tapCount = ref(0)
+/** Which clock the taps were made on. */
+const tapClock = ref<'video' | 'wall'>('video')
+const wallSeconds = () => performance.now() / 1000
+
+/** The player's video, if one is actually loaded (the element stays mounted without one). */
+function loadedVideo(): HTMLVideoElement | null {
+  const el = playingVideo()
+  return el && (el.currentSrc || el.src) && el.readyState > 0 ? el : null
+}
 
 function tappedReading() {
   const t = tapped.value
-  const el = t && playingVideo()
-  if (!t || !el)
+  if (!t)
+    return null
+  if (tapClock.value === 'wall')
+    return { beats: tappedBeats(t, wallSeconds()), bpm: tappedBpm(t) }
+  const el = playingVideo()
+  if (!el)
     return null
   return { beats: tappedBeats(t, el.currentTime), bpm: tappedBpm(t) * (el.playbackRate || 1) }
 }
 
-/** One tap on the beat. False when there is no video to tap along to. */
+/** One tap on the beat: on the video's clock when one is loaded, otherwise on the wall clock. */
 export function tapTempo(): boolean {
-  const el = playingVideo()
-  if (!el)
-    return false
-  tapped.value = tapper.tap(el.currentTime, tapped.value)
+  const el = loadedVideo()
+  const clock = el ? 'video' : 'wall'
+  if (clock !== tapClock.value) {
+    // Taps on one clock mean nothing on the other.
+    tapper.reset()
+    tapped.value = null
+    tapClock.value = clock
+  }
+  tapped.value = tapper.tap(el ? el.currentTime : wallSeconds(), tapped.value)
   tapCount.value = tapper.count
   return true
+}
+
+/** A tempo tapped with no video loaded: it can drive the Music source on its own. */
+export function hasFreeTapTempo(): boolean {
+  return tapped.value !== null && tapClock.value === 'wall'
 }
 
 /** Back to the analysed or heard beat. */
