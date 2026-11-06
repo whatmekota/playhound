@@ -68,6 +68,7 @@ declare global {
   const getCurrentScope: typeof import('vue').getCurrentScope
   const getCurrentWatcher: typeof import('vue').getCurrentWatcher
   const h: typeof import('vue').h
+  const hasFreeTapTempo: typeof import('./src/composables/useVideoBeat').hasFreeTapTempo
   const heartRate: typeof import('./src/composables/useHeartRate').heartRate
   const heartSparkline: typeof import('./src/composables/useHeartRate').heartSparkline
   const heartTimeline: typeof import('./src/composables/useHeartRate').heartTimeline
@@ -560,6 +561,7 @@ declare module 'vue' {
     readonly getCurrentScope: UnwrapRef<typeof import('vue')['getCurrentScope']>
     readonly getCurrentWatcher: UnwrapRef<typeof import('vue')['getCurrentWatcher']>
     readonly h: UnwrapRef<typeof import('vue')['h']>
+    readonly hasFreeTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['hasFreeTapTempo']>
     readonly heartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartRate']>
     readonly heartSparkline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartSparkline']>
     readonly heartTimeline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartTimeline']>
