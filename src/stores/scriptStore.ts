@@ -1,7 +1,7 @@
 import type { FunscriptAction, ParsedAxis } from '~/lib/funscriptParser'
 import type { SavedTweaks, ScriptTweaks } from '~/lib/scriptTweaks'
 import { defineStore } from 'pinia'
-import { computed, ref, toRaw, watch } from 'vue'
+import { computed, markRaw, ref, toRaw, watch } from 'vue'
 import { videoMetaDb } from '~/lib/idb'
 import { applyTweaks, DEFAULT_TWEAKS, isDefaultTweaks, normaliseTweaks, shapeIsIdentity } from '~/lib/scriptTweaks'
 
@@ -38,6 +38,14 @@ export interface ScriptFile {
 let revSeq = 0
 export const nextRev = () => ++revSeq
 
+/**
+ * Scripts are replaced whole, never changed in place, so their points are
+ * kept out of Vue's reach: with every point reactive, each reader of a
+ * 60k-point script walked 60k proxies, and every edit took half a second.
+ * Swapping `parsed` or `source` for a new object is still seen.
+ */
+const frozen = (a: ParsedAxis): ParsedAxis => markRaw(toRaw(a))
+
 export function sourceOf(s: ScriptFile): ParsedAxis {
   return s.source ?? s.parsed
 }
@@ -70,7 +78,7 @@ export const useScriptStore = defineStore('script', () => {
 
   /** Recompute what plays from the source and the tweaks. Keeps `parsed` as is when nothing changes it. */
   function applyTo(s: ScriptFile) {
-    s.source ??= s.parsed
+    s.source ??= frozen(s.parsed)
     const src = toRaw(s.source)
     const t = tweaks.value[s.channel]
     s.offsetMs = t?.offsetMs ?? 0
@@ -80,23 +88,24 @@ export const useScriptStore = defineStore('script', () => {
       return
     }
     const actions = applyTweaks(src.actions, t) as FunscriptAction[]
-    s.parsed = {
+    s.parsed = frozen({
       ...src,
       actions,
       duration: actions.length ? actions[actions.length - 1].at : 0,
       rev: nextRev(),
-    }
+    })
   }
 
   function prepare(list: ScriptFile[]) {
     for (const s of list) {
-      s.source ??= s.parsed
+      s.parsed = frozen(s.parsed)
+      s.source = s.source ? frozen(s.source) : s.parsed
       // Through the same rules as a change, so a new list plays tweaked from the start.
       const t = tweaks.value[s.channel]
       s.offsetMs = t?.offsetMs ?? s.offsetMs ?? 0
       if (t && !shapeIsIdentity(t)) {
         const actions = applyTweaks(s.source.actions, t) as FunscriptAction[]
-        s.parsed = { ...s.source, actions, duration: actions.length ? actions[actions.length - 1].at : 0, rev: nextRev() }
+        s.parsed = frozen({ ...s.source, actions, duration: actions.length ? actions[actions.length - 1].at : 0, rev: nextRev() })
       }
     }
     return list
@@ -208,7 +217,7 @@ export const useScriptStore = defineStore('script', () => {
    */
   function setSourceActions(s: ScriptFile, actions: FunscriptAction[], edited = true) {
     const src = toRaw(sourceOf(s))
-    s.source = { ...src, actions, duration: actions.length ? actions[actions.length - 1].at : 0, rev: nextRev() }
+    s.source = frozen({ ...src, actions, duration: actions.length ? actions[actions.length - 1].at : 0, rev: nextRev() })
     s.edited = edited
     applyTo(s)
   }
