@@ -3,6 +3,7 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import wordmark from '~/assets/brand/wordmark.svg?raw'
 import { logoUrl } from '~/lib/logos'
+import { useOccluder } from '~/lib/occluders'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useThemeStore } from '~/stores/themeStore'
 
@@ -38,6 +39,8 @@ const reducedMotion = flag(() => matchMedia('(prefers-reduced-motion: reduce)').
 const MIN_MS = quick ? 260 : reducedMotion ? 500 : 1450
 
 const show = ref(enabled.value && !skipParam)
+// A plugin's page left on the stage last time comes back under it, not over it.
+useOccluder(() => show.value)
 /** 0..1, eased toward where we expect to be; 1 means leaving. */
 const progress = ref(0)
 const progressMs = ref(0)

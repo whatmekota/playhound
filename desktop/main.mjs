@@ -11,6 +11,7 @@ import { setupNetBridge } from './netbridge.mjs'
 import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
 import { probe, serveStatic } from './serve.mjs'
 import { createUpdater, UPDATER_SESSION } from './updater.mjs'
+import { BROWSING_PARTITION, setupWebviews } from './webview.mjs'
 
 /**
  * playhound desktop shell.
@@ -118,6 +119,8 @@ let bluetooth = null
 
 /** Updates from GitHub Releases (desktop/updater.mjs); made at boot. */
 let updater = null
+/** Plugins' web views (desktop/webview.mjs); made at boot. */
+let webviews = null
 
 /** The pop-out player's window (see popout below), while it is open. */
 let popout = null
@@ -318,6 +321,7 @@ async function boot() {
     if (!win || !fromMainWindow(event) || !Number.isFinite(factor))
       return
     win.webContents.setZoomFactor(Math.max(0.5, Math.min(3, factor)))
+    webviews?.relayout()
   })
   // Discord Rich Presence: the page decides what to show, this owns the pipe.
   // Only the main window may set it, and its payload is sanitised regardless.
@@ -367,6 +371,8 @@ async function boot() {
   setupNetBridge(ipcMain, fromMainWindow)
   // Plugins loaded from a folder (Settings → Plugins → Load from folder), reloaded on save.
   setupDevPlugins({ ipcMain, allowed: fromMainWindow, window: () => win, dialog, state, save: saveState })
+  // Real web pages inside the window, for plugins (ctx.webview).
+  webviews = setupWebviews({ ipcMain, allowed: fromMainWindow, window: () => win, app, background: () => state.bg })
   // Sent synchronously just before requestDevice(), so it lands first.
   ipcMain.on('ph:bt:expect', (event, kind) => {
     if (fromMainWindow(event))
@@ -400,11 +406,13 @@ async function boot() {
       void applyProxy(session.defaultSession, proxy)
       void applyProxy(esSession(), proxy)
       void applyProxy(session.fromPartition(UPDATER_SESSION, { cache: false }), proxy)
+      void applyProxy(session.fromPartition(BROWSING_PARTITION), proxy)
     },
   })
   await applyProxy(session.defaultSession, envProxy())
   await applyProxy(esSession(), envProxy())
   await applyProxy(session.fromPartition(UPDATER_SESSION, { cache: false }), envProxy())
+  await applyProxy(session.fromPartition(BROWSING_PARTITION), envProxy())
 
   updater = createUpdater({
     send: (s) => {
@@ -645,6 +653,7 @@ function createWindow(url) {
     saveState()
   })
   win.on('closed', () => {
+    webviews?.destroyAll()
     win = null
   })
 
@@ -734,7 +743,11 @@ function createWindow(url) {
 
   wc.on('render-process-gone', (_event, details) => {
     console.error('[desktop] renderer gone:', details.reason)
+    webviews?.destroyAll()
   })
+  // A reload (or HMR's full reload) brings up a page that knows none of the
+  // views the last one made: they go with it.
+  wc.on('did-navigate', () => webviews?.destroyAll())
 
   win.loadURL(url).catch((err) => {
     console.error('[desktop] could not load', url, err)

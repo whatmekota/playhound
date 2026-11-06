@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useOccluder } from '~/lib/occluders'
 
 /**
  * Anchored floating panel.
@@ -122,6 +123,9 @@ onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKey, true)
   window.removeEventListener('resize', place)
 })
+
+// A plugin's web page under it steps aside while it is open.
+useOccluder(() => open.value, () => panelEl.value)
 
 defineExpose({ close, place })
 </script>

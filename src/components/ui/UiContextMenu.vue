@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MenuItem } from './menu'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useOccluder } from '~/lib/occluders'
 import UiMenu from './UiMenu.vue'
 
 /**
@@ -54,6 +55,9 @@ watch(model, async (m) => {
 })
 
 onBeforeUnmount(close)
+
+// A plugin's web page under it steps aside while it is open.
+useOccluder(() => !!model.value, () => el.value)
 </script>
 
 <template>

@@ -240,6 +240,24 @@ export interface DesktopInfo {
   net?: DesktopNet
   /** Plugins loaded from a folder (desktop/devplugins.mjs). Main window only; absent in older builds. */
   plugins?: DesktopPlugins
+  /** Web views for plugins (desktop/webview.mjs). Main window only; absent in older builds. */
+  web?: DesktopWeb
+}
+
+export interface DesktopWebRect { x: number, y: number, width: number, height: number, radius?: number }
+
+/** What changed about a web view; any subset of WebViewState (src/plugins/types.ts). */
+export type DesktopWebPatch = Record<string, unknown>
+
+export interface DesktopWeb {
+  create: () => Promise<{ id: number, error?: undefined } | { error: string, id?: undefined }>
+  destroy: (id: number) => void
+  layout: (id: number, rect: DesktopWebRect | null) => void
+  nav: (id: number, action: 'load' | 'back' | 'forward' | 'reload' | 'stop' | 'zoom', arg?: string | number) => void
+  panic: (on: boolean) => void
+  onState: (cb: (id: number, patch: DesktopWebPatch) => void) => () => void
+  onKey: (cb: (key: 'Escape' | 'Backquote' | 'KeyK') => void) => () => void
+  onActivity: (cb: () => void) => () => void
 }
 
 export interface DesktopPlugins {
