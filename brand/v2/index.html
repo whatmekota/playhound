@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>playhound 2.0 · design sheet</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Geist:wght@400;600&family=Pacifico&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --fg: #f3f3f6;
+        --muted: rgba(243, 243, 246, 0.55);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px;
+        background: #121216;
+        color: var(--fg);
+        font-family: Geist, system-ui, sans-serif;
+      }
+      h1 {
+        font: 600 22px Geist;
+        margin: 0 0 4px;
+      }
+      .lede {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 8px;
+        max-width: 760px;
+        line-height: 1.5;
+      }
+      h2 {
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin: 40px 0 14px;
+      }
+      .row {
+        display: flex;
+        gap: 22px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+      .card {
+        border-radius: 18px;
+        padding: 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .cap {
+        font-size: 12.5px;
+        color: var(--muted);
+        margin-top: 10px;
+        text-align: center;
+        max-width: 520px;
+      }
+      .on-light {
+        background: #fff5fa;
+      }
+      .on-dark {
+        background: radial-gradient(80% 90% at 40% 40%, #2a0d22, #0e0a10 75%);
+      }
+      .on-night {
+        background: radial-gradient(80% 90% at 40% 40%, #1d1026, #08080b 75%);
+      }
+      .on-crimson {
+        background: radial-gradient(80% 90% at 40% 40%, #3a0614, #12050a 75%);
+      }
+      .header {
+        width: 1280px;
+        height: 320px;
+        border-radius: 18px;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+      }
+      .header .tag {
+        font: 600 24px Fredoka;
+        letter-spacing: 0.02em;
+        margin-top: 2px;
+      }
+      .swatch {
+        width: 120px;
+        border-radius: 12px;
+        overflow: hidden;
+        font-size: 11.5px;
+        background: #1b1b21;
+      }
+      .swatch div {
+        height: 54px;
+      }
+      .swatch span {
+        display: block;
+        padding: 6px 8px;
+        color: var(--muted);
+      }
+      .type {
+        display: flex;
+        gap: 40px;
+        flex-wrap: wrap;
+        align-items: baseline;
+      }
+      .type div {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .type b {
+        display: block;
+        color: var(--fg);
+        font-weight: inherit;
+        margin-bottom: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>playhound 2.0 · design sheet</h1>
+    <p class="lede">
+      Candy-goo direction: puffy glossy letters with icing that drips off the tops and melts below, a sticker rim,
+      hearts in the counters. Hound cues instead of devil ones: pointed ears on the p, paw prints, the sly-grin muzzle
+      as the icon. Everything here is drawn in the browser, so any of it can be tuned.
+    </p>
+
+    <h2>Wordmark · four palettes</h2>
+    <div class="row" id="wordmarks"></div>
+
+    <h2>Icon · the muzzle as a sticker</h2>
+    <div class="row" id="icons"></div>
+
+    <h2>Header · 2.0</h2>
+    <div id="headers" style="display: flex; flex-direction: column; gap: 20px"></div>
+
+    <h2>Palette</h2>
+    <div class="row" id="palette"></div>
+
+    <h2>Type</h2>
+    <div class="type">
+      <div><b style="font: 700 44px Fredoka">playhound</b>Fredoka 700 · the wordmark</div>
+      <div><b style="font: 400 32px Pacifico">sessions &amp; scripts</b>Pacifico · taglines, stickers</div>
+      <div><b style="font: 600 26px Geist">Library · Device · Motion</b>Geist · the app UI (unchanged)</div>
+    </div>
+
+    <script>
+      // ─── Palettes ────────────────────────────────────────────────────────────────
+      const PAL = {
+        candy: {
+          name: 'Candy',
+          top: '#ffc2e2',
+          mid: '#ff5fae',
+          bot: '#d9287f',
+          rim: '#b8166a',
+          halo: '#ffe0f0',
+          icing: '#fffafd',
+          icingShade: '#ffd3ea',
+          heart: '#fff',
+          deco: '#ff7ac0',
+          card: 'on-light',
+        },
+        magenta: {
+          name: 'Brand magenta',
+          top: '#f7cdfd',
+          mid: '#e05cf5',
+          bot: '#a21caf',
+          rim: '#7e1689',
+          halo: '#fae8ff',
+          icing: '#fdf7ff',
+          icingShade: '#f3cffb',
+          heart: '#fff',
+          deco: '#e879f9',
+          card: 'on-dark',
+        },
+        crimson: {
+          name: 'Crimson',
+          top: '#ffb4bf',
+          mid: '#f43f5e',
+          bot: '#9f1239',
+          rim: '#6b0a26',
+          halo: '#ffe4e8',
+          icing: '#fff7f8',
+          icingShade: '#ffd0d8',
+          heart: '#fff',
+          deco: '#fb7185',
+          card: 'on-crimson',
+        },
+        night: {
+          name: 'Night',
+          top: '#34303f',
+          mid: '#211d29',
+          bot: '#131117',
+          rim: '#e879f9',
+          halo: '#3a0c45',
+          icing: '#f0a6fb',
+          icingShade: '#c026d3',
+          heart: '#e879f9',
+          deco: '#d946ef',
+          card: 'on-night',
+          glow: true,
+        },
+      }
+
+      // ─── Small shapes ────────────────────────────────────────────────────────────
+      const sparkle = (x, y, r, fill) =>
+        `<path transform="translate(${x} ${y}) scale(${r / 10})" d="M0 -10 C1.2 -2.4 2.4 -1.2 10 0 C2.4 1.2 1.2 2.4 0 10 C-1.2 2.4 -2.4 1.2 -10 0 C-2.4 -1.2 -1.2 -2.4 0 -10Z" fill="${fill}"/>`
+      const HEART =
+        'M0 4 C-7 -1.5 -10 -5.5 -7.5 -9 C-5.4 -11.8 -1.6 -11.2 0 -7.6 C1.6 -11.2 5.4 -11.8 7.5 -9 C10 -5.5 7 -1.5 0 4Z'
+      /** The heart's outline moved into place, with no transform (so strokes on it keep their width). */
+      function heartAt(x, y, s, rot = 0) {
+        const k = s / 12,
+          a = (rot * Math.PI) / 180,
+          cos = Math.cos(a),
+          sin = Math.sin(a)
+        return HEART.replace(/(-?[\d.]+) (-?[\d.]+)/g, (_, px, py) => {
+          const X = px * k,
+            Y = py * k
+          return `${(x + X * cos - Y * sin).toFixed(2)} ${(y + X * sin + Y * cos).toFixed(2)}`
+        })
+      }
+      const heart = (x, y, s, fill, rot = 0) =>
+        `<path transform="translate(${x} ${y}) rotate(${rot}) scale(${s / 12})" d="${HEART}" fill="${fill}"/>`
+      const paw = (x, y, s, fill, rot = 0) =>
+        `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s / 20})" fill="${fill}"><path d="M0 2 C6 2 9 7 8 10.5 C7 13.5 3 12.5 0 12.5 C-3 12.5 -7 13.5 -8 10.5 C-9 7 -6 2 0 2Z"/><ellipse cx="-9" cy="-2" rx="3" ry="4" transform="rotate(-20 -9 -2)"/><ellipse cx="-3.4" cy="-7.4" rx="3" ry="4.2" transform="rotate(-6 -3.4 -7.4)"/><ellipse cx="3.4" cy="-7.4" rx="3" ry="4.2" transform="rotate(6 3.4 -7.4)"/><ellipse cx="9" cy="-2" rx="3" ry="4" transform="rotate(20 9 -2)"/></g>`
+
+      /** A little stroke wave, like a script's motion: a few rounded up-and-downs. */
+      function wave(x, y, s, stroke, rot = 0) {
+        const h = s * 0.32,
+          step = s / 5
+        let d = `M${-s / 2} 0`
+        for (let i = 0; i < 5; i++) {
+          const x0 = -s / 2 + i * step,
+            up = i % 2 === 0 ? -h : h
+          d += ` C${x0 + step * 0.35} ${up} ${x0 + step * 0.65} ${up} ${x0 + step} 0`
+        }
+        return `<path transform="translate(${x} ${y}) rotate(${rot})" d="${d}" fill="none" stroke="${stroke}" stroke-width="${Math.max(2.5, s / 11)}" stroke-linecap="round"/>`
+      }
+
+      // A deterministic wobble, so redraws look the same.
+      const rnd = (i, a = 0, b = 1) => {
+        const x = Math.sin(i * 127.1 + 311.7) * 43758.5453
+        return a + (x - Math.floor(x)) * (b - a)
+      }
+
+      // ─── Wordmark ────────────────────────────────────────────────────────────────
+      // Puffy letters (Fredoka 700) with a halo and rim, icing clipped to the glyphs with drips,
+      // goo melting off the bottoms of a few letters, pointed hound ears on the first p, a heart in the o.
+      const FONT = 'Fredoka',
+        SIZE = 230,
+        SPACING = -10
+      let uid = 0
+      function wordmark(p, { word = 'playhound', ears = true, deco = true, badge = true } = {}) {
+        const id = 'w' + uid++
+        const W = 1640,
+          H = 560,
+          base = 360,
+          TX = 760
+        const ns = 'http://www.w3.org/2000/svg'
+        // Measure: glyph cells from SVG, ink boxes from canvas.
+        const probe = document.createElementNS(ns, 'svg')
+        probe.setAttribute('viewBox', `0 0 ${W} ${H}`)
+        probe.style.cssText = 'position:absolute;left:-9999px;width:1500px;height:560px'
+        probe.innerHTML = `<text x="${TX}" y="${base}" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${SIZE}" letter-spacing="${SPACING}">${word}</text>`
+        document.body.append(probe)
+        const t = probe.querySelector('text')
+        const ctx = document.createElement('canvas').getContext('2d')
+        ctx.font = `700 ${SIZE}px ${FONT}`
+        const ch = [...word].map((c, i) => {
+          const e = t.getExtentOfChar(i),
+            m = ctx.measureText(c)
+          const x0 = e.x - m.actualBoundingBoxLeft,
+            x1 = e.x + m.actualBoundingBoxRight
+          return {
+            c,
+            x0,
+            x1,
+            cx: (x0 + x1) / 2,
+            w: x1 - x0,
+            top: base - m.actualBoundingBoxAscent,
+            bot: base + m.actualBoundingBoxDescent,
+          }
+        })
+        probe.remove()
+        const xh = Math.min(...ch.filter((k) => 'aonu'.includes(k.c)).map((k) => k.top))
+
+        // Goo off the bottoms of the round letters.
+        const melt = []
+        ch.forEach((k, i) => {
+          if (!'anl'.includes(k.c)) return
+          const n = 1
+          for (let j = 0; j < n; j++) {
+            const cx = k.c === 'n' ? k.x1 - k.w * 0.16 : k.cx + rnd(i * 7 + j, -0.12, 0.12) * k.w,
+              w = rnd(i * 3 + j, 9, 14),
+              L = rnd(i * 11 + j, 28, 62)
+            melt.push(
+              `<path d="M${cx - w} ${base - 26} C${cx - w} ${base + L * 0.55} ${cx - w * 0.78} ${base + L} ${cx} ${base + L} C${cx + w * 0.78} ${base + L} ${cx + w} ${base + L * 0.55} ${cx + w} ${base - 26}Z"/>`,
+            )
+          }
+        })
+        // Hound ears on the o (with the heart inside, it reads as a little face).
+        const ear = []
+        const o = ch.find((k) => k.c === 'o')
+        if (ears && o) {
+          // Each ear's outer edge leaves the o along its curve (tangent), so the outline flows into the ear.
+          const r = o.w / 2,
+            cx = o.cx,
+            cy = (o.top + o.bot) / 2
+          const f = (n) => n.toFixed(1)
+          for (const side of [-1, 1]) {
+            const X = (dx) => cx + side * dx
+            const po = [X(0.866 * (r - 2)), cy - 0.5 * (r - 2)]
+            const c1 = [X(0.866 * (r - 2) - 0.5 * 0.42 * r), po[1] - 0.866 * 0.42 * r]
+            const tip = [X(0.6 * r), o.top - 0.74 * r]
+            const c2 = [X(0.66 * r), tip[1] + 0.3 * r]
+            const c3 = [X(0.44 * r), tip[1] + 0.16 * r]
+            const pi = [X(0.08 * r), cy - 0.86 * r]
+            const c4 = [X(0.2 * r), pi[1] - 0.2 * r]
+            ear.push(
+              `<path d="M${f(po[0])} ${f(po[1])} C${f(c1[0])} ${f(c1[1])} ${f(c2[0])} ${f(c2[1])} ${f(tip[0])} ${f(tip[1])} C${f(c3[0])} ${f(c3[1])} ${f(c4[0])} ${f(c4[1])} ${f(pi[0])} ${f(pi[1])} L${f(cx)} ${f(cy)} Z"/>`,
+            )
+          }
+        }
+        // A tail curling out of the d, tipped with a heart.
+        const d = [...ch].reverse().find((k) => k.c === 'd')
+        const tail = d
+          ? `M${d.x1 - 16} ${base - 14} C${d.x1 + 40} ${base + 26} ${d.x1 + 104} ${base + 14} ${d.x1 + 108} ${base - 46} C${d.x1 + 111} ${base - 92} ${d.x1 + 72} ${base - 104} ${d.x1 + 80} ${base - 146}`
+          : ''
+        const tailTip = d ? `<path d="${heartAt(d.x1 + 82, base - 160, 44, 8)}"/>` : ''
+        const glyphs = `<text x="${TX}" y="${base}" text-anchor="middle" font-family="${FONT}" font-weight="700" font-size="${SIZE}" letter-spacing="${SPACING}">${word}</text>${melt.join('')}${ear.join('')}${tailTip}`
+
+        // Icing: per letter, from above its top down a wavy edge with drips; clipped to the glyphs.
+        const icing = ch
+          .map((k, i) => {
+            if (k.c === 'o' && ears) return ''
+            const top = k.top - 10
+            const depth = (k.bot - k.top) * ('lhd'.includes(k.c) ? 0.17 : 0.24)
+            const edge = k.top + depth
+            const x0 = k.x0 - 8,
+              x1 = k.x1 + 8
+            let d = `M${x0} ${top - 140} H${x1} V${edge}`
+            const drips = [rnd(i * 5, 0.2, 0.42), rnd(i * 9, 0.58, 0.82)].sort((a, b) => b - a)
+            let x = x1
+            for (const f of drips) {
+              const px = x0 + (x1 - x0) * f,
+                w = rnd(i * 13 + f * 10, 9, 13),
+                L = rnd(i * 17 + f * 10, 22, 56)
+              d += ` Q${(x + px + w) / 2} ${edge + 8} ${px + w} ${edge} C${px + w} ${edge + L} ${px - w} ${edge + L} ${px - w} ${edge}`
+              x = px - w
+            }
+            d += ` Q${(x + x0) / 2} ${edge + 8} ${x0} ${edge} Z`
+            return d
+          })
+          .join(' ')
+        // Gloss: a small shine on each letter's icing.
+        const gloss = ch
+          .filter((k) => !(k.c === 'o' && ears))
+          .map(
+            (k) =>
+              `<ellipse cx="${k.x0 + k.w * 0.3}" cy="${k.top + 16}" rx="${Math.min(14, k.w * 0.12)}" ry="6" transform="rotate(-18 ${k.x0 + k.w * 0.3} ${k.top + 16})" fill="#fff" opacity=".8"/>`,
+          )
+          .join('')
+        // A heart in the o's counter.
+        const oHeart = o ? heart(o.cx, (o.top + o.bot) / 2 + 4, 34, p.heart) : ''
+        // Our fang, hanging off the o's face.
+        const fx = o ? o.cx + o.w * 0.14 : 0
+        const fang = o
+          ? `<path d="M${fx - 16} ${base - 40} C${fx - 16} ${base + 16} ${fx - 8} ${base + 42} ${fx + 6} ${base + 62} C${fx + 12} ${base + 38} ${fx + 16} ${base + 12} ${fx + 15} ${base - 40}Z" fill="#fff" stroke="${p.rim}" stroke-width="6" stroke-linejoin="round"/>`
+          : ''
+        // Decoration.
+        const decos = deco
+          ? [
+              sparkle(140, 110, 22, p.deco),
+              sparkle(1250, 70, 14, p.deco),
+              sparkle(1440, 470, 18, p.deco),
+              sparkle(230, 480, 14, p.deco),
+              sparkle(760, 60, 12, p.deco),
+              heart(80, 290, 26, p.deco, -16),
+              wave(560, 70, 56, p.deco, -8),
+              wave(1010, 520, 64, p.deco, 6),
+              wave(1480, 330, 48, p.deco, -12),
+              heart(120, 440, 16, p.deco, 10),
+              paw(1120, 64, 30, p.deco, 18),
+              paw(380, 520, 26, p.deco, -22),
+            ].join('')
+          : ''
+
+        return `<svg viewBox="0 0 ${W} ${H}" width="100%" xmlns="${ns}">
+    <defs>
+      <linearGradient id="${id}f" x1="0" y1="${xh - 120}" x2="0" y2="${base + 40}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${p.top}"/><stop offset=".55" stop-color="${p.mid}"/><stop offset="1" stop-color="${p.bot}"/></linearGradient>
+      <linearGradient id="${id}i" x1="0" y1="${xh - 120}" x2="0" y2="${base}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${p.icing}"/><stop offset="1" stop-color="${p.icingShade}"/></linearGradient>
+      <clipPath id="${id}c">${glyphs}</clipPath>
+      <filter id="${id}s" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="10" stdDeviation="${p.glow ? 14 : 10}" flood-color="${p.glow ? '#d946ef' : p.bot}" flood-opacity="${p.glow ? 0.55 : 0.35}"/></filter>
+    </defs>
+    ${decos}
+    <g filter="url(#${id}s)" stroke-linejoin="round" stroke-linecap="round">
+      <g fill="${p.halo}" stroke="${p.halo}" stroke-width="39">${glyphs}<path d="${tail}" fill="none" stroke-width="59"/></g>
+    </g>
+    <g fill="${p.rim}" stroke="${p.rim}" stroke-width="20" stroke-linejoin="round" stroke-linecap="round">${glyphs}<path d="${tail}" fill="none" stroke-width="40"/></g>
+    <path d="${tail}" fill="none" stroke="url(#${id}f)" stroke-width="20" stroke-linecap="round"/>
+    ${fang}
+    <g fill="url(#${id}f)">${glyphs}</g>
+    <g clip-path="url(#${id}c)">
+      <path d="${icing}" fill="url(#${id}i)"/>
+      ${gloss}
+    </g>
+    ${oHeart}
+    ${badge && d ? `<text x="${d.x1 + 146}" y="${base - 114}" transform="rotate(-8 ${d.x1 + 146} ${base - 114})" font-family="${FONT}" font-weight="700" font-size="50" fill="${p.glow ? p.icing : p.mid}" stroke="${p.halo}" stroke-width="12" paint-order="stroke" stroke-linejoin="round">2.0</text>` : ''}
+  </svg>`
+      }
+
+      // ─── Icon: the muzzle (P4 shade) as a glossy sticker tile ────────────────────
+      function icon(p, { tongue = false } = {}) {
+        const id = 'i' + uid++
+        const night = !!p.glow
+        const c = night
+          ? {
+              tileTop: '#2a2633',
+              tileBot: '#121016',
+              nose: '#e879f9',
+              mouth: '#5b0f63',
+              tng: '#e879f9',
+              tngLine: '#a21caf',
+              shade: '#050507',
+              shadeOp: 0.6,
+              rim: '#e879f9',
+              halo: '#3a0c45',
+              goo: '#f0a6fb',
+            }
+          : {
+              tileTop: p.top,
+              tileBot: p.bot,
+              nose: '#2a0710',
+              mouth: '#2a0710',
+              tng: '#fb923c',
+              tngLine: '#c2410c',
+              shade: p.rim,
+              shadeOp: 0.45,
+              rim: p.rim,
+              halo: p.halo,
+              goo: p.icing,
+            }
+        const tile =
+          'M17 2 H47 C55.3 2 62 8.7 62 17 V47 C62 55.3 55.3 62 47 62 H17 C8.7 62 2 55.3 2 47 V17 C2 8.7 8.7 2 17 2Z'
+        // Goo hanging off the tile's bottom edge.
+        const drips = [
+          [14, 7],
+          [26, 13],
+          [40, 5],
+        ]
+          .map(
+            ([x, L]) =>
+              `<path d="M${x - 2.6} 60 C${x - 2.6} ${62 + L * 0.6} ${x - 2} ${62 + L} ${x} ${62 + L} C${x + 2} ${62 + L} ${x + 2.6} ${62 + L * 0.6} ${x + 2.6} 60Z"/>`,
+          )
+          .join('')
+        const shape = `<path d="${tile}"/>${drips}`
+        const band =
+          'M-30 -30 H90 V90 H-30 Z M-20 -10.5 L1 -7.4 C26 -3.6 44 1 57 4.4 C59.6 5.2 61 6.6 61.8 9.4 C60.8 16 59.8 24 59 30 C58 37 57.2 42 56.8 46 C56.2 51.4 53.6 55.4 47.6 57.2 C36 59 20 59.6 -20 61 Z'
+        const T = `<g><g transform="translate(3 1.6) rotate(-4 30 40)"><path d="M17 31.6 C25 30 32.6 32.4 37.8 37.6 C40.4 41.6 41.4 46.6 40.4 52.6 C39.4 58.4 34.6 61.6 30.2 59.8 C26.4 58.2 26.2 53.6 27.4 49.6 C28.2 46.6 28 43.4 26 40.8 C23.6 37.6 20.4 34.8 17 31.6Z" fill="${c.tng}" stroke="${c.rim}" stroke-width="1.6"/><path d="M32.8 41 C34.6 45 34.8 50 33.4 55.6" fill="none" stroke="${c.tngLine}" stroke-width="1.6" stroke-linecap="round"/></g></g>`
+        return `<svg viewBox="-12 -12 88 100" width="100%" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="${id}g" x1="6" y1="2" x2="58" y2="62" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="${c.tileTop}"/><stop offset="1" stop-color="${c.tileBot}"/></linearGradient>
+      <clipPath id="${id}c"><path d="${tile}"/></clipPath>
+      <filter id="${id}s" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="2.5" stdDeviation="${night ? 3.5 : 2.5}" flood-color="${night ? '#d946ef' : p.bot}" flood-opacity="${night ? 0.55 : 0.35}"/></filter>
+    </defs>
+    <g filter="url(#${id}s)" stroke-linejoin="round"><g fill="${c.halo}" stroke="${c.halo}" stroke-width="6.2">${shape}</g></g>
+    <g fill="${c.rim}" stroke="${c.rim}" stroke-width="3.4" stroke-linejoin="round">${shape}</g>
+    <g fill="url(#${id}g)">${shape}</g>
+    <g clip-path="url(#${id}c)">
+      <path d="${band}" fill-rule="evenodd" fill="${c.shade}" opacity="${c.shadeOp}"/>
+      <path d="M6.6 14.6 C7 10 10 7 15.6 6.6" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".55"/>
+    </g>
+    <path d="M47 6 L60 8.5 L53.5 15.5 Z" fill="${c.nose}"/>
+    <path d="M7 19 C14 31 27 43 43.5 48 L47 48 L54.5 22 C45 21.6 36.5 23.5 28.4 26.2 C20.4 25.6 13 22.8 7 19Z" fill="${c.mouth}"/>
+    ${tongue ? '' : `<path d="M15.5 30.6 C25.5 28.6 37 32.6 44.6 41.6 L46 48.2 C35.6 47 25.4 40.6 15.5 30.6Z" fill="${c.tng}"/><path d="M29.6 42.2 L33.4 35.4 L35 45.4 Z" fill="#fff"/>`}
+    <path d="M26.4 25.6 C35 22.6 45 20.2 54.4 19 L58.4 21.4 C57.2 23 56.2 24.8 55.4 26.6 C54.6 30.6 54.2 34 54 37.6 C52.2 34 51 30.2 50.4 26.2 C43.6 27 36.6 28.6 30.4 31 Z" fill="#fff"/>
+    ${tongue ? T : ''}
+    <path d="M45.8 48.4 C49.2 46 51.4 42.8 52.4 39 C53.4 43.4 52.6 46.6 51 48.8 Z" fill="#fff"/>
+    ${sparkle(62, 0, 5, night ? '#e879f9' : '#fff')}
+  </svg>`
+      }
+
+      // ─── Build the sheet ─────────────────────────────────────────────────────────
+      function build() {
+        const wm = document.getElementById('wordmarks')
+        for (const k of ['candy', 'magenta', 'crimson', 'night']) {
+          const p = PAL[k]
+          wm.insertAdjacentHTML(
+            'beforeend',
+            `<div class="card ${p.card}" style="width:620px">${wordmark(p)}<div class="cap">${p.name}</div></div>`,
+          )
+        }
+        const ic = document.getElementById('icons')
+        for (const [k, tongue, label] of [
+          ['candy', false, 'Candy'],
+          ['crimson', true, 'Crimson, tongue out'],
+          ['magenta', false, 'Brand magenta'],
+          ['night', true, 'Night, tongue out'],
+        ]) {
+          const p = PAL[k]
+          ic.insertAdjacentHTML(
+            'beforeend',
+            `<div class="card ${p.card}"><div style="width:220px">${icon(p, { tongue })}</div>
+      <div style="display:flex;gap:14px;align-items:center;margin-top:8px"><div style="width:64px">${icon(p, { tongue })}</div><div style="width:32px">${icon(p, { tongue })}</div></div>
+      <div class="cap">${label}</div></div>`,
+          )
+        }
+        const hd = document.getElementById('headers')
+        for (const [k, bg, tagColor] of [
+          [
+            'candy',
+            'background: radial-gradient(55% 90% at 30% 50%, rgba(255,95,174,.18), transparent 70%), #fff5fa',
+            '#d9287f',
+          ],
+          [
+            'night',
+            'background: radial-gradient(55% 90% at 30% 50%, rgba(217,70,239,.22), transparent 70%), radial-gradient(40% 70% at 85% 60%, rgba(162,28,175,.14), transparent 70%), #0b0a0f',
+            '#f0a6fb',
+          ],
+        ]) {
+          const p = PAL[k]
+          hd.insertAdjacentHTML(
+            'beforeend',
+            `<div class="header" style="${bg}">
+      <div style="width:240px;flex:none;margin-top:10px">${icon(p, { tongue: true })}</div>
+      <div style="display:flex;flex-direction:column;align-items:center;width:760px">
+        <div style="width:760px;margin:-40px 0 -54px">${wordmark(p, { deco: false })}</div>
+        <div class="tag" style="color:${tagColor}">funscript player &nbsp;♥&nbsp; device sync &nbsp;♥&nbsp; sessions</div>
+      </div>
+      <svg viewBox="0 0 1280 320" style="position:absolute;inset:0;pointer-events:none">${[sparkle(70, 60, 16, p.deco), sparkle(1220, 70, 20, p.deco), wave(470, 40, 48, p.deco, -8), wave(1150, 205, 44, p.deco, 10), wave(110, 175, 40, p.deco, 6), sparkle(1180, 270, 12, p.deco), heart(1240, 170, 24, p.deco, 12), heart(60, 250, 18, p.deco, -14), paw(640, 46, 24, p.deco, -18), paw(1090, 285, 22, p.deco, 20)].join('')}</svg>
+    </div>`,
+          )
+        }
+        const pal = document.getElementById('palette')
+        for (const [n, c] of [
+          ['Bubblegum', '#ffc2e2'],
+          ['Hot pink', '#ff5fae'],
+          ['Deep pink', '#d9287f'],
+          ['Rim', '#b8166a'],
+          ['Icing', '#fffafd'],
+          ['Brand magenta', '#d946ef'],
+          ['Crimson', '#f43f5e'],
+          ['Night', '#131117'],
+          ['Neon goo', '#f0a6fb'],
+          ['Tongue', '#fb923c'],
+        ])
+          pal.insertAdjacentHTML(
+            'beforeend',
+            `<div class="swatch"><div style="background:${c}"></div><span>${n}<br>${c}</span></div>`,
+          )
+      }
+      document.fonts
+        .load(`700 ${SIZE}px ${FONT}`)
+        .then(() => document.fonts.ready)
+        .then(build)
+    </script>
+  </body>
+</html>
