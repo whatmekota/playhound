@@ -8,6 +8,7 @@ import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
 import { formatTime } from '~/lib/time'
 import { ALL_VIEWS } from '~/lib/views'
+import { kbdKeys } from '~/plugins/shortcuts'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -49,6 +50,8 @@ interface Item {
   label: string
   hint?: string
   icon: string
+  /** A plugin's own icon, an inline SVG; shown instead of `icon`. */
+  svg?: string
   /** Extra words that should find this item without being shown. */
   keywords?: string
   kbd?: string[]
@@ -175,6 +178,23 @@ const pluginPages = computed<Item[]>(() => pluginStore.pages.map((p) => {
     run: () => ui.openPluginView(p.manifest.id),
   }
 }))
+
+/** Plugins' commands, one group per plugin, titled with its name. */
+const pluginCommands = computed<{ id: string, title: string, items: Item[] }[]>(() => pluginStore.commandGroups.map(p => ({
+  id: `plugin:${p.manifest.id}`,
+  title: p.manifest.name,
+  items: p.commands.map<Item>(c => ({
+    id: `plugin:${p.manifest.id}:${c.id}`,
+    kind: 'command',
+    label: c.title,
+    hint: c.hint,
+    icon: 'i-carbon-application',
+    svg: c.icon,
+    keywords: p.manifest.name,
+    kbd: c.kbd ? kbdKeys(c.kbd) : undefined,
+    run: () => pluginStore.runCommand(p, c),
+  })),
+})))
 
 const views = computed<Item[]>(() => ALL_VIEWS.map((v) => {
   const open = v.kind === 'view'
@@ -334,10 +354,11 @@ const groups = computed<Group[]>(() => {
   const s = scope.value
   const cmd = commands.value
   const vw = [...views.value, ...pluginPages.value]
+  const byPlugin = pluginCommands.value
 
   if (!q) {
     if (s === 'command')
-      return [{ id: 'commands', title: 'Commands', rows: plain(cmd) }]
+      return [{ id: 'commands', title: 'Commands', rows: plain(cmd) }, ...byPlugin.map(g => ({ id: g.id, title: g.title, rows: plain(g.items) }))]
     if (s === 'view') {
       return [
         { id: 'views', title: 'Views', rows: plain(vw.filter(v => v.kind === 'view')) },
@@ -353,7 +374,7 @@ const groups = computed<Group[]>(() => {
         { id: 'videos', title: 'Library', rows: plain(rest.slice(0, VIDEO_CAP - recent.length)) },
       ].filter(g => g.rows.length)
     }
-    const all = new Map([...cmd, ...vw].map(i => [i.id, i]))
+    const all = new Map([...cmd, ...vw, ...byPlugin.flatMap(g => g.items)].map(i => [i.id, i]))
     const recent = recentIds.value
       .map(id => all.get(id) ?? (id.startsWith('video:') ? (e => e && videoItem(e))(byName.value.get(id.slice(6))) : undefined))
       .filter((i): i is Item => !!i)
@@ -362,6 +383,7 @@ const groups = computed<Group[]>(() => {
       { id: 'played', title: 'Jump back in', rows: plain(recentlyPlayed(3)) },
       { id: 'views', title: 'Go to', rows: plain(vw.filter(v => v.kind === 'view')) },
       { id: 'commands', title: 'Commands', rows: plain(cmd.filter(c => !c.id.startsWith('cmd:theme-'))) },
+      ...byPlugin.map(g => ({ id: g.id, title: g.title, rows: plain(g.items) })),
       { id: 'panels', title: 'Panels', rows: plain(vw.filter(v => v.kind === 'panel')) },
     ].filter(g => g.rows.length)
   }
@@ -373,8 +395,11 @@ const groups = computed<Group[]>(() => {
     .slice(0, cap)
 
   const out: Group[] = []
-  if (s === 'all' || s === 'command')
+  if (s === 'all' || s === 'command') {
     out.push({ id: 'commands', title: 'Commands', rows: rank(cmd, 12) })
+    for (const g of byPlugin)
+      out.push({ id: g.id, title: g.title, rows: rank(g.items, 8) })
+  }
   if (s === 'all' || s === 'view') {
     out.push({ id: 'views', title: 'Views', rows: rank(vw.filter(v => v.kind === 'view')) })
     out.push({ id: 'panels', title: 'Panels', rows: rank(vw.filter(v => v.kind === 'panel')) })
@@ -609,7 +634,8 @@ function setScope(prefix: string) {
                     active === offsets[gi] + ri && row.item.kind !== 'video' ? 'bg-accent-soft text-accent-300' : row.item.on ? 'text-accent-300 bg-fg/5' : 'text-fg-muted bg-fg/5',
                   ]"
                 >
-                  <span :class="row.item.icon" class="text-[15px]" />
+                  <span v-if="row.item.svg" class="plugin-icon text-[15px]" v-html="row.item.svg" />
+                  <span v-else :class="row.item.icon" class="text-[15px]" />
                 </span>
 
                 <span class="flex flex-1 flex-col min-w-0">

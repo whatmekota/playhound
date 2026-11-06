@@ -7,8 +7,13 @@
  * plugin is switched off or removed.
  *
  * Plugins run inside playhound with the same access as playhound itself.
- * There is no sandbox: install only plugins you trust.
+ * There is no sandbox: install only plugins you trust. From API 2 a plugin
+ * lists the permissions it needs, and ctx refuses the rest (see
+ * src/plugins/manifest.ts).
  */
+
+/** What a plugin can ask to do; see PERMISSIONS in src/plugins/manifest.ts. */
+export type PluginPermission = 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'network' | 'stage'
 
 export interface PluginManifest {
   /** Lower-case letters, digits and dashes; the plugin's identity. */
@@ -19,6 +24,13 @@ export interface PluginManifest {
   author?: string
   /** The module to load, relative to the zip root. Default `index.js`. */
   main?: string
+  /** The plugin API it is written for. 1 when absent; newer than playhound's refuses to install. */
+  api?: number
+  /**
+   * What it needs (API 2). Without this list an API 1 plugin has full access;
+   * an API 2 plugin has only what needs no permission.
+   */
+  permissions?: PluginPermission[]
 }
 
 export type SettingField
@@ -150,6 +162,65 @@ export interface MotionControl {
   readonly active: boolean
 }
 
+/** A command in the palette (Ctrl K), listed under the plugin's name. */
+export interface CommandDef {
+  /** Unique within the plugin; registering the same id again replaces it. */
+  id: string
+  title: string
+  /** A second line, shown while the command is highlighted. */
+  hint?: string
+  /** An inline SVG in currentColor, about 16×16. A generic icon stands in without one. */
+  icon?: string
+  /**
+   * A keyboard shortcut: a letter, digit or F1–F12, with any of Ctrl, Alt
+   * and Shift, e.g. "Shift+K", "Alt+2", "Ctrl+Shift+Y". Refused (logged, and
+   * register() returns false) when playhound or another plugin already uses it.
+   */
+  kbd?: string
+  run: () => void | Promise<void>
+}
+
+/** A layer over the player's video. */
+export interface OverlayDef {
+  /**
+   * Build the layer into `el` (it fills the picture); return a cleanup.
+   * Called whenever the full-size player shows a video, and its cleanup when
+   * it stops (the video closes, the mini player or the pop-out takes over).
+   */
+  mount: (el: HTMLElement) => void | (() => void)
+  /** Take clicks. By default the layer lets them through to the player. */
+  interactive?: boolean
+}
+
+/** One axis of the loaded script, as a copy. */
+export interface ScriptAxisSnapshot {
+  /** The TCode channel it drives: L0 (stroke), R0 (twist), V0 (vibrate)… */
+  axis: string
+  /** Its name in playhound ("Stroke", "Twist"…). */
+  label: string
+  /** The file (or name) it came from. */
+  name: string
+  /** Funscript actions: `at` in ms, `pos` 0–100, as in a .funscript file. */
+  actions: { at: number, pos: number }[]
+  /** The user's offset for it, ms. */
+  offsetMs: number
+}
+
+export interface ScriptSnapshot {
+  /** File name of the video they are loaded for, or null with none. */
+  video: string | null
+  /** The axes that play (an alternate take that is switched off isn't here). */
+  axes: ScriptAxisSnapshot[]
+}
+
+/**
+ * Transforms a script's position on its way to the device, every frame and
+ * per axis: keep it quick and free of side effects. `pos` and the result are
+ * 0–1 (bottom to top, or off to full for vibration); `t` is the time in the
+ * script, ms.
+ */
+export type MotionFilter = (pos: number, info: { axis: string, t: number }) => number
+
 export interface PluginContext {
   readonly manifest: PluginManifest
   settings: {
@@ -186,6 +257,11 @@ export interface PluginContext {
     /** When the stage switches; returns an unsubscribe. */
     onStageChange: (fn: (view: StageView) => void) => () => void
     openSettings: () => void
+    /**
+     * A layer over the player's video, click-through unless `interactive`.
+     * One per plugin; calling it again replaces it. Returns a remover.
+     */
+    overlay: (def: OverlayDef) => () => void
     /** CSS for the plugin's own DOM; removed when it is switched off. */
     style: (css: string) => void
     toast: (text: string, opts?: { tone?: 'info' | 'success' | 'error', detail?: string }) => void
@@ -198,6 +274,16 @@ export interface PluginContext {
     frame: (opts?: { maxWidth?: number, quality?: number }) => string | null
     /** When what plays, or whether it plays, changes (not on every clock tick). */
     onChange: (fn: (s: PlayerSnapshot) => void) => () => void
+    /**
+     * Where playback is now, in seconds: read off the video at the moment of
+     * the call and steadied, finer than state().time (which moves a few times
+     * a second). For keeping something in step with the picture.
+     */
+    clock: () => number
+    /** Jump to `t` seconds. False with nothing loaded. */
+    seek: (t: number) => boolean
+    /** Set the playback speed (0.1–10, 1 is normal). It is the user's speed: the player shows it and keeps it. */
+    setRate: (rate: number) => void
   }
   /** The user's library. Read-only; empty until a folder is open. */
   library: {
@@ -206,6 +292,13 @@ export interface PluginContext {
     analyse: (ids: string[]) => Promise<void>
     /** When the library is (re)loaded. */
     onChange: (fn: () => void) => () => void
+    /**
+     * A stable id for a video's file: the same file gives the same id on any
+     * machine, whatever it is called. Made from its size and a hash of three
+     * 64 KB pieces (start, middle, end), and kept, so asking again is free.
+     * Null if the video isn't in the library or can't be read.
+     */
+    fingerprint: (videoId: string) => Promise<string | null>
   }
   /** What plays. */
   playback: {
@@ -215,11 +308,40 @@ export interface PluginContext {
     resume: () => void
     /** When the video playing reaches its end. */
     onEnded: (fn: (id: string | null) => void) => () => void
+    /** Play the library video with this fingerprint (see library.fingerprint). False if there is none. */
+    playFingerprint: (fp: string) => Promise<boolean>
+  }
+  /** The loaded scripts. */
+  scripts: {
+    /** A copy of what is loaded for the current video. */
+    current: () => ScriptSnapshot
+    /**
+     * Load a script for the current video as if it came from a file: it
+     * replaces whatever plays on that axis (the others stay) and lives in
+     * memory only. `axis` is a TCode channel or a funscript suffix ("L0",
+     * "twist", "vib"…), the stroke when absent. `actions` as in a .funscript:
+     * `at` ms, `pos` 0–100. False with no video, or no usable actions.
+     */
+    load: (script: { actions: { at: number, pos: number }[], axis?: string, name?: string }) => boolean
+    /** When the loaded scripts change (another video, a file loaded, an axis switched). */
+    onChange: (fn: (s: ScriptSnapshot) => void) => () => void
   }
   motion: {
     /** Take the stroke generator (the Manual source). Null while panic is on. */
     take: () => MotionControl | null
     readout: () => MotionReadout
+    /**
+     * Reshape script playback on its way to the device. One filter per
+     * plugin (setting another replaces it); several plugins' filters chain in
+     * the order the plugins are listed. The intensity knob, edges and the
+     * user's range still apply after it, and it can't make the device move
+     * faster than the script does or the speed ceiling allows. Returns a remover.
+     *
+     * Streamed devices (serial, Intiface) run it every frame. The Handy plays
+     * the script's points itself, so for it the filter runs over every point
+     * when it is set: set it again to apply a change there.
+     */
+    filter: (fn: MotionFilter) => () => void
   }
   safety: {
     panicked: () => boolean
@@ -232,6 +354,12 @@ export interface PluginContext {
      * local server without CORS headers answers. Streams like fetch does.
      */
     fetch: (url: string, init?: RequestInit) => Promise<Response>
+  }
+  /** Commands in the palette, with optional shortcuts. */
+  commands: {
+    /** Add (or replace, by id) a command. False if its shortcut is taken: the command is then added without one. */
+    register: (def: CommandDef) => boolean
+    unregister: (id: string) => void
   }
   /** A blob: URL for a file from the plugin's zip, or null. */
   asset: (path: string) => string | null

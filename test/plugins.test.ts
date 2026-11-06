@@ -90,6 +90,12 @@ describe('readPackage', () => {
     await expect(read({ 'manifest.json': manifest({ id: 'Bad Id' }), 'index.js': '' })).rejects.toThrow('"id"')
     await expect(read({ 'manifest.json': manifest({ main: 'main.js' }), 'index.js': '' })).rejects.toThrow('main.js')
   })
+
+  it('reads an API 2 manifest with its permissions, and refuses a newer API', async () => {
+    const pkg = await readPackage(zip({ 'manifest.json': manifest({ api: 2, permissions: ['stage'] }), 'index.js': '' }))
+    expect(pkg.manifest).toMatchObject({ api: 2, permissions: ['stage'] })
+    await expect(readPackage(zip({ 'manifest.json': manifest({ api: 99 }), 'index.js': '' }))).rejects.toThrow(/newer playhound/)
+  })
 })
 
 describe('the stage', () => {

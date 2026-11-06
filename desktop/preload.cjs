@@ -239,6 +239,42 @@ const netApi = winState
     })
   : null
 
+// ── Plugin dev mode ─────────────────────────────────────────────────────────
+// Plugins loaded from a folder the user picked; the main process reads and
+// watches it (desktop/devplugins.mjs) and says when something in it changed.
+const devListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:plugins:dev:changed', (_event, folder) => {
+    for (const cb of devListeners) {
+      try {
+        cb(String(folder))
+      }
+      catch (err) {
+        console.error('[playhound] dev plugin listener failed', err)
+      }
+    }
+  })
+}
+const pluginsApi = winState
+  ? Object.freeze({
+      /** The folders loaded before, to load again at startup. */
+      devFolders: () => ipcRenderer.invoke('ph:plugins:dev:list'),
+      /** The folder dialog; the picked folder (remembered), or null. */
+      pickDevFolder: () => ipcRenderer.invoke('ph:plugins:dev:pick'),
+      /** { files: [{ path, data }] } or { error }. Starts watching the folder. */
+      readDevFolder: folder => ipcRenderer.invoke('ph:plugins:dev:read', String(folder)),
+      /** Stop watching a folder and forget it. */
+      forgetDevFolder: folder => ipcRenderer.invoke('ph:plugins:dev:forget', String(folder)),
+      /** Calls `cb(folder)` when a file in a loaded folder changed; returns an unsubscribe. */
+      onDevChange: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        devListeners.add(cb)
+        return () => void devListeners.delete(cb)
+      },
+    })
+  : null
+
 /**
  * window.playhoundDesktop — undefined in a plain browser.
  * `lan` lists this machine's IPv4 addresses, physical adapters first: the page
@@ -261,6 +297,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   popout: popoutApi ?? undefined,
   updates: updatesApi ?? undefined,
   net: netApi ?? undefined,
+  plugins: pluginsApi ?? undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the
