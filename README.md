@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/header-light.webp">
-    <img src="docs/header-dark.webp" alt="playhound: a magenta face with a sly grin next to the word playhound. Funscript player, device sync, sessions, 18+" width="100%">
+    <img src="docs/header-dark.webp" alt="playhound: a glossy sticker of a grinning muzzle with its tongue out, next to the word playhound in dripping candy letters with hound ears on the o and a tail on the d. Funscript player, device sync, sessions." width="100%">
   </picture>
 </p>
 
@@ -70,6 +70,16 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   seconds ahead and the Handy plays it on its own clock, kept in step with the
   video, so fast scripts play as written, and edges and the intensity knob
   still apply.
+- **Edit scripts in the app.** Per-video tweaks that never touch the file:
+  range, invert, a speed limit, smoothing and the offset. A point editor under
+  the video: click, box-select, drag a whole selection, nudge with the arrows,
+  undo, and save back next to the video (the original is kept as a `.bak`).
+- **Record a session as a script.** **Shift+C** records what the device does,
+  whatever drives it (manual, music, a programme, a plugin), and saves it as a
+  `.funscript`, timed to the video if one was playing.
+- **Subtitles and tags.** `.srt`, `.vtt` and `.ass` files next to a video are
+  picked up (**V** turns them on). Tag videos yourself, or filter by the tags
+  playhound works out from the scripts: pace, intensity, length, multi-axis, VR.
 - **Pop-out player.** **O** puts the video in a small window that stays on
   top of other apps, with the device still in sync. In the desktop app it can
   be made see-through and let clicks pass to the window underneath, so it can
@@ -78,7 +88,8 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   equirectangular or fisheye.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
-  that you can save and edit. If it hears the beat wrong, tap it in with **T**.
+  that you can save and edit. If it hears the beat wrong, tap it in with **T**,
+  even with no video at all: tap along to anything and the device follows.
 - **Stays in control.** **E** edges: everything backs off for a while and eases
   back in. An intensity knob scales every source. **G** jumps to the next
   peak and **Shift+G** to the most intense part. **Esc** is panic.
@@ -102,13 +113,25 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   watches the session and reacts. The face also comes as Kerfus, the cat robot,
   and can fill a second monitor instead of a board.
 - **Plugins.** Extra features from a plugin store (GitHub repositories you
-  follow) or a zip, with their own settings and panel. The first is
-  [playmate](https://github.com/whatmekota/playmate), an AI partner that
-  talks, moves the device and can run a whole session. Writing one is
-  described in [docs/plugins.md](docs/plugins.md).
-- **Desktop app.** A Windows build with a frameless window. It keeps driving the
-  device while minimised, remembers your library folder, and can show Discord
-  Rich Presence (off by default).
+  follow) or a zip. Each says what it needs before you install it, and can add
+  a panel, a full page, commands and shortcuts. The official ones:
+  - [playmate](https://github.com/whatmekota/playmate): an AI partner that
+    talks, moves the device and can run a whole session.
+  - [ph2gether](https://github.com/whatmekota/ph2gether): together mode. Two
+    people, each with their own playhound and device, watch and play in sync
+    over the internet, with a chat for swapping links. The apps connect
+    directly, encrypted; five emojis to compare out loud show that nobody is
+    in between.
+  - [phbrowser](https://github.com/whatmekota/phbrowser): a web browser on
+    playhound's stage, so tap tempo and generated motion keep going while you
+    browse (desktop app).
+
+  Writing one is described in [docs/plugins.md](docs/plugins.md), including a
+  dev mode that reloads your plugin as you save.
+
+- **Desktop app.** For Windows, macOS and Linux. It keeps driving the device
+  while minimised, remembers your library folder, updates itself (Windows and
+  Linux), and can show Discord Rich Presence (off by default).
 
 ## Getting started
 
@@ -265,6 +288,7 @@ The ones you'll use most:
 | **C**            | I came: marks it on the video and in Stats          |
 | Shift+C          | record what the device does · stop and save         |
 | **T** · Shift+T  | tap tempo for the Music source · forget it          |
+| **V** · Shift+V  | subtitles on/off · next subtitle track              |
 | B · S            | bookmark here · star the video                      |
 | **Esc** or **`** | **panic**: stop everything and cover the screen     |
 
@@ -351,19 +375,20 @@ it full screen on your second display, and it needs no relay or setup.
 ### Around the app
 
 - **Left nav:** Player, Library, Playlists, Media Wall, Slideshow,
-  EroScripts, Organizer, Stats.
+  EroScripts, Organizer, Stats, and a button for each plugin that has a page.
 - **Right rail:** Queue, Scripts, Bookmarks, Device, Motion, Programme, Remote,
-  Face, Binaural, Hypno, Director, Backup, and Plugins once a plugin has a
-  panel. Middle-click a panel icon to pin it.
+  Face, Binaural, Hypno, Director, Backup, and a button for each plugin that
+  has a panel. Middle-click a panel icon to pin it.
 - **Plugins:** Settings → Plugins installs them from the store or a zip and
-  holds their settings. A plugin runs with playhound's own access, so install
-  only ones you trust.
+  holds their settings. The install screen lists what a plugin asks for;
+  official plugins (by whatmekota) carry a check mark. A plugin still runs
+  inside playhound, so install only ones you trust.
 - **Library:** one folder or several (a collection split across drives),
-  search, filter chips, sort by folder, script intensity and speed sparklines,
+  search (`tag:name` too), filter chips and tags, sort by folder, script intensity and speed sparklines,
   hover-scrub previews, and an **auto-director** that picks the next video
   to suit the moment.
-- **Organizer:** rename a video and all its scripts together, keeping the
-  axis suffixes.
+- **Organizer:** rename a video and all its scripts and subtitles together,
+  keeping the axis suffixes and language tags.
 - **EroScripts:** browse Free Scripts, play a post's video with its scripts,
   download both under one name, save posts for later (see
   [The EroScripts browser](#the-eroscripts-browser)).
@@ -403,6 +428,10 @@ world only when you use a feature that needs it:
 - **the Handy over WiFi**: commands go through Handy's server with your
   connection key, and **Whole script** uploads the shaped script to Handy's
   script hosting. Over Bluetooth nothing leaves your computer.
+- **ph2gether** (plugin): your app and your partner's connect directly; public
+  relays only help them find each other and never see what you watch. Your
+  partner sees your IP address.
+- **phbrowser** (plugin): the sites you visit, in a browsing session of its own.
 - **Discord Rich Presence**: desktop app only, off by default. Its Minimal mode
   shows the app and a timer, never what's playing; titles appear only if you
   write a custom template that asks for them.
@@ -455,8 +484,9 @@ Conventions that keep it in one piece:
 
 This is a personal project, built for and tested on one setup (Windows, Chrome,
 an OSR2). Forum testers have since run the Handy on real hardware: a Handy 2
-over WiFi and Bluetooth, and a Handy 1 over WiFi. Still waiting on real
-hardware:
+over WiFi and Bluetooth, and a Handy 1 over WiFi. The macOS app has been tried
+on an Apple silicon Mac; the Linux app is built but untested. Still waiting on
+real hardware:
 
 - the Handy's Live mode and generated motion over WiFi (fixed in 1.4.0, not yet
   confirmed)

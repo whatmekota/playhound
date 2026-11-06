@@ -15,7 +15,12 @@ screen shows them in plain words. The API holds the plugin to its list: a
 call outside it throws. That is about being upfront with the user, not a
 sandbox.
 
-For a complete, real plugin, see [playmate](https://github.com/whatmekota/playmate).
+For complete, real plugins, see the official ones:
+[playmate](https://github.com/whatmekota/playmate) (panels, settings, motion,
+the network), [ph2gether](https://github.com/whatmekota/ph2gether) (sync,
+fingerprints, commands, WebRTC) and
+[phbrowser](https://github.com/whatmekota/phbrowser) (a stage page with a web
+view). All three are TypeScript bundled with esbuild into one module.
 
 ## The zip
 
@@ -316,3 +321,12 @@ repository by `owner/repo` or its github.com link in **Settings → Plugins →
 Get plugins**. Nothing installs or updates without them clicking.
 
 Don't put API keys or other secrets in a published zip.
+
+### Official and trusted plugins
+
+Plugins from repositories owned by **whatmekota** are playhound's own: the
+store and the installed list show a check mark next to them. Authors known to
+the project can be added to a trusted list (`TRUSTED_OWNERS` in
+`src/plugins/sources.ts`); their plugins get a heart. Either mark is a
+statement about the author, not a review of every release, and neither changes
+what a plugin is allowed to do: that's still its permissions.
