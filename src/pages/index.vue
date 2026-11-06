@@ -6,6 +6,7 @@ import HypnoOverlay from '~/components/player/HypnoOverlay.vue'
 import NowPlayingBar from '~/components/player/NowPlayingBar.vue'
 import PopoutCard from '~/components/player/PopoutCard.vue'
 import VideoPlayer from '~/components/player/VideoPlayer.vue'
+import PluginOverlays from '~/components/plugins/PluginOverlays.vue'
 import AppNav from '~/components/shell/AppNav.vue'
 import CommandPalette from '~/components/shell/CommandPalette.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
@@ -68,10 +69,11 @@ const sessionControl = useSessionControlStore()
 const subtitles = useSubtitleStore()
 const session = useSessionActions()
 const popout = usePopout()
+const plugins = usePluginStore()
 startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
-onMounted(() => void usePluginStore().start())
+onMounted(() => void plugins.start())
 
 // Instantiate these once at the shell level so they keep running whichever
 // view or inspector happens to be open.
@@ -387,6 +389,13 @@ function onGlobalKeyDown(e: KeyboardEvent) {
   const t = e.target as HTMLElement
   if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
     return
+  // Plugins' shortcuts, before the modifier check: theirs may use Ctrl or Alt.
+  // They can't take a key playhound uses (src/plugins/shortcuts.ts), and
+  // nothing of theirs runs while a dialog is up or the screen is covered.
+  if (!ui.paletteOpen && !ui.settingsOpen && !safety.panicked && plugins.runShortcut(e)) {
+    e.preventDefault()
+    return
+  }
   // Leave browser and OS shortcuts alone.
   if (e.ctrlKey || e.metaKey || e.altKey)
     return
@@ -468,6 +477,11 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
               <div v-if="hypno.enabled && !mini" class="inset-0 absolute" :style="{ opacity: 1 - sessionControl.holdBack }">
                 <HypnoOverlay />
               </div>
+              <!-- Plugins' layers: on the full-size player and in fullscreen,
+                   not on the mini player (too small, and its controls are
+                   there) nor in the pop-out (another window, which a plugin's
+                   styles don't reach). -->
+              <PluginOverlays v-if="player.videoUrl && (!mini || player.isFullscreen) && !popout.active.value" />
             </template>
           </VideoPlayer>
           <Transition name="t-fade">

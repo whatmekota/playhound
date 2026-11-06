@@ -51,7 +51,9 @@ import { MODE_HSP, NOTE } from '~/lib/handyProto'
 import { KEYS } from '~/lib/persist'
 import { logCommand } from '~/lib/serialLog'
 import { createMovePlanner, scriptMove } from '~/lib/strokePlan'
+import { ceilingPerMs, filterActions, motionFilters, motionFilterVersion } from '~/plugins/filters'
 import { useDeviceStore } from '~/stores/deviceStore'
+import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 
@@ -653,6 +655,7 @@ export function useHandy() {
   const scripts = useScriptStore()
   const device = useDeviceStore()
   const control = useSessionControlStore()
+  const motion = useMotionStore()
 
   // Once per app: keep the device's script in step with the loaded one.
   if (!scope) {
@@ -663,7 +666,14 @@ export function useHandy() {
         if (!s || !s.parsed.actions.length)
           return null
         const axis = device.axisConfigs.L0
-        return { actions: s.parsed.actions, min: axis?.min ?? 0, max: axis?.max ?? 1, invert: axis?.invert ?? false }
+        // The device plays points, not frames, so plugins' motion filters
+        // run over every point, again whenever one is set or removed (under
+        // Whole script that uploads the script again).
+        void motionFilterVersion.value
+        const actions = motionFilters.active()
+          ? filterActions(s.parsed.actions, 'L0', motionFilters.apply, ceilingPerMs(motion.maxSpm))
+          : s.parsed.actions
+        return { actions, min: axis?.min ?? 0, max: axis?.max ?? 1, invert: axis?.invert ?? false }
       })
       /** HSSP: the whole shaped script as uploaded. */
       const hsspText = computed(() => {

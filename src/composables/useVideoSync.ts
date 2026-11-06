@@ -11,6 +11,7 @@ import { KEYS } from '~/lib/persist'
 import { backOff, intensityParams, sampleScaled, scaleScript } from '~/lib/scriptScale'
 import { createSteadyClock } from '~/lib/steadyClock'
 import { frameCommand, holdCommand, SEND_INTERVAL_MS } from '~/lib/tcodeEncoder'
+import { capMove, ceilingPerMs, motionFilters } from '~/plugins/filters'
 import { useMotionStore } from '~/stores/motionStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
@@ -189,19 +190,37 @@ export function useVideoSync() {
    * the same beats); the edge's hold then shrinks every stroke toward its
    * centre, smoothly, frame by frame.
    */
-  function positionAt(channel: string, actions: FunscriptAction[], ms: number): number {
+  function positionAt(channel: string, actions: FunscriptAction[], ms: number, filtered = true): number {
     const knob = control.intensityScale
     const hold = holdsNow()
+    // Plugins' filters reshape the script itself; the knob's scaling of a
+    // level and an edge's hold come after them, so the user's controls win.
+    const filter = (p: number) => (filtered && motionFilters.active() ? motionFilters.apply(p, channel, ms) : p)
     if (isLevelChannel(channel)) {
       const { pos } = sampleScaled(scaledFor(actions, 1), ms)
-      return pos * Math.max(0, Math.min(1, knob)) * (1 - hold)
+      return filter(pos) * Math.max(0, Math.min(1, knob)) * (1 - hold)
     }
-    const { pos } = sampleScaled(scaledFor(actions, knob), ms)
+    const pos = filter(sampleScaled(scaledFor(actions, knob), ms).pos)
     // An edge settles the device toward the middle of its range. Shrinking
     // toward each stroke's own centre kept it travelling between strokes
     // whose centres differ, so a "held" script still moved ~40% of its range.
     // The ramp in/out is smooth (see edging.ts), so this never jumps.
     return hold > 0 ? backOff(pos, 0.5, hold) : pos
+  }
+
+  /**
+   * Where the stroke should be at `to`, held by the speed rule for filters:
+   * no faster than the script itself goes from `from` to `to`, or than the
+   * speed ceiling, whichever is more. Unfiltered, as it is.
+   */
+  function cappedTarget(channel: string, actions: FunscriptAction[], from: number, to: number, fromPos: number, speed: number): number {
+    const toPos = positionAt(channel, actions, to)
+    if (!motionFilters.active())
+      return toPos
+    const rawFrom = positionAt(channel, actions, from, false)
+    const rawTo = positionAt(channel, actions, to, false)
+    // Script time runs `speed` times faster than the wall clock the ceiling is in.
+    return capMove(fromPos, toPos, rawFrom, rawTo, (to - from) / (speed || 1), ceilingPerMs(motion.maxSpm))
   }
 
   function sendAxis(
@@ -218,7 +237,7 @@ export function useVideoSync() {
       sendPosition(channel, cmd.pos, cmd.interval, { force: snap })
       return pos
     }
-    const end = nextAt === null ? null : positionAt(channel, actions, nextAt)
+    const end = nextAt === null ? null : cappedTarget(channel, actions, ms, nextAt, pos, speed)
     const cmd = frameCommand(pos, end, nextAt, ms, speed)
     const dir = Math.sign((end ?? pos) - pos)
     const reversal = lastDir[channel] !== undefined && dir !== 0 && dir !== lastDir[channel]
@@ -284,7 +303,7 @@ export function useVideoSync() {
         }
         else if (!hold && nextAt !== null && nextAt !== bpSegmentAt) {
           bpSegmentAt = nextAt
-          void bp.sendLinear(positionAt(channel, actions, nextAt), Math.max(0, (nextAt - adjustedMs) / speed))
+          void bp.sendLinear(cappedTarget(channel, actions, adjustedMs, nextAt, pos, speed), Math.max(0, (nextAt - adjustedMs) / speed))
         }
       }
     }

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, session, shell } from 'electron'
 import { startProxy } from '../es-proxy.mjs'
 import { setupBluetooth, setupDevices } from './devices.mjs'
+import { setupDevPlugins } from './devplugins.mjs'
 import { setupNetBridge } from './netbridge.mjs'
 import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
 import { probe, serveStatic } from './serve.mjs'
@@ -364,6 +365,8 @@ async function boot() {
   })
   // Plugins' fetch(), so local servers without CORS headers answer.
   setupNetBridge(ipcMain, fromMainWindow)
+  // Plugins loaded from a folder (Settings → Plugins → Load from folder), reloaded on save.
+  setupDevPlugins({ ipcMain, allowed: fromMainWindow, window: () => win, dialog, state, save: saveState })
   // Sent synchronously just before requestDevice(), so it lands first.
   ipcMain.on('ph:bt:expect', (event, kind) => {
     if (fromMainWindow(event))

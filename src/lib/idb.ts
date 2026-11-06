@@ -9,6 +9,7 @@
  *   "chapters"  — key: script name|size|mtime, value: ChapterIndexRecord (per-video chapters; a cache)
  *   "plugins"   — key: pkg:<id> | settings:<id> | data:<id>:<key>; installed plugins, their settings
  *                 and their own data. Kept out of backups: settings may hold API keys.
+ *                 Also fp:<name>|<size>|<mtime>: video fingerprints for plugins (a cache).
  */
 
 // Storage identifier, not a brand string. Renaming it would orphan every

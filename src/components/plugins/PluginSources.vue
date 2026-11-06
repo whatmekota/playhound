@@ -44,6 +44,8 @@ async function get(s: SourceState) {
   const was = store.installedFrom(s)
   try {
     const p = await store.installFromSource(s.repo)
+    if (!p)
+      return
     emit('installed', p.manifest.id)
     toast.success(was ? `Updated ${p.manifest.name} to ${p.manifest.version}` : `Installed ${p.manifest.name} ${p.manifest.version}`, {
       icon: 'i-carbon-application',

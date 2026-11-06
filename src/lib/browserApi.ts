@@ -238,6 +238,16 @@ export interface DesktopInfo {
   updates?: DesktopUpdates
   /** fetch() from the main process, for plugins (desktop/netbridge.mjs). */
   net?: DesktopNet
+  /** Plugins loaded from a folder (desktop/devplugins.mjs). Main window only; absent in older builds. */
+  plugins?: DesktopPlugins
+}
+
+export interface DesktopPlugins {
+  devFolders: () => Promise<string[]>
+  pickDevFolder: () => Promise<string | null>
+  readDevFolder: (folder: string) => Promise<{ files: { path: string, data: Uint8Array }[], error?: undefined } | { error: string, files?: undefined }>
+  forgetDevFolder: (folder: string) => Promise<void>
+  onDevChange: (cb: (folder: string) => void) => () => void
 }
 
 export type UpdateStatus = 'off' | 'idle' | 'checking' | 'none' | 'downloading' | 'ready' | 'available' | 'error'

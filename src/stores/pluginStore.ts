@@ -1,5 +1,8 @@
+import type { Access } from '~/plugins/manifest'
+import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { LibraryVideo, MotionControl, MotionReadout, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, ScriptNow, SettingField } from '~/plugins/types'
+import type { LibraryVideo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField } from '~/plugins/types'
+import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, watch } from 'vue'
@@ -8,14 +11,24 @@ import { useAutoDirector } from '~/composables/useAutoDirector'
 import { analyseActions, analysisKey } from '~/composables/useScriptAnalysis'
 import { axisOutput } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
+import { desktop } from '~/lib/browserApi'
 import { sampleEnvelope } from '~/lib/funscriptAnalysis'
-import { pluginDb, summaryDb } from '~/lib/idb'
+import { parseFunscriptContent } from '~/lib/funscriptParser'
+import { handleDb, pluginDb, summaryDb } from '~/lib/idb'
 import { KEYS } from '~/lib/persist'
 import { intensityBand } from '~/lib/scriptIntensity'
+import { createSteadyClock } from '~/lib/steadyClock'
+import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
+import { motionFilters } from '~/plugins/filters'
+import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
+import { accessOf, addedPermissions, allows, permissionError, readManifest } from '~/plugins/manifest'
 import { pluginFetch } from '~/plugins/net'
+import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
+import { chordId, chordOf, parseKbd, reservedBy } from '~/plugins/shortcuts'
 import { DEFAULT_SOURCES, fetchRelease, newer, parseRepo } from '~/plugins/sources'
 import { parseStage, stageOf } from '~/plugins/stage'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
+import { useDeviceStore } from '~/stores/deviceStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -30,10 +43,15 @@ import { useUiStore } from '~/stores/uiStore'
  * Plugins: zips with a manifest and one ES module, installed from Settings →
  * Plugins and kept in IndexedDB. A switched-on plugin is imported from a
  * blob: URL and handed a PluginContext (src/plugins/types.ts). There is no
- * sandbox; the install screen says so.
+ * sandbox; the install screen says so, and lists what the plugin asks to do
+ * (src/plugins/manifest.ts).
+ *
+ * In dev mode a plugin comes from a folder instead (Load from folder): it is
+ * read into memory, never stored as a package, and reloaded when a file in
+ * the folder changes.
  */
 
-interface StoredPackage {
+export interface StoredPackage {
   manifest: PluginManifest
   files: Record<string, Blob>
   installedAt: number
@@ -65,8 +83,44 @@ export interface PluginInfo {
   panel: PanelDef | null
   /** Its page on the main stage. */
   page: PageDef | null
+  /** Its layer over the video. */
+  overlay: OverlayDef | null
+  /** Its commands in the palette. */
+  commands: PluginCommand[]
   values: Record<string, unknown>
+  /**
+   * Loaded from a folder (dev mode): where from, and why the last reload
+   * failed (the version before keeps running). Null for an installed plugin.
+   */
+  dev: { label: string, error: string | null } | null
 }
+
+export interface PluginCommand {
+  id: string
+  title: string
+  hint?: string
+  icon?: string
+  kbd: Chord | null
+  run: () => void | Promise<void>
+}
+
+/** A package waiting for the user to say yes: a first install, or an update that asks for more. */
+export interface PendingInstall {
+  manifest: PluginManifest
+  /** The installed version it would replace. */
+  was: PluginManifest | null
+  access: Access
+  /** What it asks for that the installed version didn't have (everything, on a first install). */
+  added: PluginPermission[]
+}
+
+/** Where a dev plugin is read from. */
+type DevSource = { kind: 'desktop', folder: string } | { kind: 'browser', handle: FileSystemDirectoryHandle }
+
+/** Browser dev folders, kept so they come back after a reload (as long as the browser still lets them be read). */
+const DEV_HANDLES_KEY = 'plugins.dev'
+/** How often a browser dev folder is looked at for changes. */
+const DEV_POLL_MS = 1000
 
 interface Running {
   urls: string[]
@@ -75,7 +129,6 @@ interface Running {
   settingsListeners: Set<(v: Record<string, unknown>) => void>
 }
 
-const ID_RE = /^[a-z0-9][a-z0-9-]{0,47}$/
 const MIME: Record<string, string> = {
   js: 'text/javascript',
   mjs: 'text/javascript',
@@ -100,47 +153,31 @@ const mimeOf = (path: string) => MIME[path.split('.').pop()?.toLowerCase() ?? ''
 /** Read a plugin zip into a package, or throw with a message fit for the user. */
 export async function readPackage(file: Blob | ArrayBuffer | Uint8Array): Promise<StoredPackage> {
   const bytes = file instanceof Uint8Array || file instanceof ArrayBuffer ? file : await file.arrayBuffer()
-  const entries = stripCommonRoot(await unzip(bytes))
+  return packageFrom(stripCommonRoot(await unzip(bytes)), 'the zip')
+}
+
+/** A package from its files (a zip's, or a dev folder's), or throw saying what is wrong. */
+export function packageFrom(entries: { path: string, data: Uint8Array }[], where: string): StoredPackage {
   const manifestEntry = entries.find(e => e.path === 'manifest.json')
   if (!manifestEntry)
-    throw new Error('No manifest.json in the zip')
-  let manifest: PluginManifest
+    throw new Error(`No manifest.json in ${where}`)
+  let raw: unknown
   try {
-    manifest = JSON.parse(new TextDecoder().decode(manifestEntry.data))
+    raw = JSON.parse(new TextDecoder().decode(manifestEntry.data))
   }
   catch {
     throw new Error('manifest.json is not valid JSON')
   }
-  if (!manifest || typeof manifest !== 'object')
-    throw new Error('manifest.json is not an object')
-  if (typeof manifest.id !== 'string' || !ID_RE.test(manifest.id))
-    throw new Error('manifest.json: "id" must be lower-case letters, digits and dashes')
-  if (typeof manifest.name !== 'string' || !manifest.name.trim())
-    throw new Error('manifest.json: "name" is missing')
-  if (typeof manifest.version !== 'string' || !manifest.version.trim())
-    throw new Error('manifest.json: "version" is missing')
-  const main = manifest.main ?? 'index.js'
-  if (!entries.some(e => e.path === main))
-    throw new Error(`${main} (the plugin's code) is not in the zip`)
+  const manifest = readManifest(raw)
+  if (!entries.some(e => e.path === manifest.main))
+    throw new Error(`${manifest.main} (the plugin's code) is not in ${where}`)
   const files: Record<string, Blob> = {}
   let size = 0
   for (const e of entries) {
     files[e.path] = new Blob([e.data as BlobPart], { type: mimeOf(e.path) })
     size += e.data.byteLength
   }
-  return {
-    manifest: {
-      id: manifest.id,
-      name: manifest.name.trim(),
-      version: manifest.version.trim(),
-      description: typeof manifest.description === 'string' ? manifest.description : undefined,
-      author: typeof manifest.author === 'string' ? manifest.author : undefined,
-      main,
-    },
-    files,
-    installedAt: Date.now(),
-    size,
-  }
+  return { manifest, files, installedAt: Date.now(), size }
 }
 
 function defaults(fields: SettingField[] | null): Record<string, unknown> {
@@ -165,8 +202,19 @@ export const usePluginStore = defineStore('plugins', () => {
   const running = new Map<string, Running>()
   /** The plugin holding the stroke generator, and what it was before. */
   const motionHolder = shallowRef<{ id: string, release: () => void } | null>(null)
+  /** Each plugin's motion filter as it set it, so an old remover can't take out a newer one. */
+  const filterOf = new Map<string, MotionFilter>()
+  /** Dev plugins' packages, read from their folders; never stored. */
+  const devPackages = new Map<string, StoredPackage>()
 
   const find = (id: string) => plugins.value.find(p => p.manifest.id === id)
+
+  // Filters chain in the order the plugins are listed.
+  watch(() => plugins.value.map(p => p.manifest.id), ids => motionFilters.setOrder(ids), { immediate: true })
+
+  function sortPlugins() {
+    plugins.value.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name))
+  }
 
   async function start() {
     if (ready.value)
@@ -185,7 +233,10 @@ export const usePluginStore = defineStore('plugins', () => {
         continue
       plugins.value.push(await infoFor(pkg))
     }
-    plugins.value.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name))
+    sortPlugins()
+    // Folders loaded last time come back before anything starts, so a dev
+    // copy stands in for an installed one from the outset.
+    await restoreDev()
     for (const p of plugins.value) {
       if (p.enabled)
         await activate(p.manifest.id)
@@ -208,30 +259,75 @@ export const usePluginStore = defineStore('plugins', () => {
       fields: null,
       panel: null,
       page: null,
+      overlay: null,
+      commands: [],
       values,
+      dev: null,
     }
   }
 
-  /** Install (or update) from a zip. Returns the plugin's name. */
-  async function install(file: Blob | Uint8Array, source?: string): Promise<PluginInfo> {
-    const pkg = await readPackage(file)
-    const id = pkg.manifest.id
-    const was = find(id)
-    // Remember where it came from: a source keeps updating it; a manual zip of
-    // the same plugin keeps the source it had.
-    pkg.source = source ?? (was?.source || undefined)
-    if (was)
-      deactivate(id)
-    await pluginDb.set(`pkg:${id}`, pkg)
-    const info = await infoFor(pkg)
+  /** Put an info in the list, in place of the one with its id if there is one. */
+  function upsert(info: PluginInfo) {
+    const was = find(info.manifest.id)
     if (was) {
-      info.enabled = was.enabled
       plugins.value.splice(plugins.value.indexOf(was), 1, info)
     }
     else {
       plugins.value.push(info)
-      plugins.value.sort((a, b) => a.manifest.name.localeCompare(b.manifest.name))
+      sortPlugins()
     }
+  }
+
+  // ─── Install, with the user's yes ─────────────────────────────────────────
+
+  /** What waits for the user's yes, shown by the install dialog. */
+  const pendingInstall = shallowRef<PendingInstall | null>(null)
+  let answerPending: ((ok: boolean) => void) | null = null
+
+  /** The install dialog's answer. */
+  function answerInstall(ok: boolean) {
+    const answer = answerPending
+    answerPending = null
+    pendingInstall.value = null
+    answer?.(ok)
+  }
+
+  /**
+   * Install (or update) from a zip. A first install, and an update that asks
+   * for more than the installed version had, wait for the user to agree in
+   * the install dialog; null if they don't.
+   */
+  async function install(file: Blob | Uint8Array, source?: string): Promise<PluginInfo | null> {
+    const pkg = await readPackage(file)
+    const id = pkg.manifest.id
+    const was = find(id)
+    if (was?.dev)
+      throw new Error(`${was.manifest.name} is loaded from a folder right now. Remove that first.`)
+    const access = accessOf(pkg.manifest)
+    const added = addedPermissions(was ? accessOf(was.manifest) : null, access)
+    if (!was || added.length) {
+      // A dialog already up is answered no: one question at a time.
+      answerInstall(false)
+      const ok = await new Promise<boolean>((resolve) => {
+        answerPending = resolve
+        pendingInstall.value = { manifest: pkg.manifest, was: was?.manifest ?? null, access, added }
+      })
+      if (!ok)
+        return null
+    }
+    const now = find(id)
+    if (now?.dev)
+      throw new Error(`${now.manifest.name} is loaded from a folder right now. Remove that first.`)
+    // Remember where it came from: a source keeps updating it; a manual zip of
+    // the same plugin keeps the source it had.
+    pkg.source = source ?? (now?.source || undefined)
+    if (now)
+      deactivate(id)
+    await pluginDb.set(`pkg:${id}`, pkg)
+    const info = await infoFor(pkg)
+    if (now)
+      info.enabled = now.enabled
+    upsert(info)
     if (info.enabled)
       await activate(id)
     return find(id)!
@@ -284,7 +380,8 @@ export const usePluginStore = defineStore('plugins', () => {
     const p = find(id)
     if (!p || running.has(id))
       return
-    const pkg = await pluginDb.get<StoredPackage>(`pkg:${id}`)
+    // A dev copy is in memory; an installed one in the database.
+    const pkg = devPackages.get(id) ?? await pluginDb.get<StoredPackage>(`pkg:${id}`)
     if (!pkg) {
       p.status = 'error'
       p.error = 'Package missing; install it again'
@@ -303,7 +400,7 @@ export const usePluginStore = defineStore('plugins', () => {
       if (typeof activateFn !== 'function')
         throw new Error('The module has no default export (activate)')
       const out = await activateFn(makeContext(p, r, urls))
-      if (!running.has(id))
+      if (running.get(id) !== r)
         return
       if (typeof out === 'function')
         r.deactivate = out
@@ -313,13 +410,20 @@ export const usePluginStore = defineStore('plugins', () => {
     }
     catch (err) {
       console.error(`[plugin ${id}] failed to start`, err)
-      deactivate(id)
+      if (running.get(id) !== r)
+        return
+      // A dev plugin keeps its page's place on the stage: the next save may well fix it.
+      deactivate(id, { keepStage: !!p.dev })
       p.status = 'error'
       p.error = err instanceof Error ? err.message : String(err)
     }
   }
 
-  function deactivate(id: string) {
+  /**
+   * Switch a plugin off and undo what it set up. `keepStage` leaves its page
+   * on the stage, for a reload that will put it back in a moment.
+   */
+  function deactivate(id: string, opts: { keepStage?: boolean } = {}) {
     const r = running.get(id)
     const p = find(id)
     if (p) {
@@ -327,10 +431,12 @@ export const usePluginStore = defineStore('plugins', () => {
       p.fields = null
       p.panel = null
       p.page = null
+      p.overlay = null
+      p.commands = []
     }
     // Its page can't stay on the stage without it.
     const ui = useUiStore()
-    if (ui.view === 'plugin' && ui.pluginView === id)
+    if (!opts.keepStage && ui.view === 'plugin' && ui.pluginView === id)
       ui.openView(ui.previousView === 'plugin' ? 'player' : ui.previousView)
     if (!r)
       return
@@ -353,6 +459,365 @@ export const usePluginStore = defineStore('plugins', () => {
       URL.revokeObjectURL(u)
   }
 
+  // ─── Commands and their shortcuts ─────────────────────────────────────────
+
+  /** The plugin (by name) whose command has this chord, other than `except`. */
+  function shortcutOwner(c: Chord, except: { plugin: string, command: string }): string | null {
+    const want = chordId(c)
+    for (const p of plugins.value) {
+      for (const cmd of p.commands) {
+        if (cmd.kbd && chordId(cmd.kbd) === want && !(p.manifest.id === except.plugin && cmd.id === except.command))
+          return p.manifest.name
+      }
+    }
+    return null
+  }
+
+  /** Run a plugin's command, saying so if it fails. */
+  function runCommand(p: PluginInfo, cmd: PluginCommand) {
+    const fail = (err: unknown) => {
+      console.error(`[plugin ${p.manifest.id}] command ${cmd.id} failed`, err)
+      toast.error(`${cmd.title} failed`, { detail: `${p.manifest.name}: ${err instanceof Error ? err.message : String(err)}` })
+    }
+    try {
+      const out = cmd.run()
+      if (out instanceof Promise)
+        out.catch(fail)
+    }
+    catch (err) {
+      fail(err)
+    }
+  }
+
+  /** A key press that is a plugin's shortcut runs its command; true if it was one. */
+  function runShortcut(e: KeyboardEvent): boolean {
+    const want = chordId(chordOf(e))
+    for (const p of plugins.value) {
+      if (p.status !== 'on')
+        continue
+      const cmd = p.commands.find(c => c.kbd && chordId(c.kbd) === want)
+      if (cmd) {
+        // Held down, the key repeats: once is enough.
+        if (!e.repeat)
+          runCommand(p, cmd)
+        return true
+      }
+    }
+    return false
+  }
+
+  // ─── Video fingerprints ───────────────────────────────────────────────────
+
+  const fingerprints = new Map<string, Promise<string | null>>()
+  /** A file's fingerprint, worked out once per file version and kept in the database. */
+  function fingerprintFile(file: File): Promise<string | null> {
+    const key = `fp:${file.name}|${file.size}|${file.lastModified}`
+    let hit = fingerprints.get(key)
+    if (!hit) {
+      hit = (async () => {
+        try {
+          const kept = await pluginDb.get<string>(key)
+          if (kept)
+            return kept
+        }
+        catch {}
+        try {
+          const fp = await fingerprintOf(file)
+          void pluginDb.set(key, fp).catch(() => {})
+          return fp
+        }
+        catch (err) {
+          console.warn('[plugins] could not fingerprint', file.name, err)
+          return null
+        }
+      })()
+      fingerprints.set(key, hit)
+    }
+    return hit
+  }
+
+  // ─── Dev mode: plugins loaded from a folder ───────────────────────────────
+
+  const devSources = new Map<string, DevSource>()
+  /** Browser folders: what they held when last read, to see a save. */
+  const devSignatures = new Map<string, string>()
+  /** Folders remembered from before that didn't load, with why; they can be tried again or forgotten. */
+  const devFailed = ref<{ key: string, label: string, error: string }[]>([])
+  const devFailedSources = new Map<string, DevSource>()
+  let devFailedSeq = 0
+  const reloading = new Set<string>()
+
+  const devLabel = (src: DevSource) => (src.kind === 'desktop' ? src.folder : src.handle.name)
+
+  async function readDev(src: DevSource): Promise<{ pkg: StoredPackage, signature: string | null }> {
+    if (src.kind === 'desktop') {
+      const res = await desktop!.plugins!.readDevFolder(src.folder)
+      if (res.error !== undefined)
+        throw new Error(res.error)
+      return { pkg: packageFrom(res.files, 'the folder'), signature: null }
+    }
+    const { files, signature } = await readFolder(src.handle)
+    return { pkg: packageFrom(files, 'the folder'), signature }
+  }
+
+  async function sameSource(a: DevSource, b: DevSource): Promise<boolean> {
+    if (a.kind === 'desktop' && b.kind === 'desktop')
+      return a.folder === b.folder
+    if (a.kind === 'browser' && b.kind === 'browser')
+      return a.handle.isSameEntry(b.handle)
+    return false
+  }
+
+  /** Read a folder's plugin and put it in the list, in place of an installed one with its id. */
+  async function loadDev(src: DevSource, opts: { enable: boolean, activateNow: boolean }): Promise<PluginInfo> {
+    const { pkg, signature } = await readDev(src)
+    const id = pkg.manifest.id
+    const other = devSources.get(id)
+    if (other && !(await sameSource(other, src)))
+      throw new Error(`Another folder already has the plugin "${id}" loaded`)
+    deactivate(id, { keepStage: true })
+    devSources.set(id, src)
+    devPackages.set(id, pkg)
+    if (signature !== null)
+      devSignatures.set(id, signature)
+    const info = await infoFor(pkg)
+    info.dev = { label: devLabel(src), error: null }
+    if (opts.enable && !info.enabled) {
+      info.enabled = true
+      enabledIds.value = [...new Set([...enabledIds.value, id])]
+    }
+    upsert(info)
+    if (src.kind === 'browser')
+      pollDev()
+    if (info.enabled && opts.activateNow)
+      await activate(id)
+    return find(id)!
+  }
+
+  /**
+   * Settings → Plugins → Load from folder. In the desktop app the main
+   * process reads and watches the folder; in a browser it is picked with the
+   * File System Access API and looked at once a second. Null if cancelled.
+   */
+  async function loadFromFolder(): Promise<PluginInfo | null> {
+    if (desktop?.plugins) {
+      const folder = await desktop.plugins.pickDevFolder()
+      if (!folder)
+        return null
+      try {
+        return await loadDev({ kind: 'desktop', folder }, { enable: true, activateNow: true })
+      }
+      catch (err) {
+        // Not a plugin (or not one that reads): don't bring it back next time.
+        void desktop.plugins.forgetDevFolder(folder)
+        throw err
+      }
+    }
+    if (!('showDirectoryPicker' in window))
+      throw new Error('This browser can\'t open folders. Use Chrome or Edge, or the desktop app.')
+    let handle: FileSystemDirectoryHandle
+    try {
+      handle = await (window as any).showDirectoryPicker({ id: 'playhound-plugin-dev', mode: 'read' })
+    }
+    catch {
+      return null
+    }
+    const info = await loadDev({ kind: 'browser', handle }, { enable: true, activateNow: true })
+    await rememberHandle(handle)
+    return info
+  }
+
+  async function rememberHandle(handle: FileSystemDirectoryHandle) {
+    try {
+      const list = (await handleDb.getList(DEV_HANDLES_KEY)) ?? []
+      for (const h of list) {
+        if (await h.isSameEntry(handle))
+          return
+      }
+      await handleDb.setList(DEV_HANDLES_KEY, [...list, handle])
+    }
+    catch {}
+  }
+
+  async function forgetSource(src: DevSource) {
+    if (src.kind === 'desktop') {
+      await desktop?.plugins?.forgetDevFolder(src.folder)
+      return
+    }
+    try {
+      const list = (await handleDb.getList(DEV_HANDLES_KEY)) ?? []
+      const keep: FileSystemDirectoryHandle[] = []
+      for (const h of list) {
+        if (!(await h.isSameEntry(src.handle)))
+          keep.push(h)
+      }
+      await handleDb.setList(DEV_HANDLES_KEY, keep)
+    }
+    catch {}
+  }
+
+  /** At startup: the folders loaded last time, without asking for anything. */
+  async function restoreDev() {
+    const sources: DevSource[] = []
+    try {
+      if (desktop?.plugins) {
+        for (const folder of await desktop.plugins.devFolders())
+          sources.push({ kind: 'desktop', folder })
+      }
+      else {
+        for (const handle of (await handleDb.getList(DEV_HANDLES_KEY)) ?? [])
+          sources.push({ kind: 'browser', handle })
+      }
+    }
+    catch {}
+    for (const src of sources) {
+      try {
+        // A browser hands a folder back only after a click, unless it was told to keep it.
+        if (src.kind === 'browser' && !(await canRead(src.handle)))
+          throw new Error('playhound needs your permission to read it again')
+        await loadDev(src, { enable: false, activateNow: false })
+      }
+      catch (err) {
+        const key = `dev${++devFailedSeq}`
+        devFailedSources.set(key, src)
+        devFailed.value = [...devFailed.value, { key, label: devLabel(src), error: err instanceof Error ? err.message : String(err) }]
+      }
+    }
+  }
+
+  /** Try a remembered folder again (from a click, so a browser can ask for permission). */
+  async function retryDev(key: string): Promise<PluginInfo> {
+    const src = devFailedSources.get(key)
+    if (!src)
+      throw new Error('That folder is gone from the list')
+    if (src.kind === 'browser' && !(await canRead(src.handle, true)))
+      throw new Error('playhound wasn\'t allowed to read the folder')
+    const info = await loadDev(src, { enable: false, activateNow: true })
+    devFailedSources.delete(key)
+    devFailed.value = devFailed.value.filter(f => f.key !== key)
+    return info
+  }
+
+  async function forgetFailedDev(key: string) {
+    const src = devFailedSources.get(key)
+    devFailedSources.delete(key)
+    devFailed.value = devFailed.value.filter(f => f.key !== key)
+    if (src)
+      await forgetSource(src)
+  }
+
+  /**
+   * Read a dev plugin's folder again and restart it. If the folder doesn't
+   * make a plugin right now (a build half written, a typo in the manifest),
+   * the version running stays and the card says why.
+   */
+  async function reloadDev(id: string) {
+    const src = devSources.get(id)
+    const p = find(id)
+    if (!src || !p?.dev || reloading.has(id))
+      return
+    reloading.add(id)
+    try {
+      let next: { pkg: StoredPackage, signature: string | null }
+      try {
+        next = await readDev(src)
+        if (next.pkg.manifest.id !== id)
+          throw new Error(`The id in manifest.json changed to "${next.pkg.manifest.id}": remove this one and load the folder again`)
+      }
+      catch (err) {
+        p.dev = { ...p.dev, error: err instanceof Error ? err.message : String(err) }
+        return
+      }
+      deactivate(id, { keepStage: true })
+      devPackages.set(id, next.pkg)
+      if (next.signature !== null)
+        devSignatures.set(id, next.signature)
+      p.manifest = next.pkg.manifest
+      p.size = next.pkg.size
+      p.dev = { ...p.dev, error: null }
+      if (p.enabled)
+        await activate(id)
+    }
+    finally {
+      reloading.delete(id)
+    }
+  }
+
+  /** Take a dev plugin out: an installed copy with the same id comes back. Its settings and data stay. */
+  async function unloadDev(id: string) {
+    const src = devSources.get(id)
+    deactivate(id)
+    devSources.delete(id)
+    devPackages.delete(id)
+    devSignatures.delete(id)
+    if (src)
+      await forgetSource(src)
+    const installed = await pluginDb.get<StoredPackage>(`pkg:${id}`)
+    if (installed) {
+      const info = await infoFor(installed)
+      upsert(info)
+      if (info.enabled)
+        await activate(id)
+    }
+    else {
+      plugins.value = plugins.value.filter(p => p.manifest.id !== id)
+      if (activePanel.value === id)
+        activePanel.value = null
+    }
+  }
+
+  // Desktop: the main process watches the folders and says when one changed.
+  desktop?.plugins?.onDevChange((folder) => {
+    for (const [id, src] of devSources) {
+      if (src.kind === 'desktop' && src.folder === folder)
+        void reloadDev(id)
+    }
+  })
+
+  // Browser: no watching, so each folder is looked at once a second while any is loaded.
+  let pollTimer: ReturnType<typeof setInterval> | null = null
+  let polling = false
+  function pollDev() {
+    if (pollTimer)
+      return
+    pollTimer = setInterval(async () => {
+      const browserIds = [...devSources].filter(([, s]) => s.kind === 'browser')
+      if (!browserIds.length) {
+        clearInterval(pollTimer!)
+        pollTimer = null
+        return
+      }
+      if (polling)
+        return
+      polling = true
+      try {
+        for (const [id, src] of browserIds) {
+          if (src.kind !== 'browser' || reloading.has(id))
+            continue
+          let sig: string
+          try {
+            sig = await folderSignature(src.handle)
+          }
+          catch (err) {
+            const p = find(id)
+            if (p?.dev)
+              p.dev = { ...p.dev, error: `Can't read the folder: ${err instanceof Error ? err.message : String(err)}` }
+            continue
+          }
+          if (sig !== devSignatures.get(id)) {
+            // Noted first, so a folder that doesn't make a plugin right now
+            // isn't read again every second until the next save.
+            devSignatures.set(id, sig)
+            await reloadDev(id)
+          }
+        }
+      }
+      finally {
+        polling = false
+      }
+    }, DEV_POLL_MS)
+  }
+
   // ─── The context ──────────────────────────────────────────────────────────
 
   function makeContext(info: PluginInfo, r: Running, urls: Map<string, string>): PluginContext {
@@ -373,6 +838,15 @@ export const usePluginStore = defineStore('plugins', () => {
           r.cleanups.splice(i, 1)
         fn()
       }
+    }
+
+    // What it asked for. A call outside that throws, naming the permission
+    // it would need, so the author sees at once what to add to the manifest.
+    const access = accessOf(info.manifest)
+    const gate = <A extends unknown[], R>(p: PluginPermission, call: string, fn: (...a: A) => R) => (...a: A): R => {
+      if (!allows(access, p))
+        throw permissionError(manifestName, p, call)
+      return fn(...a)
     }
 
     const snapshot = (): PlayerSnapshot => ({
@@ -543,8 +1017,119 @@ export const usePluginStore = defineStore('plugins', () => {
       }
     }
 
+    // ─── Scripts ───────────────────────────────────────────────────────────
+    const device = useDeviceStore()
+    const videoName = () => (player.videoPath ? player.videoPath.split(/[\\/]/).pop() ?? player.videoPath : null)
+
+    function loadScript(s: { actions: { at: number, pos: number }[], axis?: string, name?: string }): boolean {
+      if (!s || typeof s !== 'object')
+        throw new TypeError('scripts.load takes { actions, axis?, name? }')
+      const key = axisKeyFor(s.axis)
+      if (!key)
+        throw new Error(`scripts.load: there is no axis "${String(s.axis)}" (try L0, R0, V0, or twist, roll, vib…)`)
+      if (!player.videoPath)
+        return false
+      const actions = cleanActions(s.actions)
+      if (!actions.length)
+        return false
+      const name = typeof s.name === 'string' && s.name.trim() ? s.name.trim() : `${manifestName}.funscript`
+      // Through the same parser as a file, so it is shaped exactly like one.
+      const axis = parseFunscriptContent(JSON.stringify({ version: '1.0', actions }), name, '', key).axes[0]
+      const file: ScriptFile = {
+        path: `plugin:${id}/${name}`,
+        filename: name,
+        channel: axis.channel,
+        axisKey: axis.axisKey,
+        label: axis.label,
+        enabled: true,
+        isAlt: false,
+        altName: '',
+        offsetMs: 0,
+        parsed: axis,
+      }
+      scripts.setScripts([...scripts.scripts.filter(x => x.channel !== axis.channel), file])
+      // As a loaded file does: the axis it drives is switched on.
+      const cfg = device.axisConfigs[axis.channel]
+      if (cfg)
+        cfg.enabled = true
+      return true
+    }
+
+    // ─── Motion filter ─────────────────────────────────────────────────────
+    function setFilter(fn: MotionFilter): () => void {
+      if (typeof fn !== 'function')
+        throw new TypeError('motion.filter takes a function (pos, { axis, t }) => pos')
+      motionFilters.set(id, fn)
+      filterOf.set(id, fn)
+      // A remover for this filter only: one set after it stays.
+      return later(() => {
+        if (filterOf.get(id) === fn) {
+          filterOf.delete(id)
+          motionFilters.remove(id)
+        }
+      })
+    }
+
+    // ─── Clock and fingerprints ────────────────────────────────────────────
+    const steady = createSteadyClock()
+    function clockNow(): number {
+      const v = document.querySelector<HTMLVideoElement>('video[data-ph-main]')
+      if (!v || !player.videoUrl)
+        return player.currentTime
+      const running = !v.paused && !v.seeking && v.readyState >= 3
+      return steady.read(v.currentTime * 1000, performance.now(), v.playbackRate, running) / 1000
+    }
+
+    async function fingerprint(videoId: string): Promise<string | null> {
+      const v = library.videos.find(x => x.name === videoId)
+      return v ? fingerprintFile(v.file) : null
+    }
+
+    async function playFingerprint(fp: string): Promise<boolean> {
+      const size = fingerprintSize(fp)
+      if (size === null)
+        return false
+      // Only files of the same size can match, and those are few: no need to read the rest.
+      for (const v of library.videos.filter(x => x.file.size === size)) {
+        if (await fingerprintFile(v.file) === fp) {
+          await playback.play(v, [v], manifestName)
+          return true
+        }
+      }
+      return false
+    }
+
+    // ─── Commands ──────────────────────────────────────────────────────────
+    function registerCommand(def: Parameters<PluginContext['commands']['register']>[0]): boolean {
+      if (!def || typeof def.id !== 'string' || !def.id || typeof def.title !== 'string' || typeof def.run !== 'function')
+        throw new TypeError('commands.register takes { id, title, run, hint?, icon?, kbd? }')
+      let kbd: Chord | null = null
+      let ok = true
+      if (def.kbd !== undefined && def.kbd !== null && def.kbd !== '') {
+        const c = parseKbd(def.kbd)
+        const taken = c && (reservedBy(c) ?? shortcutOwner(c, { plugin: id, command: def.id }))
+        if (!c)
+          console.warn(`[plugin ${id}] "${String(def.kbd)}" is not a shortcut a plugin can have (a letter, digit or F1–F12, with Ctrl, Alt or Shift); "${def.title}" has none`)
+        else if (taken)
+          console.warn(`[plugin ${id}] ${String(def.kbd)} is already taken by ${taken}; "${def.title}" has no shortcut`)
+        else
+          kbd = c
+        ok = !!kbd
+      }
+      const cmd: PluginCommand = {
+        id: def.id,
+        title: def.title,
+        hint: typeof def.hint === 'string' ? def.hint : undefined,
+        icon: typeof def.icon === 'string' ? def.icon : undefined,
+        kbd,
+        run: def.run,
+      }
+      self().commands = markRaw([...self().commands.filter(c => c.id !== def.id), cmd])
+      return ok
+    }
+
     return Object.freeze({
-      manifest: Object.freeze({ ...info.manifest }),
+      manifest: Object.freeze({ ...info.manifest, ...(info.manifest.permissions ? { permissions: [...info.manifest.permissions] } : {}) }),
       settings: {
         get: <T>(key: string) => ({ ...defaults(self().fields), ...self().values })[key] as T,
         all: () => ({ ...defaults(self().fields), ...self().values }),
@@ -572,15 +1157,15 @@ export const usePluginStore = defineStore('plugins', () => {
           activePanel.value = id
           ui.openInspector('plugins')
         },
-        page(def) {
+        page: gate('stage', 'ui.page', (def: PageDef) => {
           self().page = markRaw({ ...def })
-        },
-        openPage() {
+        }),
+        openPage: gate('stage', 'ui.openPage', () => {
           if (self().page)
             ui.openPluginView(id)
-        },
+        }),
         stage: () => stageOf(ui.view, ui.pluginView),
-        showStage(view) {
+        showStage: gate('stage', 'ui.showStage', (view: Parameters<PluginContext['ui']['showStage']>[0]) => {
           const target = parseStage(view)
           if (!target)
             return false
@@ -593,7 +1178,7 @@ export const usePluginStore = defineStore('plugins', () => {
             ui.openView(target.view)
           }
           return true
-        },
+        }),
         onStageChange(fn) {
           const stop = watch(() => stageOf(ui.view, ui.pluginView), (v) => {
             try {
@@ -605,6 +1190,17 @@ export const usePluginStore = defineStore('plugins', () => {
           })
           return later(stop)
         },
+        overlay: gate('stage', 'ui.overlay', (def: OverlayDef) => {
+          if (!def || typeof def.mount !== 'function')
+            throw new TypeError('ui.overlay takes { mount(el), interactive? }')
+          const mine = markRaw({ mount: def.mount, interactive: !!def.interactive })
+          self().overlay = mine
+          // A remover for this layer only: one set after it stays.
+          return later(() => {
+            if (self().overlay === mine)
+              self().overlay = null
+          })
+        }),
         openSettings() {
           focusSettings.value = id
           ui.settingsSection = 'plugins'
@@ -627,26 +1223,34 @@ export const usePluginStore = defineStore('plugins', () => {
             toast(String(text), o)
         },
       },
-      library: {
-        list: listLibrary,
-        analyse: analyseLibrary,
-        onChange(fn) {
-          const stop = watch(() => library.loadedAt, () => fn())
-          return later(stop)
+      commands: {
+        register: registerCommand,
+        unregister(cid: string) {
+          self().commands = markRaw(self().commands.filter(c => c.id !== cid))
         },
       },
+      library: {
+        list: gate('library', 'library.list', listLibrary),
+        analyse: gate('library', 'library.analyse', analyseLibrary),
+        onChange: gate('library', 'library.onChange', (fn: () => void) => {
+          const stop = watch(() => library.loadedAt, () => fn())
+          return later(stop)
+        }),
+        fingerprint: gate('library', 'library.fingerprint', fingerprint),
+      },
       playback: {
-        async play(videoId: string) {
+        play: gate('playback', 'playback.play', async (videoId: string) => {
           const entry = library.videos.find(v => v.name === videoId)
           if (!entry)
             return false
           // On its own: when it ends, nothing else starts by itself.
           await playback.play(entry, [entry], manifestName)
           return true
-        },
-        pause: () => playback.pause(),
-        resume: () => playback.resume(),
-        onEnded(fn) {
+        }),
+        pause: gate('playback', 'playback.pause', () => playback.pause()),
+        resume: gate('playback', 'playback.resume', () => playback.resume()),
+        playFingerprint: gate('playback', 'playback.playFingerprint', playFingerprint),
+        onEnded: gate('player', 'playback.onEnded', (fn: (id: string | null) => void) => {
           // A video that ran to its end: the playhead reached the duration while playing.
           let wasNearEnd = false
           const stop = watch(() => [player.currentTime, player.isPlaying, player.videoPath] as const, ([t, playing, path], old) => {
@@ -665,21 +1269,48 @@ export const usePluginStore = defineStore('plugins', () => {
             }
           })
           return later(stop)
-        },
+        }),
       },
       player: {
-        state: snapshot,
-        script: scriptNow,
-        frame: (o = {}) => playback.grabFrame(Math.max(64, Math.min(1280, o.maxWidth ?? 512)), Math.max(0.3, Math.min(0.95, o.quality ?? 0.72))),
-        onChange(fn) {
+        state: gate('player', 'player.state', snapshot),
+        script: gate('player', 'player.script', scriptNow),
+        frame: gate('player', 'player.frame', (o: { maxWidth?: number, quality?: number } = {}) => playback.grabFrame(Math.max(64, Math.min(1280, o.maxWidth ?? 512)), Math.max(0.3, Math.min(0.95, o.quality ?? 0.72)))),
+        onChange: gate('player', 'player.onChange', (fn: (s: PlayerSnapshot) => void) => {
           // What plays and whether it plays; not every tick of the clock.
           const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts], () => fn(snapshot()))
           return later(stop)
-        },
+        }),
+        clock: gate('player', 'player.clock', clockNow),
+        seek: gate('playback', 'player.seek', (t: number) => {
+          if (!player.videoUrl || typeof t !== 'number' || !Number.isFinite(t))
+            return false
+          playback.seek(t)
+          return true
+        }),
+        setRate: gate('playback', 'player.setRate', (rate: number) => {
+          if (typeof rate === 'number' && Number.isFinite(rate))
+            playback.setSpeed(rate)
+        }),
+      },
+      scripts: {
+        current: gate('scripts', 'scripts.current', () => snapshotOf(scripts.scripts, videoName())),
+        load: gate('scripts', 'scripts.load', loadScript),
+        onChange: gate('scripts', 'scripts.onChange', (fn: (s: ReturnType<typeof snapshotOf>) => void) => {
+          const stop = watch(() => scripts.scripts.map(s => [s.filename, s.channel, s.enabled, s.offsetMs, s.parsed.actions]), () => {
+            try {
+              fn(snapshotOf(scripts.scripts, videoName()))
+            }
+            catch (err) {
+              console.error(`[plugin ${id}] scripts.onChange failed`, err)
+            }
+          })
+          return later(stop)
+        }),
       },
       motion: {
-        take: takeMotion,
+        take: gate('device', 'motion.take', takeMotion),
         readout,
+        filter: gate('device', 'motion.filter', setFilter),
       },
       safety: {
         panicked: () => safety.panicked,
@@ -691,7 +1322,7 @@ export const usePluginStore = defineStore('plugins', () => {
           return later(stop)
         },
       },
-      net: { fetch: pluginFetch },
+      net: { fetch: gate('network', 'net.fetch', pluginFetch) },
       asset: (path: string) => urls.get(path.replace(/^\.?\//, '')) ?? null,
       // eslint-disable-next-line no-console
       log: (...args: unknown[]) => console.log(`[plugin ${id}]`, ...args),
@@ -772,8 +1403,8 @@ export const usePluginStore = defineStore('plugins', () => {
     delete sources.value[repo]
   }
 
-  /** Download a source's latest release and install it (or update the installed one). */
-  async function installFromSource(repo: string): Promise<PluginInfo> {
+  /** Download a source's latest release and install it (or update the installed one); null if the user said no. */
+  async function installFromSource(repo: string): Promise<PluginInfo | null> {
     const s = sourceFor(repo)
     const rel = s.release ?? await fetchRelease(pluginFetch, repo)
     s.release = rel
@@ -810,5 +1441,47 @@ export const usePluginStore = defineStore('plugins', () => {
   /** Plugins that are on and have a stage page, in the order they're listed. */
   const pages = computed(() => plugins.value.filter(p => p.page && p.status === 'on'))
 
-  return { plugins, panels, shownPanel, pages, activePanel, focusSettings, ready, loaded, start, install, remove, setEnabled, setValue, motionHolder, sourceList, sources, checkSources, addSource, removeSource, installFromSource, installedFrom, updateFor, checkDaily }
+  /** Plugins that are on and draw over the video. */
+  const overlays = computed(() => plugins.value.filter(p => p.overlay && p.status === 'on'))
+
+  /** Plugins that are on and have commands, with them. */
+  const commandGroups = computed(() => plugins.value.filter(p => p.status === 'on' && p.commands.length))
+
+  return {
+    plugins,
+    panels,
+    shownPanel,
+    pages,
+    overlays,
+    commandGroups,
+    activePanel,
+    focusSettings,
+    ready,
+    loaded,
+    start,
+    install,
+    pendingInstall,
+    answerInstall,
+    remove,
+    setEnabled,
+    setValue,
+    motionHolder,
+    runCommand,
+    runShortcut,
+    loadFromFolder,
+    reloadDev,
+    unloadDev,
+    devFailed,
+    retryDev,
+    forgetFailedDev,
+    sourceList,
+    sources,
+    checkSources,
+    addSource,
+    removeSource,
+    installFromSource,
+    installedFrom,
+    updateFor,
+    checkDaily,
+  }
 })

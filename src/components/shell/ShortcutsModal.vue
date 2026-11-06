@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { HotkeyGroup } from '~/lib/hotkeys'
 import { computed, ref, watch } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
@@ -6,6 +7,8 @@ import UiKbd from '~/components/ui/UiKbd.vue'
 import UiModal from '~/components/ui/UiModal.vue'
 import { HOTKEY_GROUPS } from '~/lib/hotkeys'
 import { keyLabel, MOD_KEY } from '~/lib/platform'
+import { kbdKeys } from '~/plugins/shortcuts'
+import { usePluginStore } from '~/stores/pluginStore'
 import { useUiStore } from '~/stores/uiStore'
 
 /**
@@ -40,12 +43,21 @@ function parse(keys: string): Part[] {
     .map((t, i): Part => (i % 2 ? { kind: 'sep', text: t } : { kind: 'key', text: t.trim() }))
 }
 
+/** Plugins' shortcuts, one group per plugin, after playhound's own. */
+const pluginStore = usePluginStore()
+const pluginGroups = computed<HotkeyGroup[]>(() => pluginStore.commandGroups
+  .map(p => ({
+    title: p.manifest.name,
+    keys: p.commands.filter(c => c.kbd).map(c => ({ keys: kbdKeys(c.kbd!).join(' + '), label: c.title, owner: 'shell' as const })),
+  }))
+  .filter(g => g.keys.length))
+
 const groups = computed(() => {
   const q = filter.value.trim().toLowerCase()
-  return HOTKEY_GROUPS
+  return [...HOTKEY_GROUPS, ...pluginGroups.value]
     .map(g => ({
       ...g,
-      icon: GROUP_ICON[g.title] ?? 'i-carbon-keyboard',
+      icon: GROUP_ICON[g.title] ?? (HOTKEY_GROUPS.includes(g) ? 'i-carbon-keyboard' : 'i-carbon-application'),
       keys: g.keys
         .filter(k => !q || k.label.toLowerCase().includes(q) || k.keys.toLowerCase().includes(q) || g.title.toLowerCase().includes(q))
         .map(k => ({ ...k, parts: parse(keyLabel(k.keys)) })),

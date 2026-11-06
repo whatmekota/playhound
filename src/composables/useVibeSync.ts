@@ -4,6 +4,7 @@ import { computed, effectScope, ref, watch } from 'vue'
 import { interpolatePosition } from '~/lib/funscriptParser'
 import { clampLatency } from '~/lib/latency'
 import { localSpeed, mapVibe, musicLevel, quantize, shouldSend, smoothLevel, speedToLevel } from '~/lib/vibeMap'
+import { motionFilters } from '~/plugins/filters'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -99,9 +100,11 @@ function setup() {
         const actions = stroke.value?.parsed.actions
         if (t === null || !actions)
           return null
+        // Plugins' motion filters reshape positions, so a toy following the
+        // script's position follows the filtered one; its speed is the script's own.
         return source === 'script-speed'
           ? speedToLevel(localSpeed(actions, t))
-          : interpolatePosition(actions, t)
+          : motionFilters.apply(interpolatePosition(actions, t), 'L0', t)
       }
       case 'music': {
         if (!player.isPlaying)
