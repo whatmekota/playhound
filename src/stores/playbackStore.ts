@@ -23,6 +23,7 @@ import { useLibraryStore } from './libraryStore'
 import { usePlayerStore } from './playerStore'
 import { loadSavedQueue, useQueueStore } from './queueStore'
 import { useScriptStore } from './scriptStore'
+import { useSubtitleStore } from './subtitleStore'
 
 export interface PlayerControls {
   play: () => void
@@ -60,6 +61,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const library = useLibraryStore()
   const scripts = useScriptStore()
   const device = useDeviceStore()
+  const subtitles = useSubtitleStore()
   const director = useAutoDirector()
   const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 
@@ -105,6 +107,8 @@ export const usePlaybackStore = defineStore('playback', () => {
       const libEntry = library.videos.find(v => v.file === file) ?? null
       currentEntry.value = libEntry
       trackSeq.value++
+      // Alongside the scripts, not after: a slow script parse should not hold them up.
+      void subtitles.load(libEntry?.subtitles)
 
       await autoDetectFromFiles(file, scriptMatches)
       // A newer load started while scripts were parsing; let it win.
@@ -239,6 +243,8 @@ export const usePlaybackStore = defineStore('playback', () => {
     player.clearLoop()
     currentEntry.value = null
     currentFile.value = null
+    // A stream has no folder to find subtitles in.
+    subtitles.clear()
     trackSeq.value++
     for (const s of scripts.scripts) {
       if (s.enabled && device.axisConfigs[s.channel])

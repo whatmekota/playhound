@@ -40,6 +40,8 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: ', / .', label: 'Previous / next chapter of the script', owner: 'player' },
       { keys: 'F', label: 'Fullscreen', owner: 'player' },
       { keys: 'O', label: 'Pop out — a small window that stays on top; again to bring it back', owner: 'player' },
+      { keys: 'V', label: 'Subtitles on / off', owner: 'player' },
+      { keys: 'Shift + V', label: 'Next subtitle track', owner: 'player' },
       { keys: 'Double-click left / right', label: 'Seek 10 seconds (keep clicking to skip more)', owner: 'player' },
       { keys: 'Double-click centre', label: 'Fullscreen', owner: 'player' },
       { keys: 'Shift + S', label: 'Shuffle on / off', owner: 'shell', code: 'KeyS', action: 'shuffle' },

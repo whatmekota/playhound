@@ -4,6 +4,7 @@ import { computed, ref } from 'vue'
 import { extOf, renameEntry, sanitizeFilename } from '~/lib/fsRename'
 import { walkDirectory } from '~/lib/fsWalk'
 import { handleDb } from '~/lib/idb'
+import { isSubtitleName, pairSubtitles } from '~/lib/subtitles'
 
 export type PairStatus = 'matched' | 'video-only' | 'script-only'
 
@@ -13,6 +14,8 @@ export interface OrgPair {
   basename: string
   video: FsEntry | null
   scripts: FsEntry[]
+  /** Subtitle files named after the video; renamed along with it. */
+  subtitles: FsEntry[]
   status: PairStatus
 }
 
@@ -21,10 +24,10 @@ const SCRIPT_EXT = /\.funscript$/i
 const HANDLE_KEY = 'organizerDirHandle'
 const LIBRARY_HANDLE_KEY = 'lastDirHandle'
 
-function buildPairs(entries: FsEntry[]): OrgPair[] {
+export function buildPairs(entries: FsEntry[]): OrgPair[] {
   const byDir = new Map<string, FsEntry[]>()
   for (const e of entries) {
-    if (!VIDEO_EXT.test(e.name) && !SCRIPT_EXT.test(e.name))
+    if (!VIDEO_EXT.test(e.name) && !SCRIPT_EXT.test(e.name) && !isSubtitleName(e.name))
       continue
     const list = byDir.get(e.dirRelPath) ?? []
     list.push(e)
@@ -36,6 +39,11 @@ function buildPairs(entries: FsEntry[]): OrgPair[] {
     const videos = list.filter(e => VIDEO_EXT.test(e.name))
     const scripts = list.filter(e => SCRIPT_EXT.test(e.name))
     const usedScripts = new Set<FsEntry>()
+    // Subtitles left without a video are not listed: the organizer is about
+    // videos and scripts, and a stray .srt is not something to fix here.
+    const subsFor = new Map<FsEntry, FsEntry[]>()
+    for (const p of pairSubtitles(videos.map(v => v.name), list.filter(e => isSubtitleName(e.name))))
+      subsFor.set(videos[p.video], [...(subsFor.get(videos[p.video]) ?? []), p.file])
 
     for (const v of videos) {
       const base = v.name.slice(0, v.name.length - extOf(v.name).length).toLowerCase()
@@ -58,6 +66,7 @@ function buildPairs(entries: FsEntry[]): OrgPair[] {
         basename: v.name.slice(0, v.name.length - extOf(v.name).length),
         video: v,
         scripts: matched,
+        subtitles: subsFor.get(v) ?? [],
         status: matched.length ? 'matched' : 'video-only',
       })
     }
@@ -71,6 +80,7 @@ function buildPairs(entries: FsEntry[]): OrgPair[] {
         basename: s.name.slice(0, s.name.length - extOf(s.name).length),
         video: null,
         scripts: [s],
+        subtitles: [],
         status: 'script-only',
       })
     }
@@ -183,7 +193,10 @@ export const useOrganizerStore = defineStore('organizer', () => {
     writable.value = false
   }
 
-  /** Rename a video + all of its matched scripts together, preserving each script's alt-axis suffix. */
+  /**
+   * Rename a video with all of its matched scripts and subtitles, keeping
+   * each script's alt-axis suffix and each subtitle's language tag.
+   */
   async function renamePair(pair: OrgPair, newBasenameRaw: string) {
     const newBasename = sanitizeFilename(newBasenameRaw)
     if (!newBasename || newBasename === pair.basename)
@@ -204,6 +217,12 @@ export const useOrganizerStore = defineStore('organizer', () => {
         const sBaseNoExt = s.name.slice(0, s.name.length - ext.length)
         const suffix = sBaseNoExt.slice(oldBasename.length) // preserves " (Bounce)" etc.
         pair.scripts[i] = await renameEntry(s, newBasename + suffix + ext)
+      }
+      for (let i = 0; i < pair.subtitles.length; i++) {
+        const s = pair.subtitles[i]
+        const ext = extOf(s.name)
+        const tag = s.name.slice(oldBasename.length, s.name.length - ext.length) // ".en", ".eng.forced" or ""
+        pair.subtitles[i] = await renameEntry(s, newBasename + tag + ext)
       }
       pair.basename = newBasename
       pair.key = `${pair.dir}/${newBasename}`

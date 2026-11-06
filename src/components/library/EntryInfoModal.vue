@@ -200,6 +200,15 @@ const listId = `ph-tags-${Math.random().toString(36).slice(2, 8)}`
           </UiBadge>
         </div>
       </div>
+      <div v-if="entry.subtitles?.length" class="px-3 py-2 well flex flex-col gap-1">
+        <div v-for="s in entry.subtitles" :key="s.file.name" class="text-[12px] flex gap-2 items-center">
+          <span class="i-carbon-closed-caption text-fg-faint shrink-0" />
+          <span class="text-fg-muted flex-1 truncate">{{ s.file.name }}</span>
+          <UiBadge v-if="s.name.lang" size="xs">
+            {{ s.label }}
+          </UiBadge>
+        </div>
+      </div>
 
       <!-- Script profile -->
       <Transition name="t-fade" mode="out-in">

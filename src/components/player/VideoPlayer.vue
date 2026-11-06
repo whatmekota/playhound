@@ -17,6 +17,7 @@ import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/ch
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { KEYS } from '~/lib/persist'
 import { requestStrip } from '~/lib/previews'
+import { cueHtml, isSubtitleName } from '~/lib/subtitles'
 import { ensureThumb, prefetchThumbs } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { vrFormat } from '~/lib/vrFormat'
@@ -27,11 +28,13 @@ import { useQueueStore } from '~/stores/queueStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
+import { useSubtitleStore } from '~/stores/subtitleStore'
 import { useUiStore } from '~/stores/uiStore'
 import EdgeBadge from './EdgeBadge.vue'
 import FunscriptTimeline from './FunscriptTimeline.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import SbsViewer from './SbsViewer.vue'
+import SubtitleText from './SubtitleText.vue'
 
 /**
  * The video, and everything drawn over it.
@@ -115,7 +118,7 @@ const heatmap = useLocalStorage(KEYS.timelineHeatmap.key, true)
 /** The end-of-video card, while it counts down. */
 const upNext = ref<{ entry: VideoEntry, directed: boolean, key: number } | null>(null)
 /** In-player menu open in fullscreen (popovers cannot show there). */
-const fsMenu = ref<'speed' | null>(null)
+const fsMenu = ref<'speed' | 'subs' | null>(null)
 
 const title = computed(() => {
   if (playback.currentEntry)
@@ -557,6 +560,84 @@ watch(sessionNotice, (n) => {
     showOsd(n.icon, n.text, { sub: n.sub, level: n.level })
 })
 
+// ─── Subtitles ───────────────────────────────────────────────────────────────
+// The tracks are real <track> elements on the <video>, but kept 'hidden': the
+// browser times the cues and this draws them. Its own drawing takes the style
+// settings, and shows where the video's own rendering would not reach: the
+// pop-out (a canvas copy of the picture) and the VR view (the <video> itself
+// is invisible there).
+const subs = useSubtitleStore()
+const cueText = ref('')
+let cueTrack: TextTrack | null = null
+
+function readCues() {
+  const list = cueTrack?.activeCues
+  cueText.value = list ? Array.from(list, c => (c as VTTCue).text).join('\n') : ''
+}
+
+function syncTracks() {
+  cueTrack?.removeEventListener('cuechange', readCues)
+  cueTrack = null
+  const v = videoEl.value
+  if (v) {
+    for (const el of Array.from(v.querySelectorAll('track'))) {
+      const on = el.dataset.sub === subs.activeId
+      el.track.mode = on ? 'hidden' : 'disabled'
+      if (on)
+        cueTrack = el.track
+    }
+  }
+  cueTrack?.addEventListener('cuechange', readCues)
+  readCues()
+}
+watch([videoEl, () => subs.tracks, () => subs.activeId], syncTracks, { flush: 'post' })
+
+const subHtml = computed(() => (cueText.value ? cueHtml(cueText.value) : ''))
+const subMenu = computed(() => [{ id: null as string | null, label: 'Off' }, ...subs.tracks])
+/** Clear of whichever control bar is drawn over the bottom of the picture. */
+const subLift = computed(() => {
+  if (player.isFullscreen)
+    return chromeVisible.value ? 116 : 0
+  return popChrome.value && hasVideo.value ? 64 : 0
+})
+
+/** V: on and off. Shift + V: off, then each track in turn. */
+function subtitleKey(cycle: boolean) {
+  const ok = cycle ? subs.cycle() : subs.toggle()
+  if (!ok)
+    showOsd('i-carbon-closed-caption', 'No subtitles')
+  else if (subs.active)
+    showOsd('i-carbon-closed-caption-filled', subs.active.label, { sub: 'Subtitles' })
+  else
+    showOsd('i-carbon-closed-caption', 'Subtitles off')
+}
+
+/** Fullscreen and pop-out buttons: a menu for several tracks, else a toggle. */
+function onSubsButton() {
+  if (subs.tracks.length > 1 && player.isFullscreen)
+    fsMenu.value = fsMenu.value === 'subs' ? null : 'subs'
+  else if (subs.tracks.length > 1)
+    subtitleKey(true)
+  else
+    subtitleKey(false)
+}
+
+// The pop-out is a window of its own: the shell's drop target is not in it.
+function onPopDragOver(e: DragEvent) {
+  if (popped.value && Array.from(e.dataTransfer?.types ?? []).includes('Files'))
+    e.preventDefault()
+}
+function onPopDrop(e: DragEvent) {
+  if (!popped.value)
+    return
+  e.preventDefault()
+  const files = Array.from(e.dataTransfer?.files ?? []).filter(f => isSubtitleName(f.name))
+  for (const f of files)
+    void subs.addFile(f, player.videoPath)
+}
+
+onBeforeUnmount(() => cueTrack?.removeEventListener('cuechange', readCues))
+
 // ─── Scrub previews ──────────────────────────────────────────────────────────
 // The playing video's strip is built first, but not straight away: the
 // strip decodes on a second <video>, and the first seconds of playback
@@ -639,6 +720,10 @@ function onKeyDown(e: KeyboardEvent) {
     case 'Backslash':
       e.preventDefault()
       setSpeed(1)
+      break
+    case 'KeyV':
+      e.preventDefault()
+      subtitleKey(e.shiftKey)
       break
     case 'Comma':
     case 'Period':
@@ -896,6 +981,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       @pointermove="poke"
       @pointerleave="onPointerLeave"
       @wheel="onWheel"
+      @dragover="onPopDragOver"
+      @drop="onPopDrop"
     >
       <Teleport :to="popout.parking" :disabled="!parked">
         <video
@@ -919,7 +1006,18 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
           @canplay="stalled = false"
           @playing="stalled = false"
           @error="stalled = false"
-        />
+        >
+          <track
+            v-for="t in subs.tracks"
+            :key="t.id"
+            kind="subtitles"
+            :src="t.url"
+            :srclang="t.lang ?? undefined"
+            :label="t.label"
+            :data-sub="t.id"
+            @load="readCues"
+          >
+        </video>
       </Teleport>
       <!-- Popped out, the picture: the video itself stays in the main window. -->
       <canvas
@@ -952,6 +1050,9 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       <div class="pointer-events-none inset-0 absolute z-[2]">
         <slot name="overlay" />
       </div>
+
+      <!-- Subtitles: over the picture and the hypno layer, under the controls. -->
+      <SubtitleText v-if="hasVideo && subHtml" :html="subHtml" :prefs="subs.prefs" :lift="subLift" class="z-[3]" />
 
       <!-- Buffering -->
       <Transition name="t-fade">
@@ -1190,6 +1291,37 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               />
               <UiIconButton icon="i-carbon-chart-histogram" label="Speed heatmap on the timeline" variant="glass" size="md" :active="heatmap" @click="heatmap = !heatmap" />
 
+              <!-- Subtitles, with the same in-player menu as speed below. -->
+              <div v-if="subs.tracks.length" class="relative">
+                <UiIconButton
+                  :icon="subs.activeId ? 'i-carbon-closed-caption-filled' : 'i-carbon-closed-caption'"
+                  :label="subs.active ? `Subtitles: ${subs.active.label}` : 'Subtitles off'"
+                  kbd="V"
+                  variant="glass"
+                  size="md"
+                  :active="!!subs.activeId || fsMenu === 'subs'"
+                  @click="onSubsButton"
+                />
+                <Transition name="t-pop">
+                  <div
+                    v-if="fsMenu === 'subs'"
+                    class="mb-2 p-1 rounded-[var(--radius-md)] bg-black/75 flex flex-col min-w-40 ring-1 ring-white/12 bottom-full right-0 absolute backdrop-blur-xl"
+                  >
+                    <button
+                      v-for="t in subMenu"
+                      :key="t.id ?? 'off'"
+                      type="button"
+                      class="text-[12.5px] px-3 text-left rounded-[var(--radius-sm)] flex gap-3 h-7 items-center justify-between"
+                      :class="subs.activeId === t.id ? 'text-accent-300 bg-white/8' : 'text-white/85 hover:bg-white/12'"
+                      @click="subs.select(t.id); fsMenu = null"
+                    >
+                      <span class="max-w-56 truncate">{{ t.label }}</span>
+                      <span v-if="subs.activeId === t.id" class="i-carbon-checkmark text-[12px]" />
+                    </button>
+                  </div>
+                </Transition>
+              </div>
+
               <!-- Speed. Popovers teleport to <body>, which is not shown in
                  fullscreen, so this menu lives inside the player. -->
               <div class="relative">
@@ -1367,6 +1499,17 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                 {{ timeText }} <span class="text-white/45">/ {{ durationText }}</span>
               </span>
               <div class="flex-1" />
+              <UiIconButton
+                v-if="subs.tracks.length"
+                :icon="subs.activeId ? 'i-carbon-closed-caption-filled' : 'i-carbon-closed-caption'"
+                :label="subs.active ? `Subtitles: ${subs.active.label}` : 'Subtitles off'"
+                kbd="V"
+                variant="glass"
+                size="sm"
+                tip="top"
+                :active="!!subs.activeId"
+                @click="onSubsButton"
+              />
               <UiIconButton :icon="volumeIcon" :label="player.isMuted ? 'Unmute' : 'Mute'" kbd="M" variant="glass" size="sm" tip="top" @click="toggleMute()" />
               <UiIconButton
                 icon="i-carbon-temperature-hot"

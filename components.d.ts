@@ -76,6 +76,8 @@ declare module 'vue' {
     SpeedSparkline: typeof import('./src/components/library/SpeedSparkline.vue')['default']
     SplashScreen: typeof import('./src/components/shell/SplashScreen.vue')['default']
     StatsView: typeof import('./src/components/views/StatsView.vue')['default']
+    SubtitleControl: typeof import('./src/components/player/SubtitleControl.vue')['default']
+    SubtitleText: typeof import('./src/components/player/SubtitleText.vue')['default']
     TitleBar: typeof import('./src/components/shell/TitleBar.vue')['default']
     ToastHost: typeof import('./src/components/shell/ToastHost.vue')['default']
     UiBadge: typeof import('./src/components/ui/UiBadge.vue')['default']

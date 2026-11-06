@@ -2,6 +2,7 @@
 import type { ThemeId } from '~/stores/themeStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
+import SubtitleText from '~/components/player/SubtitleText.vue'
 import PluginsSettings from '~/components/plugins/PluginsSettings.vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
@@ -24,6 +25,7 @@ import { MOD_KEY } from '~/lib/platform'
 import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
+import { SUBTITLE_DEFAULTS, useSubtitleStore } from '~/stores/subtitleStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
 import { useUiStore } from '~/stores/uiStore'
 import { version } from '../../../package.json'
@@ -45,6 +47,14 @@ const UPNEXT_OPTIONS: { value: number, label: string }[] = [
   { value: 5, label: '5 s' },
   { value: 10, label: '10 s' },
 ]
+const subtitles = useSubtitleStore()
+const SUB_SIZES: { value: number, label: string }[] = [
+  { value: 0.8, label: 'Small' },
+  { value: 1, label: 'Medium' },
+  { value: 1.3, label: 'Large' },
+  { value: 1.6, label: 'Huge' },
+]
+const SUB_SAMPLE = 'This is how subtitles look\n<i>over a bright picture</i>'
 
 // ── Discord ─────────────────────────────────────────────────────────────────
 const presence = usePresenceSettings()
@@ -456,6 +466,34 @@ function openBackup() {
                   <UiSegmented v-model="upNextDelay" :options="UPNEXT_OPTIONS" size="xs" />
                 </UiField>
               </div>
+
+              <div class="px-4 py-3 card flex flex-col gap-3">
+                <div class="flex gap-2 items-baseline">
+                  <span class="text-[13px] text-fg font-medium">Subtitles</span>
+                  <span class="hint">Found next to the video as .srt, .vtt or .ass. <UiKbd>V</UiKbd> turns them on and off.</span>
+                </div>
+                <!-- A bright, busy frame: the hardest case for legibility. -->
+                <div class="sub-sample rounded-[var(--radius-md)] h-28 relative overflow-hidden">
+                  <SubtitleText :html="SUB_SAMPLE" :prefs="subtitles.prefs" preview />
+                </div>
+                <UiField label="Text size">
+                  <UiSegmented v-model="subtitles.prefs.size" :options="SUB_SIZES" size="xs" />
+                </UiField>
+                <UiSlider
+                  v-model="subtitles.prefs.background"
+                  label="Background"
+                  :min="0" :max="1" :step="0.05" :reset="SUBTITLE_DEFAULTS.background"
+                  :format="v => `${Math.round(v * 100)}%`"
+                  hint="The box behind the text. The outline keeps it readable even at 0%."
+                />
+                <UiSlider
+                  v-model="subtitles.prefs.raise"
+                  label="Position"
+                  :min="0" :max="30" :step="1" :reset="0"
+                  :format="v => (v ? `${v}% up` : 'Bottom')"
+                  hint="Lift them off the bottom, clear of hardcoded text or a watermark."
+                />
+              </div>
             </template>
 
             <!-- Updates -->
@@ -805,5 +843,12 @@ function openBackup() {
 }
 .about > * {
   position: relative;
+}
+
+/* Sky, sun and skin tones: bright and uneven, like the frames that wash out white text. */
+.sub-sample {
+  background:
+    radial-gradient(circle at 78% 30%, #fffbe8 0 14%, transparent 34%),
+    linear-gradient(160deg, #bfe3ff 0%, #f6efe4 45%, #f2c7a5 72%, #e9a77f 100%);
 }
 </style>

@@ -39,6 +39,7 @@ import { desktop, openVideoFile, storage } from '~/lib/browserApi'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { KEYS } from '~/lib/persist'
+import { isSubtitleName } from '~/lib/subtitles'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useHypnoStore } from '~/stores/hypnoStore'
@@ -50,6 +51,7 @@ import { usePluginStore } from '~/stores/pluginStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
+import { useSubtitleStore } from '~/stores/subtitleStore'
 import { useUiStore } from '~/stores/uiStore'
 
 defineOptions({ name: 'IndexPage' })
@@ -63,6 +65,7 @@ const bookmarks = useBookmarkStore()
 const safety = useSafetyStore()
 const hypno = useHypnoStore()
 const sessionControl = useSessionControlStore()
+const subtitles = useSubtitleStore()
 const session = useSessionActions()
 const popout = usePopout()
 startUiScale()
@@ -275,6 +278,18 @@ async function onDrop(e: DragEvent) {
       }
     }
     const videos = files.filter(f => VIDEO_RE.test(f.name))
+    // Subtitles alone go on the video that is playing. With a video they
+    // pair up in the library like scripts do.
+    const subFiles = files.filter(f => isSubtitleName(f.name))
+    if (!videos.length && subFiles.length) {
+      if (!player.videoUrl) {
+        toast.warn('Play a video first', { detail: 'Subtitles go on the video that is playing', icon: 'i-carbon-closed-caption' })
+        return
+      }
+      for (const f of subFiles)
+        await subtitles.addFile(f, player.videoPath)
+      return
+    }
     if (!videos.length) {
       toast.warn('Nothing playable in that drop', { detail: 'Drop a video file or a folder of videos' })
       return
