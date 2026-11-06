@@ -145,6 +145,7 @@ export const KEYS = {
   paletteRecent: def('ph:ui.palette.recent', 'ui', 'Recent commands'),
   timelineHeatmap: def('ph:ui.timeline.heatmap', 'ui', 'Timeline heatmap'),
   fsUpNext: def('ph:ui.player.fsUpNext', 'ui', 'Fullscreen up-next sheet'),
+  scriptEditor: def('ph:ui.scriptEditor', 'ui', 'Script editor snapping, speed warning and height'),
   eroscriptsView: def('ph:ui.eroscripts.view', 'ui', 'EroScripts grid or list'),
   queueHistoryOpen: def('ph:ui.queue.historyOpen', 'ui', 'Queue history section'),
   binOpenTone: def('ph:ui.binaural.toneOpen', 'ui', 'Binaural sections'),

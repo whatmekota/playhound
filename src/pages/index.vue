@@ -2,6 +2,8 @@
 import type { ShellAction } from '~/lib/hotkeys'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import OsrEmulator from '~/components/device/OsrEmulator.vue'
+import ScriptEditor from '~/components/editor/ScriptEditor.vue'
+import UnsavedEditsModal from '~/components/editor/UnsavedEditsModal.vue'
 import HypnoOverlay from '~/components/player/HypnoOverlay.vue'
 import NowPlayingBar from '~/components/player/NowPlayingBar.vue'
 import PopoutCard from '~/components/player/PopoutCard.vue'
@@ -50,6 +52,7 @@ import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { usePluginStore } from '~/stores/pluginStore'
 import { useSafetyStore } from '~/stores/safetyStore'
+import { useScriptEditStore } from '~/stores/scriptEditStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
 import { useSubtitleStore } from '~/stores/subtitleStore'
@@ -70,6 +73,8 @@ const subtitles = useSubtitleStore()
 const session = useSessionActions()
 const popout = usePopout()
 const plugins = usePluginStore()
+// Made here, at startup: it is also what asks before unsaved script edits are replaced.
+const scriptEdit = useScriptEditStore()
 startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
@@ -175,6 +180,22 @@ watch(() => playback.trackSeq, () => (miniDismissed.value = false))
 watch(() => ui.onPlayer, on => on && (miniDismissed.value = false))
 
 const mini = computed(() => !ui.onPlayer)
+
+/** The script editor, docked under the video on the player view. */
+const editorShown = computed(() => scriptEdit.open && ui.onPlayer)
+const editorHeight = computed(() => {
+  const h = stageSize.value.h
+  return Math.round(Math.min(scriptEdit.prefs.height, Math.max(200, h * 0.75)))
+})
+
+// A browser tab closing would lose unsaved edits without a word. (Not in the
+// desktop app: there this event silently keeps the window open.)
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (!desktop && scriptEdit.dirty)
+    e.preventDefault()
+}
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
 // Popped out, the video is in its own window; the corner stays empty.
 const playerVisible = computed(() => ui.onPlayer || (!!player.videoUrl && !miniDismissed.value && !popout.active.value))
 
@@ -183,7 +204,7 @@ const MINI_MARGIN = 16
 const playerBox = computed(() => {
   const { w, h } = stageSize.value
   if (!mini.value)
-    return { left: 0, top: 0, width: w, height: h, radius: 0 }
+    return { left: 0, top: 0, width: w, height: editorShown.value ? Math.max(0, h - editorHeight.value) : h, radius: 0 }
   const mw = Math.min(MINI_W, Math.max(200, w * 0.4))
   const mh = mw * 9 / 16
   return { left: w - mw - MINI_MARGIN, top: h - mh - MINI_MARGIN, width: mw, height: mh, radius: 14 }
@@ -489,6 +510,12 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
             <WelcomeScreen v-else-if="!player.videoUrl && !mini" class="inset-0 absolute z-20" @open-file="openSingleVideo" />
           </Transition>
         </div>
+
+        <ScriptEditor
+          v-if="editorShown"
+          class="inset-x-0 bottom-0 absolute z-20"
+          :style="{ height: `${editorHeight}px` }"
+        />
       </main>
 
       <InspectorDrawer />
@@ -502,6 +529,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <ShortcutsModal />
     <SettingsModal />
     <PlayLinkModal />
+    <UnsavedEditsModal />
 
     <!-- Floating windows over whichever view is open -->
     <OsrEmulator v-if="ui.isFloatingOpen('emulator')" />

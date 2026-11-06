@@ -19,6 +19,8 @@ import { usePlayerStore } from '~/stores/playerStore'
 import { usePluginStore } from '~/stores/pluginStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useSafetyStore } from '~/stores/safetyStore'
+import { useScriptEditStore } from '~/stores/scriptEditStore'
+import { useScriptStore } from '~/stores/scriptStore'
 import { useStatsStore } from '~/stores/statsStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -42,6 +44,8 @@ const library = useLibraryStore()
 const bookmarks = useBookmarkStore()
 const stats = useStatsStore()
 const theme = useThemeStore()
+const scriptEdit = useScriptEditStore()
+const scripts = useScriptStore()
 
 // ─── Items ───────────────────────────────────────────────────────────────────
 type Kind = 'command' | 'view' | 'panel' | 'video'
@@ -144,6 +148,13 @@ const commands = computed<Item[]>(() => {
     { id: 'cmd:open-file', kind: 'command', label: 'Open video file…', icon: 'i-carbon-document-video', keywords: 'file open single', run: () => emit('openFile') },
     library.needsReconnect && !!library.savedFolderName && { id: 'cmd:reconnect', kind: 'command', label: `Reconnect “${library.savedFolderName}”`, icon: 'i-carbon-connect', keywords: 'folder permission restore library', run: () => void library.reconnect() },
     library.isWatching && { id: 'cmd:rescan', kind: 'command', label: 'Rescan library folder', icon: 'i-carbon-renew', keywords: 'refresh reload scan', run: () => void library.rescan() },
+    scripts.hasScripts && { id: 'cmd:edit-script', kind: 'command', label: scriptEdit.open ? 'Close the script editor' : 'Edit script', hint: 'Move, add and delete points', icon: 'i-carbon-edit', keywords: 'editor points funscript change fix', run: () => {
+      if (scriptEdit.open)
+        return void scriptEdit.closeEditor()
+      ui.openView('player')
+      scriptEdit.openEditor()
+    } },
+    scripts.anyTweaked && { id: 'cmd:reset-tweaks', kind: 'command', label: 'Reset script tweaks', hint: 'Play the script as written', icon: 'i-carbon-reset', keywords: 'invert range speed limit smoothing offset', run: () => scripts.resetTweaks() },
     { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
     loaded && { id: 'cmd:next-peak', kind: 'command', label: 'Jump to the next peak', icon: 'i-carbon-skip-forward-outline', keywords: 'good part intense fast chapter', kbd: ['G'], run: () => session.nextPeak() },
     loaded && { id: 'cmd:finish', kind: 'command', label: 'Finish', hint: 'Jump to the most intense part', icon: 'i-carbon-flash', keywords: 'climax end peak best', kbd: ['Shift', 'G'], run: () => session.finish() },

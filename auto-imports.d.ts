@@ -151,8 +151,10 @@ declare global {
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
   const resolveStream: typeof import('./src/composables/useStreams').resolveStream
+  const saveScriptBeside: typeof import('./src/composables/useScriptSave').saveScriptBeside
   const savedPosts: typeof import('./src/composables/useSavedPosts').savedPosts
   const scaleTapTempo: typeof import('./src/composables/useVideoBeat').scaleTapTempo
+  const scriptAnalysisKey: typeof import('./src/composables/useScriptAnalysis').scriptAnalysisKey
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
@@ -636,8 +638,10 @@ declare module 'vue' {
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveStream: UnwrapRef<typeof import('./src/composables/useStreams')['resolveStream']>
+    readonly saveScriptBeside: UnwrapRef<typeof import('./src/composables/useScriptSave')['saveScriptBeside']>
     readonly savedPosts: UnwrapRef<typeof import('./src/composables/useSavedPosts')['savedPosts']>
     readonly scaleTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['scaleTapTempo']>
+    readonly scriptAnalysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['scriptAnalysisKey']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>

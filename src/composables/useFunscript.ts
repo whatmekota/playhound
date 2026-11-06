@@ -2,6 +2,7 @@ import type { ScriptMatch } from '~/stores/libraryStore'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { ref } from 'vue'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
+import { mayLeave } from '~/lib/leaveGuard'
 import { useScriptStore } from '~/stores/scriptStore'
 
 /**
@@ -32,8 +33,13 @@ export function useFunscript() {
     }
   }
 
-  /** Load specific funscript File objects manually selected by the user. */
+  /**
+   * Load specific funscript File objects manually selected by the user.
+   * Throws when the user keeps unsaved edits to the scripts loaded now.
+   */
   async function loadScriptFiles(files: File[], videoBasename = '', suffixes?: string[]) {
+    if (!await mayLeave('Load other scripts'))
+      throw new Error('Kept the unsaved script edits')
     loading.value = true
     error.value = null
     lastRawMetadata.value = null
@@ -82,6 +88,7 @@ export function useFunscript() {
             altName,
             offsetMs: 0,
             parsed: axis,
+            file,
           })
         }
       }

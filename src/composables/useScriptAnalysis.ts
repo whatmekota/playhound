@@ -22,8 +22,14 @@ export interface ScriptAnalysis {
 const cache = new Map<string, ScriptAnalysis>()
 const MAX_CACHED = 24
 
-export function analysisKey(filename: string, channel: string, actionCount: number): string {
-  return `${filename}:${channel}:${actionCount}`
+/** `rev` is the script's version (ParsedAxis.rev) once it was edited or tweaked. */
+export function analysisKey(filename: string, channel: string, actionCount: number, rev = 0): string {
+  return `${filename}:${channel}:${actionCount}:${rev}`
+}
+
+/** The key for a loaded script as it plays. */
+export function scriptAnalysisKey(s: { filename: string, channel: string, parsed: { actions: unknown[], rev?: number } }): string {
+  return analysisKey(s.filename, s.channel, s.parsed.actions.length, s.parsed.rev)
 }
 
 export function analyseActions(
@@ -77,15 +83,14 @@ export function useScriptAnalysis() {
 
   const source = computed(() => script.primaryScript ?? script.activeScripts[0] ?? null)
 
-  watch(source, (s) => {
+  // The script object stays the same when an edit or a tweak replaces what
+  // it plays, so watch that too.
+  watch([source, () => source.value?.parsed], ([s]) => {
     if (!s) {
       analysis.value = null
       return
     }
-    analysis.value = analyseActions(
-      s.parsed.actions,
-      analysisKey(s.filename, s.channel, s.parsed.actions.length),
-    )
+    analysis.value = analyseActions(s.parsed.actions, scriptAnalysisKey(s))
   }, { immediate: true })
 
   return { analysis, source }

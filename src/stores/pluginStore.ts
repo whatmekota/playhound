@@ -8,7 +8,7 @@ import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, watch } from 'vue'
 import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useAutoDirector } from '~/composables/useAutoDirector'
-import { analyseActions, analysisKey } from '~/composables/useScriptAnalysis'
+import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
 import { axisOutput } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
@@ -912,7 +912,7 @@ export const usePluginStore = defineStore('plugins', () => {
       const s = scripts.primaryScript ?? scripts.activeScripts[0]
       if (!s || !s.parsed.actions.length)
         return null
-      const a = analyseActions(s.parsed.actions, analysisKey(s.filename, s.channel, s.parsed.actions.length))
+      const a = analyseActions(s.parsed.actions, scriptAnalysisKey(s))
       const t = player.currentTime * 1000 + (s.offsetMs ?? 0)
       const cur = sampleEnvelope(a.envelope, t)
       if (!cur)

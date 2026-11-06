@@ -231,6 +231,7 @@ function ensureStaticLayer(W: number, H: number, dpr: number, duration: number) 
     s?.filename ?? '',
     s?.channel ?? '',
     s?.parsed.actions.length ?? 0,
+    s?.parsed.rev ?? 0,
     s?.offsetMs ?? 0,
     palette.value.accentLight,
   ].join(':')
@@ -420,6 +421,7 @@ watch(
     () => player.loopActive,
     () => player.videoDuration,
     () => scriptStore.primaryScript,
+    () => scriptStore.primaryScript?.parsed,
     () => scriptStore.primaryScript?.offsetMs,
     bookmarks,
     finishes,

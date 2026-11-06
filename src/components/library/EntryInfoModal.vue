@@ -145,6 +145,13 @@ async function save() {
   const clean: VideoMeta = JSON.parse(JSON.stringify(draft.value))
   clean.tags = normalizeTags(clean.tags)
   try {
+    // Script tweaks live in the same record but are not edited here: keep
+    // whatever they are now, not what they were when the dialog opened.
+    const now = await videoMetaDb.get(e.name).catch(() => undefined)
+    if (now?.scriptTweaks)
+      clean.scriptTweaks = now.scriptTweaks
+    else
+      delete clean.scriptTweaks
     await videoMetaDb.set(e.name, clean)
     e.userMeta = clean
     toast.success('Info saved', { detail: e.basename, key: 'meta' })
