@@ -5,6 +5,7 @@
  */
 import type { VideoMeta } from '~/lib/idb'
 import type { ScriptType, VideoEntry } from '~/stores/libraryStore'
+import { manualTags } from './tags'
 
 export interface ScriptBadge {
   kind: ScriptType
@@ -54,8 +55,9 @@ export function effectiveMeta(entry: VideoEntry): VideoMeta {
   return { ...(entry.scriptMeta ?? {}), ...(entry.userMeta ?? {}) }
 }
 
+/** The tags given by hand, normalised. See ./tags.ts for the automatic ones. */
 export function entryTags(entry: VideoEntry): string[] {
-  return effectiveMeta(entry).tags ?? []
+  return manualTags(entry)
 }
 
 export function formatSize(bytes: number): string {

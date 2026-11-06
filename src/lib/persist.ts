@@ -87,6 +87,7 @@ export const KEYS = {
   splash: def('ph:ui.splash', 'setting', 'Splash screen'),
   resumeOnStart: def('ph:ui.resumeOnStart', 'setting', 'Resume the last video at startup'),
   uiScale: def('ph:ui.scale', 'setting', 'Interface size'),
+  autoTags: def('ph:library.autoTags', 'setting', 'Show automatic tags'),
   pluginsEnabled: def('ph:plugins.enabled', 'setting', 'Switched-on plugins'),
   pluginSources: def('ph:plugins.sources', 'setting', 'Plugin sources (GitHub repositories)'),
   pluginsChecked: def('ph:plugins.checked', 'ui', 'When plugin sources were last checked for updates'),

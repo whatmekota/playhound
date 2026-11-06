@@ -10,6 +10,7 @@ import type { ScriptSummary } from '~/lib/idb'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { effectiveMeta } from './entryInfo'
 import { intensityBand } from './scriptIntensity'
+import { manualTags, needsSummary, parseSearch, summaryFor, tagSet } from './tags'
 
 export type SortKey = 'name' | 'path' | 'size' | 'date' | 'duration' | 'intensity' | 'peak'
 export interface SortState { key: SortKey, asc: boolean }
@@ -72,12 +73,15 @@ export function toggleBand(set: ReadonlySet<IntensityBand>, b: IntensityBand): S
 /** Axis count, so a merged single file counts and alternate takes do not. */
 export const isMulti = (v: VideoEntry) => v.scriptCount > 1 || v.scriptType === 'merged'
 
-/** `q` is already trimmed and lower-cased. Names, creators and tags. */
+/**
+ * `q` is already trimmed and lower-cased. Names, creators and the tags given
+ * by hand; automatic tags are matched with `tag:` only, or typing "fast"
+ * would find every quick script as well as the videos called that.
+ */
 export function matchesQuery(v: VideoEntry, q: string): boolean {
   if (!q || v.basename.toLowerCase().includes(q))
     return true
-  const m = effectiveMeta(v)
-  return !!(m.creator?.toLowerCase().includes(q) || m.tags?.some(t => t.includes(q)))
+  return !!(effectiveMeta(v).creator?.toLowerCase().includes(q) || manualTags(v).some(t => t.includes(q)))
 }
 
 export type SummaryOf = (name: string) => ScriptSummary | undefined
@@ -89,6 +93,8 @@ export interface LibraryQuery {
   sort: SortState
   /** One library folder only (an entry's `folder`); null or absent for all of them. */
   folder?: string | null
+  /** Tag chips: a video must have every one (manual or automatic). */
+  tags?: ReadonlySet<string>
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true })
@@ -159,9 +165,13 @@ export function sortEntries(list: VideoEntry[], sort: SortState, summaryOf: Summ
 }
 
 export function filterEntries(videos: readonly VideoEntry[], q: Omit<LibraryQuery, 'sort'>, summaryOf: SummaryOf): VideoEntry[] {
-  const text = q.query.trim().toLowerCase()
+  const search = parseSearch(q.query)
+  const text = search.text
   const f = q.filters
   const bands = q.bands
+  const want = [...(q.tags ?? []), ...search.include]
+  const avoid = search.exclude
+  const byTag = want.length > 0 || avoid.length > 0
   return videos.filter((v) => {
     if (q.folder && v.folder !== q.folder)
       return false
@@ -178,6 +188,11 @@ export function filterEntries(videos: readonly VideoEntry[], q: Omit<LibraryQuer
       if (!s || !bands.has(intensityBand(s.meanSpeed)))
         return false
     }
+    if (byTag) {
+      const has = tagSet(v, summaryFor(v, summaryOf))
+      if (!want.every(t => has.has(t)) || avoid.some(t => has.has(t)))
+        return false
+    }
     return matchesQuery(v, text)
   })
 }
@@ -188,8 +203,21 @@ export function queryLibrary(videos: readonly VideoEntry[], q: LibraryQuery, sum
 }
 
 /** Whether the result depends on script analyses, so it must refresh as they arrive. */
-export function usesSummaries(q: Pick<LibraryQuery, 'bands' | 'sort'>): boolean {
-  return q.bands.size > 0 || SCRIPT_SORTS.includes(q.sort.key)
+export function usesSummaries(q: Pick<LibraryQuery, 'bands' | 'sort'> & Partial<Pick<LibraryQuery, 'tags' | 'query'>>): boolean {
+  if (q.bands.size > 0 || SCRIPT_SORTS.includes(q.sort.key))
+    return true
+  const search = q.query ? parseSearch(q.query) : null
+  return [...(q.tags ?? []), ...(search?.include ?? []), ...(search?.exclude ?? [])].some(needsSummary)
+}
+
+/** Toggle a tag chip. Tags combine with AND, like the other chips. */
+export function toggleTag(set: ReadonlySet<string>, tag: string): Set<string> {
+  const next = new Set(set)
+  if (next.has(tag))
+    next.delete(tag)
+  else
+    next.add(tag)
+  return next
 }
 
 export interface FilterCounts {

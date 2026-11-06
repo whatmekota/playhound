@@ -1,6 +1,8 @@
+import type { SummaryLookup } from '~/lib/tags'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
+import { needsSummary, normalizeTag, summaryFor, tagSet } from '~/lib/tags'
 
 export interface PlaylistEntry {
   videoName: string // matches VideoEntry.name (filename)
@@ -20,6 +22,7 @@ export type SmartRule
     | { type: 'starred' }
     | { type: 'multi_axis' }
     | { type: 'has_tag', tag: string }
+    | { type: 'lacks_tag', tag: string }
     | { type: 'min_rating', rating: number }
     | { type: 'no_script' }
 
@@ -30,18 +33,35 @@ export interface SmartPlaylist {
   createdAt: number
 }
 
-export function evaluateSmartPlaylist(pl: SmartPlaylist, videos: VideoEntry[]): VideoEntry[] {
-  return videos.filter(v => pl.rules.every((rule) => {
-    switch (rule.type) {
-      case 'has_script': return v.hasScript
-      case 'no_script': return !v.hasScript
-      case 'starred': return v.starred
-      case 'multi_axis': return v.scriptCount > 1 || v.scriptType === 'merged'
-      case 'has_tag': return (v.userMeta?.tags ?? v.scriptMeta?.tags ?? []).includes(rule.tag)
-      case 'min_rating': return ((v.userMeta?.rating ?? v.scriptMeta?.rating) ?? 0) >= rule.rating
-      default: return true
-    }
-  }))
+/**
+ * The videos a smart playlist holds. Tag rules match manual and automatic
+ * tags alike; `summaryOf` supplies the script analyses the automatic ones
+ * need (without it, intensity and pace tags match nothing).
+ */
+export function evaluateSmartPlaylist(pl: SmartPlaylist, videos: VideoEntry[], summaryOf?: SummaryLookup): VideoEntry[] {
+  return videos.filter((v) => {
+    // Built once per video, and only when a rule asks.
+    let tags: Set<string> | null = null
+    const has = (tag: string) => (tags ??= tagSet(v, summaryFor(v, summaryOf))).has(normalizeTag(tag))
+    return pl.rules.every((rule) => {
+      switch (rule.type) {
+        case 'has_script': return v.hasScript
+        case 'no_script': return !v.hasScript
+        case 'starred': return v.starred
+        case 'multi_axis': return v.scriptCount > 1 || v.scriptType === 'merged'
+        // An empty tag is a rule still being filled in: it should not empty the list meanwhile.
+        case 'has_tag': return !normalizeTag(rule.tag) || has(rule.tag)
+        case 'lacks_tag': return !normalizeTag(rule.tag) || !has(rule.tag)
+        case 'min_rating': return ((v.userMeta?.rating ?? v.scriptMeta?.rating) ?? 0) >= rule.rating
+        default: return true
+      }
+    })
+  })
+}
+
+/** Whether a smart playlist's contents move as scripts get analysed. */
+export function smartUsesSummaries(pl: SmartPlaylist): boolean {
+  return pl.rules.some(r => (r.type === 'has_tag' || r.type === 'lacks_tag') && needsSummary(normalizeTag(r.tag)))
 }
 
 const STORAGE_KEY = 'ph:playlists'
