@@ -8,6 +8,7 @@ import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { toast } from '~/composables/useToast'
+import { trustOf } from '~/plugins/sources'
 import { usePluginStore } from '~/stores/pluginStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -198,6 +199,14 @@ const kb = (n: number) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))
           <span class="flex flex-1 flex-col gap-0.5 min-w-0">
             <span class="flex gap-2 min-w-0 items-center">
               <span class="text-[14px] text-fg font-medium truncate">{{ p.manifest.name }}</span>
+              <!-- The same marks as in Get plugins, for plugins installed from a source. -->
+              <span
+                v-if="p.source && trustOf(p.source)"
+                v-tip="trustOf(p.source) === 'official' ? 'Official: made by playhound’s author' : 'Trusted author: known to playhound'"
+                class="text-[13px] shrink-0"
+                :class="trustOf(p.source) === 'official' ? 'i-carbon-checkmark-filled text-accent-300' : 'i-carbon-favorite-filled text-fg-muted'"
+                :aria-label="trustOf(p.source) === 'official' ? 'Official plugin' : 'Trusted author'"
+              />
               <span class="text-[11.5px] text-fg-faint num shrink-0">{{ p.manifest.version }}</span>
               <UiBadge v-if="p.dev" v-tip="'Loaded from a folder; reloads when you save'" tone="accent" size="xs" class="shrink-0">
                 dev
