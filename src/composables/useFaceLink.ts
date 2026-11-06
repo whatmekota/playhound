@@ -26,7 +26,7 @@ import { useButtplug } from './useButtplug'
 import { faceScreenOpen, hostFaceScreens, publishFaceFrame } from './useFaceScreen'
 import { useHandy } from './useHandy'
 import { useRemoteStatus } from './useRemoteStatus'
-import { analyseActions, analysisKey } from './useScriptAnalysis'
+import { analyseActions, scriptAnalysisKey } from './useScriptAnalysis'
 import { axisOutput } from './useTCode'
 
 export interface FaceLinkSettings {
@@ -109,7 +109,7 @@ function start() {
       const s = scripts.primaryScript ?? scripts.activeScripts[0]
       if (!s || !s.parsed.actions.length)
         return null
-      const a = analyseActions(s.parsed.actions, analysisKey(s.filename, s.channel, s.parsed.actions.length))
+      const a = analyseActions(s.parsed.actions, scriptAnalysisKey(s))
       const sample = sampleEnvelope(a.envelope, player.currentTime * 1000 + (s.offsetMs ?? 0))
       if (!sample)
         return null

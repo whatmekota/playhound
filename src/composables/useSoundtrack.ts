@@ -17,7 +17,7 @@ import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
-import { useScriptStore } from '~/stores/scriptStore'
+import { sourceOf, useScriptStore } from '~/stores/scriptStore'
 import { useFunscript } from './useFunscript'
 import { toast } from './useToast'
 
@@ -225,7 +225,7 @@ function install() {
       const results = await loadScriptFiles([script], base)
       if (!results.length)
         return false
-      generated.value = { key, filename: script.name, json, parsed: toRaw(results[0].parsed) }
+      generated.value = { key, filename: script.name, json, parsed: toRaw(sourceOf(results[0])) }
       if (device.axisConfigs.L0)
         device.axisConfigs.L0.enabled = true
       toast.success('Script made from the music', {
@@ -243,7 +243,7 @@ function install() {
   /** Whether the loaded script is the one made from the music. */
   const generatedLoaded = computed(() => {
     const g = generated.value
-    return !!g?.parsed && scripts.scripts.some(s => toRaw(s.parsed) === g.parsed)
+    return !!g?.parsed && scripts.scripts.some(s => toRaw(sourceOf(s)) === g.parsed)
   })
 
   function saveScript() {

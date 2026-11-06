@@ -22,6 +22,13 @@ export async function openVideoFile(): Promise<File | null> {
   return inputFilePicker(['video/*', '.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v', '.wmv'])
 }
 
+/** The handle each picked script came through: Save as… opens in its folder. */
+const fileHandles = new WeakMap<File, FileSystemFileHandle>()
+
+export function fileHandleOf(f: File): FileSystemFileHandle | null {
+  return fileHandles.get(f) ?? null
+}
+
 export async function openScriptFiles(): Promise<File[]> {
   if ('showOpenFilePicker' in window) {
     try {
@@ -29,7 +36,11 @@ export async function openScriptFiles(): Promise<File[]> {
         types: [{ description: 'Funscript Files', accept: { 'application/json': ['.funscript'] } }],
         multiple: true,
       })
-      return Promise.all(handles.map((h: any) => h.getFile()))
+      return Promise.all(handles.map(async (h: FileSystemFileHandle) => {
+        const f = await h.getFile()
+        fileHandles.set(f, h)
+        return f
+      }))
     }
     catch {
       return []
@@ -102,6 +113,20 @@ const filePaths = new WeakMap<File, string>()
 /** A file's path from its library folder, or just its name when it came loose (a drop). */
 export function filePath(f: File): string {
   return filePaths.get(f) || f.webkitRelativePath || f.name
+}
+
+/**
+ * A file's path when it was read from a library folder's handle, the only
+ * kind of file the app can write next to; null for anything else (a drop, a
+ * folder <input>, a file made in memory).
+ */
+export function handlePathOf(f: File): string | null {
+  return filePaths.get(f) ?? null
+}
+
+/** Record where a file sits in a library folder (a file written there, say). */
+export function rememberPath(f: File, path: string) {
+  filePaths.set(f, path)
 }
 
 /** Every file under a directory, recursively, each with its path recorded (see filePath). */

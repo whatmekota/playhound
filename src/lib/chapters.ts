@@ -580,7 +580,7 @@ export function chaptersFor(key: string, actions: Action[], opts: ChapterOptions
 export interface ChapterSource {
   filename: string
   channel: string
-  parsed: { actions: Action[] }
+  parsed: { actions: Action[], rev?: number }
 }
 
 /**
@@ -597,7 +597,7 @@ export function chaptersForScript(
 ): Chapter[] {
   if (!script || script.parsed.actions.length < 2)
     return []
-  const key = `${script.filename}:${script.channel}:${script.parsed.actions.length}`
+  const key = `${script.filename}:${script.channel}:${script.parsed.actions.length}:${script.parsed.rev ?? 0}`
   const durationMs = durationSec * 1000
   const written = (metadata as { chapters?: unknown } | null | undefined)?.chapters
   if (Array.isArray(written) && written.length) {

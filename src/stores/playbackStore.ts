@@ -17,6 +17,7 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { toast } from '~/composables/useToast'
+import { mayLeave } from '~/lib/leaveGuard'
 import { KEYS } from '~/lib/persist'
 import { useDeviceStore } from './deviceStore'
 import { useLibraryStore } from './libraryStore'
@@ -110,6 +111,11 @@ export const usePlaybackStore = defineStore('playback', () => {
       // Alongside the scripts, not after: a slow script parse should not hold them up.
       void subtitles.load(libEntry?.subtitles)
 
+      // This video's script tweaks first, so its scripts play tweaked from
+      // the start (and the Handy uploads once).
+      await scripts.useTweaksFor(file.name, false)
+      if (token !== loadToken)
+        return
       await autoDetectFromFiles(file, scriptMatches)
       // A newer load started while scripts were parsing; let it win.
       if (token !== loadToken)
@@ -195,6 +201,8 @@ export const usePlaybackStore = defineStore('playback', () => {
       controls.value?.play()
       return
     }
+    if (!await mayLeave('Play another video'))
+      return
     queue.playNow(entry)
     await loadEntry(entry, { autoplay: true, startAt })
   }
@@ -209,7 +217,9 @@ export const usePlaybackStore = defineStore('playback', () => {
    * library as currently sorted, or a playlist); without it the entry is
    * slotted in after the current one and everything else is kept.
    */
-  function play(entry: VideoEntry, context?: VideoEntry[], label?: string) {
+  async function play(entry: VideoEntry, context?: VideoEntry[], label?: string) {
+    if (!await mayLeave('Play another video'))
+      return
     if (context?.length)
       queue.setQueue(context, entry, label)
     else
@@ -219,6 +229,8 @@ export const usePlaybackStore = defineStore('playback', () => {
 
   /** A loose file (Open, drag and drop) that may or may not be in the library. */
   async function playFile(file: File) {
+    if (!await mayLeave('Play another video'))
+      return
     const entry = library.videos.find(v => v.name === file.name && v.file.size === file.size)
     if (entry)
       return play(entry)
@@ -232,6 +244,8 @@ export const usePlaybackStore = defineStore('playback', () => {
    * auto-detect from. The queue is left alone: a stream is not a library entry.
    */
   async function playStream(name: string, url: string, kind: 'file' | 'hls' = 'file') {
+    if (!await mayLeave('Play another video'))
+      return
     ++loadToken
     loading.value = false
     if (player.videoUrl?.startsWith('blob:'))
@@ -246,6 +260,8 @@ export const usePlaybackStore = defineStore('playback', () => {
     // A stream has no folder to find subtitles in.
     subtitles.clear()
     trackSeq.value++
+    // The scripts were loaded first, by the caller; give them this stream's tweaks.
+    void scripts.useTweaksFor(name)
     for (const s of scripts.scripts) {
       if (s.enabled && device.axisConfigs[s.channel])
         device.axisConfigs[s.channel].enabled = true
@@ -255,7 +271,9 @@ export const usePlaybackStore = defineStore('playback', () => {
   }
 
   /** Jump to an item already queued (queue panel, up-next strip). */
-  function jumpTo(target: VideoEntry | number) {
+  async function jumpTo(target: VideoEntry | number) {
+    if (!await mayLeave('Play another video'))
+      return
     const entry = queue.jumpTo(target)
     if (entry)
       return loadEntry(entry)
@@ -288,7 +306,9 @@ export const usePlaybackStore = defineStore('playback', () => {
     return director.pickNext(player.videoPath ?? undefined)
   }
 
-  async function next(): Promise<boolean> {
+  async function next(auto = false): Promise<boolean> {
+    if (!await mayLeave('Play the next video', auto === true))
+      return false
     if (takeover.value)
       return takeover.value.next()
     const picked = directed()
@@ -315,6 +335,8 @@ export const usePlaybackStore = defineStore('playback', () => {
       controls.value?.seek(0)
       return !!player.videoUrl
     }
+    if (!await mayLeave('Play the previous video'))
+      return false
     const entry = queue.prev()
     if (entry) {
       await loadEntry(entry)
@@ -324,6 +346,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   }
 
   async function random() {
+    if (!await mayLeave('Play another video'))
+      return
     const pool = library.videos.filter(v => v.hasScript)
     const from = pool.length ? pool : library.videos
     if (!from.length) {
@@ -344,7 +368,7 @@ export const usePlaybackStore = defineStore('playback', () => {
       controls.value?.play()
       return
     }
-    await next()
+    await next(true)
   }
 
   // ── Session restore ───────────────────────────────────────────────────────

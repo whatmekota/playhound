@@ -11,7 +11,7 @@ import { usePlayerStore } from '~/stores/playerStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useBinauralBeats } from './useBinauralBeats'
-import { analyseActions, analysisKey } from './useScriptAnalysis'
+import { analyseActions, scriptAnalysisKey } from './useScriptAnalysis'
 
 /** How often to re-steer the pulse, in ms. Fast enough to track, slow enough to be cheap. */
 const TICK_MS = 100
@@ -74,7 +74,7 @@ export function useScriptPulse() {
       analysedFor = ''
       return
     }
-    const key = analysisKey(s.filename, s.channel, s.parsed.actions.length)
+    const key = scriptAnalysisKey(s)
     if (key === analysedFor)
       return
 

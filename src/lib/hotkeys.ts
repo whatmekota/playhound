@@ -18,8 +18,8 @@ export interface Hotkey {
   /** How the key is written in the cheat sheet. */
   keys: string
   label: string
-  /** Which handler owns it. */
-  owner: 'shell' | 'player'
+  /** Which handler owns it. The editor's keys only work while it is open, and win over the others then. */
+  owner: 'shell' | 'player' | 'editor'
   /** KeyboardEvent.code, for the keys the shell dispatches itself. */
   code?: string
   action?: ShellAction
@@ -98,6 +98,24 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: 'Shift + C', label: 'Record what the device does; again to stop', owner: 'shell', code: 'KeyC', action: 'record' },
       { keys: 'T', label: 'Tap tempo — tap on the beat a few times; once to put the beat back', owner: 'shell', code: 'KeyT', action: 'tap-tempo' },
       { keys: 'Shift + T', label: 'Forget the tapped tempo', owner: 'shell', code: 'KeyT', action: 'tap-clear' },
+    ],
+  },
+  {
+    title: 'Script editor',
+    keys: [
+      { keys: 'Drag on empty space', label: 'Select the points in a box', owner: 'editor' },
+      { keys: 'Shift + click  or  Ctrl + click', label: 'Add a point to the selection, or take it out', owner: 'editor' },
+      { keys: 'Ctrl + A', label: 'Select every point', owner: 'editor' },
+      { keys: 'Double-click  or  I', label: 'Add a point — where you click, or at the playhead', owner: 'editor' },
+      { keys: 'Delete', label: 'Delete the selected points', owner: 'editor' },
+      { keys: '← / →', label: 'Move the selection in time — 10 ms, or a frame when snapping (Shift: ×10)', owner: 'editor' },
+      { keys: '↑ / ↓', label: 'Move the selection up or down by 1 (Shift: ×10)', owner: 'editor' },
+      { keys: ', / .', label: 'Previous / next point', owner: 'editor' },
+      { keys: 'Ctrl + Z', label: 'Undo', owner: 'editor' },
+      { keys: 'Ctrl + Shift + Z  or  Ctrl + Y', label: 'Redo', owner: 'editor' },
+      { keys: 'Ctrl + S', label: 'Save', owner: 'editor' },
+      { keys: 'Ctrl + Shift + S', label: 'Save as…', owner: 'editor' },
+      { keys: 'Wheel  or  Shift + wheel', label: 'Zoom  or  scroll', owner: 'editor' },
     ],
   },
   {

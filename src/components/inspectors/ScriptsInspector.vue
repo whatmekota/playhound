@@ -3,19 +3,25 @@ import type { ScriptFile } from '~/stores/scriptStore'
 import { computed, ref, toRaw } from 'vue'
 import MusicScriptCard from '~/components/player/MusicScriptCard.vue'
 import { useFunscript } from '~/composables/useFunscript'
-import { analyseActions, analysisKey } from '~/composables/useScriptAnalysis'
+import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
 import { useSoundtrack } from '~/composables/useSoundtrack'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 import { openScriptFiles } from '~/lib/browserApi'
 import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
+import { describeTweaks } from '~/lib/scriptTweaks'
 import { formatTime } from '~/lib/time'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { useScriptEditStore } from '~/stores/scriptEditStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useUiStore } from '~/stores/uiStore'
+import ScriptTweaksPanel from './ScriptTweaksPanel.vue'
 
 const scripts = useScriptStore()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
+const edit = useScriptEditStore()
+const ui = useUiStore()
 const { loadScriptFiles, loading, error } = useFunscript()
 const { canAnalyse: canMakeFromMusic, generatedLoaded } = useSoundtrack()
 
@@ -90,7 +96,7 @@ const shapes = computed(() => {
     const actions = toRaw(s.parsed.actions)
     if (actions.length < 2)
       continue
-    const a = analyseActions(actions, analysisKey(s.filename, s.channel, actions.length))
+    const a = analyseActions(actions, scriptAnalysisKey(s))
     const bins = Array.from<number>({ length: SPARK_BINS }).fill(0)
     const env = a.envelope
     for (let i = 0; i < env.length; i++) {
@@ -162,19 +168,22 @@ async function loadManually() {
   if (!files.length)
     return
   const base = player.videoPath?.replace(/\.[^.]+$/, '') ?? ''
-  await loadScriptFiles(files, base)
+  // Refused when unsaved edits are kept; nothing to report then.
+  await loadScriptFiles(files, base).catch(() => {})
+}
+
+async function unloadAll() {
+  if (await edit.confirmLeave('Unloading the scripts'))
+    scripts.clearScripts()
+}
+
+function editAxis(channel: string) {
+  ui.openView('player')
+  edit.openEditor(channel)
 }
 
 // ─── Offsets ──────────────────────────────────────────────────────────────────
 const clampOffset = (v: number) => Math.max(-OFFSET_LIMIT, Math.min(OFFSET_LIMIT, Math.round(v)))
-
-function nudge(s: ScriptFile, delta: number) {
-  s.offsetMs = clampOffset(s.offsetMs + delta)
-}
-function setOffset(s: ScriptFile, raw: string) {
-  const n = Number.parseInt(raw, 10)
-  s.offsetMs = Number.isNaN(n) ? 0 : clampOffset(n)
-}
 
 const anyOffset = computed(() => scripts.scripts.some(s => s.offsetMs !== 0))
 const offsetsDiffer = computed(() => new Set(scripts.scripts.map(s => s.offsetMs)).size > 1)
@@ -191,7 +200,7 @@ function resetOffsets() {
 
 const fmtOffset = (v: number) => `${v > 0 ? '+' : ''}${v} ms`
 
-/** Which axis card has its offset row open. */
+/** Which axis card has its tweaks open. */
 const tuning = ref<string | null>(null)
 </script>
 
@@ -211,13 +220,28 @@ const tuning = ref<string | null>(null)
         <UiBadge v-else-if="scripts.hasScripts" :tone="scripts.autoDetected ? 'accent' : 'neutral'" size="xs" :icon="scripts.autoDetected ? 'i-carbon-flash' : 'i-carbon-document'">
           {{ scripts.autoDetected ? 'Auto' : 'Manual' }}
         </UiBadge>
+        <UiBadge v-if="scripts.anyEdited" v-tip="'Edited in the script editor and not saved yet'" tone="warn" size="xs" dot>
+          Edited
+        </UiBadge>
+        <button
+          v-if="scripts.anyTweaked"
+          v-tip="'Tweaked for this video. Click to play the scripts as written.'"
+          type="button"
+          class="focusable rounded-[var(--radius-xs)] pressable"
+          aria-label="Reset all tweaks"
+          @click="scripts.resetTweaks()"
+        >
+          <UiBadge tone="info" size="xs" icon="i-carbon-reset">
+            Tweaked
+          </UiBadge>
+        </button>
         <UiIconButton
           v-if="scripts.hasScripts"
           icon="i-carbon-close"
           label="Unload all scripts"
           size="sm"
           tip="bottom"
-          @click="scripts.clearScripts()"
+          @click="unloadAll"
         />
         <UiButton size="sm" icon="i-carbon-document-add" :loading="loading" @click="loadManually">
           Load
@@ -272,13 +296,24 @@ const tuning = ref<string | null>(null)
           <UiBadge v-if="g.files.length > 1" size="xs" class="ml-1">
             {{ g.files.length }} takes
           </UiBadge>
+          <UiBadge v-if="scripts.isTweaked(g.channel)" v-tip="describeTweaks(scripts.tweaksFor(g.channel)).join(' · ')" tone="info" size="xs">
+            Tweaked
+          </UiBadge>
           <div class="ml-auto flex gap-0.5 items-center">
             <UiIconButton
               v-if="g.active"
-              icon="i-carbon-time"
-              :label="g.active.offsetMs ? `Offset ${fmtOffset(g.active.offsetMs)}` : 'Offset this axis'"
+              icon="i-carbon-edit"
+              label="Edit points"
               size="xs"
-              :active="tuning === g.channel || g.active.offsetMs !== 0"
+              :active="edit.open && edit.channel === g.channel"
+              @click="editAxis(g.channel)"
+            />
+            <UiIconButton
+              v-if="g.active"
+              icon="i-carbon-settings-adjust"
+              :label="scripts.isTweaked(g.channel) ? 'Tweaks' : 'Tweak this axis'"
+              size="xs"
+              :active="tuning === g.channel || scripts.isTweaked(g.channel)"
               @click="tuning = tuning === g.channel ? null : g.channel"
             />
             <UiSwitch
@@ -327,24 +362,11 @@ const tuning = ref<string | null>(null)
           </div>
         </div>
 
-        <!-- Per-axis offset -->
+        <!-- Per-axis tweaks, the offset among them -->
         <Transition name="t-collapse">
           <div v-if="g.active && tuning === g.channel">
             <div class="min-h-0 overflow-hidden">
-              <div class="px-3 py-2 border-t border-edge flex gap-2 items-center">
-                <span class="label flex-1">Offset</span>
-                <UiIconButton icon="i-carbon-subtract" label="Script 50 ms later" size="xs" variant="solid" @click="nudge(g.active, -50)" />
-                <input
-                  type="number"
-                  step="10"
-                  :value="g.active.offsetMs"
-                  aria-label="Offset in milliseconds"
-                  class="text-[12px] text-fg num text-center focusable border border-edge-strong rounded-[var(--radius-sm)] bg-surface-900 h-6 w-18"
-                  @change="setOffset(g.active, ($event.target as HTMLInputElement).value)"
-                >
-                <UiIconButton icon="i-carbon-add" label="Script 50 ms earlier" size="xs" variant="solid" @click="nudge(g.active, 50)" />
-                <UiIconButton icon="i-carbon-reset" label="Reset" size="xs" :disabled="!g.active.offsetMs" @click="g.active.offsetMs = 0" />
-              </div>
+              <ScriptTweaksPanel :channel="g.channel" />
             </div>
           </div>
         </Transition>

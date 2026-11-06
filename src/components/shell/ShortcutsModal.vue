@@ -24,13 +24,14 @@ watch(() => ui.shortcutsOpen, (open) => {
 })
 
 const GROUP_ICON: Record<string, string> = {
-  Playback: 'i-carbon-play-filled-alt',
-  Navigate: 'i-carbon-compass',
-  Library: 'i-carbon-video-chat',
-  Audio: 'i-carbon-volume-up',
-  Speed: 'i-carbon-meter',
-  Safety: 'i-carbon-warning-hex',
-  Help: 'i-carbon-help',
+  'Playback': 'i-carbon-play-filled-alt',
+  'Navigate': 'i-carbon-compass',
+  'Library': 'i-carbon-video-chat',
+  'Audio': 'i-carbon-volume-up',
+  'Speed': 'i-carbon-meter',
+  'Script editor': 'i-carbon-edit',
+  'Safety': 'i-carbon-warning-hex',
+  'Help': 'i-carbon-help',
 }
 
 type Part = { kind: 'key', text: string } | { kind: 'sep', text: string }

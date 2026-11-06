@@ -16,6 +16,11 @@ export interface ParsedAxis {
   actions: FunscriptAction[] // sorted by .at, pos in 0–1 range
   filePath: string
   duration: number // ms, last action time
+  /**
+   * Bumped when the actions change after loading (an edit, a tweak), so
+   * caches keyed on the file and point count know to look again.
+   */
+  rev?: number
 }
 
 export interface ParsedFunscript {

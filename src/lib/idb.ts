@@ -1,3 +1,5 @@
+import type { SavedTweaks } from './scriptTweaks'
+
 /**
  * Tiny IndexedDB wrapper for caching thumbnails and folder metadata.
  * Stores:
@@ -152,6 +154,8 @@ export interface VideoMeta {
   url?: string
   /** User rating 1-5 */
   rating?: number
+  /** How its scripts play here (range, invert, speed cap, smoothing, offset), by channel. */
+  scriptTweaks?: SavedTweaks
 }
 
 /**

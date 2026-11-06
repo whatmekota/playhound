@@ -4,7 +4,7 @@ import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { AXIS_MAP } from '~/lib/axisMap'
-import { collectHandleFiles, filePath, openFolderWithHandle, pickDirectory } from '~/lib/browserApi'
+import { collectHandleFiles, filePath, handlePathOf, openFolderWithHandle, pickDirectory, rememberPath } from '~/lib/browserApi'
 import { canWrite } from '~/lib/funscriptSave'
 import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
 import { sniffScript } from '~/lib/scriptSniff'
@@ -622,6 +622,56 @@ export const useLibraryStore = defineStore('library', () => {
     return dir
   }
 
+  /**
+   * The folder a library file sits in, writable, for saving next to it.
+   * Must be called from a click: the first time it shows the browser's
+   * permission prompt. Null for a file that did not come from a library
+   * folder, or when the user says no. With `write` false it only needs to
+   * be readable (a place for a save dialog to start), and never asks.
+   */
+  async function writableDirOf(f: File, write = true): Promise<FileSystemDirectoryHandle | null> {
+    const path = handlePathOf(f)
+    if (!path)
+      return null
+    const parts = path.split('/')
+    const root = roots[folders.value.indexOf(parts[0])] as any
+    if (!root || !('queryPermission' in root))
+      return null
+    try {
+      let perm = await root.queryPermission({ mode: write ? 'readwrite' : 'read' })
+      if (perm !== 'granted' && write)
+        perm = await root.requestPermission({ mode: 'readwrite' })
+      if (perm !== 'granted')
+        return null
+      let dir: FileSystemDirectoryHandle = root
+      for (const seg of parts.slice(1, -1))
+        dir = await dir.getDirectoryHandle(seg)
+      return dir
+    }
+    catch {
+      return null
+    }
+  }
+
+  /**
+   * A library file was rewritten: put the new File in place of the old one.
+   * A File read through a handle can no longer be read once the file on disk
+   * changes, so every entry still holding the old one would fail to load its
+   * script next time.
+   */
+  function swapFile(old: File, fresh: File) {
+    const path = handlePathOf(old)
+    if (path)
+      rememberPath(fresh, path)
+    rootFiles = rootFiles.map(list => (list?.includes(old) ? list.map(f => (f === old ? fresh : f)) : list))
+    for (const v of videos.value) {
+      if (!v.scriptFiles.includes(old))
+        continue
+      v.scriptFiles = v.scriptFiles.map(f => (f === old ? fresh : f))
+      v.scriptMatches = v.scriptMatches.map(m => (m.file === old ? { ...m, file: fresh } : m))
+    }
+  }
+
   async function rescan() {
     if (!roots.some(Boolean))
       return
@@ -698,6 +748,8 @@ export const useLibraryStore = defineStore('library', () => {
     rescan,
     writableFolder,
     folderHandleFor,
+    writableDirOf,
+    swapFile,
     startWatching,
     stopWatching,
   }

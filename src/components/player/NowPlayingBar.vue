@@ -507,6 +507,12 @@ const needsOverflow = computed(() => level.value > 0)
                     <UiBadge v-if="playback.currentEntry?.scriptType === 'merged'" size="xs">
                       merged
                     </UiBadge>
+                    <UiBadge v-if="scriptStore.anyEdited" v-tip="'Edited, not saved yet'" tone="warn" size="xs">
+                      edited
+                    </UiBadge>
+                    <UiBadge v-else-if="scriptStore.anyTweaked" v-tip="'Tweaked for this video in the Scripts panel'" tone="info" size="xs">
+                      tweaked
+                    </UiBadge>
                     <span v-if="queue.length > 1" class="num truncate">{{ queue.pos + 1 }} / {{ queue.length }}</span>
                   </div>
                 </div>
