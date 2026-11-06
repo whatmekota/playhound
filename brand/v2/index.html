@@ -313,6 +313,8 @@
             cx = o.cx,
             cy = (o.top + o.bot) / 2
           const f = (n) => n.toFixed(1)
+          // No counter: a solid disc fills the o's hole (its edge sits inside the ring, so no rim shows); the heart takes its place.
+          ear.push(`<ellipse cx="${f(cx)}" cy="${f(cy)}" rx="${f(r * 0.62)}" ry="${f(((o.bot - o.top) / 2) * 0.62)}"/>`)
           for (const side of [-1, 1]) {
             const X = (dx) => cx + side * dx
             const po = [X(0.866 * (r - 2)), cy - 0.5 * (r - 2)]
@@ -367,7 +369,11 @@
           )
           .join('')
         // A heart in the o's counter.
-        const oHeart = o ? heart(o.cx, (o.top + o.bot) / 2 + 4, 34, p.heart) : ''
+        // The heart where the o's hole was, outlined like the letters.
+        const hs = o ? o.w * 0.3 : 0
+        const oHeart = o
+          ? `<path d="${heartAt(o.cx, (o.top + o.bot) / 2 + hs * 0.33, hs)}" fill="${p.heart}" stroke="${p.rim}" stroke-width="7" stroke-linejoin="round"/>`
+          : ''
         // Our fang, hanging off the o's face.
         const fx = o ? o.cx + o.w * 0.14 : 0
         const fang = o

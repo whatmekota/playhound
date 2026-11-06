@@ -80,6 +80,13 @@ const o = ch[oi]
 const r = o.w / 2
 const ocx = o.cx
 const ocy = (o.top + o.bot) / 2
+// No counter: a solid disc fills the o's hole (its edge sits inside the ring, so no rim
+// shows), and the heart takes its place.
+{
+  const rx = r * 0.62
+  const ry = ((o.bot - o.top) / 2) * 0.62
+  extra[oi].push(`M${f(ocx - rx)} ${f(ocy)} a${f(rx)} ${f(ry)} 0 1 0 ${f(2 * rx)} 0 a${f(rx)} ${f(ry)} 0 1 0 ${f(-2 * rx)} 0Z`)
+}
 for (const side of [-1, 1]) {
   const X = dx => ocx + side * dx
   const po = [X(0.866 * (r - 2)), ocy - 0.5 * (r - 2)]
@@ -141,7 +148,7 @@ ${layer(i => shape(i), 'class="wm-fill" fill="url(#wmf)"')}
 ${layer(i => (i === oi
   ? ''
   : `<g clip-path="url(#wmc${i})"><path d="${icing(ch[i], i)}" fill="url(#wmi)"/><ellipse cx="${f(ch[i].x0 + ch[i].w * 0.3)}" cy="${f(ch[i].top + 16)}" rx="${f(Math.min(14, ch[i].w * 0.12))}" ry="6" transform="rotate(-18 ${f(ch[i].x0 + ch[i].w * 0.3)} ${f(ch[i].top + 16)})" fill="#fff" opacity=".8"/></g>`), 'class="wm-icing"')}
-${layer(i => (i === oi ? `<path class="wm-heart" d="${heartAt(o.cx, ocy + 4, 34)}" style="fill:var(--wm-heart)"/>` : ''), 'class="wm-face"')}
+${layer(i => (i === oi ? `<path class="wm-heart" d="${heartAt(o.cx, ocy + o.w * 0.3 * 0.33, o.w * 0.3)}" stroke-width="7" stroke-linejoin="round" style="fill:var(--wm-heart);stroke:var(--wm-rim)"/>` : ''), 'class="wm-face"')}
 </svg>
 `
 fs.mkdirSync(path.dirname(OUT), { recursive: true })
