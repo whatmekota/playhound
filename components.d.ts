@@ -57,6 +57,7 @@ declare module 'vue' {
     PluginsInspector: typeof import('./src/components/inspectors/PluginsInspector.vue')['default']
     PluginSources: typeof import('./src/components/plugins/PluginSources.vue')['default']
     PluginsSettings: typeof import('./src/components/plugins/PluginsSettings.vue')['default']
+    PluginStageView: typeof import('./src/components/views/PluginStageView.vue')['default']
     PopoutCard: typeof import('./src/components/player/PopoutCard.vue')['default']
     ProgrammeInspector: typeof import('./src/components/inspectors/ProgrammeInspector.vue')['default']
     QueueInspector: typeof import('./src/components/inspectors/QueueInspector.vue')['default']

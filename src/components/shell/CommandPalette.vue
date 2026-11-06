@@ -12,6 +12,7 @@ import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { usePluginStore } from '~/stores/pluginStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useStatsStore } from '~/stores/statsStore'
@@ -158,6 +159,22 @@ const commands = computed<Item[]>(() => {
   ]
   return list.filter((c): c is Item => !!c)
 })
+
+const pluginStore = usePluginStore()
+/** Plugins' stage pages, after playhound's own views. */
+const pluginPages = computed<Item[]>(() => pluginStore.pages.map((p) => {
+  const open = ui.view === 'plugin' && ui.pluginView === p.manifest.id
+  return {
+    id: `view:plugin:${p.manifest.id}`,
+    kind: 'view',
+    label: p.page?.title || p.manifest.name,
+    hint: p.manifest.description || 'A plugin\'s page',
+    icon: 'i-carbon-application',
+    on: open,
+    meta: open ? 'Showing' : 'Plugin',
+    run: () => ui.openPluginView(p.manifest.id),
+  }
+}))
 
 const views = computed<Item[]>(() => ALL_VIEWS.map((v) => {
   const open = v.kind === 'view'
@@ -316,7 +333,7 @@ const groups = computed<Group[]>(() => {
   const q = needle.value
   const s = scope.value
   const cmd = commands.value
-  const vw = views.value
+  const vw = [...views.value, ...pluginPages.value]
 
   if (!q) {
     if (s === 'command')

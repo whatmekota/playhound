@@ -18,6 +18,7 @@ export type ViewId
   = | 'player' | 'library' | 'playlists'
     | 'wall' | 'slideshow'
     | 'eroscripts' | 'organizer' | 'stats'
+    | 'plugin'
 
 export type InspectorId
   = | 'library-panel' | 'playlists-panel'
@@ -137,7 +138,16 @@ export const ALL_VIEWS: ViewDef[] = [
   ...INSPECTOR_GROUPS.flatMap(g => g.items),
 ]
 
+/**
+ * The stage view that shows a plugin's page (which plugin: `ui.pluginView`).
+ * Not in the nav groups or the palette's list: each plugin with a page gets
+ * its own button instead.
+ */
+export const PLUGIN_VIEW: ViewDef<'plugin'> = { id: 'plugin', kind: 'view', label: 'Plugin', icon: 'i-carbon-application', hint: 'A plugin\'s page' }
+
 export function findView(id: AnyViewId | null | undefined): ViewDef | undefined {
+  if (id === 'plugin')
+    return PLUGIN_VIEW
   return id ? ALL_VIEWS.find(v => v.id === id) : undefined
 }
 

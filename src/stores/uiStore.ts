@@ -15,6 +15,7 @@ const LS_KEY = 'ph:ui.shell'
 
 interface Persisted {
   view?: ViewId
+  pluginView?: string | null
   inspector?: InspectorId | null
   pinned?: InspectorId | null
   drawerWidth?: number
@@ -38,6 +39,8 @@ export const useUiStore = defineStore('ui', () => {
 
   /** What the main stage shows. */
   const view = ref<ViewId>(validView(saved.view) ? saved.view : 'player')
+  /** With view 'plugin': whose page. */
+  const pluginView = ref<string | null>(typeof saved.pluginView === 'string' ? saved.pluginView : null)
   /** The view before the current one, for "back". */
   const previousView = ref<ViewId>('library')
   /** Active inspector in the right drawer (null = drawer closed). */
@@ -70,6 +73,12 @@ export const useUiStore = defineStore('ui', () => {
     if (view.value !== id)
       previousView.value = view.value
     view.value = id
+  }
+
+  /** Put a plugin's page on the stage. */
+  function openPluginView(id: string) {
+    pluginView.value = id
+    openView('plugin')
   }
 
   /** Toggle between the player and whatever was open before it. */
@@ -138,10 +147,11 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   watch(
-    [view, inspector, pinned, drawerWidth, pinnedHeight, floating, navExpanded],
+    [view, pluginView, inspector, pinned, drawerWidth, pinnedHeight, floating, navExpanded],
     () => {
       const p: Persisted = {
         view: view.value,
+        pluginView: pluginView.value,
         inspector: inspector.value,
         pinned: pinned.value,
         drawerWidth: drawerWidth.value,
@@ -156,6 +166,8 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     view,
+    pluginView,
+    openPluginView,
     previousView,
     inspector,
     pinned,

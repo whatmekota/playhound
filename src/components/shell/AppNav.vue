@@ -5,6 +5,7 @@ import { desktop } from '~/lib/browserApi'
 import { VIEW_GROUPS } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { usePluginStore } from '~/stores/pluginStore'
 import { useUiStore } from '~/stores/uiStore'
 import BrandMark from './BrandMark.vue'
 
@@ -12,14 +13,18 @@ const emit = defineEmits<{ open: [] }>()
 const ui = useUiStore()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
+const pluginStore = usePluginStore()
 /** The desktop title bar already carries the brand. */
 const showBrand = !desktop?.window
 
 const listEl = ref<HTMLElement | null>(null)
 const indicator = ref({ top: 0, height: 0, show: false })
 
+/** The nav item for what the stage shows: a view id, or `plugin:<id>` for a plugin's page. */
+const current = computed(() => (ui.view === 'plugin' ? `plugin:${ui.pluginView}` : ui.view))
+
 function measure() {
-  const el = listEl.value?.querySelector<HTMLElement>(`[data-view="${ui.view}"]`)
+  const el = listEl.value?.querySelector<HTMLElement>(`[data-view="${current.value}"]`)
   if (!el) {
     indicator.value.show = false
     return
@@ -30,7 +35,7 @@ onMounted(() => {
   measure()
   document.fonts?.ready.then(measure)
 })
-watch(() => ui.view, () => nextTick(measure))
+watch([current, () => pluginStore.pages.length], () => nextTick(measure))
 
 // Expanding or collapsing animates the group headings' height for 200ms and
 // the nav's width for 300ms, which moves every item after a single
@@ -54,6 +59,8 @@ const playing = computed(() => player.isPlaying)
 function go(id: ViewId) {
   ui.openView(id)
 }
+
+const pageTitle = (p: (typeof pluginStore.pages)[number]) => p.page?.title || p.manifest.name
 </script>
 
 <template>
@@ -110,6 +117,37 @@ function go(id: ViewId) {
             class="text-[13px] font-medium whitespace-nowrap transition-opacity duration-200"
             :class="ui.navExpanded ? 'opacity-100' : 'opacity-0'"
           >{{ item.label }}</span>
+        </button>
+      </template>
+
+      <!-- Plugins' pages, each with the plugin's own icon -->
+      <template v-if="pluginStore.pages.length">
+        <div
+          class="text-[10px] tracking-[0.08em] font-semibold mt-3 px-2 whitespace-nowrap uppercase transition-all duration-200 overflow-hidden"
+          :class="ui.navExpanded ? 'text-fg-faint h-5 opacity-100' : 'h-0 opacity-0'"
+        >
+          Plugins
+        </div>
+        <div v-if="!ui.navExpanded" class="mx-2 my-1.5 divider-y" />
+        <button
+          v-for="p in pluginStore.pages"
+          :key="p.manifest.id"
+          v-tip="ui.navExpanded ? undefined : { text: pageTitle(p), placement: 'right' }"
+          :data-view="`plugin:${p.manifest.id}`"
+          type="button"
+          class="group px-2.5 focusable rounded-[var(--radius-md)] flex shrink-0 gap-3 h-10 transition-colors items-center relative z-1"
+          :class="current === `plugin:${p.manifest.id}` ? 'text-fg' : 'text-fg-muted hover:text-fg hover:bg-fg/4'"
+          :aria-current="current === `plugin:${p.manifest.id}` ? 'page' : undefined"
+          @click="ui.openPluginView(p.manifest.id)"
+        >
+          <span class="center shrink-0 h-5 w-5">
+            <span v-if="p.page?.icon" class="plugin-icon text-[18px] transition-transform duration-200 group-active:scale-90" :class="current === `plugin:${p.manifest.id}` ? 'text-accent-300' : ''" v-html="p.page.icon" />
+            <span v-else class="i-carbon-application text-[18px] transition-transform duration-200 group-active:scale-90" :class="current === `plugin:${p.manifest.id}` ? 'text-accent-300' : ''" />
+          </span>
+          <span
+            class="text-[13px] font-medium whitespace-nowrap transition-opacity duration-200"
+            :class="ui.navExpanded ? 'opacity-100' : 'opacity-0'"
+          >{{ pageTitle(p) }}</span>
         </button>
       </template>
     </div>

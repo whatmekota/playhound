@@ -1,6 +1,7 @@
 import { deflateRawSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { newer, parseRepo, readRelease } from '~/plugins/sources'
+import { BUILTIN_STAGE, parseStage, stageOf } from '~/plugins/stage'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
 import { readPackage } from '~/stores/pluginStore'
 
@@ -88,6 +89,25 @@ describe('readPackage', () => {
     await expect(read({ 'manifest.json': '{nope', 'index.js': '' })).rejects.toThrow('not valid JSON')
     await expect(read({ 'manifest.json': manifest({ id: 'Bad Id' }), 'index.js': '' })).rejects.toThrow('"id"')
     await expect(read({ 'manifest.json': manifest({ main: 'main.js' }), 'index.js': '' })).rejects.toThrow('main.js')
+  })
+})
+
+describe('the stage', () => {
+  it('names what the stage shows', () => {
+    expect(stageOf('library', null)).toBe('library')
+    expect(stageOf('plugin', 'playmate')).toBe('plugin:playmate')
+  })
+  it('reads playhound\'s views and plugin pages, and nothing else', () => {
+    expect(parseStage('wall')).toEqual({ view: 'wall' })
+    expect(parseStage('eroscripts')).toEqual({ view: 'eroscripts' })
+    expect(parseStage('plugin:my-plugin')).toEqual({ plugin: 'my-plugin' })
+    expect(parseStage('plugin')).toBeNull()
+    expect(parseStage('plugin:')).toBeNull()
+    expect(parseStage('plugin:Bad Id')).toBeNull()
+    expect(parseStage('device')).toBeNull()
+    expect(parseStage(42)).toBeNull()
+    expect(BUILTIN_STAGE).toContain('player')
+    expect(BUILTIN_STAGE).not.toContain('plugin')
   })
 })
 

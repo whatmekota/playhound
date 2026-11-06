@@ -8,6 +8,7 @@ import { desktop } from '~/lib/browserApi'
 import { findView } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { usePluginStore } from '~/stores/pluginStore'
 import { useUiStore } from '~/stores/uiStore'
 import BrandMark from './BrandMark.vue'
 
@@ -54,7 +55,14 @@ const title = computed(() => {
   const name = player.videoPath?.split(/[\\/]/).pop() ?? ''
   return name.replace(/\.[^.]+$/, '')
 })
-const viewDef = computed(() => findView(ui.view))
+const pluginStore = usePluginStore()
+const viewDef = computed(() => {
+  if (ui.view === 'plugin') {
+    const p = pluginStore.pages.find(x => x.manifest.id === ui.pluginView)
+    return { icon: 'i-carbon-application', label: p ? p.page?.title || p.manifest.name : 'Plugin' }
+  }
+  return findView(ui.view)
+})
 </script>
 
 <template>

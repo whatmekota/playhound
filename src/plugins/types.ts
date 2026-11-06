@@ -59,6 +59,22 @@ export interface PanelDef {
   mount: (el: HTMLElement) => void | (() => void)
 }
 
+/**
+ * A page on the main stage, where the player, the library and the media wall
+ * show. Same shape as a panel: `mount` gets a plain element filling the stage.
+ */
+export type PageDef = PanelDef
+
+/**
+ * What the main stage shows: one of playhound's own views, or a plugin's page
+ * as `plugin:<id>`.
+ */
+export type StageView
+  = | 'player' | 'library' | 'playlists'
+    | 'wall' | 'slideshow'
+    | 'eroscripts' | 'organizer' | 'stats'
+    | `plugin:${string}`
+
 export interface PlayerSnapshot {
   playing: boolean
   /** File name of what's loaded, or null. */
@@ -155,6 +171,20 @@ export interface PluginContext {
     /** The plugin's panel in the Plugins drawer. */
     panel: (def: PanelDef) => void
     openPanel: () => void
+    /**
+     * The plugin's page on the main stage, with its own button in the left
+     * nav. `mount` is called each time the page is shown, and its cleanup when
+     * the stage moves on.
+     */
+    page: (def: PageDef) => void
+    /** Put the plugin's own page on the stage. */
+    openPage: () => void
+    /** What the stage shows now. */
+    stage: () => StageView
+    /** Switch the stage: one of playhound's views, or a plugin's page (`plugin:<id>`). False if there is no such view. */
+    showStage: (view: StageView) => boolean
+    /** When the stage switches; returns an unsubscribe. */
+    onStageChange: (fn: (view: StageView) => void) => () => void
     openSettings: () => void
     /** CSS for the plugin's own DOM; removed when it is switched off. */
     style: (css: string) => void

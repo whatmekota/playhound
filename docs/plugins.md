@@ -55,6 +55,13 @@ export default function activate(ctx) {
       return () => {} // cleanup when the panel closes
     },
   })
+  // A whole page on the main stage, if a drawer panel is too small
+  ctx.ui.page({
+    title: 'My plugin',
+    mount(el) {
+      el.textContent = 'Hello from the stage'
+    },
+  })
   return () => {
     // undo anything not created through ctx (ctx's own listeners, styles and
     // the motion generator are cleaned up for you)
@@ -75,6 +82,9 @@ The full contract, with comments, is in
 | `storage.get / set / del`                  | a small persistent key/value store for its own data                                                                                                                                                                                                                                                             |
 | `ui.settings(fields)`                      | the form shown under the plugin in Settings → Plugins. Field types: `text`, `password`, `textarea`, `number`, `slider`, `switch`, `select` (fixed or fetched options, optionally free text) and `heading`, which starts a section that folds away. Any field can have `when(values)` to show it only sometimes. |
 | `ui.panel({ title, icon, mount })`         | its panel: its own button on the right-hand rail and a drawer titled with its name. `icon` is an inline SVG in `currentColor` (about 16×16); without one a generic icon is used. `mount` gets a plain element; you build its DOM yourself.                                                                      |
+| `ui.page({ title, icon, mount })`          | its page on the main stage, where the player, the library and the media wall show, with its own button in the left nav. Same shape as a panel; `mount` gets an element filling the stage.                                                                                                                       |
+| `ui.openPage / stage / showStage`          | put its page on the stage; what the stage shows (`'player'`, `'library'`, `'wall'`, `'eroscripts'`…, or `'plugin:<id>'`); switch the stage to any of those                                                                                                                                                      |
+| `ui.onStageChange(fn)`                     | know when the stage switches                                                                                                                                                                                                                                                                                    |
 | `ui.style(css)`                            | CSS for that DOM. playhound's utility classes aren't available to you; its CSS variables are (`--text`, `--accent`, `--bg-850`, `--border`, `--radius-md`…), so a panel can follow the theme.                                                                                                                   |
 | `ui.toast / openPanel / openSettings`      | small notices, and links into playhound's own UI                                                                                                                                                                                                                                                                |
 | `player.state / onChange / script / frame` | what's playing; what the loaded script is doing now and next; the current picture as a small JPEG                                                                                                                                                                                                               |

@@ -1,5 +1,5 @@
 import type { SourceRelease } from '~/plugins/sources'
-import type { LibraryVideo, MotionControl, MotionReadout, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, ScriptNow, SettingField } from '~/plugins/types'
+import type { LibraryVideo, MotionControl, MotionReadout, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, ScriptNow, SettingField } from '~/plugins/types'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, watch } from 'vue'
@@ -14,6 +14,7 @@ import { KEYS } from '~/lib/persist'
 import { intensityBand } from '~/lib/scriptIntensity'
 import { pluginFetch } from '~/plugins/net'
 import { DEFAULT_SOURCES, fetchRelease, newer, parseRepo } from '~/plugins/sources'
+import { parseStage, stageOf } from '~/plugins/stage'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useMotionStore } from '~/stores/motionStore'
@@ -62,6 +63,8 @@ export interface PluginInfo {
   error: string | null
   fields: SettingField[] | null
   panel: PanelDef | null
+  /** Its page on the main stage. */
+  page: PageDef | null
   values: Record<string, unknown>
 }
 
@@ -157,6 +160,8 @@ export const usePluginStore = defineStore('plugins', () => {
   /** A plugin whose settings were asked for; Settings → Plugins opens its card. */
   const focusSettings = ref<string | null>(null)
   const ready = ref(false)
+  /** The installed plugins are listed and the switched-on ones have started. */
+  const loaded = ref(false)
   const running = new Map<string, Running>()
   /** The plugin holding the stroke generator, and what it was before. */
   const motionHolder = shallowRef<{ id: string, release: () => void } | null>(null)
@@ -185,6 +190,7 @@ export const usePluginStore = defineStore('plugins', () => {
       if (p.enabled)
         await activate(p.manifest.id)
     }
+    loaded.value = true
     void checkDaily().catch(() => {})
   }
 
@@ -201,6 +207,7 @@ export const usePluginStore = defineStore('plugins', () => {
       error: null,
       fields: null,
       panel: null,
+      page: null,
       values,
     }
   }
@@ -319,7 +326,12 @@ export const usePluginStore = defineStore('plugins', () => {
       p.status = 'off'
       p.fields = null
       p.panel = null
+      p.page = null
     }
+    // Its page can't stay on the stage without it.
+    const ui = useUiStore()
+    if (ui.view === 'plugin' && ui.pluginView === id)
+      ui.openView(ui.previousView === 'plugin' ? 'player' : ui.previousView)
     if (!r)
       return
     running.delete(id)
@@ -560,6 +572,39 @@ export const usePluginStore = defineStore('plugins', () => {
           activePanel.value = id
           ui.openInspector('plugins')
         },
+        page(def) {
+          self().page = markRaw({ ...def })
+        },
+        openPage() {
+          if (self().page)
+            ui.openPluginView(id)
+        },
+        stage: () => stageOf(ui.view, ui.pluginView),
+        showStage(view) {
+          const target = parseStage(view)
+          if (!target)
+            return false
+          if ('plugin' in target) {
+            if (!find(target.plugin)?.page || find(target.plugin)?.status !== 'on')
+              return false
+            ui.openPluginView(target.plugin)
+          }
+          else {
+            ui.openView(target.view)
+          }
+          return true
+        },
+        onStageChange(fn) {
+          const stop = watch(() => stageOf(ui.view, ui.pluginView), (v) => {
+            try {
+              fn(v)
+            }
+            catch (err) {
+              console.error(`[plugin ${id}] onStageChange failed`, err)
+            }
+          })
+          return later(stop)
+        },
         openSettings() {
           focusSettings.value = id
           ui.settingsSection = 'plugins'
@@ -762,5 +807,8 @@ export const usePluginStore = defineStore('plugins', () => {
   /** The panel the Plugins drawer shows: the chosen one, else the first. */
   const shownPanel = computed(() => panels.value.find(p => p.manifest.id === activePanel.value) ?? panels.value[0] ?? null)
 
-  return { plugins, panels, shownPanel, activePanel, focusSettings, ready, start, install, remove, setEnabled, setValue, motionHolder, sourceList, sources, checkSources, addSource, removeSource, installFromSource, installedFrom, updateFor, checkDaily }
+  /** Plugins that are on and have a stage page, in the order they're listed. */
+  const pages = computed(() => plugins.value.filter(p => p.page && p.status === 'on'))
+
+  return { plugins, panels, shownPanel, pages, activePanel, focusSettings, ready, loaded, start, install, remove, setEnabled, setValue, motionHolder, sourceList, sources, checkSources, addSource, removeSource, installFromSource, installedFrom, updateFor, checkDaily }
 })

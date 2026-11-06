@@ -429,7 +429,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
       <main ref="stageEl" class="flex-1 min-w-0 relative overflow-hidden">
         <Transition name="t-view" mode="out-in">
           <KeepAlive :max="4" :include="['LibraryView', 'PlaylistsView', 'EroScriptsView', 'OrganizerView']">
-            <component :is="stageView" v-if="stageView" :key="ui.view" class="h-full w-full inset-0 absolute" />
+            <component :is="stageView" v-if="stageView" :key="ui.view === 'plugin' ? `plugin:${ui.pluginView}` : ui.view" class="h-full w-full inset-0 absolute" />
           </KeepAlive>
         </Transition>
 

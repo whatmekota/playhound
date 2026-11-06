@@ -20,6 +20,7 @@ import LibraryView from '~/components/views/LibraryView.vue'
 import MediaWallView from '~/components/views/MediaWallView.vue'
 import OrganizerView from '~/components/views/OrganizerView.vue'
 import PlaylistsView from '~/components/views/PlaylistsView.vue'
+import PluginStageView from '~/components/views/PluginStageView.vue'
 import SlideshowView from '~/components/views/SlideshowView.vue'
 import StatsView from '~/components/views/StatsView.vue'
 
@@ -37,6 +38,7 @@ export const VIEW_COMPONENTS: Record<Exclude<ViewId, 'player'>, Component> = {
   eroscripts: EroScriptsView,
   organizer: OrganizerView,
   stats: StatsView,
+  plugin: PluginStageView,
 }
 
 export const INSPECTOR_COMPONENTS: Record<InspectorId, Component> = {
