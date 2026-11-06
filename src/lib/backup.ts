@@ -1,4 +1,4 @@
-import type { BackupStore } from './idb'
+import type { BackupStore, VideoMeta } from './idb'
 import { BACKUP_STORES, exportStore, importStore } from './idb'
 import { isOwnKey, runMigrations, SCHEMA_VERSION, storedSchema } from './persist'
 
@@ -138,6 +138,23 @@ export interface StorageInventory {
   local: { key: string, bytes: number }[]
   idb: { store: string, records: number }[]
   totalBytes: number
+  /** Videos with at least one tag of their own. */
+  tagged: number
+}
+
+/**
+ * Videos with tags, in a set of `vidmeta` records. Tags travel inside each
+ * video's saved info (with its notes and rating), so a backup carries them
+ * without a key of their own; this is how the Backup panel can still say so.
+ */
+export function countTagged(records: [string, unknown][] | undefined): number {
+  let n = 0
+  for (const [, v] of records ?? []) {
+    const tags = (v as VideoMeta | null)?.tags
+    if (Array.isArray(tags) && tags.length)
+      n++
+  }
+  return n
 }
 
 /**
@@ -153,9 +170,13 @@ export async function inventory(): Promise<StorageInventory> {
     .sort((a, b) => b.bytes - a.bytes)
 
   const idb: { store: string, records: number }[] = []
+  let tagged = 0
   for (const name of BACKUP_STORES) {
     try {
-      idb.push({ store: name, records: (await exportStore(name)).length })
+      const records = await exportStore(name)
+      idb.push({ store: name, records: records.length })
+      if (name === 'vidmeta')
+        tagged = countTagged(records)
     }
     catch {
       idb.push({ store: name, records: 0 })
@@ -166,6 +187,7 @@ export async function inventory(): Promise<StorageInventory> {
     local,
     idb,
     totalBytes: local.reduce((s, k) => s + k.bytes, 0),
+    tagged,
   }
 }
 

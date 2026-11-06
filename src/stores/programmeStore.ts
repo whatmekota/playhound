@@ -30,6 +30,7 @@ import {
   TEMPLATES,
 } from '~/lib/programme'
 import { clipSeconds, cutSoon, guessCreator, lengthen, planReel, poolSize, retime } from '~/lib/reel'
+import { manualTags } from '~/lib/tags'
 import { useAudioStore } from './audio'
 import { useLibraryStore } from './libraryStore'
 import { useMotionStore } from './motionStore'
@@ -211,7 +212,7 @@ export const useProgrammeStore = defineStore('programme', () => {
         chapters: rec.chapters,
         cuts: rec.cuts,
         curve: rec.curve,
-        tags: [...new Set([...rec.tags, ...(meta?.tags ?? []).map(t => t.toLowerCase())])],
+        tags: [...new Set([...rec.tags, ...manualTags(v)])],
         creator: creator ? creator.toLowerCase() : guessCreator(v.basename),
       })
     }

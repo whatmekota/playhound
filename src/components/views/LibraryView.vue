@@ -9,8 +9,11 @@ import Equaliser from '~/components/library/Equaliser.vue'
 import FilterChips from '~/components/library/FilterChips.vue'
 import IntensityMeter from '~/components/library/IntensityMeter.vue'
 import NewPlaylistModal from '~/components/library/NewPlaylistModal.vue'
+import TagPill from '~/components/library/TagPill.vue'
+import TagsModal from '~/components/library/TagsModal.vue'
 import { useEntryActions } from '~/components/library/useEntryActions'
 import { useLibraryQueryState } from '~/components/library/useLibraryQuery'
+import { tagFilterRequest, useLibraryTags } from '~/components/library/useLibraryTags'
 import { useWindowedRows } from '~/components/library/useWindowedRows'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
@@ -65,6 +68,15 @@ const folderOptions = computed(() => [
   ...library.folders.map(f => ({ value: f, label: f })),
 ])
 const scripts = lq.scripts
+const tagView = useLibraryTags()
+
+// "Filter library by tag" from the command palette, whether this view was open or not.
+watch(tagFilterRequest, (tag) => {
+  if (!tag)
+    return
+  lq.showTag(tag)
+  tagFilterRequest.value = null
+}, { immediate: true })
 
 // ─── Now playing ──────────────────────────────────────────────────────────────
 const currentName = computed(() => playback.currentEntry?.name ?? queue.current?.name ?? null)
@@ -131,7 +143,7 @@ function onItemClick(e: MouseEvent, entry: VideoEntry) {
 
 // ─── Actions, context menu, dialogs ───────────────────────────────────────────
 const actions = useEntryActions({ play: e => lq.playEntry(e), playMany: list => playList(list) })
-const { ctx, infoEntry, newPlaylistFor } = actions
+const { ctx, infoEntry, newPlaylistFor, tagsFor } = actions
 
 function openCtx(e: MouseEvent, entry: VideoEntry) {
   // Right-clicking inside the selection acts on all of it; outside, on that one video.
@@ -198,7 +210,7 @@ const win = useWindowedRows({
 const { rows, totalH, cols, onScroll } = win
 
 // A new search or sort starts at the top.
-watch(() => [lq.query, lq.filters, lq.bands, lq.sort], () => win.scrollToTop(), { deep: true })
+watch(() => [lq.query, lq.filters, lq.bands, lq.tags, lq.sort], () => win.scrollToTop(), { deep: true })
 
 const currentIndex = computed(() => currentName.value ? lq.results.findIndex(v => v.name === currentName.value) : -1)
 
@@ -226,7 +238,7 @@ function onKey(e: KeyboardEvent) {
   const t = e.target as HTMLElement
   if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
     return
-  if (ui.paletteOpen || ui.settingsOpen || infoEntry.value || newPlaylistFor.value)
+  if (ui.paletteOpen || ui.settingsOpen || infoEntry.value || newPlaylistFor.value || tagsFor.value)
     return
   if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
     e.preventDefault()
@@ -444,7 +456,7 @@ function onBackgroundClick(e: MouseEvent) {
             </template>
             <template v-else>
               <span class="i-carbon-information text-fg-faint shrink-0" />
-              <span class="num">Intensity is known for {{ scripts.coverage.done.toLocaleString() }} of {{ plural(scripts.coverage.total, 'scripted video') }}; the rest are listed last.</span>
+              <span class="num">Intensity is known for {{ scripts.coverage.done.toLocaleString() }} of {{ plural(scripts.coverage.total, 'scripted video') }}; {{ lq.sort.key === 'intensity' || lq.sort.key === 'peak' ? 'the rest are listed last' : 'the rest are left out for now' }}.</span>
               <UiButton variant="ghost" size="xs" icon="i-carbon-chart-average" @click="scripts.analyseAll()">
                 Analyse all
               </UiButton>
@@ -645,11 +657,6 @@ function onBackgroundClick(e: MouseEvent) {
                         <span v-if="scriptBadge(entry).short" class="text-white num">{{ scriptBadge(entry).short }}</span>
                         <span v-if="entry.scriptType === 'merged'" class="text-[9.5px] text-white/70 font-semibold">M</span>
                       </span>
-                      <span
-                        v-for="tag in (effectiveMeta(entry).tags ?? []).slice(0, 2)"
-                        :key="tag"
-                        class="chip-over text-white/85 opacity-0 max-w-[90px] truncate transition-opacity group-hover:opacity-100"
-                      >{{ tag }}</span>
                       <span class="flex-1" />
                       <span v-if="entry.duration" class="chip-over text-white num">{{ formatTime(entry.duration) }}</span>
                     </div>
@@ -664,7 +671,10 @@ function onBackgroundClick(e: MouseEvent) {
                       <span v-if="effectiveMeta(entry).rating" class="text-warn shrink-0">
                         {{ '★'.repeat(effectiveMeta(entry).rating ?? 0) }}
                       </span>
-                      <span class="flex-1" />
+                      <!-- Two tags at most, under the picture rather than on it: the hover scrub covers anything on the frame. -->
+                      <span class="flex flex-1 gap-1 min-w-0 overflow-hidden">
+                        <TagPill v-for="t in tagView.shown(entry, true).slice(0, 2)" :key="t.tag" :tag="t.tag" :auto="t.auto" class="max-w-[96px] !h-4" />
+                      </span>
                       <IntensityMeter :summary="scripts.summaryOf(entry)" />
                     </p>
                   </div>
@@ -715,7 +725,7 @@ function onBackgroundClick(e: MouseEvent) {
                     <span class="text-[13px] block truncate" :class="entry.name === currentName ? 'text-accent-300 font-medium' : 'text-fg'" :title="entry.name">{{ entry.basename }}</span>
                     <span class="text-[11.5px] text-fg-faint flex gap-1.5 items-center">
                       <span v-if="effectiveMeta(entry).creator" class="truncate">{{ effectiveMeta(entry).creator }}</span>
-                      <span v-for="tag in (effectiveMeta(entry).tags ?? []).slice(0, 3)" :key="tag" class="px-1.5 rounded bg-fg/6 shrink-0">{{ tag }}</span>
+                      <TagPill v-for="t in tagView.shown(entry, true).slice(0, 3)" :key="t.tag" :tag="t.tag" :auto="t.auto" class="shrink-0 !h-4" />
                       <span v-if="effectiveMeta(entry).rating" class="text-warn shrink-0">{{ '★'.repeat(effectiveMeta(entry).rating ?? 0) }}</span>
                     </span>
                   </span>
@@ -788,6 +798,7 @@ function onBackgroundClick(e: MouseEvent) {
             :label="allSelectedStarred ? 'Unstar' : 'Star'"
             @click="actions.setStar(selectedEntries, !allSelectedStarred)"
           />
+          <UiIconButton icon="i-carbon-tag" label="Tags" @click="tagsFor = selectedEntries" />
           <div class="mx-1 divider-x" />
           <UiButton variant="ghost" size="sm" @click="selectAll">
             All
@@ -800,6 +811,7 @@ function onBackgroundClick(e: MouseEvent) {
     <UiContextMenu v-model="ctx" />
     <NewPlaylistModal v-model="newPlaylistFor" />
     <EntryInfoModal v-model="infoEntry" />
+    <TagsModal v-model="tagsFor" />
   </div>
 </template>
 

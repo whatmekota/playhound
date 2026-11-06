@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import type { TagCount } from '~/lib/tags'
 import type { AnyViewId } from '~/lib/views'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, nextTick, ref, watch } from 'vue'
+import { filterLibraryByTag, useLibraryTags } from '~/components/library/useLibraryTags'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import { openFaceWindow } from '~/composables/useFaceScreen'
 import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
+import { plural } from '~/lib/entryInfo'
 import { formatTime } from '~/lib/time'
 import { ALL_VIEWS } from '~/lib/views'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
@@ -21,7 +24,7 @@ import { useUiStore } from '~/stores/uiStore'
 
 /**
  * Ctrl+K: one box that reaches everything — views and panels, commands, and
- * every video in the library.
+ * every video in the library, and its tags.
  *
  * Prefixes narrow the search: `>` commands, `/` views and panels, `#` videos.
  * With an empty box it shows what you used last, so the palette doubles as a
@@ -225,6 +228,24 @@ function videoItem(entry: VideoEntry): Item {
   }
 }
 
+// ─── Tags ────────────────────────────────────────────────────────────────────
+// A tag search lands in the Library view with just that tag picked, which is
+// what someone typing a tag name into the palette is usually after.
+const tagView = useLibraryTags()
+const TAG_LABEL = 'Filter library by tag '
+
+function tagItem(t: TagCount): Item {
+  return {
+    id: `tag:${t.tag}`,
+    kind: 'command',
+    label: `${TAG_LABEL}“${t.tag}”`,
+    hint: plural(t.count, 'video'),
+    icon: 'i-carbon-tag',
+    meta: t.auto ? 'Automatic' : undefined,
+    run: () => filterLibraryByTag(t.tag),
+  }
+}
+
 // ─── Matching ────────────────────────────────────────────────────────────────
 interface Hit { item: Item, score: number, hits: number[] }
 
@@ -355,7 +376,9 @@ const groups = computed<Group[]>(() => {
     }
     const all = new Map([...cmd, ...vw].map(i => [i.id, i]))
     const recent = recentIds.value
-      .map(id => all.get(id) ?? (id.startsWith('video:') ? (e => e && videoItem(e))(byName.value.get(id.slice(6))) : undefined))
+      .map(id => all.get(id)
+        ?? (id.startsWith('video:') ? (e => e && videoItem(e))(byName.value.get(id.slice(6))) : undefined)
+        ?? (id.startsWith('tag:') ? (t => t && tagItem(t))(tagView.all.value.find(x => x.tag === id.slice(4))) : undefined))
       .filter((i): i is Item => !!i)
     return [
       { id: 'recent', title: 'Recent', rows: plain(recent) },
@@ -392,6 +415,22 @@ const groups = computed<Group[]>(() => {
     // Only the rows that show pay for building an item.
     const rows: Hit[] = found.slice(0, VIDEO_CAP).map(f => ({ item: videoItem(f.entry), score: f.score, hits: f.hits }))
     out.push({ id: 'videos', title: found.length > VIDEO_CAP ? `Videos · top ${VIDEO_CAP} of ${found.length.toLocaleString()}` : 'Videos', rows })
+  }
+  if (s === 'all' && library.hasVideos) {
+    // "tag:vr" or "tag vr" asks for tags outright; otherwise the tag name alone is matched.
+    const asked = /^(?:tag:|tag\s+)/.test(q)
+    const tq = q.replace(/^(?:tag:|tag\s+)/, '').trim()
+    const prefix = TAG_LABEL.length + 1
+    const rows: Hit[] = []
+    if (tq) {
+      for (const t of tagView.all.value) {
+        const m = fuzzy(tq, t.tag, tq.length > 2)
+        if (m)
+          rows.push({ item: tagItem(t), score: m.score + (asked ? 60 : 0), hits: m.hits.map(h => h + prefix) })
+      }
+    }
+    rows.sort((a, b) => b.score - a.score)
+    out.push({ id: 'tags', title: 'Tags', rows: rows.slice(0, 6) })
   }
   // The group with the best match goes first, so Enter does the obvious thing.
   return out

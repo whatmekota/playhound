@@ -7,8 +7,10 @@ import EntryInfoModal from '~/components/library/EntryInfoModal.vue'
 import FilterChips from '~/components/library/FilterChips.vue'
 import LibraryRow from '~/components/library/LibraryRow.vue'
 import NewPlaylistModal from '~/components/library/NewPlaylistModal.vue'
+import TagsModal from '~/components/library/TagsModal.vue'
 import { useEntryActions } from '~/components/library/useEntryActions'
 import { useLibraryQueryState } from '~/components/library/useLibraryQuery'
+import { useLibraryTags } from '~/components/library/useLibraryTags'
 import { useWindowedRows } from '~/components/library/useWindowedRows'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiContextMenu from '~/components/ui/UiContextMenu.vue'
@@ -42,7 +44,8 @@ const ui = useUiStore()
 
 const lq = useLibraryQueryState(() => library.videos)
 const actions = useEntryActions({ play: e => lq.playEntry(e) })
-const { ctx, infoEntry, newPlaylistFor } = actions
+const { ctx, infoEntry, newPlaylistFor, tagsFor } = actions
+const tagView = useLibraryTags()
 
 const currentName = computed(() => playback.currentEntry?.name ?? queue.current?.name ?? null)
 
@@ -236,6 +239,7 @@ const searchInput = ref<InstanceType<typeof UiInput> | null>(null)
             :entry="entry"
             :name="entry.name"
             :summary="lq.scripts.summaryOf(entry)"
+            :tags="tagView.shown(entry, true)"
             :current="entry.name === currentName"
             :playing="player.isPlaying"
             @play="lq.playEntry(entry)"
@@ -249,5 +253,6 @@ const searchInput = ref<InstanceType<typeof UiInput> | null>(null)
     <UiContextMenu v-model="ctx" />
     <EntryInfoModal v-model="infoEntry" />
     <NewPlaylistModal v-model="newPlaylistFor" />
+    <TagsModal v-model="tagsFor" />
   </UiPanel>
 </template>

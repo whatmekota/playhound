@@ -5,9 +5,10 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { AXIS_MAP } from '~/lib/axisMap'
 import { collectHandleFiles, filePath, openFolderWithHandle, pickDirectory } from '~/lib/browserApi'
-import { handleDb, metaDb } from '~/lib/idb'
+import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
 import { sniffScript } from '~/lib/scriptSniff'
 import { isSubtitleName, pairSubtitles, subtitleLabel } from '~/lib/subtitles'
+import { editTagList, normalizeTags } from '~/lib/tags'
 
 export interface ScriptMatch {
   file: File
@@ -136,6 +137,35 @@ export const useLibraryStore = defineStore('library', () => {
       starredNames.add(entry.name)
     else starredNames.delete(entry.name)
     localStorage.setItem(STARS_KEY, JSON.stringify([...starredNames]))
+  }
+
+  /**
+   * Add and remove tags on any number of videos. Tags go into each video's
+   * saved info (the `vidmeta` store, keyed by file name like stars and stats),
+   * which every scan reads back, so they outlive rescans the way stars do.
+   * Returns how many videos actually changed.
+   */
+  async function editTags(entries: VideoEntry[], add: string[], remove: string[] = []): Promise<number> {
+    let changed = 0
+    for (const e of entries) {
+      let stored: VideoMeta | undefined
+      try {
+        stored = await videoMetaDb.get(e.name)
+      }
+      catch {}
+      // The same merge the info dialog starts from: the script's own
+      // metadata, overridden by whatever was saved.
+      const meta: VideoMeta = { ...(e.scriptMeta ?? {}), ...(stored ?? e.userMeta ?? {}) }
+      const before = normalizeTags(meta.tags)
+      const after = editTagList(before, add, remove)
+      if (after.length === before.length && after.every((t, i) => t === before[i]))
+        continue
+      meta.tags = after
+      await videoMetaDb.set(e.name, meta)
+      e.userMeta = meta
+      changed++
+    }
+    return changed
   }
 
   /**
@@ -633,6 +663,7 @@ export const useLibraryStore = defineStore('library', () => {
     addFiles,
     clear,
     toggleStar,
+    editTags,
     pickFolder,
     addFolder,
     removeFolder,
