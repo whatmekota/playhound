@@ -22,6 +22,11 @@ export default defineConfig({
   },
 
   server: {
+    // Build output, downloads and worktrees are not source: watching them
+    // (gigabytes of installers and unpacked apps after a build) only costs memory.
+    watch: {
+      ignored: ['**/release/**', '**/.desktop/**', '**/dist/**', '**/brand/**', '**/.claude/**', '**/firmware/**'],
+    },
     proxy: {
       // EroScripts + Pixeldrain fetches are served by es-proxy.mjs (pnpm dev:proxy)
       '/es-proxy': {
