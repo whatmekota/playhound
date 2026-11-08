@@ -171,22 +171,40 @@ const envProxy = () => process.env.HTTPS_PROXY || process.env.https_proxy || pro
  * to a session, so the window (forum covers, thumbnails) reaches the sites
  * the server does. Loopback always stays direct.
  */
+/** The proxy's login, when its address carries one: Chromium asks for it (see the 'login' handler). */
+let proxyLogin = null
+
 async function applyProxy(ses, proxy) {
   try {
     if (!proxy) {
+      proxyLogin = null
       await ses.setProxy({ mode: 'direct' })
-      return
     }
-    const u = new URL(proxy.includes('://') ? proxy : `http://${proxy}`)
-    await ses.setProxy({
-      proxyRules: `${u.protocol === 'https:' ? 'https://' : ''}${u.host}`,
-      proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>',
-    })
+    else {
+      const u = new URL(proxy.includes('://') ? proxy : `http://${proxy}`)
+      proxyLogin = u.username ? { host: u.hostname, username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) } : null
+      await ses.setProxy({
+        proxyRules: `${u.protocol === 'https:' ? 'https://' : ''}${u.host}`,
+        proxyBypassRules: process.env.NO_PROXY || process.env.no_proxy || '<local>',
+      })
+    }
+    // Open keep-alive connections would otherwise go on taking the old route
+    // (a web page reached directly stays direct) until the site drops them.
+    await ses.closeAllConnections()
   }
   catch (err) {
     console.warn('[playhound] Ignoring an unreadable proxy:', err.message)
   }
 }
+
+// Chromium takes no login in the proxy rules; it asks when the proxy wants
+// one. Without this a proxy with a password left web pages failing with 407.
+app.on('login', (event, _wc, _details, authInfo, callback) => {
+  if (authInfo.isProxy && proxyLogin && authInfo.host === proxyLogin.host) {
+    event.preventDefault()
+    callback(proxyLogin.username, proxyLogin.password)
+  }
+})
 
 // ── EroScripts sign-in ───────────────────────────────────────────────────────
 // The app keeps its own forum session in a persistent partition, signed into

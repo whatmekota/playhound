@@ -169,6 +169,10 @@ export function setupWebviews({ ipcMain, allowed, window, app, background }) {
       },
     })
     const wc = view.webContents
+    // WebRTC finds the machine's own addresses and talks UDP past an HTTP
+    // proxy, which is how "what is my IP" pages see the real one. Keep it to
+    // the proxy's route (TCP through it when one is set).
+    wc.setWebRTCIPHandlingPolicy('disable_non_proxied_udp')
     const v = { view, wc, css: null, fullscreen: false }
     views.set(id, v)
     view.setBackgroundColor(background() || '#08080a')

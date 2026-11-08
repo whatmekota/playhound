@@ -39,6 +39,16 @@ async function push(value: string) {
   netProxyError.value = res.ok ? null : (body.error ?? `The local proxy answered ${res.status}`)
 }
 
+/** Ask the server what it uses, without changing it. */
+async function read() {
+  const res = await fetch(`${STREAM_PROXY}/config`)
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok)
+    throw new Error(body.error ?? `The local proxy answered ${res.status}`)
+  netProxyInfo.value = { configured: body.configured ?? null, env: body.env ?? null, effective: body.effective ?? null }
+  netProxyError.value = null
+}
+
 let started = false
 
 /** Keep the server's proxy in step with the setting. Called once by the shell. */
@@ -58,12 +68,30 @@ export function startNetProxySync() {
         timer = setTimeout(() => sync(value, attempt + 1), 3000)
     })
   }
-  watch(netProxy, v => sync(v.trim()), { immediate: true })
+  // On start, an empty setting is not sent: empty means the environment's
+  // proxy, which is what the server starts on anyway, and the server is
+  // shared, so a second copy of the app (or a fresh profile) with nothing set
+  // used to switch everyone's proxy off, the desktop's web pages included.
+  // Clearing the field later is still sent.
+  let first = true
+  watch(netProxy, (v) => {
+    const value = v.trim()
+    if (first && !value) {
+      first = false
+      read().catch(() => {
+        netProxyInfo.value = null
+      })
+      return
+    }
+    first = false
+    sync(value)
+  }, { immediate: true })
 }
 
-/** Ask again, e.g. when Settings opens. */
+/** Ask again, e.g. when Settings opens. Sends the setting only when there is one (see startNetProxySync). */
 export function refreshNetProxy() {
-  return push(netProxy.value.trim()).catch(() => {
+  const value = netProxy.value.trim()
+  return (value ? push(value) : read()).catch(() => {
     netProxyInfo.value = null
   })
 }
