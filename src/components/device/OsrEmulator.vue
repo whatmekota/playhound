@@ -110,8 +110,9 @@ onBeforeUnmount(() => window.removeEventListener('resize', clamp))
 // ─── Open / close ─────────────────────────────────────────────────────────────
 const shown = ref(true)
 const windowEl = ref<HTMLElement | null>(null)
-// It floats over the stage: a plugin's web page under it steps aside.
-useOccluder(() => shown.value, () => windowEl.value)
+// It floats over the stage and stays open while you browse: a plugin's web
+// page under it moves into the room beside it rather than hiding.
+useOccluder(() => shown.value, () => windowEl.value, 'dodge')
 function close() {
   shown.value = false
 }

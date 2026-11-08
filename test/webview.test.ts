@@ -1,7 +1,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
-import { clipRect, occlude, occluded, overlaps } from '~/lib/occluders'
+import { clipRect, dodged, dodgeRect, occlude, occluded, overlaps } from '~/lib/occluders'
 import { accessOf, allows, PERMISSIONS, readManifest } from '~/plugins/manifest'
 import { MAX_WEBVIEWS, placementFor, webUrl } from '~/plugins/webview'
 import { forwardedKey, isAdHost, webUrl as mainWebUrl, MAX_VIEWS, permissionAllowed, plainUserAgent, popupAction, sameSite, scaleRect, siteOf } from '../desktop/webviewRules.mjs'
@@ -151,6 +151,34 @@ describe('placing a web view', () => {
     expect(occluded(r)).toBe(true)
     closeDialog()
     menu.remove()
+  })
+  it('moves beside a floating window instead of hiding', () => {
+    const stage = { x: 64, y: 56, width: 1200, height: 700 }
+    // The emulator in its first spot, top left of the stage: the page takes the room to its right.
+    expect(dodgeRect(stage, { x: 76, y: 72, width: 360, height: 420 })).toEqual({ x: 436, y: 56, width: 828, height: 700 })
+    // Along the bottom: the room above it.
+    expect(dodgeRect(stage, { x: 100, y: 600, width: 1100, height: 150 })).toEqual({ x: 64, y: 56, width: 1200, height: 544 })
+    // Not over it: untouched.
+    expect(dodgeRect(stage, { x: 1300, y: 0, width: 100, height: 100 })).toBe(stage)
+    // In the middle of a small page, no strip is big enough: hide.
+    expect(dodgeRect({ x: 0, y: 0, width: 600, height: 400 }, { x: 150, y: 100, width: 300, height: 200 })).toBeNull()
+  })
+
+  it('dodges only the layers that ask for it, and still hides for the rest', () => {
+    const r = { x: 0, y: 0, width: 1000, height: 600 }
+    const win = document.createElement('div')
+    document.body.append(win)
+    win.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 300, right: 300, bottom: 300, x: 0, y: 0, toJSON: () => ({}) })
+    const closeWin = occlude(() => win, 'dodge')
+    expect(occluded(r)).toBe(false)
+    expect(dodged(r)).toEqual({ x: 300, y: 0, width: 700, height: 600 })
+    expect(placementFor({ box: r, viewport: r, panicked: false, covered: occluded, dodge: dodged })).toEqual({ x: 300, y: 0, width: 700, height: 600, radius: 0 })
+    const closeDialog = occlude('full')
+    expect(placementFor({ box: r, viewport: r, panicked: false, covered: occluded, dodge: dodged })).toBeNull()
+    closeDialog()
+    closeWin()
+    expect(dodged(r)).toBe(r)
+    win.remove()
   })
 })
 

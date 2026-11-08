@@ -2,7 +2,7 @@ import type { WebViewHandle, WebViewOptions, WebViewState } from './types'
 import type { Rect } from '~/lib/occluders'
 import { effectScope, ref, watch } from 'vue'
 import { desktop } from '~/lib/browserApi'
-import { clipRect, occluded, occluderCount, occludersMove, useOccluder } from '~/lib/occluders'
+import { clipRect, dodged, occluded, occluderCount, occludersMove, useOccluder } from '~/lib/occluders'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -13,7 +13,9 @@ import { useUiStore } from '~/stores/uiStore'
  * (desktop/webview.mjs), so this keeps it glued to the element the plugin
  * attached it to, and hides it when that element isn't showing (its page left
  * the stage, the plugin was switched off), when any of playhound's own layers
- * would be under it (src/lib/occluders.ts), and always on panic.
+ * would be under it (src/lib/occluders.ts), and always on panic. Beside a
+ * floating window that stays open (the emulator) it shrinks to the biggest
+ * part of its box clear of the window instead.
  *
  * Measuring is event-driven: a resize, a scroll, a transition starting, a
  * layer opening or closing starts a short run of measuring every frame,
@@ -43,13 +45,17 @@ export type Placement = (Rect & { radius: number }) | null
 
 /**
  * Where a view attached to an element with this box goes: the box cut to
- * the window, or null when it isn't to be seen (panic, not showing, covered).
+ * the window and moved clear of floating windows (`dodge`), or null when it
+ * isn't to be seen (panic, not showing, covered, no room beside a window).
  */
-export function placementFor(o: { box: Rect | null, viewport: Rect, panicked: boolean, covered: (r: Rect) => boolean, radius?: number }): Placement {
+export function placementFor(o: { box: Rect | null, viewport: Rect, panicked: boolean, covered: (r: Rect) => boolean, dodge?: (r: Rect) => Rect | null, radius?: number }): Placement {
   if (o.panicked || !o.box)
     return null
-  const r = clipRect(o.box, o.viewport)
-  if (!r || o.covered(r))
+  const clipped = clipRect(o.box, o.viewport)
+  if (!clipped || o.covered(clipped))
+    return null
+  const r = o.dodge ? o.dodge(clipped) : clipped
+  if (!r)
     return null
   return { ...r, radius: o.radius ?? 0 }
 }
@@ -183,6 +189,7 @@ function measure(e: Entry, panicked: boolean): Placement {
     viewport: { x: 0, y: 0, width: window.innerWidth, height: window.innerHeight },
     panicked,
     covered: occluded,
+    dodge: dodged,
     radius,
   })
 }
