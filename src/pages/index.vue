@@ -14,6 +14,7 @@ import CommandPalette from '~/components/shell/CommandPalette.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
 import InspectorRail from '~/components/shell/InspectorRail.vue'
 import PanicCover from '~/components/shell/PanicCover.vue'
+import PartySplash from '~/components/shell/PartySplash.vue'
 import PlayLinkModal from '~/components/shell/PlayLinkModal.vue'
 import RecordingSheet from '~/components/shell/RecordingSheet.vue'
 import SettingsModal from '~/components/shell/SettingsModal.vue'
@@ -466,6 +467,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     @drop="onDrop"
   >
     <SplashScreen />
+    <PartySplash />
     <!-- The desktop window is frameless; the page draws its title bar. -->
     <TitleBar v-if="desktop?.window" />
 

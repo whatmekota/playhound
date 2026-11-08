@@ -21,6 +21,7 @@ import { UI_SCALES, useUiScale } from '~/composables/useUiScale'
 import { useUpdates } from '~/composables/useUpdates'
 import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
+import { createPartyCounter, partyOpen } from '~/lib/party'
 import { KEYS } from '~/lib/persist'
 import { MOD_KEY } from '~/lib/platform'
 import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
@@ -103,6 +104,16 @@ function addPlaceholder(key: string) {
 }
 const safety = useSafetyStore()
 const library = useLibraryStore()
+
+// Five quick clicks on the mark in About: the party (src/lib/party.ts).
+const partyClick = createPartyCounter()
+const poked = ref(false)
+function pokeMark() {
+  poked.value = false
+  requestAnimationFrame(() => (poked.value = true))
+  if (partyClick())
+    partyOpen.value = true
+}
 
 // Shared with SplashScreen; VueUse keeps same-key refs in sync.
 const splash = useLocalStorage('ph:ui.splash', true)
@@ -816,7 +827,16 @@ function openBackup() {
             <!-- About -->
             <template v-else>
               <div class="about p-6 text-center card flex flex-col gap-4 items-center relative overflow-hidden">
-                <BrandMark :size="56" animated />
+                <button
+                  type="button"
+                  class="about-mark focusable rounded-[var(--radius-md)]"
+                  :class="{ 'is-poked': poked }"
+                  aria-label="playhound"
+                  @click="pokeMark"
+                  @animationend="poked = false"
+                >
+                  <BrandMark :size="56" animated />
+                </button>
                 <div class="flex flex-col gap-1 items-center">
                   <span class="text-[22px] tracking-[-0.03em] font-semibold">play<span class="text-accent-300">hound</span></span>
                   <UiBadge tone="accent" size="xs">
@@ -852,6 +872,18 @@ function openBackup() {
 }
 .about > * {
   position: relative;
+}
+.about-mark {
+  line-height: 0;
+  cursor: pointer;
+}
+.about-mark.is-poked {
+  animation: about-poke 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes about-poke {
+  40% {
+    transform: scale(0.88) rotate(-6deg);
+  }
 }
 
 /* Sky, sun and skin tones: bright and uneven, like the frames that wash out white text. */
