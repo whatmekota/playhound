@@ -1,6 +1,7 @@
 import type { FsEntry } from '~/lib/fsWalk'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { desktop } from '~/lib/browserApi'
 import { extOf, renameEntry, sanitizeFilename } from '~/lib/fsRename'
 import { walkDirectory } from '~/lib/fsWalk'
 import { handleDb } from '~/lib/idb'
@@ -281,6 +282,56 @@ export const useOrganizerStore = defineStore('organizer', () => {
     }
   }
 
+  /** Where each file is on disk, when every one of them has a known path (the desktop app). */
+  function pathsOf(entries: FsEntry[]): string[] | null {
+    const files = desktop?.files
+    if (!files)
+      return null
+    const paths = entries.map(e => files.pathOf(e.file))
+    return paths.every(Boolean) ? paths : null
+  }
+
+  /** Whether deleting these goes to the Recycle Bin (true) or is for good (false). */
+  function deletesToBin(entries: FsEntry[]): boolean {
+    return pathsOf(entries) !== null
+  }
+
+  /**
+   * Delete files: to the Recycle Bin / Trash when the desktop app knows where
+   * they are, otherwise straight off the disk (the browser has no bin to
+   * offer). The folder is read again afterwards.
+   */
+  async function deleteEntries(entries: FsEntry[]): Promise<{ ok: number, failed: { name: string, error: string }[], toBin: boolean }> {
+    const failed: { name: string, error: string }[] = []
+    if (!writable.value)
+      return { ok: 0, failed: entries.map(e => ({ name: e.name, error: 'No write permission' })), toBin: false }
+    const paths = pathsOf(entries)
+    if (paths) {
+      const res = await desktop!.files!.trash(paths)
+      if (res.error !== undefined) {
+        failed.push(...entries.map(e => ({ name: e.name, error: res.error! })))
+      }
+      else {
+        for (const f of res.failed) {
+          const e = entries[paths.indexOf(f.path)]
+          failed.push({ name: e?.name ?? f.path, error: f.error })
+        }
+      }
+    }
+    else {
+      for (const e of entries) {
+        try {
+          await e.dirHandle.removeEntry(e.name)
+        }
+        catch (err: any) {
+          failed.push({ name: e.name, error: err?.message ?? String(err) })
+        }
+      }
+    }
+    await rescan()
+    return { ok: entries.length - failed.length, failed, toBin: !!paths }
+  }
+
   /** Bulk find/replace basenames across a set of pairs. Returns how many were actually renamed. */
   async function bulkRename(scope: OrgPair[], find: string, replace: string, useRegex: boolean): Promise<number> {
     if (!find)
@@ -326,5 +377,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
     renamePair,
     renameSingle,
     bulkRename,
+    deletesToBin,
+    deleteEntries,
   }
 })

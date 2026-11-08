@@ -2,7 +2,7 @@
 // Kept tiny on purpose — the app itself must behave identically in a browser,
 // so this only *adds* information the browser cannot give it.
 
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 const info = ipcRenderer.sendSync('ph:info')
 
@@ -355,6 +355,21 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   net: netApi ?? undefined,
   plugins: pluginsApi ?? undefined,
   web: webApi ?? undefined,
+  files: winState
+    ? Object.freeze({
+        /** Where a File is on disk, or '' when it has no path there. */
+        pathOf: (file) => {
+          try {
+            return webUtils.getPathForFile(file) || ''
+          }
+          catch {
+            return ''
+          }
+        },
+        /** Move files (absolute paths) to the Recycle Bin / Trash: { failed: [{ path, error }] }. */
+        trash: paths => ipcRenderer.invoke('ph:trash', Array.isArray(paths) ? paths.map(String) : []),
+      })
+    : undefined,
 }))
 
 // Hand the theme's background to the main process whenever it changes, so the

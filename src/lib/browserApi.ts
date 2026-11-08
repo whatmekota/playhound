@@ -267,6 +267,13 @@ export interface DesktopInfo {
   plugins?: DesktopPlugins
   /** Web views for plugins (desktop/webview.mjs). Main window only; absent in older builds. */
   web?: DesktopWeb
+  /** Files on disk: their paths, and the Recycle Bin. Main window only; absent before 2.0.2. */
+  files?: DesktopFiles
+}
+
+export interface DesktopFiles {
+  pathOf: (file: File) => string
+  trash: (paths: string[]) => Promise<{ failed: { path: string, error: string }[], error?: undefined } | { error: string, failed?: undefined }>
 }
 
 export interface DesktopWebRect { x: number, y: number, width: number, height: number, radius?: number }

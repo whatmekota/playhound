@@ -350,6 +350,24 @@ async function boot() {
     const activity = sanitiseActivity(payload?.activity)
     presence.set(validClientId(id) ? id : '', activity)
   })
+  // The Organizer's Delete: files go to the Recycle Bin (Trash), never
+  // straight off the disk. Files only, absolute paths only, main window only.
+  ipcMain.handle('ph:trash', async (event, paths) => {
+    if (!fromMainWindow(event) || !Array.isArray(paths))
+      return { error: 'not allowed' }
+    const failed = []
+    for (const p of paths.slice(0, 5000)) {
+      try {
+        if (typeof p !== 'string' || !path.isAbsolute(p) || !fs.statSync(p).isFile())
+          throw new Error('Not a file')
+        await shell.trashItem(p)
+      }
+      catch (err) {
+        failed.push({ path: String(p), error: err?.message ?? 'Could not move it to the bin' })
+      }
+    }
+    return { failed }
+  })
   ipcMain.handle('ph:es:status', async event => (fromMainWindow(event) ? { signedIn: await esSignedIn() } : null))
   ipcMain.handle('ph:es:login', (event) => {
     if (fromMainWindow(event))

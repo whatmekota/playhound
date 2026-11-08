@@ -73,3 +73,29 @@ describe('renameEntry', () => {
     expect(moved).toEqual(['clip.funscript -> Clip.funscript'])
   })
 })
+
+describe('organizer delete', () => {
+  it('deletes a pair for good where there is no bin (the browser)', async () => {
+    const removed: string[] = []
+    const organizer = useOrganizerStore()
+    organizer.writable = true
+    const files = [entry('Clip.mp4'), entry('Clip.funscript'), entry('Clip.roll.funscript')]
+    for (const f of files)
+      f.dirHandle = { removeEntry: async (n: string) => void removed.push(n) } as any
+    const [pair] = buildPairs(files)
+    expect(organizer.deletesToBin([pair.video!])).toBe(false)
+    const r = await organizer.deleteEntries([pair.video!, ...pair.scripts])
+    expect(r).toEqual({ ok: 3, failed: [], toBin: false })
+    expect(removed).toEqual(['Clip.mp4', 'Clip.funscript', 'Clip.roll.funscript'])
+  })
+
+  it('reports what could not be deleted, and deletes nothing without permission', async () => {
+    const organizer = useOrganizerStore()
+    organizer.writable = true
+    const f = entry('a.funscript')
+    f.dirHandle = { removeEntry: async () => { throw new Error('locked') } } as any
+    expect((await organizer.deleteEntries([f])).failed).toEqual([{ name: 'a.funscript', error: 'locked' }])
+    organizer.writable = false
+    expect((await organizer.deleteEntries([f])).ok).toBe(0)
+  })
+})

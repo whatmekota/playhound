@@ -353,6 +353,50 @@ watch(openPair, async (p, old) => {
 })
 onBeforeUnmount(revokePreview)
 
+// ─── Delete ──────────────────────────────────────────────────────────────────
+/** What the confirm dialog is about to delete: whole pairs, or single files of one. */
+const deleting = ref<{ title: string, entries: FsEntry[] } | null>(null)
+const deleteBusy = ref(false)
+const deleteToBin = computed(() => !!deleting.value && organizer.deletesToBin(deleting.value.entries))
+
+const filesOf = (p: OrgPair): FsEntry[] => [...(p.video ? [p.video] : []), ...p.scripts, ...p.subtitles]
+
+function askDeletePairs(list: OrgPair[]) {
+  const entries = list.flatMap(filesOf)
+  if (!entries.length)
+    return
+  deleting.value = {
+    title: list.length === 1 ? `Delete "${list[0].basename}"?` : `Delete ${list.length} items?`,
+    entries,
+  }
+}
+function askDeleteFile(e: FsEntry) {
+  deleting.value = { title: `Delete "${e.name}"?`, entries: [e] }
+}
+
+async function confirmDelete() {
+  const d = deleting.value
+  if (!d)
+    return
+  deleteBusy.value = true
+  try {
+    const r = await organizer.deleteEntries(d.entries)
+    // Plans for files that are gone go with them; the scan has new keys anyway.
+    discardAll()
+    selected.clear()
+    if (openKey.value && !organizer.pairs.some(p => p.key === openKey.value))
+      openKey.value = null
+    if (r.failed.length)
+      toast.error(`Could not delete ${r.failed.length} file${r.failed.length === 1 ? '' : 's'}`, { detail: r.failed.map(f => `${f.name}: ${f.error}`).join('\n') })
+    else
+      toast.success(`${r.toBin ? 'Moved to the Recycle Bin' : 'Deleted'}: ${r.ok} file${r.ok === 1 ? '' : 's'}`, { icon: 'i-carbon-trash-can' })
+  }
+  finally {
+    deleteBusy.value = false
+    deleting.value = null
+  }
+}
+
 function toggleOpen(p: OrgPair) {
   openKey.value = openKey.value === p.key ? null : p.key
 }
@@ -525,6 +569,16 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
           <UiSegmented v-model="filter" :options="filterOptions" />
           <UiSelect v-model="sort" :options="SORTS" aria-label="Sort" />
           <div class="flex-1" />
+          <UiButton
+            v-if="selected.size"
+            variant="ghost"
+            icon="i-carbon-trash-can"
+            class="hover:text-danger"
+            :disabled="!organizer.writable"
+            @click="askDeletePairs(organizer.pairs.filter(p => selected.has(p.key)))"
+          >
+            Delete {{ selected.size }}
+          </UiButton>
           <UiButton :active="findOpen" icon="i-carbon-edit" @click="findOpen = !findOpen">
             Find &amp; replace
           </UiButton>
@@ -761,6 +815,15 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
                       size="xs"
                       @click="startEditScript(s)"
                     />
+                    <UiIconButton
+                      v-if="editingScript !== s.relPath"
+                      icon="i-carbon-trash-can"
+                      label="Delete just this script"
+                      size="xs"
+                      class="hover:text-danger"
+                      :disabled="!organizer.writable"
+                      @click="askDeleteFile(s)"
+                    />
                   </div>
 
                   <p v-if="previews.get(s.relPath)?.loading" class="skeleton rounded h-8" />
@@ -788,10 +851,11 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
 
                 <div v-for="s in openPair.subtitles" :key="s.relPath" class="text-[12px] px-2.5 py-2 well flex gap-2 items-start">
                   <span class="i-carbon-closed-caption text-fg-muted mt-0.5 shrink-0" />
-                  <div class="flex flex-col min-w-0">
+                  <div class="flex flex-1 flex-col min-w-0">
                     <span class="text-fg break-all">{{ s.name }}</span>
                     <span v-if="subtitleAfter(openPair, s)" class="text-accent-300 break-all">→ {{ subtitleAfter(openPair, s) }}</span>
                   </div>
+                  <UiIconButton icon="i-carbon-trash-can" label="Delete this subtitle file" size="xs" class="hover:text-danger" :disabled="!organizer.writable" @click="askDeleteFile(s)" />
                 </div>
               </div>
 
@@ -822,12 +886,47 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
                 <UiButton v-if="plan.get(openPair.key) || openPair.scripts.some(s => scriptDrafts.has(s.relPath))" variant="ghost" icon="i-carbon-undo" @click="unstage(openPair)">
                   Undo
                 </UiButton>
+                <UiIconButton
+                  icon="i-carbon-trash-can"
+                  :label="openPair.video ? 'Delete the video and its files' : 'Delete this script'"
+                  size="md"
+                  class="hover:text-danger"
+                  :disabled="!organizer.writable"
+                  @click="askDeletePairs([openPair])"
+                />
               </div>
             </div>
           </aside>
         </Transition>
       </div>
     </template>
+
+    <!-- Delete -->
+    <UiModal
+      :open="!!deleting"
+      :title="deleting?.title ?? ''"
+      :subtitle="deleteToBin ? 'They go to the Recycle Bin, where you can restore them.' : 'They are deleted for good: there is no bin to restore them from.'"
+      icon="i-carbon-trash-can"
+      width="520px"
+      :persistent="deleteBusy"
+      @update:open="v => { if (!v && !deleteBusy) deleting = null }"
+    >
+      <ul v-if="deleting" class="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+        <li v-for="e in deleting.entries" :key="e.relPath" class="text-[12.5px] flex gap-2 items-center">
+          <span :class="/\.funscript$/i.test(e.name) ? 'i-carbon-chart-line' : /\.(?:srt|vtt|ass)$/i.test(e.name) ? 'i-carbon-closed-caption' : 'i-carbon-video'" class="text-fg-muted shrink-0" />
+          <span class="text-fg flex-1 truncate">{{ e.name }}</span>
+          <span class="text-[11.5px] text-fg-faint num shrink-0">{{ formatSize(e.file.size) }}</span>
+        </li>
+      </ul>
+      <template #footer>
+        <UiButton variant="ghost" :disabled="deleteBusy" @click="deleting = null">
+          Cancel
+        </UiButton>
+        <UiButton variant="danger" icon="i-carbon-trash-can" :loading="deleteBusy" @click="confirmDelete">
+          {{ deleteToBin ? 'Move to the bin' : 'Delete for good' }}
+        </UiButton>
+      </template>
+    </UiModal>
 
     <!-- Review & apply -->
     <UiModal
