@@ -280,6 +280,8 @@ export interface DesktopWeb {
   layout: (id: number, rect: DesktopWebRect | null) => void
   nav: (id: number, action: 'load' | 'back' | 'forward' | 'reload' | 'stop' | 'zoom', arg?: string | number) => void
   panic: (on: boolean) => void
+  /** Absent in builds before 2.0.2. */
+  listen?: (id: number) => Promise<boolean>
   onState: (cb: (id: number, patch: DesktopWebPatch) => void) => () => void
   onKey: (cb: (key: 'Escape' | 'Backquote' | 'KeyK') => void) => () => void
   onActivity: (cb: () => void) => () => void

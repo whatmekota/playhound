@@ -81,6 +81,25 @@ const entries = new Set<Entry>()
  */
 export const webviewPlaced = ref(false)
 
+/**
+ * The view whose page is making sound, if any: the Music source listens to
+ * it when no video is playing (src/composables/useVideoBeat.ts). The one that
+ * started last wins. Reactive.
+ */
+export const audiblePage = ref<number | null>(null)
+let audibleOrder: number[] = []
+
+function updateAudible(e: Entry) {
+  if (e.id === null)
+    return
+  audibleOrder = audibleOrder.filter(id => id !== e.id)
+  if (e.state.audible && !e.destroyed)
+    audibleOrder.push(e.id)
+  const next = audibleOrder.at(-1) ?? null
+  if (audiblePage.value !== next)
+    audiblePage.value = next
+}
+
 /** The element a view is glued to is in the page and visible. */
 function hasBox(e: Entry): boolean {
   const el = e.el
@@ -145,6 +164,8 @@ function patch(e: Entry, p: Partial<WebViewState>) {
   }
   if (changed)
     emit(e)
+  if ('audible' in p)
+    updateAudible(e)
 }
 
 /** Where this entry's view goes right now. */
@@ -334,6 +355,7 @@ export function createWebview(owner: string, opts: WebViewOptions = {}): WebView
     e.destroyed = true
     entries.delete(e)
     updatePlaced()
+    updateAudible(e)
     if (e.id !== null) {
       byId.delete(e.id)
       web!.destroy(e.id)

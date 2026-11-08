@@ -6,10 +6,12 @@ import {
   periodToBpm,
   spectralFlux,
 } from '~/lib/beatDetect'
+import { desktop } from '~/lib/browserApi'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { phaseError } from '~/lib/funscriptAnalysis'
 import { createBeatGrid, createEnergyFollower } from '~/lib/musicMotion'
 import { createTapper, scaleTempo, tappedBeats, tappedBpm, TAPS_FOR_TEMPO } from '~/lib/tapTempo'
+import { audiblePage } from '~/plugins/webview'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -22,12 +24,30 @@ const PHASE_GAIN = 0.3
 const MAX_BEND = 0.25
 /** Onsets kept for tempo estimation — a few bars' worth. */
 const HISTORY = 32
+/** A web page silent this long stops being listened to. */
+const PAGE_QUIET_MS = 5000
 
 // Singleton: one element, one source node, one analysis loop.
 let ctx: AudioContext | null = null
 let sourceEl: HTMLVideoElement | null = null
 let analyser: AnalyserNode | null = null
 let raf: number | null = null
+
+// ─── Listening to a web page ──────────────────────────────────────────────────
+// With no video playing, the sound of a plugin's web page (a PMV in the
+// browser plugin) can be what the Music source follows: the desktop app hands
+// over that page's audio alone (desktop/webview.mjs), and it goes through an
+// analyser of its own, not to the speakers, since the page already plays it.
+let pageCtx: AudioContext | null = null
+let pageAnalyser: AnalyserNode | null = null
+let pageStream: MediaStream | null = null
+let pageId: number | null = null
+/** Bumped on every start and stop, so a slow start that lost the race gives up. */
+let pageSeq = 0
+/** What the analyser hears: the player's video, a web page, or nothing. */
+const listeningTo = ref<'video' | 'page' | null>(null)
+/** The Music source is following a web page's sound. Reactive. */
+export const listeningToPage = computed(() => listeningTo.value === 'page')
 
 // Loop state lives here, not per call: the shell and the Motion panel both
 // construct this, and a second copy of the detector would silently observe
@@ -173,6 +193,9 @@ export const tapState = computed(() => ({
 
 /** The analysed grid at the video's current position, tempo in real time. */
 function analysedReading() {
+  // The analysis is of the video in the player, which is paused while a page plays.
+  if (listeningTo.value === 'page')
+    return null
   const g = getAnalysedGrid()
   const el = g && playingVideo()
   if (!g || !el)
@@ -210,6 +233,11 @@ export function isBeatReady(): boolean {
   return tapped.value !== null || isAnalysedGridReady() || beatReady.value
 }
 
+/** Reactive: a web page's sound is being followed and has given up a beat (or one was tapped). */
+export function isPageBeatReady(): boolean {
+  return listeningTo.value === 'page' && (tapped.value !== null || beatReady.value)
+}
+
 /**
  * The beat grid as the motion engine needs it: where we are in beats (a
  * continuous count, so bars and subdivisions can be derived), the tempo, how
@@ -220,8 +248,14 @@ export function isBeatReady(): boolean {
  */
 export function getBeatGrid(): { beats: number, bpm: number, confidence: number, energy: number } | null {
   const t = tappedReading()
-  if (t)
-    return { beats: t.beats, bpm: t.bpm, confidence: 1, energy: analysedReading()?.energy ?? loudness.energy }
+  if (t) {
+    // Tapped to something the app cannot hear: no loudness to go by, so the
+    // full depth range, not the loudness of the paused video's soundtrack.
+    const energy = tapClock.value === 'wall' && listeningTo.value !== 'page'
+      ? 1
+      : analysedReading()?.energy ?? loudness.energy
+    return { beats: t.beats, bpm: t.bpm, confidence: 1, energy }
+  }
   const r = analysedReading()
   if (r)
     return { beats: r.beats, bpm: r.bpm, confidence: r.confidence, energy: r.energy }
@@ -317,15 +351,16 @@ export function useVideoBeat() {
   }
 
   function tick() {
-    if (!analyser || !ctx) {
+    const an = listeningTo.value === 'page' ? pageAnalyser : listeningTo.value === 'video' && ctx ? analyser : null
+    if (!an) {
       raf = null
       return
     }
 
-    if (!spectrum || spectrum.length !== analyser.frequencyBinCount)
-      spectrum = new Float32Array(analyser.frequencyBinCount)
+    if (!spectrum || spectrum.length !== an.frequencyBinCount)
+      spectrum = new Float32Array(an.frequencyBinCount)
     const bins = spectrum
-    analyser.getFloatFrequencyData(bins)
+    an.getFloatFrequencyData(bins)
     // Silence reads as -Infinity; treat it as a floor so flux stays finite.
     for (let i = 0; i < bins.length; i++) {
       if (!Number.isFinite(bins[i]))
@@ -414,6 +449,11 @@ export function useVideoBeat() {
   function start(el: HTMLVideoElement) {
     if (!ensureGraph(el))
       return
+    if (listeningTo.value === 'page')
+      stopPage()
+    if (listeningTo.value !== 'video')
+      reset()
+    listeningTo.value = 'video'
     void ctx?.resume()
     if (raf === null)
       raf = requestFrame(tick)
@@ -424,7 +464,66 @@ export function useVideoBeat() {
       cancelFrame(raf)
       raf = null
     }
+    stopPage()
+    listeningTo.value = null
     reset()
+  }
+
+  /** Take a web view's sound and listen to it. Quietly does nothing where that cannot be done. */
+  async function startPage(id: number) {
+    if (pageId === id && pageStream?.getAudioTracks().some(t => t.readyState === 'live'))
+      return
+    stopPage()
+    const seq = ++pageSeq
+    const web = desktop?.web
+    if (!web?.listen || !navigator.mediaDevices?.getDisplayMedia)
+      return
+    try {
+      if (!await web.listen(id) || seq !== pageSeq)
+        return
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+      // Only the sound is wanted; the picture is dropped straight away.
+      stream.getVideoTracks().forEach(t => t.stop())
+      if (seq !== pageSeq || !stream.getAudioTracks().length) {
+        stream.getTracks().forEach(t => t.stop())
+        return
+      }
+      const AC = (window as any).AudioContext ?? (window as any).webkitAudioContext
+      const audioCtx: AudioContext = new AC()
+      const node = audioCtx.createAnalyser()
+      node.fftSize = 1024
+      node.smoothingTimeConstant = 0
+      // Not on to the speakers: the page plays its own sound.
+      audioCtx.createMediaStreamSource(stream).connect(node)
+      pageCtx = audioCtx
+      pageAnalyser = node
+      pageStream = stream
+      pageId = id
+      // The page closing or navigating away ends the track.
+      stream.getAudioTracks()[0].addEventListener('ended', () => {
+        if (pageStream === stream)
+          stop()
+      })
+      reset()
+      listeningTo.value = 'page'
+      if (raf === null)
+        raf = requestFrame(tick)
+    }
+    catch {
+      // Refused or unsupported: the tapped tempo still works.
+    }
+  }
+
+  function stopPage() {
+    pageSeq++
+    pageStream?.getTracks().forEach(t => t.stop())
+    void pageCtx?.close().catch(() => {})
+    pageStream = null
+    pageCtx = null
+    pageAnalyser = null
+    pageId = null
+    if (listeningTo.value === 'page')
+      listeningTo.value = null
   }
 
   // Re-learn the tempo when the track changes; a tapped one was for that track.
@@ -450,7 +549,8 @@ export function useVideoBeat() {
     () => audio.musicDrive.value && player.isPlaying && !audio.scriptDrive.value,
     (on) => {
       if (!on) {
-        stop()
+        if (listeningTo.value === 'video')
+          stop()
         return
       }
       const el = document.querySelector<HTMLVideoElement>('video[data-ph-main]') ?? document.querySelector('video')
@@ -459,5 +559,28 @@ export function useVideoBeat() {
     },
   )
 
-  return { bpm, locked, available, beatPeriodMs, onsetCount, hasSignal, energy, confidence, start, stop }
+  // No video playing and a web page making sound: listen to the page. A
+  // video starting takes over again (the watcher above).
+  // A page going quiet for a moment (a seek, the gap between tracks) keeps
+  // what was learned of its beat; only a few seconds of silence let it go.
+  let quietTimer: ReturnType<typeof setTimeout> | undefined
+  watch(
+    () => audio.musicDrive.value && !audio.scriptDrive.value && !player.isPlaying ? audiblePage.value : null,
+    (id) => {
+      clearTimeout(quietTimer)
+      if (id !== null) {
+        void startPage(id)
+      }
+      else if (listeningTo.value === 'page') {
+        // A video starting takes over at once; silence waits a little.
+        if (player.isPlaying || !audio.musicDrive.value || audio.scriptDrive.value)
+          stopPage()
+        else
+          quietTimer = setTimeout(() => listeningTo.value === 'page' && stop(), PAGE_QUIET_MS)
+      }
+    },
+    { immediate: true },
+  )
+
+  return { bpm, locked, available, beatPeriodMs, onsetCount, hasSignal, energy, confidence, start, stop, listeningToPage }
 }

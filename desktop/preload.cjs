@@ -318,6 +318,8 @@ const webApi = winState
       nav: (id, action, arg) => ipcRenderer.send('ph:web:nav', Number(id), String(action), action === 'zoom' ? Number(arg) : arg === undefined ? undefined : String(arg)),
       /** Panic on or off: every view hidden, muted and paused. */
       panic: on => ipcRenderer.send('ph:web:panic', !!on),
+      /** Let the next getDisplayMedia() hand over this view's sound (the Music source listening to a page). */
+      listen: id => ipcRenderer.invoke('ph:web:listen', Number(id)),
       /** Calls `cb(id, patch)` when something about a view changes; returns an unsubscribe. */
       onState: listen(webStateListeners),
       /** Calls `cb(key)` with a key of the app's pressed inside a page ('Escape', 'Backquote', 'KeyK'). */

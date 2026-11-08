@@ -285,7 +285,8 @@ const sessionCapped = computed(() => motion.sessionMaxSpm > motion.maxSpm)
 const beatCapped = computed(() => motion.beatBandHi > motion.maxSpm)
 
 /** Music source: the grid counts as locked once most recent hits land on it, or when it comes from an analysis. */
-const beatAnalysed = computed(() => (soundtrackAnalysis.value?.beats.length ?? 0) >= 2)
+// While a web page is what is heard, the analysis of the paused video says nothing.
+const beatAnalysed = computed(() => !videoBeat.listeningToPage.value && (soundtrackAnalysis.value?.beats.length ?? 0) >= 2)
 const beatLocked = computed(() => beatAnalysed.value || videoBeat.confidence.value >= 0.6)
 
 /** Tap tempo: the button taps on press, not release, so the beat lands where the finger does. */
@@ -537,7 +538,14 @@ const PAD_MAP = [
         </div>
 
         <template v-else>
-          <MusicScriptCard :make="false" :options="false" />
+          <div v-if="videoBeat.listeningToPage.value" class="p-2.5 well flex gap-2.5 items-center">
+            <span class="i-carbon-earth text-[16px] text-accent-300 shrink-0" />
+            <div class="flex flex-col min-w-0">
+              <span class="text-[12.5px] text-fg font-medium">Listening to the web page</span>
+              <span class="hint">No video is playing, so the beat and loudness come from the page's sound.</span>
+            </div>
+          </div>
+          <MusicScriptCard v-else :make="false" :options="false" />
           <div class="p-2 well flex gap-2 items-center">
             <UiButton
               size="sm"
@@ -595,6 +603,13 @@ const PAD_MAP = [
           </div>
           <UiSlider v-model="motion.beatBandLo" label="Slowest" unit=" spm" :min="10" :max="300" :step="1" :reset="35" />
           <UiSlider v-model="motion.beatBandHi" label="Fastest" unit=" spm" :min="10" :max="300" :step="1" :reset="140" hint="The stroke rate stays inside this band: a fast track strokes every second beat or bar, a slow one can double up." />
+          <div class="gap-3 grid grid-cols-2">
+            <UiSlider v-model="motion.minDepth" label="Shallowest" :format="pct" :reset="0.35" />
+            <UiSlider v-model="motion.maxDepth" label="Deepest" :format="pct" :reset="0.95" />
+          </div>
+          <p class="hint">
+            Quiet parts stroke at the shallowest, loud ones at the deepest. Both at 100% for full strokes all the time. A tempo tapped to something the app cannot hear uses the deepest.
+          </p>
           <p v-if="!beatAnalysed && !videoBeat.hasSignal.value && (player.isMuted || player.volume === 0)" class="hint text-warn">
             The player is muted, so the analyser only hears silence. Turn the volume down rather than muting.
           </p>

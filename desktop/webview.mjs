@@ -298,6 +298,40 @@ export function setupWebviews({ ipcMain, allowed, window, app, background }) {
       setPanic(on)
   })
 
+  // ── Listening to a page ─────────────────────────────────────────────────
+  // The Music source can follow the beat of what a page plays. The window
+  // asks for one view's sound, then calls getDisplayMedia, which comes here:
+  // it gets that page's audio (and its picture, which it drops), nothing
+  // else. No system audio, no screen, and only right after asking, so a
+  // plugin calling getDisplayMedia on its own is turned away. The page keeps
+  // playing out loud while it is listened to.
+  let listenFor = null
+  let listenReady = false
+  function ensureListenHandler() {
+    const w = win()
+    if (!w || listenReady)
+      return
+    listenReady = true
+    w.webContents.session.setDisplayMediaRequestHandler((request, callback) => {
+      const ask = listenFor
+      listenFor = null
+      const top = win()
+      const v = ask && Date.now() < ask.until ? views.get(ask.id) : null
+      if (!top || !v || v.wc.isDestroyed() || request.frame?.top !== top.webContents.mainFrame) {
+        callback()
+        return
+      }
+      callback({ video: v.wc.mainFrame, audio: v.wc.mainFrame })
+    })
+  }
+  ipcMain.handle('ph:web:listen', (event, id) => {
+    if (!allowed(event) || !views.has(id))
+      return false
+    ensureListenHandler()
+    listenFor = { id, until: Date.now() + 5000 }
+    return true
+  })
+
   return {
     /** The page's zoom changed: the same CSS rects are other window pixels now. */
     relayout() {
