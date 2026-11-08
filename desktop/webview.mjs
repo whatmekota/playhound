@@ -15,7 +15,7 @@
 // windows open in the same view, http and https only.
 
 import { session, WebContentsView } from 'electron'
-import { BROWSING_PARTITION, forwardedKey, MAX_VIEWS, permissionAllowed, plainUserAgent, popupAction, scaleRect, webUrl } from './webviewRules.mjs'
+import { AD_CSS, BROWSING_PARTITION, forwardedKey, isAdHost, MAX_VIEWS, permissionAllowed, plainUserAgent, popupAction, scaleRect, webUrl } from './webviewRules.mjs'
 
 export { BROWSING_PARTITION }
 
@@ -36,6 +36,16 @@ function setupSession(app) {
   // HID, serial and USB pickers: never. (Bluetooth is per webContents and
   // refused when nothing handles it.)
   ses.setDevicePermissionHandler(() => false)
+  // Ads: requests to ad networks never leave (see webviewRules.mjs). A page
+  // sent to one by a redirect stays where it was.
+  ses.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+    let blocked = false
+    try {
+      blocked = isAdHost(new URL(details.url).hostname)
+    }
+    catch {}
+    callback(blocked ? { cancel: true } : {})
+  })
   ses.on('select-hid-device', (event, _details, callback) => {
     event.preventDefault()
     callback('')
@@ -182,14 +192,21 @@ export function setupWebviews({ ipcMain, allowed, window, app, background }) {
       wc.setAudioMuted(true)
 
     wc.setWindowOpenHandler((details) => {
-      if (popupAction(details) === 'same-view')
+      if (popupAction(details, wc.getURL()) === 'same-view')
         void wc.loadURL(details.url).catch(() => {})
       return { action: 'deny' }
     })
     const guard = (event, url) => {
-      if (!webUrl(url))
+      let ad = false
+      try {
+        ad = isAdHost(new URL(url).hostname)
+      }
+      catch {}
+      if (!webUrl(url) || ad)
         event.preventDefault()
     }
+    // Common ad slots hidden on every page (ad frames are hidden from here too).
+    wc.on('dom-ready', () => void wc.insertCSS(AD_CSS, { cssOrigin: 'user' }).catch(() => {}))
     wc.on('will-navigate', guard)
     wc.on('will-redirect', guard)
 

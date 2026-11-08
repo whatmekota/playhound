@@ -4,7 +4,7 @@ import { nextTick } from 'vue'
 import { clipRect, occlude, occluded, overlaps } from '~/lib/occluders'
 import { accessOf, allows, PERMISSIONS, readManifest } from '~/plugins/manifest'
 import { MAX_WEBVIEWS, placementFor, webUrl } from '~/plugins/webview'
-import { forwardedKey, webUrl as mainWebUrl, MAX_VIEWS, permissionAllowed, plainUserAgent, popupAction, scaleRect } from '../desktop/webviewRules.mjs'
+import { forwardedKey, isAdHost, webUrl as mainWebUrl, MAX_VIEWS, permissionAllowed, plainUserAgent, popupAction, sameSite, scaleRect, siteOf } from '../desktop/webviewRules.mjs'
 
 describe('web view rules (main process)', () => {
   it('scales a CSS rect by the page zoom, rounding edges and keeping it in the window', () => {
@@ -47,6 +47,33 @@ describe('web view rules (main process)', () => {
     expect(popupAction({ url: 'https://a.example/', disposition: 'new-window' })).toBe('same-view')
     expect(popupAction({ url: 'https://ads.example/', disposition: 'background-tab' })).toBe('drop')
     expect(popupAction({ url: 'mailto:x@y.z', disposition: 'foreground-tab' })).toBe('drop')
+  })
+
+  it('follows a pop-up only on the same site, never to an ad network', () => {
+    const from = 'https://www.tube.example/video/123'
+    expect(popupAction({ url: 'https://tube.example/video/456', disposition: 'foreground-tab' }, from)).toBe('same-view')
+    expect(popupAction({ url: 'https://cdn.tube.example/x', disposition: 'new-window' }, from)).toBe('same-view')
+    // A pop-under: a click anywhere opens another site.
+    expect(popupAction({ url: 'https://casino.example/win', disposition: 'foreground-tab' }, from)).toBe('drop')
+    expect(popupAction({ url: 'https://syndication.exoclick.com/x', disposition: 'foreground-tab' })).toBe('drop')
+  })
+
+  it('knows ad networks by domain, subdomains included, and nothing else', () => {
+    expect(isAdHost('syndication.exoclick.com')).toBe(true)
+    expect(isAdHost('a.realsrv.com')).toBe(true)
+    expect(isAdHost('ads.trafficjunky.net')).toBe(true)
+    expect(isAdHost('securepubads.g.doubleclick.net')).toBe(true)
+    expect(isAdHost('pmvhaven.com')).toBe(false)
+    expect(isAdHost('notexoclick.com')).toBe(false)
+    expect(isAdHost('exoclick.com.evil.example')).toBe(false)
+  })
+
+  it('names the site of a host', () => {
+    expect(siteOf('www.example.com')).toBe('example.com')
+    expect(siteOf('a.b.example.co.uk')).toBe('example.co.uk')
+    expect(siteOf('localhost')).toBe('localhost')
+    expect(sameSite('cdn.example.com', 'https://www.example.com/page')).toBe(true)
+    expect(sameSite('example.org', 'https://example.com/')).toBe(false)
   })
 
   it('takes panic and the palette back from a page, and leaves other keys to it', () => {

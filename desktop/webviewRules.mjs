@@ -70,11 +70,144 @@ export function permissionAllowed(permission) {
  * @param {{ url: string, disposition?: string }} details
  * @returns {'same-view' | 'drop'} what to do with it
  */
-export function popupAction(details) {
-  if (!webUrl(details?.url))
+export function popupAction(details, from) {
+  if (!webUrl(details?.url) || details.disposition === 'background-tab')
     return 'drop'
-  return details.disposition === 'background-tab' ? 'drop' : 'same-view'
+  let host
+  try {
+    host = new URL(details.url).hostname
+  }
+  catch {
+    return 'drop'
+  }
+  if (isAdHost(host))
+    return 'drop'
+  // A pop-up to another site is how pop-unders work: a click anywhere opens
+  // an ad, and following it would throw away the page being watched.
+  if (from && !sameSite(host, from))
+    return 'drop'
+  return 'same-view'
 }
+
+// ── Ads ──────────────────────────────────────────────────────────────────────
+// A small built-in blocker for the web views: the ad, pop-under and push
+// networks that adult sites lean on, plus the big general ones. Requests to
+// them are cancelled (ad boxes, their scripts, redirects through them) and
+// common ad slots are hidden. Deliberately short: a list that blocks too much
+// breaks the players this is for.
+
+/** Ad networks, by domain; their subdomains go too. */
+export const AD_DOMAINS = [
+  // Adult ad and pop-under networks
+  'exoclick.com',
+  'exosrv.com',
+  'exdynsrv.com',
+  'realsrv.com',
+  'magsrv.com',
+  'pemsrv.com',
+  'twinrdsrv.com',
+  'twinrdsyn.com',
+  'trafficjunky.com',
+  'trafficjunky.net',
+  'juicyads.com',
+  'tsyndicate.com',
+  'trafficstars.com',
+  'ero-advertising.com',
+  'plugrush.com',
+  'adxpansion.com',
+  'crakrevenue.com',
+  'trafficfactory.biz',
+  'adspyglass.com',
+  'clickaine.com',
+  'hilltopads.net',
+  'hilltopads.com',
+  'clickadu.com',
+  'adsterra.com',
+  'adsterratools.com',
+  'a-ads.com',
+  'popads.net',
+  'popcash.net',
+  'propellerads.com',
+  'propellerclick.com',
+  'onclickads.net',
+  'onclkds.com',
+  'adcash.com',
+  'admaven.com',
+  'ad-maven.com',
+  'bidgear.com',
+  'adskeeper.com',
+  'mgid.com',
+  'revcontent.com',
+  'richpush.co',
+  'pushame.com',
+  'evadav.com',
+  'galaksion.com',
+  'rollerads.com',
+  'monetag.com',
+  'adnium.com',
+  'tubecorporate.com',
+  'dtscout.com',
+  // General ad and tracking networks
+  'doubleclick.net',
+  'googlesyndication.com',
+  'googleadservices.com',
+  'adservice.google.com',
+  'adnxs.com',
+  'taboola.com',
+  'outbrain.com',
+  'criteo.com',
+  'criteo.net',
+  'amazon-adsystem.com',
+  'adsrvr.org',
+  'pubmatic.com',
+  'rubiconproject.com',
+  'openx.net',
+  'smartadserver.com',
+  'yieldmo.com',
+  'zedo.com',
+]
+const AD_SET = new Set(AD_DOMAINS)
+
+/** The host is an ad network's, or under one. */
+export function isAdHost(host) {
+  const parts = String(host).toLowerCase().replace(/\.$/, '').split('.')
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (AD_SET.has(parts.slice(i).join('.')))
+      return true
+  }
+  return false
+}
+
+/** The part of a host that names the site: example.com for www.example.com, example.co.uk for a.example.co.uk. */
+export function siteOf(host) {
+  const parts = String(host).toLowerCase().replace(/\.$/, '').split('.')
+  if (parts.length <= 2)
+    return parts.join('.')
+  const second = parts.at(-2)
+  const take = parts.at(-1).length === 2 && ['co', 'com', 'net', 'org', 'ac', 'gov', 'ne', 'or'].includes(second) ? 3 : 2
+  return parts.slice(-take).join('.')
+}
+
+/** Two hosts (or a host and a page URL) belong to the same site. */
+export function sameSite(host, other) {
+  let h = String(other)
+  try {
+    h = new URL(h).hostname
+  }
+  catch {}
+  return siteOf(host) === siteOf(h)
+}
+
+/** Common ad slots, hidden on every page. Kept to names that are ads and nothing else. */
+export const AD_CSS = `
+ins.adsbygoogle, div[id^="div-gpt-ad"], div[id^="google_ads_"], iframe[id^="google_ads_iframe"],
+iframe[src*="exoclick"], iframe[src*="exosrv"], iframe[src*="juicyads"], iframe[src*="trafficjunky"],
+iframe[src*="tsyndicate"], iframe[src*="magsrv"], iframe[src*="realsrv"], iframe[src*="adsterra"],
+[id^="exo_"], [class*="exo-native"], [class*="exo_wrapper"], [data-ad-slot], [data-adzone], [data-ad-unit],
+.adsbox, .ad-banner, .ad-container, .ad-wrapper, .ad-slot, .ad-placeholder, .banner-ad, .sponsored-ad,
+.adblock-overlay, #ad-container, #ad-banner, #adContainer, #adBanner
+{ display: none !important; }
+`
 
 /**
  * Keys pressed inside a web page that belong to playhound: panic (Esc and `,
