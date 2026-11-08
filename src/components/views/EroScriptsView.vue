@@ -188,14 +188,24 @@ const error = ref<string | null>(null)
 /** The last error was the forum treating us as logged out. */
 const needsSession = ref(false)
 
+/** Waits before trying again when the proxy could not get through: right after start that is often a blip. */
+const UNREACHABLE_RETRIES_MS = [800, 2500]
+
 async function apiFetch(path: string) {
   await esReady
-  const res = await fetch(`${PROXY}${path}`, {
+  const get = () => fetch(`${PROXY}${path}`, {
     headers: {
       Accept: 'application/json',
       ...cookieHeader.value,
     },
   })
+  let res = await get()
+  for (const ms of UNREACHABLE_RETRIES_MS) {
+    if (res.status !== 502 && res.status !== 504)
+      break
+    await new Promise(resolve => setTimeout(resolve, ms))
+    res = await get()
+  }
   proxyDown.value = false
   needsSession.value = false
   if (!res.ok) {
@@ -203,12 +213,16 @@ async function apiFetch(path: string) {
     // with a 404 rather than a 403: an expired cookie looks like a dead link.
     const loggedOut = res.status === 403 || (res.status === 404 && /\/c\/|\/latest\.json|\/top\.json|\/tags\//.test(path))
     needsSession.value = loggedOut
+    // The local proxy says why it could not get through ({ error }); a gateway
+    // error page from the forum itself has no such body.
+    const unreachable = res.status === 502 || res.status === 504
+    const why = unreachable ? await res.json().then(b => (typeof b?.error === 'string' ? b.error : null), () => null) : null
     throw new Error(loggedOut
       ? signedIn.value
         ? 'EroScripts treats you as logged out: the session has expired. Sign in again'
         : 'Free Scripts is only shown to logged-in members: sign in to EroScripts'
-      : res.status === 502 || res.status === 504
-        ? 'Could not reach EroScripts. If it is blocked on your network, set a proxy in Settings → Network'
+      : unreachable
+        ? `Could not reach EroScripts (${why ?? `the forum answered ${res.status}`}). If it is blocked on your network, set a proxy in Settings → Network`
         : `EroScripts answered HTTP ${res.status}`)
   }
   return res.json()
