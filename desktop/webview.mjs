@@ -81,7 +81,7 @@ export function setupWebviews({ ipcMain, allowed, window, app, background }) {
 
   const win = () => {
     const w = window()
-    return w && !w.isDestroyed() ? w : null
+    return w && !w.isDestroyed() && !w.webContents.isDestroyed() ? w : null
   }
 
   function send(id, patch) {

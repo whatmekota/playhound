@@ -226,7 +226,8 @@ async function esSignedIn() {
 }
 
 function esNotify(signedIn) {
-  win?.webContents.send('ph:es:session', { signedIn: !!signedIn })
+  if (win && !win.isDestroyed() && !win.webContents.isDestroyed())
+    win.webContents.send('ph:es:session', { signedIn: !!signedIn })
 }
 
 function openEsLogin() {
@@ -799,7 +800,23 @@ function openExternal(target) {
 
 // ── Shutdown ─────────────────────────────────────────────────────────────────
 
-app.on('window-all-closed', () => app.quit())
+// An error while closing (a page or view sending to a window already gone)
+// is no reason for a dialog: the app is going away anyway. Before that,
+// errors get the same dialog Electron shows by default.
+let quitting = false
+app.on('before-quit', () => {
+  quitting = true
+})
+process.on('uncaughtException', (err) => {
+  console.error('[desktop] uncaught:', err)
+  if (!quitting)
+    dialog.showErrorBox('A JavaScript error occurred in the main process', String(err?.stack ?? err))
+})
+
+app.on('window-all-closed', () => {
+  quitting = true
+  app.quit()
+})
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   presence.dispose()
