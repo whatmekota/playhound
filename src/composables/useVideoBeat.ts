@@ -15,6 +15,7 @@ import { audiblePage } from '~/plugins/webview'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { useSafetyStore } from '~/stores/safetyStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { getAnalysedGrid, isAnalysedGridReady, useSoundtrack } from './useSoundtrack'
 
@@ -37,9 +38,12 @@ let raf: number | null = null
 // With no video playing, the sound of a plugin's web page (a PMV in the
 // browser plugin) can be what the Music source follows: the desktop app hands
 // over that page's audio alone (desktop/webview.mjs), and it goes through an
-// analyser of its own, not to the speakers, since the page already plays it.
+// analyser of its own. Chromium diverts a page's sound to whoever takes it,
+// so it is played on to the speakers from here (silenced on panic).
 let pageCtx: AudioContext | null = null
 let pageAnalyser: AnalyserNode | null = null
+/** The page's sound on its way to the speakers: taking it diverts it from them. */
+let pageGain: GainNode | null = null
 let pageStream: MediaStream | null = null
 let pageId: number | null = null
 /** Bumped on every start and stop, so a slow start that lost the race gives up. */
@@ -284,7 +288,13 @@ export function useVideoBeat() {
   const audio = useAudioStore()
   const player = usePlayerStore()
   const motion = useMotionStore()
+  const safety = useSafetyStore()
   const { setPulse, getPulseClock } = useBinauralBeats()
+  // Panic silences the page; its own mute does not reach sound taken from it.
+  watch(() => safety.panicked, (on) => {
+    if (pageGain)
+      pageGain.gain.value = on ? 0 : 1
+  })
   // Installs the soundtrack analysis wiring (once); the grid above reads it.
   useSoundtrack()
 
@@ -493,8 +503,13 @@ export function useVideoBeat() {
       const node = audioCtx.createAnalyser()
       node.fftSize = 1024
       node.smoothingTimeConstant = 0
-      // Not on to the speakers: the page plays its own sound.
-      audioCtx.createMediaStreamSource(stream).connect(node)
+      const source = audioCtx.createMediaStreamSource(stream)
+      source.connect(node)
+      // Taking the sound took it off the speakers: put it back.
+      const gain = audioCtx.createGain()
+      gain.gain.value = safety.panicked ? 0 : 1
+      source.connect(gain).connect(audioCtx.destination)
+      pageGain = gain
       pageCtx = audioCtx
       pageAnalyser = node
       pageStream = stream
@@ -521,6 +536,7 @@ export function useVideoBeat() {
     pageStream = null
     pageCtx = null
     pageAnalyser = null
+    pageGain = null
     pageId = null
     if (listeningTo.value === 'page')
       listeningTo.value = null
