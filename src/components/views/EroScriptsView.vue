@@ -143,13 +143,18 @@ const cookieHeader = computed((): Record<string, string> => {
     return {}
   return { 'X-ES-Cookie': sessionCookie.value }
 })
+// Whether the app has its own session decides which one a request uses, so
+// nothing goes out before the answer: the first load used to race it, send a
+// stale pasted cookie and fail, and nothing reloaded once the answer came in.
+const esReady: Promise<void> = esApp
+  ? esApp.status().then((s) => {
+      appSignedIn.value = !!s?.signedIn
+    }, () => {})
+  : Promise.resolve()
 let offEsChange: (() => void) | null = null
 onMounted(() => {
   if (!esApp)
     return
-  void esApp.status().then((s) => {
-    appSignedIn.value = !!s?.signedIn
-  })
   offEsChange = esApp.onChange((st) => {
     const was = appSignedIn.value
     appSignedIn.value = st.signedIn
@@ -180,6 +185,7 @@ const error = ref<string | null>(null)
 const needsSession = ref(false)
 
 async function apiFetch(path: string) {
+  await esReady
   const res = await fetch(`${PROXY}${path}`, {
     headers: {
       Accept: 'application/json',
@@ -212,7 +218,8 @@ function fail(e: any, fallback: string) {
 }
 
 /** Proxy-aware fetch for script and file URLs: only the proxy gets the cookie. */
-function proxyFetch(url: string) {
+async function proxyFetch(url: string) {
+  await esReady
   return fetch(url, {
     headers: url.startsWith(PROXY) ? cookieHeader.value : {},
   })
