@@ -491,7 +491,13 @@ export function useVideoBeat() {
     try {
       if (!await web.listen(id) || seq !== pageSeq)
         return
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+      // Plain `audio: true` gets voice-call processing (echo cancelling,
+      // noise suppression, automatic gain) in mono: music came out sounding
+      // like a bad stream. Asked for as it is, it comes in stereo, untouched.
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
+      })
       // Only the sound is wanted; the picture is dropped straight away.
       stream.getVideoTracks().forEach(t => t.stop())
       if (seq !== pageSeq || !stream.getAudioTracks().length) {
@@ -499,7 +505,8 @@ export function useVideoBeat() {
         return
       }
       const AC = (window as any).AudioContext ?? (window as any).webkitAudioContext
-      const audioCtx: AudioContext = new AC()
+      // 'playback': a bigger buffer, so the page's sound never crackles.
+      const audioCtx: AudioContext = new AC({ latencyHint: 'playback' })
       const node = audioCtx.createAnalyser()
       node.fftSize = 1024
       node.smoothingTimeConstant = 0
