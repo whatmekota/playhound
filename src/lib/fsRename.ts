@@ -12,6 +12,16 @@ export function extOf(name: string): string {
   return m ? m[0] : ''
 }
 
+async function exists(dir: FileSystemDirectoryHandle, name: string): Promise<boolean> {
+  try {
+    await dir.getFileHandle(name)
+    return true
+  }
+  catch {
+    return false
+  }
+}
+
 /**
  * Rename a file in place. Prefers the modern FileSystemHandle.move() (fast, atomic,
  * preserves the handle identity) and falls back to copy-then-delete for browsers
@@ -20,6 +30,10 @@ export function extOf(name: string): string {
 export async function renameEntry(entry: FsEntry, newName: string): Promise<FsEntry> {
   if (newName === entry.name)
     return entry
+  // move() and the copy below would both replace a file already there. A
+  // change of case only is the same file on Windows and macOS: let it through.
+  if (newName.toLowerCase() !== entry.name.toLowerCase() && await exists(entry.dirHandle, newName))
+    throw new Error(`"${newName}" is already in that folder`)
   const handle: any = entry.fileHandle
 
   if (typeof handle.move === 'function') {

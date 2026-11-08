@@ -148,6 +148,7 @@ export const KEYS = {
   fsUpNext: def('ph:ui.player.fsUpNext', 'ui', 'Fullscreen up-next sheet'),
   scriptEditor: def('ph:ui.scriptEditor', 'ui', 'Script editor snapping, speed warning and height'),
   eroscriptsView: def('ph:ui.eroscripts.view', 'ui', 'EroScripts grid or list'),
+  organizerSort: def('ph:ui.organizer.sort', 'ui', 'Organizer sort'),
   queueHistoryOpen: def('ph:ui.queue.historyOpen', 'ui', 'Queue history section'),
   binOpenTone: def('ph:ui.binaural.toneOpen', 'ui', 'Binaural sections'),
   binOpenScript: def('ph:ui.binaural.scriptOpen', 'ui', 'Binaural sections'),

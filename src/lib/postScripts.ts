@@ -63,6 +63,11 @@ function likeness(a: Set<string>, b: Set<string>) {
   return all ? shared / all : 0
 }
 
+/** How alike two file names are, 0 to 1, by their words (extensions and quality tags ignored). */
+export function nameLikeness(a: string, b: string): number {
+  return likeness(nameWords(a), nameWords(b))
+}
+
 /** The one video a set of scripts is clearly closest to by name, or -1 on no match or a tie. */
 function closestVideo(base: string, titles: string[]): number {
   const words = nameWords(base)

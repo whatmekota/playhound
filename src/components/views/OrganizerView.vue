@@ -2,10 +2,14 @@
 import type { FsEntry } from '~/lib/fsWalk'
 import type { FunscriptAction, ParsedAxis } from '~/lib/funscriptParser'
 import type { OrgPair, PairStatus } from '~/stores/organizerStore'
+import { useLocalStorage } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { toast } from '~/composables/useToast'
+import { formatDate, formatSize } from '~/lib/entryInfo'
 import { extOf, sanitizeFilename } from '~/lib/fsRename'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
+import { KEYS } from '~/lib/persist'
+import { nameLikeness } from '~/lib/postScripts'
 import { formatTime } from '~/lib/time'
 import { useOrganizerStore } from '~/stores/organizerStore'
 
@@ -32,6 +36,22 @@ const filterOptions = computed(() => [
   { value: 'script-only' as Filter, label: `Orphans ${organizer.orphanScriptCount}` },
 ])
 
+// ─── Sort ────────────────────────────────────────────────────────────────────
+type Sort = 'name' | 'newest' | 'oldest' | 'largest'
+const SORTS: { value: Sort, label: string }[] = [
+  { value: 'name', label: 'By folder and name' },
+  { value: 'newest', label: 'Newest first' },
+  { value: 'oldest', label: 'Oldest first' },
+  { value: 'largest', label: 'Largest first' },
+]
+const sortPref = useLocalStorage<Sort>(KEYS.organizerSort.key, 'name')
+const sort = computed<Sort>({
+  get: () => (SORTS.some(o => o.value === sortPref.value) ? sortPref.value : 'name'),
+  set: (v) => { sortPref.value = v },
+})
+/** By name, rows sit under their folder; any other order is one flat list, each row naming its folder. */
+const grouped = computed(() => sort.value === 'name')
+
 const shown = computed(() => {
   let list = organizer.pairs
   if (filter.value !== 'all')
@@ -39,6 +59,13 @@ const shown = computed(() => {
   const q = search.value.trim().toLowerCase()
   if (q)
     list = list.filter(p => p.basename.toLowerCase().includes(q) || p.dir.toLowerCase().includes(q))
+  // The store keeps folder-and-name order; the others sort a copy.
+  if (sort.value === 'newest')
+    list = [...list].sort((a, b) => b.modified - a.modified)
+  else if (sort.value === 'oldest')
+    list = [...list].sort((a, b) => a.modified - b.modified)
+  else if (sort.value === 'largest')
+    list = [...list].sort((a, b) => b.size - a.size)
   return list
 })
 
@@ -117,17 +144,33 @@ const plan = computed(() => {
   return out
 })
 
-/** Two names landing on the same file in one folder; those rows are left out. */
+/** Every file of a pair as it will be named once the plan is applied. */
+function finalNames(p: OrgPair): string[] {
+  const base = plan.value.get(p.key) ?? p.basename
+  return [
+    ...(p.video ? [base + extOf(p.video.name)] : []),
+    ...p.scripts.map(s => scriptAfter(p, s) ?? s.name),
+    ...p.subtitles.map(s => subtitleAfter(p, s) ?? s.name),
+  ]
+}
+const isPlanned = (p: OrgPair) => plan.value.has(p.key) || p.scripts.some(s => scriptDrafts.has(s.relPath))
+
+/**
+ * Planned rows that would land on a file another row has in the same folder
+ * (case aside, as Windows and macOS see it); those are left out. Compared by
+ * whole file names, so a script may take a video's name: that is pairing them.
+ */
 const conflicts = computed(() => {
-  const seen = new Map<string, string[]>()
+  const owners = new Map<string, Set<string>>()
+  const id = (p: OrgPair, name: string) => `${p.dir}\u0000${name.toLowerCase()}`
   for (const p of organizer.pairs) {
-    const id = `${p.dir}\u0000${(plan.value.get(p.key) ?? p.basename).toLowerCase()}`
-    seen.set(id, [...(seen.get(id) ?? []), p.key])
+    for (const n of finalNames(p))
+      owners.set(id(p, n), (owners.get(id(p, n)) ?? new Set()).add(p.key))
   }
   const out = new Set<string>()
-  for (const keys of seen.values()) {
-    if (keys.length > 1)
-      keys.filter(k => plan.value.has(k)).forEach(k => out.add(k))
+  for (const p of organizer.pairs) {
+    if (isPlanned(p) && finalNames(p).some(n => owners.get(id(p, n))!.size > 1))
+      out.add(p.key)
   }
   return out
 })
@@ -148,7 +191,7 @@ const changes = computed<Change[]>(() => {
       out.push({ pair: p, kind: 'pair', from: p.basename, to: next })
       continue
     }
-    if (next)
+    if (next || conflicts.value.has(p.key))
       continue
     for (const s of p.scripts) {
       const raw = scriptDrafts.get(s.relPath)
@@ -208,12 +251,17 @@ function unstage(p: OrgPair) {
   p.scripts.forEach(s => scriptDrafts.delete(s.relPath))
 }
 
-/** Focus and select an input the moment it mounts; it lives inside a v-for. */
-function focusSelect(el: unknown) {
-  if (el instanceof HTMLInputElement) {
+/**
+ * Focus an input once, when it appears, with its text selected. A function
+ * ref did this before, and Vue calls those on every render: each keystroke
+ * selected everything again, so the next one replaced it and only one
+ * character could ever be typed.
+ */
+const vFocusOnce = {
+  mounted(el: HTMLInputElement) {
     el.focus()
     el.select()
-  }
+  },
 }
 
 const editingScript = ref<string | null>(null)
@@ -233,6 +281,41 @@ function commitEditScript(p: OrgPair, s: FsEntry) {
   }
   scriptDrafts.set(s.relPath, v)
   drafts.delete(p.key)
+}
+
+// ─── Pairing a stray script with a video ─────────────────────────────────────
+/**
+ * For a script with no video, the videos in its folder that have no script
+ * (and the other way round), most alike by name first. Picking one plans the
+ * script's rename to the video's name, which is what pairs them.
+ */
+function partners(p: OrgPair): OrgPair[] {
+  const want = p.status === 'script-only' ? 'video-only' : p.status === 'video-only' ? 'script-only' : null
+  if (!want)
+    return []
+  return organizer.pairs
+    .filter(o => o.status === want && o.dir === p.dir)
+    .map(o => ({ o, score: nameLikeness(p.basename, o.basename) }))
+    .sort((a, b) => b.score - a.score || a.o.basename.localeCompare(b.o.basename))
+    .slice(0, 6)
+    .map(x => x.o)
+}
+/** The orphan script of the two, and the video name it should take. */
+function pairing(p: OrgPair, o: OrgPair) {
+  return p.status === 'script-only' ? { script: p, name: o.basename } : { script: o, name: p.basename }
+}
+function isPairedWith(p: OrgPair, o: OrgPair) {
+  const { script, name } = pairing(p, o)
+  return plan.value.get(script.key) === name
+}
+function pairWith(p: OrgPair, o: OrgPair) {
+  const { script, name } = pairing(p, o)
+  if (plan.value.get(script.key) === name) {
+    drafts.delete(script.key)
+    return
+  }
+  drafts.set(script.key, name)
+  script.scripts.forEach(s => scriptDrafts.delete(s.relPath))
 }
 
 // ─── Detail sheet: video preview and script shapes ───────────────────────────
@@ -319,6 +402,9 @@ async function apply() {
     progress.value.done++
   }
   organizer.error = null
+  // Read the folder again: a script renamed to a video's name only becomes
+  // its pair on a fresh scan, and the keys follow the new names.
+  await organizer.rescan()
   applying.value = false
   results.value = { ok, failed }
   discardAll()
@@ -332,15 +418,21 @@ async function apply() {
 // Captured on the document so Esc closes the sheet instead of reaching the
 // shell, where a bare Esc is the panic key.
 function onKey(e: KeyboardEvent) {
-  if (e.key !== 'Escape' || !openKey.value || reviewOpen.value || (e.target as HTMLElement).closest?.('input, textarea, select'))
+  if (!openKey.value || reviewOpen.value || (e.target as HTMLElement).closest?.('input, textarea, select'))
     return
-  e.stopPropagation()
-  openKey.value = null
+  if (e.key === 'Escape') {
+    e.stopPropagation()
+    openKey.value = null
+  }
+  else if (e.key === 'F2' && openPair.value) {
+    e.preventDefault()
+    startEdit(openPair.value)
+  }
 }
 onMounted(() => document.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
 
-const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.value[i].dir
+const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1].dir !== shown.value[i].dir)
 </script>
 
 <template>
@@ -431,6 +523,7 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
         <div class="flex flex-wrap gap-2 items-center">
           <UiInput v-model="search" icon="i-carbon-search" placeholder="Filter by name or folder" clearable class="flex-1 max-w-[280px] min-w-[180px]" />
           <UiSegmented v-model="filter" :options="filterOptions" />
+          <UiSelect v-model="sort" :options="SORTS" aria-label="Sort" />
           <div class="flex-1" />
           <UiButton :active="findOpen" icon="i-carbon-edit" @click="findOpen = !findOpen">
             Find &amp; replace
@@ -495,6 +588,7 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
               <span :class="allShownSelected ? 'i-carbon-checkbox-checked-filled' : shownSelected ? 'i-carbon-checkbox-indeterminate-filled' : 'i-carbon-checkbox'" class="block" />
             </button>
             <span class="flex-1">Name</span>
+            <span class="w-28 hidden lg:block">Modified</span>
             <span class="w-40 hidden xl:block">Files</span>
             <span class="w-24">Status</span>
             <span class="w-16" />
@@ -537,10 +631,13 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
                 <div class="py-2 flex flex-1 gap-2 min-w-0 items-center">
                   <input
                     v-if="editing === p.key"
-                    :ref="focusSelect"
                     v-model="editDraft"
+                    v-focus-once
                     class="text-[13px] text-fg px-2 outline-none border border-accent/70 rounded-[var(--radius-sm)] bg-surface-900 flex-1 h-7 min-w-0 ring-3 ring-accent-soft"
+                    aria-label="New name"
+                    spellcheck="false"
                     @click.stop
+                    @dblclick.stop
                     @blur="commitEdit(p)"
                     @keydown.enter="commitEdit(p)"
                     @keydown.escape.stop="editing = null"
@@ -557,12 +654,20 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
                       taken
                     </UiBadge>
                   </template>
-                  <span v-else v-tip="p.basename" class="text-[13px] text-fg truncate">{{ p.basename }}</span>
+                  <span v-else v-tip="p.basename" class="text-[13px] text-fg truncate" @dblclick.stop="startEdit(p)">{{ p.basename }}</span>
+                  <span v-if="!grouped && editing !== p.key" class="text-[11px] text-fg-faint flex shrink-0 gap-1 max-w-[30%] items-center">
+                    <span class="i-carbon-folder shrink-0" />
+                    <span class="truncate">{{ p.dir || organizer.rootName }}</span>
+                  </span>
                   <UiBadge v-if="!plan.get(p.key) && p.scripts.some(s => scriptAfter(p, s))" tone="accent" size="xs" icon="i-carbon-edit">
                     script renamed
                   </UiBadge>
                   <span v-if="organizer.renamingKey === p.key" class="text-accent-300 shrink-0"><UiSpinner :size="12" /></span>
                 </div>
+
+                <span v-tip="`${new Date(p.modified).toLocaleString()} · ${formatSize(p.size)}`" class="text-[11.5px] text-fg-muted num w-28 hidden lg:block">
+                  {{ formatDate(p.modified) }}
+                </span>
 
                 <div class="text-[11.5px] text-fg-muted gap-1.5 w-40 hidden items-center xl:flex">
                   <span v-if="p.video" v-tip="p.video.name" class="flex gap-1 items-center"><span class="i-carbon-video" /> 1</span>
@@ -637,8 +742,10 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
                     <div class="flex flex-1 flex-col min-w-0">
                       <input
                         v-if="editingScript === s.relPath"
-                        :ref="focusSelect"
                         v-model="scriptDraft"
+                        v-focus-once
+                        aria-label="New script name"
+                        spellcheck="false"
                         class="text-[12px] text-fg px-2 outline-none border border-accent/70 rounded-[var(--radius-sm)] bg-surface-900 h-6 ring-3 ring-accent-soft"
                         @blur="commitEditScript(openPair, s)"
                         @keydown.enter="commitEditScript(openPair, s)"
@@ -688,8 +795,28 @@ const isNewGroup = (i: number) => i === 0 || shown.value[i - 1].dir !== shown.va
                 </div>
               </div>
 
+              <!-- A stray script and the videos it could belong to, or the other way round -->
+              <div v-if="partners(openPair).length" class="flex flex-col gap-1.5">
+                <span class="eyebrow">{{ openPair.status === 'script-only' ? 'Pair with a video' : 'Pair with a script' }}</span>
+                <p class="hint px-1">
+                  {{ openPair.status === 'script-only' ? 'Videos in this folder with no script, most alike first. Picking one renames this script after it.' : 'Scripts in this folder with no video, most alike first. Picking one renames it after this video.' }}
+                </p>
+                <button
+                  v-for="o in partners(openPair)"
+                  :key="o.key"
+                  type="button"
+                  class="text-[12px] px-2.5 py-1.5 text-left focusable rounded-[var(--radius-sm)] flex gap-2 transition-colors items-center"
+                  :class="isPairedWith(openPair, o) ? 'bg-accent-soft text-fg' : 'well text-fg-muted hover:text-fg'"
+                  @click="pairWith(openPair, o)"
+                >
+                  <span :class="o.video ? 'i-carbon-video' : 'i-carbon-chart-line'" class="shrink-0" />
+                  <span v-tip="o.basename" class="flex-1 truncate">{{ o.basename }}</span>
+                  <span v-if="isPairedWith(openPair, o)" class="i-carbon-checkmark text-accent-300 shrink-0" />
+                </button>
+              </div>
+
               <div class="flex gap-2">
-                <UiButton icon="i-carbon-edit" block @click="startEdit(openPair)">
+                <UiButton v-tip="'Or double-click the name, or press F2'" icon="i-carbon-edit" block @click="startEdit(openPair)">
                   Rename pair
                 </UiButton>
                 <UiButton v-if="plan.get(openPair.key) || openPair.scripts.some(s => scriptDrafts.has(s.relPath))" variant="ghost" icon="i-carbon-undo" @click="unstage(openPair)">

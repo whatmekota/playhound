@@ -17,7 +17,24 @@ export interface OrgPair {
   /** Subtitle files named after the video; renamed along with it. */
   subtitles: FsEntry[]
   status: PairStatus
+  /** Last change on disk, ms: the video's, or the newest script's when there is no video. */
+  modified: number
+  /** Bytes: the video's, or the scripts' together. */
+  size: number
 }
+
+/** When a pair last changed, and how big it is: the video speaks for it when there is one. */
+function stats(video: FsEntry | null, scripts: FsEntry[]) {
+  if (video)
+    return { modified: video.file.lastModified, size: video.file.size }
+  return {
+    modified: Math.max(0, ...scripts.map(s => s.file.lastModified)),
+    size: scripts.reduce((n, s) => n + s.file.size, 0),
+  }
+}
+
+/** A pair's key: its folder and the name of the file that leads it. */
+export const pairKey = (dir: string, video: FsEntry | null, scripts: FsEntry[]) => `${dir}/${video?.name ?? scripts[0]?.name ?? ''}`
 
 const VIDEO_EXT = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 const SCRIPT_EXT = /\.funscript$/i
@@ -61,13 +78,14 @@ export function buildPairs(entries: FsEntry[]): OrgPair[] {
       })
       matched.forEach(s => usedScripts.add(s))
       result.push({
-        key: `${dir}/${v.name}`,
+        key: pairKey(dir, v, matched),
         dir,
         basename: v.name.slice(0, v.name.length - extOf(v.name).length),
         video: v,
         scripts: matched,
         subtitles: subsFor.get(v) ?? [],
         status: matched.length ? 'matched' : 'video-only',
+        ...stats(v, matched),
       })
     }
 
@@ -75,13 +93,14 @@ export function buildPairs(entries: FsEntry[]): OrgPair[] {
       if (usedScripts.has(s))
         continue
       result.push({
-        key: `${dir}/${s.name}`,
+        key: pairKey(dir, null, [s]),
         dir,
         basename: s.name.slice(0, s.name.length - extOf(s.name).length),
         video: null,
         scripts: [s],
         subtitles: [],
         status: 'script-only',
+        ...stats(null, [s]),
       })
     }
   }
@@ -225,7 +244,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
         pair.subtitles[i] = await renameEntry(s, newBasename + tag + ext)
       }
       pair.basename = newBasename
-      pair.key = `${pair.dir}/${newBasename}`
+      pair.key = pairKey(pair.dir, pair.video, pair.scripts)
     }
     catch (e: any) {
       error.value = `Rename failed: ${e?.message ?? e}`
