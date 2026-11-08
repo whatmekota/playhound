@@ -11,7 +11,7 @@ import {
   spmFromIntensity,
   strokePosition,
 } from '~/lib/motionMath'
-import { createSubdivisionHold, pickStrokesPerBeat, steerPhase } from '~/lib/musicMotion'
+import { createSubdivisionHold, paceStrokesPerBeat, pickStrokesPerBeat, steerPhase, strokeVariation } from '~/lib/musicMotion'
 import { createMovePlanner, createPhaseUnwrapper, oscillatorMove } from '~/lib/strokePlan'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -43,6 +43,15 @@ let depth = 0
 let running = false
 /** Music source: the stroke's own 0–1 phase, steered onto the beat grid. */
 let musicPhase = 0
+/** Music variation: strokes counted, what the current one does, and its depth eased in. */
+let musicStroke = 0
+let musicVar = { times: 1 as 1 | 2, depth: 1 }
+let varDepth = 1
+/** Variations reshuffle each time the generator starts, so it is not the same pattern every time. */
+let varSeed = 0
+/** This frame's rate and depth as the moves are planned, a doubled stroke included. */
+let effSpm = 0
+let effDepth = 0
 const subdivision = createSubdivisionHold()
 // Devices that take moves rather than positions (the Handy, Intiface
 // strokers) get one move per half-stroke, planned ahead by their delay.
@@ -96,7 +105,7 @@ export function useMotionEngine() {
    * (gamepad) control, the stick's target at a steady pace.
    */
   function driveMovers(pos: number, direct: boolean, now: number) {
-    const osc = direct ? null : { phase: unwrap.next(phase), spm, depth, center: motion.center, shape: motion.shape }
+    const osc = direct ? null : { phase: unwrap.next(phase), spm: effSpm, depth: effDepth, center: motion.center, shape: motion.shape }
     if (handy.connected.value) {
       const m = osc ? handyPlan.planned(oscillatorMove(osc, handy.leadMs.value)) : handyPlan.direct(pos, now)
       if (m) {
@@ -172,7 +181,9 @@ export function useMotionEngine() {
       const grid = getBeatGrid()
       if (!grid)
         return 0
-      const wanted = pickStrokesPerBeat(grid.bpm, { lo: motion.beatBandLo, hi: motion.beatBandHi }, motion.maxSpm, grid.energy)
+      const wanted = motion.musicPace === 'auto'
+        ? pickStrokesPerBeat(grid.bpm, { lo: motion.beatBandLo, hi: motion.beatBandHi }, motion.maxSpm, grid.energy)
+        : paceStrokesPerBeat(motion.musicPace, grid.bpm, motion.maxSpm)
       const k = subdivision.update(grid.beats, wanted)
       motion.musicStrokesPerBeat = k
       motion.musicEnergy = grid.energy
@@ -240,15 +251,30 @@ export function useMotionEngine() {
       // and the rate never exceeds the ceiling while catching up.
       const grid = getBeatGrid()
       const k = (motion.musicStrokesPerBeat || 1) / divisor
+      const before = musicPhase
       if (grid) {
         const strokes = grid.beats * k
         musicPhase = steerPhase(musicPhase, strokes - Math.floor(strokes), Math.max(spm, 1) / 60, dt, {
           maxRateHz: motion.maxSpm / 60,
         })
       }
-      phase = musicPhase * Math.PI * 2
+      // A new stroke: decide what it does (plain, doubled, short). Only at
+      // the start of one, where every kind of stroke is at the same point.
+      if (musicPhase < before - 0.5) {
+        musicStroke++
+        musicVar = strokeVariation(musicStroke, motion.musicVariation, spm * 2 <= motion.maxSpm, varSeed)
+      }
+      // Two strokes in this one's time: the same start and end, twice as fast.
+      const frac = (musicPhase * musicVar.times) % 1
+      phase = frac * Math.PI * 2
+      // Depth eases to a short stroke rather than jumping at the turn.
+      varDepth = rampToward(varDepth, musicVar.depth, 2.5, dt)
     }
     else {
+      musicVar = { times: 1, depth: 1 }
+      varDepth = 1
+    }
+    if (motion.source !== 'music') {
       // Locked to the pulse: read the audio clock's phase rather than
       // integrating our own, so the stroke is in step with what is heard —
       // but only while that clock runs under the ceiling. Copying a faster
@@ -281,13 +307,15 @@ export function useMotionEngine() {
     }
     else {
       const unit = strokePosition(phase, motion.shape)
-      pos = applyDepth(unit, motion.center, depth)
+      pos = applyDepth(unit, motion.center, depth * varDepth)
     }
 
     // Turned down, give the device a little longer to reach each point, so
     // the gentler motion is also a softer one.
     const interval = Math.round(SEND_INTERVAL_MS * (1 + 0.5 * (1 - depthFactor)))
     sendPosition('L0', pos, interval)
+    effSpm = spm * musicVar.times
+    effDepth = depth * varDepth
     driveMovers(pos, motion.source === 'manual' && motion.manualMode === 'direct', ts)
 
     // However the phase moved this frame (advanced, wrapped, steered or locked
@@ -348,6 +376,10 @@ export function useMotionEngine() {
     spm = 0
     depth = 0
     musicPhase = 0
+    musicStroke = 0
+    musicVar = { times: 1, depth: 1 }
+    varDepth = 1
+    varSeed = Math.floor(Math.random() * 1e9)
     subdivision.reset()
     unwrap.reset()
     handyPlan.reset()

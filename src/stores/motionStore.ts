@@ -1,5 +1,7 @@
+import type { MusicPace } from '~/lib/musicMotion'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { MUSIC_PACES } from '~/lib/musicMotion'
 
 /**
  * Where the device's stroke position comes from.
@@ -62,6 +64,10 @@ export const useMotionStore = defineStore('motion', () => {
   // Beat mapping: the divisor is chosen to land the stroke in this band.
   const beatBandLo = ref(35)
   const beatBandHi = ref(140)
+  /** Music: stroke rate by loudness ('auto'), or held at half time, on the beat or double time. */
+  const musicPace = ref<MusicPace>('auto')
+  /** Music: how often strokes double up or come up short, 0–1. */
+  const musicVariation = ref(0)
 
   // Manual mapping
   const manualSpm = ref(60)
@@ -126,6 +132,8 @@ export const useMotionStore = defineStore('motion', () => {
       maxDepth: maxDepth.value,
       beatBandLo: beatBandLo.value,
       beatBandHi: beatBandHi.value,
+      musicPace: musicPace.value,
+      musicVariation: musicVariation.value,
       manualSpm: manualSpm.value,
       manualDepth: manualDepth.value,
       manualMode: manualMode.value,
@@ -153,6 +161,7 @@ export const useMotionStore = defineStore('motion', () => {
       ['maxDepth', maxDepth],
       ['beatBandLo', beatBandLo],
       ['beatBandHi', beatBandHi],
+      ['musicVariation', musicVariation],
       ['manualSpm', manualSpm],
       ['manualDepth', manualDepth],
       ['secondaryDepth', secondaryDepth],
@@ -161,6 +170,9 @@ export const useMotionStore = defineStore('motion', () => {
       if (typeof data[key] === 'number')
         target.value = data[key]
     }
+    if (MUSIC_PACES.includes(data.musicPace))
+      musicPace.value = data.musicPace
+    musicVariation.value = Math.min(1, Math.max(0, musicVariation.value))
     if (typeof data.ceilingUnlocked === 'boolean')
       ceilingUnlocked.value = data.ceilingUnlocked
     // Never load a ceiling past what is unlocked.
@@ -206,6 +218,8 @@ export const useMotionStore = defineStore('motion', () => {
     maxDepth,
     beatBandLo,
     beatBandHi,
+    musicPace,
+    musicVariation,
     manualSpm,
     manualDepth,
     manualMode,

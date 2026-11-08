@@ -290,3 +290,59 @@ export function createEnergyFollower(opts: { attackS?: number, releaseS?: number
     },
   }
 }
+
+// ─── Pace and variation ──────────────────────────────────────────────────────
+
+/** How the Music source sets the stroke rate: by loudness, or always at one subdivision. */
+export type MusicPace = 'auto' | 'half' | 'beat' | 'double'
+export const MUSIC_PACES: MusicPace[] = ['auto', 'half', 'beat', 'double']
+const PACE_STROKES: Record<Exclude<MusicPace, 'auto'>, number> = { half: 0.5, beat: 1, double: 2 }
+
+/**
+ * Strokes per beat for a fixed pace: that subdivision, or the fastest one
+ * under the ceiling when it would go over (the ceiling always wins).
+ */
+export function paceStrokesPerBeat(pace: Exclude<MusicPace, 'auto'>, bpm: number, maxSpm: number): number {
+  const want = PACE_STROKES[pace]
+  if (!(bpm > 0))
+    return want
+  const legal = STROKES_PER_BEAT.filter(k => k <= want && bpm * k <= maxSpm)
+  return legal[0] ?? STROKES_PER_BEAT[STROKES_PER_BEAT.length - 1]
+}
+
+/** A number in [0, 1) that is always the same for the same stroke and seed. */
+function hash01(n: number, seed: number): number {
+  let h = Math.imul(n ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(seed + 0x27D4EB2F, 0xC2B2AE35)
+  h ^= h >>> 15
+  h = Math.imul(h, 0x2C1B3C6D)
+  h ^= h >>> 12
+  h = Math.imul(h, 0x297A2D39)
+  h ^= h >>> 15
+  return (h >>> 0) / 4294967296
+}
+
+export interface StrokeVariation {
+  /** 1 for a plain stroke, 2 for two strokes in its time. */
+  times: 1 | 2
+  /** How much of the depth this stroke uses, 0–1. */
+  depth: number
+}
+
+/**
+ * What one stroke does when the music has some variation in it. `n` counts
+ * strokes; `amount` (0–1) is how much variation. Doubles come in pairs on an
+ * even stroke, the way a fill does (1 1 1 1 2 2 1 1), and only when twice the
+ * rate stays under the ceiling; some strokes come up short. The same stroke
+ * always gets the same answer, so nothing changes halfway through one.
+ */
+export function strokeVariation(n: number, amount: number, canDouble: boolean, seed = 0): StrokeVariation {
+  const a = Math.min(1, Math.max(0, amount))
+  if (a <= 0)
+    return { times: 1, depth: 1 }
+  const pair = Math.floor(n / 2)
+  const times = canDouble && hash01(pair, seed) < a * 0.3 ? 2 : 1
+  // Short strokes: never the doubled ones (they are short already).
+  const short = times === 1 && hash01(n, seed + 7) < a * 0.35
+  const depth = short ? 1 - a * (0.35 + 0.25 * hash01(n, seed + 13)) : 1
+  return { times, depth }
+}

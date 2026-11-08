@@ -9,6 +9,7 @@ import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput } from '~/composables/useTCode'
 import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { synthTargets } from '~/lib/axisSynth'
+import { paceStrokesPerBeat } from '~/lib/musicMotion'
 import { formatTime } from '~/lib/time'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -283,6 +284,23 @@ const derivedReady = computed(() => {
 const CEILING_WARN = 180
 const sessionCapped = computed(() => motion.sessionMaxSpm > motion.maxSpm)
 const beatCapped = computed(() => motion.beatBandHi > motion.maxSpm)
+
+const PACES = [
+  { value: 'auto' as const, label: 'Auto' },
+  { value: 'half' as const, label: 'Half time' },
+  { value: 'beat' as const, label: 'On the beat' },
+  { value: 'double' as const, label: 'Double' },
+]
+const PACE_STROKES = { half: 0.5, beat: 1, double: 2 } as const
+/** A fixed pace the speed ceiling holds back: the tempo and what it would take. */
+const paceCapped = computed(() => {
+  // A tapped tempo wins, as it does for the motion; the analyser's otherwise.
+  const bpm = tapState.value.bpm ?? videoBeat.bpm.value
+  if (motion.musicPace === 'auto' || !(bpm > 0))
+    return null
+  const want = PACE_STROKES[motion.musicPace]
+  return paceStrokesPerBeat(motion.musicPace, bpm, motion.maxSpm) < want ? { bpm, needs: Math.round(bpm * want) } : null
+})
 
 /** Music source: the grid counts as locked once most recent hits land on it, or when it comes from an analysis. */
 // While a web page is what is heard, the analysis of the paused video says nothing.
@@ -601,8 +619,32 @@ const PAD_MAP = [
             </div>
             <UiProgress :value="motion.musicEnergy" tone="accent" />
           </div>
-          <UiSlider v-model="motion.beatBandLo" label="Slowest" unit=" spm" :min="10" :max="300" :step="1" :reset="35" />
-          <UiSlider v-model="motion.beatBandHi" label="Fastest" unit=" spm" :min="10" :max="300" :step="1" :reset="140" hint="The stroke rate stays inside this band: a fast track strokes every second beat or bar, a slow one can double up." />
+          <div class="flex flex-col gap-1.5">
+            <span class="label">Pace</span>
+            <UiSegmented v-model="motion.musicPace" :options="PACES" size="xs" block />
+            <p class="hint">
+              <template v-if="motion.musicPace === 'auto'">
+                Picks half time, on the beat or double time to sit in the band below, faster when the music is louder.
+              </template>
+              <template v-else>
+                Always {{ motion.musicPace === 'half' ? 'one stroke every two beats' : motion.musicPace === 'beat' ? 'one stroke per beat' : 'two strokes per beat' }}, whatever the band.
+              </template>
+            </p>
+            <p v-if="paceCapped" class="hint text-warn">
+              {{ paceCapped.bpm }} bpm at this pace needs {{ paceCapped.needs }} spm, past your {{ motion.maxSpm }} spm ceiling, so it goes slower. The ceiling is in the Safety panel.
+            </p>
+          </div>
+          <template v-if="motion.musicPace === 'auto'">
+            <UiSlider v-model="motion.beatBandLo" label="Slowest" unit=" spm" :min="10" :max="300" :step="1" :reset="35" />
+            <UiSlider v-model="motion.beatBandHi" label="Fastest" unit=" spm" :min="10" :max="300" :step="1" :reset="140" hint="The stroke rate stays inside this band: a fast track strokes every second beat or bar, a slow one can double up." />
+          </template>
+          <UiSlider
+            v-model="motion.musicVariation"
+            label="Variation"
+            :format="pct"
+            :reset="0"
+            hint="Now and then two quick strokes in the time of one, the way a fill does, and some shorter ones. Never past the ceiling."
+          />
           <div class="gap-3 grid grid-cols-2">
             <UiSlider v-model="motion.minDepth" label="Shallowest" :format="pct" :reset="0.35" />
             <UiSlider v-model="motion.maxDepth" label="Deepest" :format="pct" :reset="0.95" />
