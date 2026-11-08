@@ -2,13 +2,13 @@ import type { TappedTempo } from '~/lib/tapTempo'
 import { computed, ref, shallowRef, watch } from 'vue'
 import {
   createOnsetDetector,
-  estimatePeriod,
   periodToBpm,
   spectralFlux,
 } from '~/lib/beatDetect'
 import { desktop } from '~/lib/browserApi'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { phaseError } from '~/lib/funscriptAnalysis'
+import { createLiveTempo } from '~/lib/liveTempo'
 import { createBeatGrid, createEnergyFollower } from '~/lib/musicMotion'
 import { createTapper, scaleTempo, tappedBeats, tappedBpm, TAPS_FOR_TEMPO } from '~/lib/tapTempo'
 import { audiblePage } from '~/plugins/webview'
@@ -23,8 +23,6 @@ import { getAnalysedGrid, isAnalysedGridReady, useSoundtrack } from './useSoundt
 const PHASE_GAIN = 0.3
 /** Never bend tempo by more than this while correcting. */
 const MAX_BEND = 0.25
-/** Onsets kept for tempo estimation — a few bars' worth. */
-const HISTORY = 32
 /** A web page silent this long stops being listened to. */
 const PAGE_QUIET_MS = 5000
 
@@ -62,11 +60,11 @@ const detector = createOnsetDetector()
 // vibrating rather than moving to the music.
 const grid = createBeatGrid()
 const loudness = createEnergyFollower()
+const liveTempo = createLiveTempo()
 let lastFrameMs = 0
 let lastPublishMs = 0
 let prevSpectrum: Float32Array<ArrayBuffer> | null = null
 let spectrum: Float32Array<ArrayBuffer> | null = null
-let onsets: number[] = []
 let periodMs = 0
 
 const bpm = ref(0)
@@ -351,7 +349,7 @@ export function useVideoBeat() {
     energy.value = 0
     confidence.value = 0
     prevSpectrum = null
-    onsets = []
+    liveTempo.reset()
     periodMs = 0
     beatPeriodMs.value = 0
     bpm.value = 0
@@ -410,21 +408,20 @@ export function useVideoBeat() {
       if (!hasSignal.value && bins.some(v => v > -139))
         hasSignal.value = true
 
+      // The tempo, from the onset strength over the last few seconds
+      // (src/lib/liveTempo.ts); the onsets only place the beat.
+      if (liveTempo.push(flux, tMs) && liveTempo.bpm > 0) {
+        grid.setPeriod(60000 / liveTempo.bpm)
+        periodMs = grid.periodMs
+        if (!analysed && !tapped.value) {
+          beatPeriodMs.value = periodMs
+          bpm.value = Math.round(periodToBpm(periodMs))
+        }
+        beatReady.value = grid.ready
+      }
+
       if (detector.push(flux, tMs)) {
         onsetCount.value++
-        onsets.push(tMs)
-        if (onsets.length > HISTORY)
-          onsets.shift()
-
-        const p = estimatePeriod(onsets)
-        if (p) {
-          grid.setPeriod(p)
-          periodMs = grid.periodMs
-          if (!analysed && !tapped.value) {
-            beatPeriodMs.value = periodMs
-            bpm.value = Math.round(periodToBpm(periodMs))
-          }
-        }
         grid.onset(tMs)
         beatReady.value = grid.ready
       }
