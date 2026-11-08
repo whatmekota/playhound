@@ -44,6 +44,8 @@ interface FunscriptEntry {
 
 interface ESPost {
   id: number
+  post_number?: number
+  username?: string
   cooked: string
   attachments?: { url: string, original_filename: string }[]
   link_counts?: { url: string, title?: string }[]
@@ -61,6 +63,8 @@ interface VideoLink {
   items: StreamItem[]
   item: number
   source: number
+  /** Posted in a reply rather than the post itself (often a new upload once the first one died). */
+  from?: { user: string, post: number }
 }
 
 defineOptions({ name: 'EroScriptsView' })
@@ -454,15 +458,18 @@ function toProxyUrl(url: string): string {
   }
 }
 
-function detectVideoLinks(html: string): VideoLink[] {
+function detectVideoLinks(html: string, from?: VideoLink['from']): VideoLink[] {
   const div = document.createElement('div')
   div.innerHTML = html
+  // A reply quoting the post repeats its links; only its own count.
+  if (from)
+    div.querySelectorAll('aside.quote, blockquote').forEach(q => q.remove())
   const hrefs = [...new Set(Array.from(div.querySelectorAll('a[href]'), a => (a as HTMLAnchorElement).href))]
   const links: VideoLink[] = []
   for (const href of hrefs) {
     const host = detectStreamHost(href)
     if (host)
-      links.push({ host, originalUrl: href, state: 'idle', items: [], item: 0, source: 0 })
+      links.push({ host, originalUrl: href, state: 'idle', items: [], item: 0, source: 0, ...(from ? { from } : {}) })
   }
   return links
 }
@@ -597,6 +604,7 @@ async function loadDetail(topic: ESTopic) {
       if (vl.host.id === 'pixeldrain')
         void addPixeldrainFolderScripts(topic, vl)
     }
+    void addReplyLinks(topic, data)
   }
   catch (e) {
     fail(e, 'Could not load the post')
@@ -604,6 +612,48 @@ async function loadDetail(topic: ESTopic) {
   }
   finally {
     topic.loading = false
+  }
+}
+
+/** Replies read for links, at most: a long thread is mostly thanks. */
+const MAX_REPLIES = 200
+/** Reply links resolved without a click; the rest wait for Retry. */
+const AUTO_RESOLVE_REPLIES = 6
+
+/**
+ * Video links people posted in the replies, newest first, after the post's
+ * own: when the post's upload is gone, someone often shares a new one. The
+ * topic JSON carries the first twenty posts; the rest come by id, in pages.
+ */
+async function addReplyLinks(topic: ESTopic, data: any) {
+  try {
+    const posts: ESPost[] = (data?.post_stream?.posts ?? []).slice(1)
+    const have = new Set(posts.map(p => p.id))
+    const stream: number[] = data?.post_stream?.stream ?? []
+    const rest = stream.slice(1, MAX_REPLIES + 1).filter(id => !have.has(id))
+    for (let i = 0; i < rest.length; i += 20) {
+      const ids = rest.slice(i, i + 20).map(id => `post_ids[]=${id}`).join('&')
+      const more = await apiFetch(`/t/${topic.id}/posts.json?${ids}`)
+      posts.push(...(more?.post_stream?.posts ?? []))
+    }
+    const known = new Set((topic.videoLinks ?? []).map(v => v.originalUrl))
+    const found: VideoLink[] = []
+    for (const p of [...posts].sort((a, b) => (b.post_number ?? 0) - (a.post_number ?? 0))) {
+      for (const vl of detectVideoLinks(p.cooked, { user: p.username ?? 'someone', post: p.post_number ?? 0 })) {
+        if (known.has(vl.originalUrl))
+          continue
+        known.add(vl.originalUrl)
+        found.push(vl)
+      }
+    }
+    if (!found.length)
+      return
+    topic.videoLinks = [...(topic.videoLinks ?? []), ...found]
+    // Through the array just set, so the state changes reach the view.
+    topic.videoLinks.filter(v => v.from && !v.host.ytdlp).slice(0, AUTO_RESOLVE_REPLIES).forEach(v => void resolveVideoLink(v))
+  }
+  catch {
+    // The post itself loaded; the replies are a bonus.
   }
 }
 
@@ -684,7 +734,7 @@ function scriptsFor(topic: ESTopic, link: VideoLink): { entry: FunscriptEntry, s
   // Where this video sits among every video in the post.
   let index = 0
   let count = 0
-  for (const vl of topic.videoLinks ?? []) {
+  for (const vl of (topic.videoLinks ?? []).filter(v => !v.from)) {
     if (vl === link)
       index = count + (vl.items.length > 1 ? vl.item : 0)
     count += Math.max(1, vl.items.length)
@@ -1196,7 +1246,9 @@ onBeforeUnmount(() => {
                     {{ primaryScripts ? `Play with ${primaryScripts} script${primaryScripts === 1 ? '' : 's'}` : 'Play video' }}
                   </UiButton>
                   <p class="hint text-center">
-                    from {{ primarySource.title || primarySource.host.label }}
+                    from {{ primarySource.title || primarySource.host.label }}<template v-if="primarySource.from">
+                      , posted in a reply
+                    </template>
                   </p>
                 </template>
                 <p v-else-if="openTopic.funscriptUrls.length" class="hint">
@@ -1210,122 +1262,128 @@ onBeforeUnmount(() => {
                 <h3 class="eyebrow">
                   Video sources
                 </h3>
-                <div v-for="vl in openTopic.videoLinks" :key="vl.originalUrl" class="card overflow-hidden">
-                  <div class="p-2.5 flex gap-2.5 items-center">
-                    <div class="text-fg-muted rounded-[var(--radius-md)] bg-surface-800 center shrink-0 h-8 w-8">
-                      <span :class="vl.host.icon" class="text-[16px]" />
+                <template v-for="(vl, vi) in openTopic.videoLinks" :key="vl.originalUrl">
+                  <h4 v-if="vl.from && !openTopic.videoLinks[vi - 1]?.from" class="eyebrow mt-2 flex gap-1.5 items-center">
+                    <span class="i-carbon-chat" />
+                    From the replies
+                  </h4>
+                  <div class="card overflow-hidden">
+                    <div class="p-2.5 flex gap-2.5 items-center">
+                      <div class="text-fg-muted rounded-[var(--radius-md)] bg-surface-800 center shrink-0 h-8 w-8">
+                        <span :class="vl.host.icon" class="text-[16px]" />
+                      </div>
+                      <div class="flex flex-1 flex-col min-w-0">
+                        <span class="text-[12.5px] text-fg font-medium truncate">{{ vl.title || vl.host.label }}</span>
+                        <span v-if="vl.title || vl.items.length > 1 || vl.from" class="text-[11px] text-fg-faint truncate">
+                          {{ vl.host.label }}<template v-if="vl.items.length > 1"> · {{ vl.items.length }} videos</template><template v-if="vl.from"> · {{ vl.from.user }}, reply #{{ vl.from.post }}</template>
+                        </span>
+                      </div>
+                      <UiBadge v-if="vl.state === 'ready'" tone="ok" size="xs" dot>
+                        Streams
+                      </UiBadge>
+                      <UiBadge v-else-if="vl.state === 'resolving'" tone="info" size="xs">
+                        <UiSpinner :size="9" /> Resolving
+                      </UiBadge>
+                      <UiBadge v-else-if="vl.state === 'needs-ytdlp'" size="xs" icon="i-carbon-download">
+                        Needs yt-dlp
+                      </UiBadge>
+                      <UiBadge v-else-if="vl.state === 'error'" tone="danger" size="xs">
+                        Failed
+                      </UiBadge>
                     </div>
-                    <div class="flex flex-1 flex-col min-w-0">
-                      <span class="text-[12.5px] text-fg font-medium truncate">{{ vl.title || vl.host.label }}</span>
-                      <span v-if="vl.title || vl.items.length > 1" class="text-[11px] text-fg-faint truncate">
-                        {{ vl.host.label }}<template v-if="vl.items.length > 1"> · {{ vl.items.length }} videos</template>
-                      </span>
+                    <p v-if="vl.state === 'error'" class="text-[11.5px] text-danger px-2.5 pb-2 -mt-1">
+                      {{ vl.error }}
+                    </p>
+                    <p v-else-if="vl.state === 'needs-ytdlp'" class="hint px-2.5 pb-2 -mt-1">
+                      {{ vl.host.label }} streams through yt-dlp, a free open-source downloader. playhound can fetch the official release (about 20 MB) and keep it up to date.
+                    </p>
+
+                    <!-- A folder: pick which video -->
+                    <div v-if="vl.items.length > 1" class="px-1.5 pb-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+                      <button
+                        v-for="(it, i) in vl.items"
+                        :key="i"
+                        type="button"
+                        class="text-[11.5px] px-2 text-left focusable rounded-[var(--radius-sm)] flex gap-2 h-7 transition-colors items-center"
+                        :class="vl.item === i ? 'bg-accent-soft text-fg' : 'text-fg-muted hover:bg-fg/5 hover:text-fg'"
+                        @click="chooseItem(vl, i)"
+                      >
+                        <span class="i-carbon-video shrink-0" />
+                        <span v-tip="it.title" class="flex-1 truncate">{{ it.title }}</span>
+                        <span v-if="it.size" class="num shrink-0">{{ fmtSize(it.size) }}</span>
+                        <span v-if="vl.item === i" class="i-carbon-checkmark text-accent-300 shrink-0" />
+                      </button>
                     </div>
-                    <UiBadge v-if="vl.state === 'ready'" tone="ok" size="xs" dot>
-                      Streams
-                    </UiBadge>
-                    <UiBadge v-else-if="vl.state === 'resolving'" tone="info" size="xs">
-                      <UiSpinner :size="9" /> Resolving
-                    </UiBadge>
-                    <UiBadge v-else-if="vl.state === 'needs-ytdlp'" size="xs" icon="i-carbon-download">
-                      Needs yt-dlp
-                    </UiBadge>
-                    <UiBadge v-else-if="vl.state === 'error'" tone="danger" size="xs">
-                      Failed
-                    </UiBadge>
-                  </div>
-                  <p v-if="vl.state === 'error'" class="text-[11.5px] text-danger px-2.5 pb-2 -mt-1">
-                    {{ vl.error }}
-                  </p>
-                  <p v-else-if="vl.state === 'needs-ytdlp'" class="hint px-2.5 pb-2 -mt-1">
-                    {{ vl.host.label }} streams through yt-dlp, a free open-source downloader. playhound can fetch the official release (about 20 MB) and keep it up to date.
-                  </p>
 
-                  <!-- A folder: pick which video -->
-                  <div v-if="vl.items.length > 1" class="px-1.5 pb-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
-                    <button
-                      v-for="(it, i) in vl.items"
-                      :key="i"
-                      type="button"
-                      class="text-[11.5px] px-2 text-left focusable rounded-[var(--radius-sm)] flex gap-2 h-7 transition-colors items-center"
-                      :class="vl.item === i ? 'bg-accent-soft text-fg' : 'text-fg-muted hover:bg-fg/5 hover:text-fg'"
-                      @click="chooseItem(vl, i)"
-                    >
-                      <span class="i-carbon-video shrink-0" />
-                      <span v-tip="it.title" class="flex-1 truncate">{{ it.title }}</span>
-                      <span v-if="it.size" class="num shrink-0">{{ fmtSize(it.size) }}</span>
-                      <span v-if="vl.item === i" class="i-carbon-checkmark text-accent-300 shrink-0" />
-                    </button>
-                  </div>
+                    <!-- Qualities -->
+                    <div v-if="(vl.items[vl.item]?.sources.length ?? 0) > 1" class="px-2.5 pb-2 flex flex-wrap gap-1">
+                      <button
+                        v-for="(src, i) in vl.items[vl.item].sources"
+                        :key="i"
+                        type="button"
+                        class="text-[11px] font-mono px-1.5 focusable rounded-[var(--radius-xs)] h-5 transition-colors"
+                        :class="vl.source === i ? 'bg-accent-soft text-fg' : 'bg-fg/6 text-fg-muted hover:text-fg hover:bg-fg/10'"
+                        @click="vl.source = i"
+                      >
+                        {{ src.label }}
+                      </button>
+                    </div>
 
-                  <!-- Qualities -->
-                  <div v-if="(vl.items[vl.item]?.sources.length ?? 0) > 1" class="px-2.5 pb-2 flex flex-wrap gap-1">
-                    <button
-                      v-for="(src, i) in vl.items[vl.item].sources"
-                      :key="i"
-                      type="button"
-                      class="text-[11px] font-mono px-1.5 focusable rounded-[var(--radius-xs)] h-5 transition-colors"
-                      :class="vl.source === i ? 'bg-accent-soft text-fg' : 'bg-fg/6 text-fg-muted hover:text-fg hover:bg-fg/10'"
-                      @click="vl.source = i"
-                    >
-                      {{ src.label }}
-                    </button>
-                  </div>
-
-                  <div class="px-2.5 py-2 border-t border-edge flex flex-wrap gap-1.5 items-center">
-                    <UiButton v-if="vl.state === 'idle' || vl.state === 'error'" size="xs" icon="i-carbon-flash" @click="retryLink(vl)">
-                      {{ vl.state === 'error' ? 'Retry' : 'Resolve' }}
-                    </UiButton>
-                    <UiButton v-if="vl.state === 'needs-ytdlp'" size="xs" icon="i-carbon-download" :loading="!!ytdlp?.installing" @click="getYtdlp(vl)">
-                      Get yt-dlp
-                    </UiButton>
-                    <UiButton v-if="vl.state === 'ready'" size="xs" icon="i-carbon-play" :disabled="!!job" @click="play(openTopic, vl, false)">
-                      Play
-                    </UiButton>
-                    <UiButton
-                      v-if="vl.state === 'ready' && openTopic.funscriptUrls.length"
-                      size="xs"
-                      variant="subtle"
-                      icon="i-carbon-play-filled-alt"
-                      :disabled="!!job"
-                      @click="play(openTopic, vl, true)"
-                    >
-                      Play + scripts
-                    </UiButton>
-                    <UiButton
-                      v-if="vl.state === 'ready'"
-                      v-tip="dlTip(openTopic, vl)"
-                      size="xs"
-                      variant="ghost"
-                      icon="i-carbon-download"
-                      :disabled="dlActive(vl) || chosenSource(vl)?.kind === 'hls'"
-                      @click="download(openTopic, vl)"
-                    >
-                      Download
-                    </UiButton>
-                    <UiButton size="xs" variant="ghost" icon-right="i-carbon-launch" class="ml-auto" @click="openExternal(vl.originalUrl)">
-                      Open
-                    </UiButton>
-                  </div>
-
-                  <!-- Saving -->
-                  <div v-if="dlJob(vl)" class="px-2.5 py-2 border-t border-edge flex flex-col gap-1.5">
-                    <div class="text-[11.5px] flex gap-2 items-center">
-                      <span class="flex-1 truncate" :class="dlJob(vl)!.phase === 'error' ? 'text-danger' : 'text-fg-muted'">
-                        <template v-if="dlJob(vl)!.phase === 'scripts'">Fetching the scripts…</template>
-                        <template v-else-if="dlJob(vl)!.phase === 'video'">
-                          Saving to {{ dlJob(vl)!.folder }} · <span class="num">{{ fmtSize(dlJob(vl)!.received) }}<template v-if="dlJob(vl)!.total"> of {{ fmtSize(dlJob(vl)!.total!) }}</template></span>
-                        </template>
-                        <template v-else-if="dlJob(vl)!.phase === 'error'">{{ dlJob(vl)!.error }}</template>
-                      </span>
-                      <UiButton v-if="dlActive(vl)" size="xs" variant="ghost" @click="dlJob(vl)!.cancel()">
-                        Cancel
+                    <div class="px-2.5 py-2 border-t border-edge flex flex-wrap gap-1.5 items-center">
+                      <UiButton v-if="vl.state === 'idle' || vl.state === 'error'" size="xs" icon="i-carbon-flash" @click="retryLink(vl)">
+                        {{ vl.state === 'error' ? 'Retry' : 'Resolve' }}
                       </UiButton>
-                      <UiIconButton v-else icon="i-carbon-close" label="Dismiss" size="xs" @click="downloads.delete(dlKey(vl))" />
+                      <UiButton v-if="vl.state === 'needs-ytdlp'" size="xs" icon="i-carbon-download" :loading="!!ytdlp?.installing" @click="getYtdlp(vl)">
+                        Get yt-dlp
+                      </UiButton>
+                      <UiButton v-if="vl.state === 'ready'" size="xs" icon="i-carbon-play" :disabled="!!job" @click="play(openTopic, vl, false)">
+                        Play
+                      </UiButton>
+                      <UiButton
+                        v-if="vl.state === 'ready' && openTopic.funscriptUrls.length"
+                        size="xs"
+                        variant="subtle"
+                        icon="i-carbon-play-filled-alt"
+                        :disabled="!!job"
+                        @click="play(openTopic, vl, true)"
+                      >
+                        Play + scripts
+                      </UiButton>
+                      <UiButton
+                        v-if="vl.state === 'ready'"
+                        v-tip="dlTip(openTopic, vl)"
+                        size="xs"
+                        variant="ghost"
+                        icon="i-carbon-download"
+                        :disabled="dlActive(vl) || chosenSource(vl)?.kind === 'hls'"
+                        @click="download(openTopic, vl)"
+                      >
+                        Download
+                      </UiButton>
+                      <UiButton size="xs" variant="ghost" icon-right="i-carbon-launch" class="ml-auto" @click="openExternal(vl.originalUrl)">
+                        Open
+                      </UiButton>
                     </div>
-                    <UiProgress v-if="dlActive(vl)" :value="dlJob(vl)!.phase === 'video' && dlJob(vl)!.total ? dlJob(vl)!.received / dlJob(vl)!.total! : undefined" />
+
+                    <!-- Saving -->
+                    <div v-if="dlJob(vl)" class="px-2.5 py-2 border-t border-edge flex flex-col gap-1.5">
+                      <div class="text-[11.5px] flex gap-2 items-center">
+                        <span class="flex-1 truncate" :class="dlJob(vl)!.phase === 'error' ? 'text-danger' : 'text-fg-muted'">
+                          <template v-if="dlJob(vl)!.phase === 'scripts'">Fetching the scripts…</template>
+                          <template v-else-if="dlJob(vl)!.phase === 'video'">
+                            Saving to {{ dlJob(vl)!.folder }} · <span class="num">{{ fmtSize(dlJob(vl)!.received) }}<template v-if="dlJob(vl)!.total"> of {{ fmtSize(dlJob(vl)!.total!) }}</template></span>
+                          </template>
+                          <template v-else-if="dlJob(vl)!.phase === 'error'">{{ dlJob(vl)!.error }}</template>
+                        </span>
+                        <UiButton v-if="dlActive(vl)" size="xs" variant="ghost" @click="dlJob(vl)!.cancel()">
+                          Cancel
+                        </UiButton>
+                        <UiIconButton v-else icon="i-carbon-close" label="Dismiss" size="xs" @click="downloads.delete(dlKey(vl))" />
+                      </div>
+                      <UiProgress v-if="dlActive(vl)" :value="dlJob(vl)!.phase === 'video' && dlJob(vl)!.total ? dlJob(vl)!.received / dlJob(vl)!.total! : undefined" />
+                    </div>
                   </div>
-                </div>
+                </template>
               </section>
 
               <!-- Scripts -->
