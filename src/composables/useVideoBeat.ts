@@ -109,10 +109,14 @@ const tapCount = ref(0)
 const tapClock = ref<'video' | 'wall'>('video')
 const wallSeconds = () => performance.now() / 1000
 
-/** The player's video, if one is actually loaded (the element stays mounted without one). */
+/**
+ * The player's video, if one is loaded and playing. Paused, its clock stands
+ * still, so taps then are on the beat of something else (a page in a plugin's
+ * browser, music in another app) and go on the wall clock.
+ */
 function loadedVideo(): HTMLVideoElement | null {
   const el = playingVideo()
-  return el && (el.currentSrc || el.src) && el.readyState > 0 ? el : null
+  return el && (el.currentSrc || el.src) && el.readyState > 0 && !el.paused ? el : null
 }
 
 function tappedReading() {

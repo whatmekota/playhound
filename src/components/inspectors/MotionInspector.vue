@@ -543,7 +543,6 @@ const PAD_MAP = [
               size="sm"
               :variant="tapState.bpm === null ? 'primary' : 'secondary'"
               icon="i-carbon-touch-1"
-              :disabled="!player.isPlaying"
               @pointerdown.prevent="tap"
               @keydown.enter.prevent="tap"
               @keydown.space.prevent="tap"
@@ -554,7 +553,7 @@ const PAD_MAP = [
               <span class="text-[12.5px] text-fg font-medium num">
                 {{ tapState.bpm === null ? 'Tap tempo' : `${tapState.bpm} bpm tapped` }}
               </span>
-              <span class="hint truncate">{{ player.isPlaying ? tapLine : 'Play the video, then tap on the beat' }}</span>
+              <span class="hint truncate">{{ player.isPlaying || tapState.taps > 0 ? tapLine : 'Tap on the beat: of the video, or of anything else playing' }}</span>
             </div>
             <template v-if="tapState.bpm !== null">
               <UiButton size="xs" variant="ghost" title="Halve: you tapped twice a beat" @click="scaleTapTempo(0.5)">

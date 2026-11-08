@@ -1,6 +1,6 @@
 import type { WebViewHandle, WebViewOptions, WebViewState } from './types'
 import type { Rect } from '~/lib/occluders'
-import { effectScope, watch } from 'vue'
+import { effectScope, ref, watch } from 'vue'
 import { desktop } from '~/lib/browserApi'
 import { clipRect, occluded, occluderCount, occludersMove, useOccluder } from '~/lib/occluders'
 import { useSafetyStore } from '~/stores/safetyStore'
@@ -74,6 +74,33 @@ interface Entry {
 }
 
 const entries = new Set<Entry>()
+
+/**
+ * A plugin's page is placed somewhere in the window (shown, or only hidden for
+ * a moment by something over it). Reactive: the toasts move out of its way.
+ */
+export const webviewPlaced = ref(false)
+
+/** The element a view is glued to is in the page and visible. */
+function hasBox(e: Entry): boolean {
+  const el = e.el
+  if (e.destroyed || !el || !el.isConnected || (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })))
+    return false
+  const b = el.getBoundingClientRect()
+  return b.width > 0 && b.height > 0
+}
+
+function updatePlaced() {
+  let any = false
+  for (const e of entries) {
+    if (hasBox(e)) {
+      any = true
+      break
+    }
+  }
+  if (webviewPlaced.value !== any)
+    webviewPlaced.value = any
+}
 const byId = new Map<number, Entry>()
 
 function blank(): WebViewState {
@@ -125,7 +152,7 @@ function measure(e: Entry, panicked: boolean): Placement {
   const el = e.el
   let box: Rect | null = null
   let radius = 0
-  if (el && el.isConnected && (!el.checkVisibility || el.checkVisibility({ opacityProperty: true, visibilityProperty: true }))) {
+  if (el && hasBox(e)) {
     const b = el.getBoundingClientRect()
     box = { x: b.left, y: b.top, width: b.width, height: b.height }
     radius = Number.parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0
@@ -157,6 +184,7 @@ function layoutAll(): boolean {
     web.layout(e.id, p)
     patch(e, { shown: !!p })
   }
+  updatePlaced()
   return moved
 }
 
@@ -271,6 +299,8 @@ export function createWebview(owner: string, opts: WebViewOptions = {}): WebView
     if (res.error !== undefined) {
       patch(e, { error: { code: -1, description: res.error, url: '' } })
       entries.delete(e)
+      updatePlaced()
+      updatePlaced()
       e.destroyed = true
       return
     }
@@ -303,6 +333,7 @@ export function createWebview(owner: string, opts: WebViewOptions = {}): WebView
     detach()
     e.destroyed = true
     entries.delete(e)
+    updatePlaced()
     if (e.id !== null) {
       byId.delete(e.id)
       web!.destroy(e.id)

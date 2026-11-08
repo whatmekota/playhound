@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import type { Toast } from '~/composables/useToast'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useToast } from '~/composables/useToast'
 import { useOccluder } from '~/lib/occluders'
+import { webviewPlaced } from '~/plugins/webview'
 
 const { toasts, dismiss, hold, release } = useToast()
 
 // A plugin's web page would draw over the toasts: it steps aside while one is up over it.
 const stack = ref<HTMLElement | null>(null)
 useOccluder(() => toasts.length > 0, () => stack.value)
+
+/**
+ * With a plugin's web page on the stage, a toast over the stage would hide the
+ * whole page while it shows. So it goes down over the player bar instead, one
+ * at a time, clear of the page.
+ */
+const shown = computed(() => (webviewPlaced.value ? toasts.slice(-1) : toasts))
 
 const KIND_ICON: Record<Toast['kind'], string> = {
   info: 'i-carbon-information-filled',
@@ -27,12 +35,13 @@ const KIND_TONE: Record<Toast['kind'], string> = {
 <template>
   <div
     ref="stack"
-    class="flex flex-col-reverse gap-2 max-w-[calc(100vw-32px)] w-[360px] pointer-events-none items-center bottom-[calc(var(--dock-h)+44px)] left-1/2 fixed z-[1200] -translate-x-1/2"
+    class="flex flex-col-reverse gap-2 max-w-[calc(100vw-32px)] w-[360px] pointer-events-none items-center left-1/2 fixed z-[1200] -translate-x-1/2"
+    :class="webviewPlaced ? 'bottom-[6px]' : 'bottom-[calc(var(--dock-h)+44px)]'"
     aria-live="polite"
   >
     <TransitionGroup name="t-slide-up">
       <div
-        v-for="t in toasts"
+        v-for="t in shown"
         :key="t.id"
         class="p-2 pr-2.5 pop flex gap-2.5 max-w-full pointer-events-auto items-center"
         @pointerenter="hold(t.id)"
