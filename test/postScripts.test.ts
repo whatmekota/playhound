@@ -44,4 +44,15 @@ describe('scriptsForVideo', () => {
     expect(scriptsForVideo(two, { title: 'part2.mp4', index: 1, count: 2 }).map(s => s.filename)).toEqual(['Sanae Heart Pie.funscript'])
     expect(scriptsForVideo(two, { title: 'part2.mp4', index: 0, count: 3 })).toHaveLength(3)
   })
+
+  it('gives each video of a folder the sets named closest to it', () => {
+    const rem = classifyPostScripts(['rem hj.funscript', 'rem hj full.funscript', 'rem(oni) hj.funscript'])
+    const titles = ['rem(oni).mp4', 'rem.mp4']
+    expect(scriptsForVideo(rem, { title: 'rem(oni).mp4', index: 0, count: 2, titles }).map(s => s.filename)).toEqual(['rem(oni) hj.funscript'])
+    expect(scriptsForVideo(rem, { title: 'rem.mp4', index: 1, count: 2, titles }).map(s => s.filename)).toEqual(['rem hj.funscript', 'rem hj full.funscript'])
+  })
+
+  it('falls back when the names settle nothing', () => {
+    expect(scriptsForVideo(two, { title: 'a.mp4', index: 1, count: 2, titles: ['a.mp4', 'b.mp4'] }).map(s => s.filename)).toEqual(['Sanae Heart Pie.funscript'])
+  })
 })

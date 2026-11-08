@@ -731,15 +731,21 @@ function scriptsFor(topic: ESTopic, link: VideoLink): { entry: FunscriptEntry, s
   const all = topic.funscriptUrls ?? []
   if (!all.length)
     return []
-  // Where this video sits among every video in the post.
+  // Where this video sits among the videos it came with: the post's own, or
+  // the ones of the reply it was posted in. Their names settle which set of
+  // scripts goes with which.
+  const group = link.from ? [link] : (topic.videoLinks ?? []).filter(v => !v.from)
   let index = 0
-  let count = 0
-  for (const vl of (topic.videoLinks ?? []).filter(v => !v.from)) {
+  const titles: string[] = []
+  for (const vl of group) {
     if (vl === link)
-      index = count + (vl.items.length > 1 ? vl.item : 0)
-    count += Math.max(1, vl.items.length)
+      index = titles.length + (vl.items.length > 1 ? vl.item : 0)
+    if (vl.items.length > 1)
+      titles.push(...vl.items.map(it => it.title))
+    else
+      titles.push(chosenTitle(vl, ''))
   }
-  const picked = scriptsForVideo(classifyPostScripts(all.map(e => e.filename)), { title: chosenTitle(link, ''), index, count })
+  const picked = scriptsForVideo(classifyPostScripts(all.map(e => e.filename)), { title: chosenTitle(link, ''), index, count: titles.length, titles })
   return picked.map(p => ({ entry: all.find(e => e.filename === p.filename)!, suffix: p.suffix }))
 }
 
@@ -1341,6 +1347,7 @@ onBeforeUnmount(() => {
                       </UiButton>
                       <UiButton
                         v-if="vl.state === 'ready' && openTopic.funscriptUrls.length"
+                        v-tip="scriptsFor(openTopic, vl).map(c => c.entry.filename).join(' · ')"
                         size="xs"
                         variant="subtle"
                         icon="i-carbon-play-filled-alt"

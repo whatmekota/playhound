@@ -1,5 +1,6 @@
 import type { ResolvedStream, StreamSource } from '~/lib/streamHosts'
 import { ref } from 'vue'
+import { friendlyResolveError } from '~/lib/streamHosts'
 import { usePlaybackStore } from '~/stores/playbackStore'
 
 /** es-proxy.mjs: the desktop app runs it, and so do start.bat and `pnpm dev:proxy`. */
@@ -34,7 +35,7 @@ export async function resolveStream(url: string): Promise<ResolvedStream> {
   const res = await call(`/resolve?url=${encodeURIComponent(url)}`)
   const body = await res.json().catch(() => ({}))
   if (!res.ok)
-    throw new StreamError(body.error ?? `The proxy answered ${res.status}`, body.code === 'needs-ytdlp' ? 'needs-ytdlp' : null)
+    throw new StreamError(body.error ? friendlyResolveError(body.error) : `The proxy answered ${res.status}`, body.code === 'needs-ytdlp' ? 'needs-ytdlp' : null)
   return body as ResolvedStream
 }
 

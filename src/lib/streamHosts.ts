@@ -82,3 +82,25 @@ export interface ResolvedStream {
   label: string
   items: StreamItem[]
 }
+
+// MEGA answers with its API's error codes ("ENOENT (-9): Object (typically,
+// node or user) not found. Wrong password?"), which mean nothing to anyone
+// looking at a post. The ones a shared link can actually run into, in words.
+const MEGA_ERRORS: [codes: number[], text: string][] = [
+  [[-9], 'This file is gone from MEGA: it was deleted, or the link is incomplete. Look for a newer link in the replies.'],
+  [[-16], 'MEGA took this file down.'],
+  [[-17, -24, -29, -401], 'MEGA\'s free transfer limit for your connection is used up. Try again in a few hours, or use another link.'],
+  [[-3, -4, -6, -18, -19], 'MEGA is busy right now. Try again in a minute.'],
+  [[-11], 'MEGA does not allow access to this file.'],
+  [[-14], 'The link\'s key does not open this file: the part after # is wrong or cut off.'],
+]
+
+/** A resolver's error, in words a person can act on. Anything not recognised is kept as it is. */
+export function friendlyResolveError(message: string): string {
+  const mega = /^E[A-Z]+ \((-\d+)\)/.exec(message.trim())
+  if (mega) {
+    const code = Number(mega[1])
+    return MEGA_ERRORS.find(([codes]) => codes.includes(code))?.[1] ?? `MEGA refused the link (error ${code}).`
+  }
+  return message
+}

@@ -48,16 +48,42 @@ export function classifyPostScripts(filenames: string[]): PostScript[] {
 
 const tokens = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(t => t.length >= 2))
 
+/** Words in a file name that say nothing about which video it is. */
+const NOISE = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'wmv', '480p', '720p', '1080p', '1440p', '2160p', '4k', '60fps', 'funscript'])
+const nameWords = (s: string) => new Set([...tokens(s)].filter(t => !NOISE.has(t)))
+
+/** Shared words over all the words of both: `rem hj full` is closer to `rem` than to `rem oni`. */
+function likeness(a: Set<string>, b: Set<string>) {
+  let shared = 0
+  for (const t of a) {
+    if (b.has(t))
+      shared++
+  }
+  const all = a.size + b.size - shared
+  return all ? shared / all : 0
+}
+
+/** The one video a set of scripts is clearly closest to by name, or -1 on no match or a tie. */
+function closestVideo(base: string, titles: string[]): number {
+  const words = nameWords(base)
+  const scores = titles.map(t => likeness(words, nameWords(t)))
+  const best = Math.max(...scores)
+  return best > 0 && scores.filter(s => s === best).length === 1 ? scores.indexOf(best) : -1
+}
+
 /**
  * The scripts to load with one video of a post.
  *
  * One set of scripts (the usual case): all of them, whatever the names. Several
- * sets: the one whose name shares the most words with the video's, then the
- * one in the same position when the post lists as many sets as videos, and
- * otherwise everything, stroke scripts first, so the player picks one and the
- * rest wait in the Scripts panel as alternatives.
+ * sets, with the names of all the post's videos known: every set goes to the
+ * video whose name it is closest to, so `rem.mp4` gets `rem hj` and `rem hj
+ * full` while `rem(oni).mp4` gets `rem(oni) hj`. Otherwise the set sharing the
+ * most words with this video's name, then the one in the same position when
+ * the post lists as many sets as videos, and failing all that everything,
+ * stroke scripts first, so the player picks one and the rest wait in the
+ * Scripts panel as alternatives.
  */
-export function scriptsForVideo(scripts: PostScript[], video: { title?: string, index?: number, count?: number } = {}): PostScript[] {
+export function scriptsForVideo(scripts: PostScript[], video: { title?: string, index?: number, count?: number, titles?: string[] } = {}): PostScript[] {
   const order = (list: PostScript[]) => [...list].sort((a, b) => Number(b.suffix === 'default') - Number(a.suffix === 'default'))
   const bases: string[] = []
   for (const s of scripts) {
@@ -68,6 +94,11 @@ export function scriptsForVideo(scripts: PostScript[], video: { title?: string, 
     return order(scripts)
 
   const of = (base: string) => scripts.filter(s => s.base.toLowerCase() === base.toLowerCase())
+  if (video.titles && video.titles.length > 1 && video.index !== undefined) {
+    const mine = bases.filter(base => closestVideo(base, video.titles!) === video.index)
+    if (mine.length)
+      return order(mine.flatMap(of))
+  }
   if (video.title) {
     const want = tokens(video.title)
     const scored = bases.map((base) => {

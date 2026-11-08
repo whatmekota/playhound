@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectStreamHost } from '../src/lib/streamHosts'
+import { detectStreamHost, friendlyResolveError } from '../src/lib/streamHosts'
 
 const id = (href: string) => detectStreamHost(href)?.id ?? null
 
@@ -38,5 +38,17 @@ describe('stream hosts', () => {
     expect(id('https://discuss.eroscripts.com/t/x/1')).toBeNull()
     expect(id('not a link')).toBeNull()
     expect(id('ftp://pixeldrain.com/u/abc')).toBeNull()
+  })
+})
+
+describe('friendlyResolveError', () => {
+  it('puts MEGA\'s error codes in words', () => {
+    expect(friendlyResolveError('ENOENT (-9): Object (typically, node or user) not found. Wrong password?')).toMatch(/gone from MEGA/)
+    expect(friendlyResolveError('EOVERQUOTA (-17): Request over quota')).toMatch(/transfer limit/)
+    expect(friendlyResolveError('EWHATEVER (-99)')).toBe('MEGA refused the link (error -99).')
+  })
+
+  it('leaves other errors alone', () => {
+    expect(friendlyResolveError('Pixeldrain: no video there')).toBe('Pixeldrain: no video there')
   })
 })
