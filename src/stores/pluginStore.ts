@@ -1,7 +1,7 @@
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { LibraryVideo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
+import type { LibraryVideo, LibraryVideoInfo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
@@ -12,12 +12,16 @@ import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalys
 import { axisOutput } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
+import { metaCredits } from '~/lib/chapterIndex'
+import { effectiveMeta } from '~/lib/entryInfo'
 import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
-import { handleDb, pluginDb, summaryDb } from '~/lib/idb'
+import { handleDb, pluginDb, summaryDb, videoMetaDb } from '~/lib/idb'
 import { KEYS } from '~/lib/persist'
 import { intensityBand } from '~/lib/scriptIntensity'
 import { createSteadyClock } from '~/lib/steadyClock'
+import { manualTags, normalizeTags } from '~/lib/tags'
+import { loadUserMeta } from '~/lib/thumbs'
 import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
@@ -188,6 +192,69 @@ function defaults(fields: SettingField[] | null): Record<string, unknown> {
       out[f.key] = f.default
   }
   return out
+}
+
+type LibraryStore = ReturnType<typeof useLibraryStore>
+
+/** The string if it is an http(s) URL, trimmed; else null. */
+const httpUrl = (u: unknown): string | null => (typeof u === 'string' && /^https?:\/\//i.test(u.trim()) ? u.trim() : null)
+
+// ─── library.info / tag / setSource ──────────────────────────────────────────
+/** Saved info, and the script's own metadata read from its file (the first one that has some). */
+export async function videoInfo(library: LibraryStore, videoId: string): Promise<LibraryVideoInfo | null> {
+  const v = library.videos.find(x => x.name === videoId)
+  if (!v)
+    return null
+  const saved = await videoMetaDb.get(v.name).catch(() => undefined)
+  let scriptUrl: string | null = null
+  let creator: string | null = null
+  let scriptTags: string[] = []
+  for (const f of v.scriptFiles) {
+    try {
+      const meta = JSON.parse(await f.text())?.metadata
+      const credits = metaCredits(meta)
+      scriptUrl = httpUrl(meta?.topic_url) ?? httpUrl(meta?.url) ?? httpUrl(meta?.script_url)
+      creator = credits.creator
+      scriptTags = credits.tags
+      if (scriptUrl || creator || scriptTags.length)
+        break
+    }
+    catch {}
+  }
+  return {
+    tags: normalizeTags(saved?.tags ?? v.userMeta?.tags ?? scriptTags),
+    sourceUrl: httpUrl(saved?.url) ?? httpUrl(v.userMeta?.url) ?? scriptUrl,
+    creator,
+    scriptFiles: v.scriptFiles.map(f => f.name),
+  }
+}
+
+export async function tagVideo(library: LibraryStore, videoId: string, change: { add?: string[], remove?: string[] }): Promise<string[] | null> {
+  const v = library.videos.find(x => x.name === videoId)
+  if (!v)
+    return null
+  const add = normalizeTags(Array.isArray(change?.add) ? change.add : [])
+  const remove = normalizeTags(Array.isArray(change?.remove) ? change.remove : [])
+  await library.editTags([v], add, remove)
+  return manualTags(v)
+}
+
+export async function setVideoSource(library: LibraryStore, videoId: string, url: string | null): Promise<boolean> {
+  const v = library.videos.find(x => x.name === videoId)
+  if (!v)
+    return false
+  const clean = url === null ? null : httpUrl(url)
+  if (url !== null && !clean)
+    throw new TypeError('library.setSource takes an http(s) URL, or null')
+  const stored = await videoMetaDb.get(v.name).catch(() => undefined)
+  const meta = { ...(v.scriptMeta ?? {}), ...(stored ?? v.userMeta ?? {}) }
+  if (clean)
+    meta.url = clean
+  else
+    delete meta.url
+  await videoMetaDb.set(v.name, meta)
+  v.userMeta = meta
+  return true
 }
 
 export const usePluginStore = defineStore('plugins', () => {
@@ -867,6 +934,8 @@ export const usePluginStore = defineStore('plugins', () => {
     const director = useAutoDirector()
 
     async function listLibrary(): Promise<LibraryVideo[]> {
+      // Saved info (tags, source links) is read lazily for the cards; a plugin wants it all.
+      await loadUserMeta(library.videos).catch(() => {})
       let sums: Record<string, { meanSpeed: number, meanSpm: number, peakSpeed: number }> = {}
       try {
         sums = await summaryDb.all()
@@ -893,6 +962,8 @@ export const usePluginStore = defineStore('plugins', () => {
           finishes: st?.finishEvents.length ?? 0,
           watchedMin: Math.round((st?.totalWatchedMs ?? 0) / 60000),
           lastPlayedAt: st?.lastPlayedAt || null,
+          tags: manualTags(v),
+          sourceUrl: httpUrl(effectiveMeta(v).url),
         }
       })
     }
@@ -1239,6 +1310,9 @@ export const usePluginStore = defineStore('plugins', () => {
           return later(stop)
         }),
         fingerprint: gate('library', 'library.fingerprint', fingerprint),
+        info: gate('library', 'library.info', (id: string) => videoInfo(library, id)),
+        tag: gate('library-edit', 'library.tag', (id: string, change: { add?: string[], remove?: string[] }) => tagVideo(library, id, change)),
+        setSource: gate('library-edit', 'library.setSource', (id: string, url: string | null) => setVideoSource(library, id, url)),
       },
       playback: {
         play: gate('playback', 'playback.play', async (videoId: string) => {

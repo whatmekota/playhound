@@ -13,7 +13,7 @@
  */
 
 /** What a plugin can ask to do; see PERMISSIONS in src/plugins/manifest.ts. */
-export type PluginPermission = 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'network' | 'stage' | 'web'
+export type PluginPermission = 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'library-edit' | 'network' | 'stage' | 'web'
 
 export interface PluginManifest {
   /** Lower-case letters, digits and dashes; the plugin's identity. */
@@ -119,6 +119,20 @@ export interface LibraryVideo {
   watchedMin: number
   /** ms since epoch, or null if never played. */
   lastPlayedAt: number | null
+  /** The tags given to it (by hand, a download, or a plugin), lower case. */
+  tags: string[]
+  /** Where it came from, when known: its saved source link, or its script's (a forum thread). */
+  sourceUrl: string | null
+}
+
+/** What a video's saved info and its script's own metadata say (library.info). */
+export interface LibraryVideoInfo {
+  tags: string[]
+  sourceUrl: string | null
+  /** From the script's metadata, when it has some. */
+  creator: string | null
+  /** The script files paired with it, by name. */
+  scriptFiles: string[]
 }
 
 /** What the loaded script is doing around the playhead, and what comes next. */
@@ -360,6 +374,16 @@ export interface PluginContext {
      * Null if the video isn't in the library or can't be read.
      */
     fingerprint: (videoId: string) => Promise<string | null>
+    /**
+     * Its saved info and what its script's own metadata says (the thread a
+     * script came from, its creator), read from the file when asked. Null if
+     * the video isn't in the library.
+     */
+    info: (videoId: string) => Promise<LibraryVideoInfo | null>
+    /** Add and remove tags on a video (permission `library-edit`). Returns its tags after, or null if it isn't in the library. */
+    tag: (videoId: string, change: { add?: string[], remove?: string[] }) => Promise<string[] | null>
+    /** Set (or clear, with null) the link a video came from, an http(s) URL (permission `library-edit`). False if it isn't in the library. */
+    setSource: (videoId: string, url: string | null) => Promise<boolean>
   }
   /** What plays. */
   playback: {

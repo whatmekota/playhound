@@ -33,7 +33,8 @@ export const PERMISSIONS: PermissionInfo[] = [
   { id: 'scripts', label: 'Read the loaded scripts and load its own', api: 'scripts.*' },
   { id: 'player', label: 'See what is playing, where, and the picture', api: 'player.state, player.onChange, player.script, player.frame, player.clock, playback.onEnded' },
   { id: 'playback', label: 'Play, pause, seek and change the speed of videos', api: 'playback.play, pause, resume, playFingerprint, player.seek, player.setRate' },
-  { id: 'library', label: 'Read your library: video names, stats and playlists', api: 'library.*' },
+  { id: 'library', label: 'Read your library: video names, stats and playlists', api: 'library.list, analyse, onChange, fingerprint, info' },
+  { id: 'library-edit', label: 'Change your videos\' tags and source links', api: 'library.tag, library.setSource' },
   { id: 'network', label: 'Connect to servers through playhound', api: 'net.fetch' },
   { id: 'stage', label: 'Show its own page and draw over the video', api: 'ui.page, ui.openPage, ui.showStage, ui.overlay' },
   // Any site, including one made to look like something else: the pages
