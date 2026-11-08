@@ -11,7 +11,7 @@ import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/us
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
-import { classifyPostScripts, scriptsForVideo } from '~/lib/postScripts'
+import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -65,6 +65,10 @@ interface VideoLink {
   source: number
   /** Posted in a reply rather than the post itself (often a new upload once the first one died). */
   from?: { user: string, post: number }
+  /** The post's script names: a folder opens on the video named most like them. */
+  match?: string[]
+  /** The video shown first was picked by name. */
+  picked?: boolean
 }
 
 defineOptions({ name: 'EroScriptsView' })
@@ -460,6 +464,16 @@ async function detectAxis(entry: FunscriptEntry) {
 // ─── Links in a post ──────────────────────────────────────────────────────────
 // Relative hrefs in Discourse HTML resolve against this dev server's origin, and
 // forum URLs need the session cookie, so both are routed through the proxy.
+/** A link from a post, absolute: relative ones point into the forum. */
+function forumUrl(href: string): string {
+  try {
+    return new URL(href, BASE).href
+  }
+  catch {
+    return href
+  }
+}
+
 function toProxyUrl(url: string): string {
   try {
     const u = new URL(url)
@@ -501,7 +515,9 @@ async function resolveVideoLink(link: VideoLink) {
   try {
     const r = await resolveStream(link.originalUrl)
     link.items = r.items
-    link.item = 0
+    const pick = pickVideo(r.items.map(it => it.title), link.match ?? [])
+    link.item = Math.max(0, pick)
+    link.picked = pick >= 0
     link.source = 0
     link.title ??= r.items.length === 1 ? r.items[0].title.replace(/\.[a-z0-9]{2,4}$/i, '') : undefined
     link.state = 'ready'
@@ -517,8 +533,18 @@ function retryLink(link: VideoLink) {
   void resolveVideoLink(link)
 }
 
+/** Bring a folder's picked video into view in its list (the list scrolls, not the panel). */
+function scrollInList(el: HTMLElement, { value, oldValue }: { value: boolean, oldValue?: boolean }) {
+  const box = el.parentElement
+  if (!value || value === oldValue || !box)
+    return
+  box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - (box.clientHeight - el.clientHeight) / 2
+}
+const vScrollInList = { mounted: scrollInList, updated: scrollInList }
+
 function chooseItem(link: VideoLink, i: number) {
   link.item = i
+  link.picked = false
   link.source = 0
 }
 
@@ -576,14 +602,17 @@ async function loadDetail(topic: ESTopic) {
     div.innerHTML = first.cooked
 
     // Anchor text usually carries the real filename; the href is often a hash.
+    // Uploads are linked relative to the forum (`/uploads/short-url/…`), and
+    // `a.href` would resolve them against playhound's own address instead.
     const anchors = Array.from(div.querySelectorAll<HTMLAnchorElement>('a[href]'))
-      .filter(a => /\.funscript(?:\?|$)/i.test(a.href))
-      .map((a) => {
+      .map(a => ({ a, url: forumUrl(a.getAttribute('href')!) }))
+      .filter(({ url }) => /\.funscript(?:\?|$)/i.test(url))
+      .map(({ a, url }) => {
         const text = a.textContent?.trim() ?? ''
         const name = text.toLowerCase().endsWith('.funscript')
           ? text
-          : decodeURIComponent(a.href.split('/').pop()?.split('?')[0] ?? 'script.funscript')
-        return { url: a.href, name }
+          : decodeURIComponent(url.split('/').pop()?.split('?')[0] ?? 'script.funscript')
+        return { url, name }
       })
     // Files uploaded straight to the forum.
     const attachments = (first.attachments ?? [])
@@ -601,6 +630,8 @@ async function loadDetail(topic: ESTopic) {
     }
     topic.funscriptUrls = entries
     topic.videoLinks = detectVideoLinks(first.cooked)
+    for (const vl of topic.videoLinks)
+      vl.match = entries.map(e => e.filename)
 
     // Link titles from the forum's link crawler beat a bare URL.
     for (const lc of first.link_counts ?? []) {
@@ -657,6 +688,7 @@ async function addReplyLinks(topic: ESTopic, data: any) {
         if (known.has(vl.originalUrl))
           continue
         known.add(vl.originalUrl)
+        vl.match = (topic.funscriptUrls ?? []).map(e => e.filename)
         found.push(vl)
       }
     }
@@ -1319,10 +1351,15 @@ onBeforeUnmount(() => {
                     </p>
 
                     <!-- A folder: pick which video -->
+                    <p v-if="vl.items.length > 1 && vl.picked" class="hint px-2.5 pb-1.5 flex gap-1.5 items-center -mt-1">
+                      <span class="i-carbon-magic-wand text-accent-300 shrink-0" />
+                      Picked the video named like the scripts
+                    </p>
                     <div v-if="vl.items.length > 1" class="px-1.5 pb-1.5 flex flex-col gap-0.5 max-h-48 overflow-y-auto">
                       <button
                         v-for="(it, i) in vl.items"
                         :key="i"
+                        v-scroll-in-list="vl.picked && vl.item === i"
                         type="button"
                         class="text-[11.5px] px-2 text-left focusable rounded-[var(--radius-sm)] flex gap-2 h-7 transition-colors items-center"
                         :class="vl.item === i ? 'bg-accent-soft text-fg' : 'text-fg-muted hover:bg-fg/5 hover:text-fg'"

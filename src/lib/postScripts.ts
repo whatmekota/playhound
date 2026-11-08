@@ -117,3 +117,23 @@ export function scriptsForVideo(scripts: PostScript[], video: { title?: string, 
     return order(of(bases[video.index]))
   return order(scripts)
 }
+
+/** How alike a folder's video has to be to the scripts' names before it is picked for you. */
+const PICK_AT_LEAST = 0.34
+
+/**
+ * The video of a folder that goes with these scripts, by name: the one most
+ * like any of them, when it clearly is (a big folder of a creator's uploads
+ * holds the post's video somewhere among dozens). -1 when nothing stands out.
+ */
+export function pickVideo(titles: string[], scriptNames: string[]): number {
+  if (titles.length < 2 || !scriptNames.length)
+    return -1
+  const wanted = scriptNames.map(n => nameWords(n.replace(/\.funscript$/i, '')))
+  const scores = titles.map((t) => {
+    const words = nameWords(t)
+    return Math.max(...wanted.map(w => likeness(w, words)))
+  })
+  const best = Math.max(...scores)
+  return best >= PICK_AT_LEAST && scores.filter(s => s === best).length === 1 ? scores.indexOf(best) : -1
+}
