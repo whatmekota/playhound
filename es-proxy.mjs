@@ -193,7 +193,17 @@ let esFetch = null
  * Fetch a forum path through the app's session and stream it back. The body
  * arrives decompressed, so the encoding and length headers are dropped.
  */
+/** How long the forum gets to start answering before the request is given up. */
+const FORUM_ANSWER_MS = 30_000
+
 async function viaSession(path, reqHeaders, res) {
+  // Chromium keeps at most six connections to the forum. A request whose
+  // caller left (a closed post, a superseded search), or that the forum never
+  // answers, would hold one for good, and enough of them stall everything
+  // after: cancel it when the caller goes, and give up on a silent forum.
+  const abort = new AbortController()
+  res.on('close', () => abort.abort())
+  const timer = setTimeout(() => abort.abort(new Error('EroScripts took too long to answer')), FORUM_ANSWER_MS)
   try {
     const headers = {
       'Accept': reqHeaders.accept ?? '*/*',
@@ -202,7 +212,8 @@ async function viaSession(path, reqHeaders, res) {
     }
     if (reqHeaders.range)
       headers.Range = reqHeaders.range
-    const upstream = await esFetch(`https://${TARGET}${path}`, { headers, redirect: 'follow' })
+    const upstream = await esFetch(`https://${TARGET}${path}`, { headers, redirect: 'follow', signal: abort.signal })
+    clearTimeout(timer)
     const skip = new Set(['access-control-allow-origin', 'x-frame-options', 'content-security-policy', 'set-cookie', 'content-encoding', 'content-length', 'transfer-encoding'])
     const fwd = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Range, Accept-Ranges' }
     for (const [k, v] of upstream.headers) {
