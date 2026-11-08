@@ -788,6 +788,8 @@ async function download(topic: ESTopic, link: VideoLink) {
         await wait(500)
       return files
     },
+    tags: topic.tags,
+    url: postUrl(topic),
   })
   if (job.phase === 'done') {
     toast.success(chosen.length ? `Saved with ${chosen.length} script${chosen.length === 1 ? '' : 's'}` : 'Saved', {

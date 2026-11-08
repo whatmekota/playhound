@@ -1,8 +1,10 @@
 import type { PostScript } from '~/lib/postScripts'
 import type { StreamSource } from '~/lib/streamHosts'
 import { reactive } from 'vue'
-import { handleDb } from '~/lib/idb'
+import { metaCredits } from '~/lib/chapterIndex'
+import { handleDb, videoMetaDb } from '~/lib/idb'
 import { baseNameFor, downloadNames, videoExtFor, withCopyNumber } from '~/lib/postDownload'
+import { editTagList, postTags } from '~/lib/tags'
 import { useLibraryStore } from '~/stores/libraryStore'
 
 /**
@@ -85,6 +87,40 @@ export interface DownloadRequest {
   scripts: PostScript[]
   /** Fetch the post's scripts, in the order of `scripts`. */
   fetchScripts: () => Promise<File[]>
+  /** The post's tags, given to the saved video (device and length tags are left out). */
+  tags?: readonly unknown[]
+  /** The post's address, kept as the video's source link. */
+  url?: string
+}
+
+/** The tags a funscript's own metadata names, in either spelling. */
+async function scriptTags(files: File[]): Promise<string[]> {
+  const out: string[] = []
+  for (const f of files) {
+    try {
+      out.push(...metaCredits(JSON.parse(await f.text())?.metadata).tags)
+    }
+    catch {}
+  }
+  return out
+}
+
+/**
+ * Give the saved video the post's tags and link, in the saved info the
+ * library reads on every scan (keyed by file name, like the tags added by
+ * hand). The scripts' own metadata tags go in too: once a video has saved
+ * tags, they are the list shown, and the scripts' would otherwise vanish.
+ */
+async function tagSaved(videoName: string, req: DownloadRequest, files: File[]) {
+  const add = postTags([...(req.tags ?? []), ...await scriptTags(files)])
+  if (!add.length && !req.url)
+    return
+  const stored = await videoMetaDb.get(videoName).catch(() => undefined)
+  await videoMetaDb.set(videoName, {
+    ...stored,
+    tags: editTagList(stored?.tags, add),
+    ...(req.url && !stored?.url ? { url: req.url } : {}),
+  })
 }
 
 /** Start a download. Resolves when it is done, failed or cancelled; never throws. */
@@ -151,6 +187,8 @@ export async function downloadPost(req: DownloadRequest): Promise<DownloadJob> {
     await res.body.pipeThrough(counter).pipeTo(out, { signal: abort.signal })
     job.received = received
     job.phase = 'done'
+    // A failure here costs the tags, not the download.
+    await tagSaved(names.video, req, files).catch(() => {})
     if (target.library)
       void useLibraryStore().rescan()
   }

@@ -14,6 +14,7 @@ import {
   normalizeTag,
   normalizeTags,
   parseSearch,
+  postTags,
   shownTags,
   splitTagInput,
   tagCounts,
@@ -265,5 +266,17 @@ describe('backup', () => {
   it('counts the videos whose saved info carries tags', () => {
     expect(countTagged([['a.mp4', { tags: ['x'] }], ['b.mp4', { tags: [] }], ['c.mp4', { notes: 'hi' }], ['d.mp4', null]])).toBe(1)
     expect(countTagged(undefined)).toBe(0)
+  })
+})
+
+describe('postTags', () => {
+  it('keeps what the post is about and drops devices and length buckets', () => {
+    expect(postTags(['the-handy', 'animation', 'non-vr', 'futanari', 'action-based', 'len-10-25']))
+      .toEqual(['animation', 'non-vr', 'futanari', 'action-based'])
+    expect(postTags(['OSR2', 'sr6', 'Handy', 'osr2+', 'len-0-10'])).toEqual([])
+  })
+
+  it('takes tag objects as the forum sends them', () => {
+    expect(postTags([{ id: 1, name: 'pmv', slug: 'pmv' }, { id: 2, name: 'the-handy', slug: 'the-handy' }, null])).toEqual(['pmv'])
   })
 })

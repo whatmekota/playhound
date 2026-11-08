@@ -275,3 +275,42 @@ export function parseSearch(raw: string): ParsedSearch {
 export function tagToken(tag: string, exclude = false): string {
   return `${exclude ? '-' : ''}tag:${tag.includes(' ') ? `"${tag}"` : tag}`
 }
+
+// ─── Tags from a forum post ─────────────────────────────────────────────────
+
+/**
+ * Forum tags that name the hardware a script was made for. They say nothing
+ * about the video, and every device here plays every script anyway.
+ */
+const DEVICE_TAGS = new Set([
+  'handy',
+  'the-handy',
+  'thehandy',
+  'handy-2',
+  'osr',
+  'osr2',
+  'osr2+',
+  'osr2-plus',
+  'sr6',
+  'sr1',
+  'ssr1',
+  'tcode',
+  't-code',
+  'keon',
+  'kiiroo',
+  'kiiroo-keon',
+  'launch',
+  'fleshlight-launch',
+  'autoblow',
+  'lovense',
+  'vorze',
+])
+
+/** The forum's length buckets (`len-10-25`): the automatic short / long come from the real duration instead. */
+const LENGTH_TAG = /^len-/
+
+/** A post's tags (names or `{ name }` objects) as library tags, minus device and length tags. */
+export function postTags(list: readonly unknown[] | null | undefined): string[] {
+  const names = (list ?? []).map(t => (t && typeof t === 'object' ? (t as { name?: unknown }).name : t))
+  return normalizeTags(names).filter(t => !DEVICE_TAGS.has(t) && !LENGTH_TAG.test(t))
+}
