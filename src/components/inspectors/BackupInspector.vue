@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Backup, RestoreResult, StorageInventory } from '~/lib/backup'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import { toast } from '~/composables/useToast'
 import { countTagged, createBackup, downloadBackup, inventory, restoreBackup } from '~/lib/backup'
 
@@ -65,7 +65,8 @@ async function doExport() {
 }
 
 // ─── Import: pick, inspect, confirm, restore ─────────────────────────────────
-const pending = ref<{ name: string, data: Backup } | null>(null)
+// Shallow: a deep ref would hand restoreBackup reactive proxies, which IndexedDB cannot store.
+const pending = shallowRef<{ name: string, data: Backup } | null>(null)
 const confirmOpen = ref(false)
 const mode = ref<'merge' | 'replace'>('merge')
 const restoring = ref(false)

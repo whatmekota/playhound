@@ -123,11 +123,13 @@ export async function restoreBackup(
     if (!records?.length)
       continue
     try {
-      await importStore(name, records)
+      // A plain copy: IndexedDB cannot store a Proxy (a backup held in Vue
+      // state is one, all the way down), and the records came from JSON anyway.
+      await importStore(name, JSON.parse(JSON.stringify(records)))
       idbRecords += records.length
     }
-    catch {
-      skipped.push(`idb:${name}`)
+    catch (err) {
+      skipped.push(`idb:${name}${err instanceof Error && err.name !== 'Error' ? ` (${err.name})` : ''}`)
     }
   }
 
