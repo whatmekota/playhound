@@ -48,6 +48,7 @@ declare module 'vue' {
     OrganizerView: typeof import('./src/components/views/OrganizerView.vue')['default']
     OsrEmulator: typeof import('./src/components/device/OsrEmulator.vue')['default']
     PanicCover: typeof import('./src/components/shell/PanicCover.vue')['default']
+    PartySplash: typeof import('./src/components/shell/PartySplash.vue')['default']
     PlayLinkModal: typeof import('./src/components/shell/PlayLinkModal.vue')['default']
     PlaylistsInspector: typeof import('./src/components/inspectors/PlaylistsInspector.vue')['default']
     PlaylistsView: typeof import('./src/components/views/PlaylistsView.vue')['default']

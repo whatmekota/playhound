@@ -82,6 +82,7 @@ declare global {
   const isBeatReady: typeof import('./src/composables/useVideoBeat').isBeatReady
   const isDark: typeof import('./src/composables/dark').isDark
   const isDefined: typeof import('@vueuse/core').isDefined
+  const isPageBeatReady: typeof import('./src/composables/useVideoBeat').isPageBeatReady
   const isProxy: typeof import('vue').isProxy
   const isReactive: typeof import('vue').isReactive
   const isReadonly: typeof import('vue').isReadonly
@@ -89,6 +90,7 @@ declare global {
   const isSaved: typeof import('./src/composables/useSavedPosts').isSaved
   const isShallow: typeof import('vue').isShallow
   const isStrengthToy: typeof import('./src/composables/useButtplug').isStrengthToy
+  const listeningToPage: typeof import('./src/composables/useVideoBeat').listeningToPage
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
   const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
@@ -575,6 +577,7 @@ declare module 'vue' {
     readonly isBeatReady: UnwrapRef<typeof import('./src/composables/useVideoBeat')['isBeatReady']>
     readonly isDark: UnwrapRef<typeof import('./src/composables/dark')['isDark']>
     readonly isDefined: UnwrapRef<typeof import('@vueuse/core')['isDefined']>
+    readonly isPageBeatReady: UnwrapRef<typeof import('./src/composables/useVideoBeat')['isPageBeatReady']>
     readonly isProxy: UnwrapRef<typeof import('vue')['isProxy']>
     readonly isReactive: UnwrapRef<typeof import('vue')['isReactive']>
     readonly isReadonly: UnwrapRef<typeof import('vue')['isReadonly']>
@@ -582,6 +585,7 @@ declare module 'vue' {
     readonly isSaved: UnwrapRef<typeof import('./src/composables/useSavedPosts')['isSaved']>
     readonly isShallow: UnwrapRef<typeof import('vue')['isShallow']>
     readonly isStrengthToy: UnwrapRef<typeof import('./src/composables/useButtplug')['isStrengthToy']>
+    readonly listeningToPage: UnwrapRef<typeof import('./src/composables/useVideoBeat')['listeningToPage']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
