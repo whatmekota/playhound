@@ -337,6 +337,24 @@ watch(query, (q) => {
   searchTimer = setTimeout(doSearch, 450)
 })
 
+/** A topic as search returns it: no cover URL, only the cover's thumbnails. */
+type SearchTopic = ESTopic & { thumbnails?: { width?: number, url?: string }[] | null }
+
+/**
+ * A search result with a cover, from its thumbnails: the smallest one at least
+ * 400 px wide (sharp on a card and in the side panel), else the largest.
+ * Without it, results showed blank tiles and an opened one waited for its
+ * whole post to load before showing a picture.
+ */
+function withCover(t: SearchTopic): ESTopic {
+  if (t.image_url || !t.thumbnails?.length)
+    return { ...t, image_url: t.image_url ?? null }
+  const usable = t.thumbnails.filter(x => typeof x.url === 'string' && x.url && (x.width ?? 0) > 0)
+  const big = usable.filter(x => x.width! >= 400).sort((a, b) => a.width! - b.width!)[0]
+  const pick = big ?? usable.sort((a, b) => b.width! - a.width!)[0]
+  return { ...t, image_url: pick?.url ?? null }
+}
+
 async function doSearch() {
   clearTimeout(searchTimer)
   const q = query.value.trim()
@@ -346,7 +364,7 @@ async function doSearch() {
   error.value = null
   try {
     const data = await apiFetch(`/search.json?q=${encodeURIComponent(q)}&category=scripts`)
-    searchResults.value = (data?.topics ?? []) as ESTopic[]
+    searchResults.value = ((data?.topics ?? []) as SearchTopic[]).map(withCover)
     searchedFor.value = q
   }
   catch (e) {
