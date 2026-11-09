@@ -211,13 +211,12 @@ describe('the API holds a plugin to its permissions', () => {
       [() => ctx.library.scriptUrl('x.mp4'), 'serve'],
       [() => ctx.session.edge(), 'session'],
       [() => ctx.session.endEdge(), 'session'],
-      [() => ctx.session.onFinish(() => {}), 'session'],
       [() => ctx.session.intensity.set(0.5), 'session'],
     ]
     for (const [call, p] of calls)
       expect(call, p).toThrow(`"${p}" permission`)
     // Reading the edge and the knob: player or session.
-    for (const read of [() => ctx.session.edgeState(), () => ctx.session.onEdge(() => {}), () => ctx.session.intensity.get(), () => ctx.session.intensity.max(), () => ctx.session.intensity.onChange(() => {})])
+    for (const read of [() => ctx.session.edgeState(), () => ctx.session.onEdge(() => {}), () => ctx.session.onFinish(() => {}), () => ctx.session.intensity.get(), () => ctx.session.intensity.max(), () => ctx.session.intensity.onChange(() => {})])
       expect(read).toThrow('"player" or the "session"')
     // Sharing a library video needs to read the library too.
     const serveOnly = await contextWith(['serve'])

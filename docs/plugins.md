@@ -71,22 +71,22 @@ Plugins labels it **Full access (older plugin)**. With a list (or with
 what it lists; asking for nothing is fine. The API 3 permissions always have
 to be listed, by older plugins too.
 
-| Permission       | Shown to the user as                                                                      | Opens                                                                                                                                                                |
-| ---------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `device`         | Move your device, and reshape scripts on their way to it                                  | `motion.take`, `motion.filter`                                                                                                                                       |
-| `scripts`        | Read the loaded scripts and load its own                                                  | `scripts.*`                                                                                                                                                          |
-| `player`         | See what is playing, where, the picture, and your edges and intensity                     | `player.state / onChange / script / frame / clock / picture / onPicture`, `playback.onEnded`, `session.edgeState / onEdge`, `session.intensity.get / max / onChange` |
-| `playback`       | Play, pause, seek and change the speed of videos                                          | `playback.play / pause / resume / playFingerprint / next / previous`, `player.seek / setRate`                                                                        |
-| `library`        | Read your library: video names, stats and playlists                                       | `library.list / analyse / onChange / fingerprint / info`                                                                                                             |
-| `library-edit`   | Change your videos' tags and source links                                                 | `library.tag`, `library.setSource`                                                                                                                                   |
-| `network`        | Connect to servers through playhound                                                      | `net.fetch`                                                                                                                                                          |
-| `stage`          | Show its own page and draw over the video                                                 | `ui.page / openPage / showStage / overlay`                                                                                                                           |
-| `web`            | Open web pages inside playhound                                                           | `webview.create`                                                                                                                                                     |
-| `external`       | Follow a video playing in another app, such as a VR headset, and move your device with it | `playback.external`                                                                                                                                                  |
-| `session`        | Call edges, change the intensity and know when you finish                                 | `session.edge / endEdge / onFinish / intensity.set / restore`, and what `player` reads of the session                                                                |
-| `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                                                    |
-| `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                                         |
-| `serve`          | Share your library with devices on your network                                           | `http.serve / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                                               |
+| Permission       | Shown to the user as                                                                      | Opens                                                                                                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `device`         | Move your device, and reshape scripts on their way to it                                  | `motion.take`, `motion.filter`                                                                                                                                                  |
+| `scripts`        | Read the loaded scripts and load its own                                                  | `scripts.*`                                                                                                                                                                     |
+| `player`         | See what is playing, where, the picture, and your edges and intensity                     | `player.state / onChange / script / frame / clock / picture / onPicture`, `playback.onEnded`, `session.edgeState / onEdge / onFinish`, `session.intensity.get / max / onChange` |
+| `playback`       | Play, pause, seek and change the speed of videos                                          | `playback.play / pause / resume / playFingerprint / next / previous`, `player.seek / setRate`                                                                                   |
+| `library`        | Read your library: video names, stats and playlists                                       | `library.list / analyse / onChange / fingerprint / info`                                                                                                                        |
+| `library-edit`   | Change your videos' tags and source links                                                 | `library.tag`, `library.setSource`                                                                                                                                              |
+| `network`        | Connect to servers through playhound                                                      | `net.fetch`                                                                                                                                                                     |
+| `stage`          | Show its own page and draw over the video                                                 | `ui.page / openPage / showStage / overlay`                                                                                                                                      |
+| `web`            | Open web pages inside playhound                                                           | `webview.create`                                                                                                                                                                |
+| `external`       | Follow a video playing in another app, such as a VR headset, and move your device with it | `playback.external`                                                                                                                                                             |
+| `session`        | Call edges, change the intensity and know when you finish                                 | `session.edge / endEdge / intensity.set / restore`, and what `player` reads of the session                                                                                      |
+| `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                                                               |
+| `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                                                    |
+| `serve`          | Share your library with devices on your network                                           | `http.serve / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                                                          |
 
 Everything else needs none: settings, storage, the panel, commands, styles,
 toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
@@ -414,12 +414,12 @@ const stash = await ctx.library.provide({
   first moved it, even above the plugin limit, since that was the user's own
   level; for handing control back. It returns null, and does nothing, if the
   user has turned the knob since.
-- `onFinish(fn)` hears the user mark "I came".
 - Reading needs only `player` (or `session`): `edgeState()` gives `{ phase:
 'idle' | 'falling' | 'holding' | 'rebuilding', remainingSec, holdBack,
 effective }`, `effective` being what actually comes through, the knob
   times what the edge leaves; `onEdge(fn)` hears every edge, `byPlugin`
-  marking those a plugin called; `intensity.get / max / onChange`.
+  marking those a plugin called; `onFinish(fn)` hears the user mark "I
+  came"; `intensity.get / max / onChange`.
 
 Panic always wins and stays on this computer: no plugin can lift it.
 `safety.onResume(fn)` says when the user lifted it; nothing restarts by

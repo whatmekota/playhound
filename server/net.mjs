@@ -3,7 +3,8 @@
  *
  * Everything goes through the proxy from playhound's Settings → Network, or,
  * with none set there, the HTTP(S)_PROXY / NO_PROXY of the environment: some
- * of these hosts are only reachable through one. A few APIs
+ * of these hosts are only reachable through one. This computer and the local
+ * network (a Stash server, a headset) always go direct. A few APIs
  * sit behind Cloudflare, which turns away Node's own TLS fingerprint; for those
  * `getText` falls back to a real browser stack (Electron's `net.fetch`, handed
  * in by the desktop app) or, when running from source, the system's curl.
@@ -15,7 +16,7 @@ import http from 'node:http'
 import https from 'node:https'
 import process from 'node:process'
 import tls from 'node:tls'
-import { EnvHttpProxyAgent, ProxyAgent, fetch as undiciFetch } from 'undici'
+import { Agent, EnvHttpProxyAgent, ProxyAgent, fetch as undiciFetch } from 'undici'
 
 export const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
 
@@ -28,6 +29,8 @@ process.emitWarning = function (warning, ...rest) {
   return emitWarning.call(process, warning, ...rest)
 }
 const envAgent = new EnvHttpProxyAgent()
+/** Straight there: for this computer and the local network, which no proxy can reach anyway. */
+const directAgent = new Agent()
 process.emitWarning = emitWarning
 
 // ── Which proxy ──────────────────────────────────────────────────────────────
@@ -88,12 +91,42 @@ export function onProxyChange(fn) {
   listeners.add(fn)
 }
 
-/** fetch through the user's proxy, with a browser User-Agent unless one is given. */
+/**
+ * This computer or the local network: localhost, 127/8, ::1, the private
+ * ranges (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (169.254/16,
+ * fe80::/10) and .local names. A proxy out on the internet can't reach these.
+ */
+export function isLocalHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '')
+  if (!h)
+    return false
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local'))
+    return true
+  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/)
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])]
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254)
+  }
+  if (h.includes(':'))
+    return h === '::1' || /^f[cd][0-9a-f]{2}:/.test(h) || /^fe[89ab][0-9a-f]:/.test(h)
+  return false
+}
+
+function hostOf(url) {
+  try {
+    return new URL(String(url)).hostname
+  }
+  catch {
+    return ''
+  }
+}
+
+/** fetch through the user's proxy (never for local addresses), with a browser User-Agent unless one is given. */
 export function netFetch(url, init = {}) {
   return undiciFetch(url, {
     redirect: 'follow',
     ...init,
-    dispatcher: configuredAgent ?? envAgent,
+    dispatcher: isLocalHost(hostOf(url)) ? directAgent : (configuredAgent ?? envAgent),
     headers: { 'User-Agent': UA, ...init.headers },
   })
 }
@@ -115,8 +148,10 @@ function activeProxy() {
   }
 }
 
-/** NO_PROXY: `*`, or host suffixes such as `example.com` / `.example.com`. Only for the environment's proxy. */
+/** Local addresses always; then NO_PROXY: `*`, or host suffixes such as `example.com` / `.example.com`, for the environment's proxy only. */
 function bypassed(hostname) {
+  if (isLocalHost(hostname))
+    return true
   if (configured)
     return false
   const list = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)

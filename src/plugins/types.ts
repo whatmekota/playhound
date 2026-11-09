@@ -106,7 +106,11 @@ export type StageView
 
 export interface PlayerSnapshot {
   playing: boolean
-  /** File name of what's loaded, or null. */
+  /**
+   * File name of what's loaded, or null. For a video a plugin provides
+   * (library.provide) it is `<plugin id>:<its id>`, the same as that video's
+   * id in library.list().
+   */
   title: string | null
   time: number
   duration: number

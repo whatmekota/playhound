@@ -1838,7 +1838,7 @@ export const usePluginStore = defineStore('plugins', () => {
           })
           return later(stop)
         }),
-        onFinish: gate('session', 'session.onFinish', (fn: (e: { at: number, videoTime: number | null }) => void) => {
+        onFinish: gateRead('session.onFinish', (fn: (e: { at: number, videoTime: number | null }) => void) => {
           const stop = watch(() => control.lastFinish, (f) => {
             if (!f)
               return

@@ -190,6 +190,8 @@ export function parseFunscriptContent(
       duration: actions.length > 0 ? actions[actions.length - 1].at : 0,
     }],
     isMerged: false,
+    // Its author's metadata (chapters, creator…), as a merged file keeps it.
+    rawMetadata: raw.metadata,
   }
 }
 
