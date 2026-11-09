@@ -5,6 +5,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useBinauralBeats } from './useBinauralBeats'
+import { estimPanic, estimStop } from './useEstim'
 import { popoutFocused } from './usePopout'
 import { useTCode } from './useTCode'
 
@@ -40,7 +41,9 @@ export function useSafety(controls: {
       wasMuted: player.isMuted,
     })
 
-    // Device first — it is the output that keeps moving on its own.
+    // Device first — it is the output that keeps moving on its own. E-stim
+    // audio goes silent at once and stays off until started again by hand.
+    estimPanic()
     motion.enabled = false
     void homeAllAxes(400)
 
@@ -99,6 +102,7 @@ export function useSafety(controls: {
       // without being asked is not.
       motion.enabled = false
       void homeAllAxes(600)
+      estimStop()
     }, minutes * 60_000)
   }
 

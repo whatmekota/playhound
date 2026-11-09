@@ -6,6 +6,7 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const ESTIM_DEFAULTS: typeof import('./src/composables/useEstim').ESTIM_DEFAULTS
   const EffectScope: typeof import('vue').EffectScope
   const FACE_CHANNEL: typeof import('./src/composables/useFaceScreen').FACE_CHANNEL
   const KNOB_STEP: typeof import('./src/composables/useSessionActions').KNOB_STEP
@@ -20,6 +21,7 @@ declare global {
   const StreamError: typeof import('./src/composables/useStreams').StreamError
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
   const UI_SCALES: typeof import('./src/composables/useUiScale').UI_SCALES
+  const addAxisListener: typeof import('./src/composables/useTCode').addAxisListener
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
   const analyseSoundtrack: typeof import('./src/composables/useSoundtrack').analyseSoundtrack
   const analysisKey: typeof import('./src/composables/useScriptAnalysis').analysisKey
@@ -58,6 +60,8 @@ declare global {
   const downloads: typeof import('./src/composables/usePostDownload').downloads
   const eagerComputed: typeof import('@vueuse/core').eagerComputed
   const effectScope: typeof import('vue').effectScope
+  const estimPanic: typeof import('./src/composables/useEstim').estimPanic
+  const estimStop: typeof import('./src/composables/useEstim').estimStop
   const extendRef: typeof import('@vueuse/core').extendRef
   const faceScreenOpen: typeof import('./src/composables/useFaceScreen').faceScreenOpen
   const faceScreenSettings: typeof import('./src/composables/useFaceScreen').faceScreenSettings
@@ -167,6 +171,7 @@ declare global {
   const shallowReactive: typeof import('vue').shallowReactive
   const shallowReadonly: typeof import('vue').shallowReadonly
   const shallowRef: typeof import('vue').shallowRef
+  const sinkSupported: typeof import('./src/composables/useEstim').sinkSupported
   const snapRect: typeof import('./src/composables/wallGeometry').snapRect
   const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
   const startUiScale: typeof import('./src/composables/useUiScale').startUiScale
@@ -260,6 +265,7 @@ declare global {
   const useElementHover: typeof import('@vueuse/core').useElementHover
   const useElementSize: typeof import('@vueuse/core').useElementSize
   const useElementVisibility: typeof import('@vueuse/core').useElementVisibility
+  const useEstim: typeof import('./src/composables/useEstim').useEstim
   const useEventBus: typeof import('@vueuse/core').useEventBus
   const useEventListener: typeof import('@vueuse/core').useEventListener
   const useEventSource: typeof import('@vueuse/core').useEventSource
@@ -439,6 +445,9 @@ declare global {
   export type { ToyOutputs } from './src/composables/useButtplug'
   import('./src/composables/useButtplug')
   // @ts-ignore
+  export type { EstimSettings } from './src/composables/useEstim'
+  import('./src/composables/useEstim')
+  // @ts-ignore
   export type { FaceLinkSettings } from './src/composables/useFaceLink'
   import('./src/composables/useFaceLink')
   // @ts-ignore
@@ -508,6 +517,7 @@ import { UnwrapRef } from 'vue'
 declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
+    readonly ESTIM_DEFAULTS: UnwrapRef<typeof import('./src/composables/useEstim')['ESTIM_DEFAULTS']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly FACE_CHANNEL: UnwrapRef<typeof import('./src/composables/useFaceScreen')['FACE_CHANNEL']>
     readonly KNOB_STEP: UnwrapRef<typeof import('./src/composables/useSessionActions')['KNOB_STEP']>
@@ -522,6 +532,7 @@ declare module 'vue' {
     readonly StreamError: UnwrapRef<typeof import('./src/composables/useStreams')['StreamError']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
     readonly UI_SCALES: UnwrapRef<typeof import('./src/composables/useUiScale')['UI_SCALES']>
+    readonly addAxisListener: UnwrapRef<typeof import('./src/composables/useTCode')['addAxisListener']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
     readonly analyseSoundtrack: UnwrapRef<typeof import('./src/composables/useSoundtrack')['analyseSoundtrack']>
     readonly analysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analysisKey']>
@@ -560,6 +571,8 @@ declare module 'vue' {
     readonly downloads: UnwrapRef<typeof import('./src/composables/usePostDownload')['downloads']>
     readonly eagerComputed: UnwrapRef<typeof import('@vueuse/core')['eagerComputed']>
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
+    readonly estimPanic: UnwrapRef<typeof import('./src/composables/useEstim')['estimPanic']>
+    readonly estimStop: UnwrapRef<typeof import('./src/composables/useEstim')['estimStop']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly faceScreenOpen: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenOpen']>
     readonly faceScreenSettings: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenSettings']>
@@ -669,6 +682,7 @@ declare module 'vue' {
     readonly shallowReactive: UnwrapRef<typeof import('vue')['shallowReactive']>
     readonly shallowReadonly: UnwrapRef<typeof import('vue')['shallowReadonly']>
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
+    readonly sinkSupported: UnwrapRef<typeof import('./src/composables/useEstim')['sinkSupported']>
     readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
     readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
     readonly startUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['startUiScale']>
@@ -762,6 +776,7 @@ declare module 'vue' {
     readonly useElementHover: UnwrapRef<typeof import('@vueuse/core')['useElementHover']>
     readonly useElementSize: UnwrapRef<typeof import('@vueuse/core')['useElementSize']>
     readonly useElementVisibility: UnwrapRef<typeof import('@vueuse/core')['useElementVisibility']>
+    readonly useEstim: UnwrapRef<typeof import('./src/composables/useEstim')['useEstim']>
     readonly useEventBus: UnwrapRef<typeof import('@vueuse/core')['useEventBus']>
     readonly useEventListener: UnwrapRef<typeof import('@vueuse/core')['useEventListener']>
     readonly useEventSource: UnwrapRef<typeof import('@vueuse/core')['useEventSource']>

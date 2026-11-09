@@ -30,8 +30,20 @@ export function setAxisTap(fn: AxisTap | null) {
   axisTap = fn
 }
 
+/**
+ * More listeners on the same positions, for outputs that follow the motion
+ * themselves (e-stim audio). Returns a function that removes it.
+ */
+const axisListeners = new Set<AxisTap>()
+export function addAxisListener(fn: AxisTap): () => void {
+  axisListeners.add(fn)
+  return () => void axisListeners.delete(fn)
+}
+
 function track(channel: string, position: number, limits: AxisLimits, intervalMs: number) {
   axisTap?.(channel, position, intervalMs)
+  for (const fn of axisListeners)
+    fn(channel, position, intervalMs)
   let p = limits.invert ? 1 - position : position
   p = limits.min + p * (limits.max - limits.min)
   axisOutput[channel] = Math.max(0, Math.min(1, p))

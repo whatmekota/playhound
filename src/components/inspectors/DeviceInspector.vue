@@ -11,6 +11,7 @@ import type { VibeCurve, VibeSettings } from '~/lib/vibeMap'
 import type { AxisConfig, DevicePreset } from '~/stores/deviceStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import EstimSection from '~/components/device/EstimSection.vue'
 import LatencyCalibrateModal from '~/components/device/LatencyCalibrateModal.vue'
 import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
 import TcodeNetLink from '~/components/device/TcodeNetLink.vue'
@@ -1226,6 +1227,9 @@ const logOpen = ref(false)
         </div>
       </div>
     </UiSection>
+
+    <!-- ─── E-stim audio (experimental) ───────────────────────────────────── -->
+    <EstimSection />
 
     <!-- ─── Heart rate ────────────────────────────────────────────────────── -->
     <UiSection
