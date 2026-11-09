@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/header-light.webp">
-    <img src="docs/header-dark.webp" alt="playhound: a glossy sticker of a grinning muzzle with its tongue out, next to the word playhound in dripping candy letters with hound ears on the o and a tail on the d. Funscript player, device sync, sessions." width="100%">
+    <img src="docs/header-light.webp" alt="playhound: a glossy sticker of a grinning muzzle with its tongue out, next to the word playhound in dripping candy letters with hound ears on the o and a tail on the d. Funscript player, device sync, sessions." width="100%">
   </picture>
 </p>
 
