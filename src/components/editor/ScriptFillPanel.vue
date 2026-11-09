@@ -301,7 +301,17 @@ const errorText = computed(() => {
 })
 
 const fast = computed(() => (plan.value && !plan.value.result.error ? countFast(plan.value.points, edit.prefs.fastLimit, plan.value.first, plan.value.last) : 0))
-const overCeiling = computed(() => !!plan.value && plan.value.peak > speedLimit(motion.maxSpm) * 1000 + 0.5)
+// The ceiling caps the generator's rate, whatever its shape (a sine at the ceiling peaks faster than an even
+// stroke), so a shape is held to its rate. A pattern has no rate of its own: its fastest stretch may go as fast
+// as a sine at the ceiling does.
+const overCeiling = computed(() => {
+  const p = plan.value
+  if (!p || p.result.error)
+    return false
+  if (current.value.source.kind !== 'pattern')
+    return Math.max(p.result.spmFrom, p.result.spmTo, p.result.spm) > motion.maxSpm + 0.5
+  return p.peak > speedLimit(motion.maxSpm) * 1000 * (Math.PI / 2) + 0.5
+})
 
 function apply() {
   const p = plan.value
