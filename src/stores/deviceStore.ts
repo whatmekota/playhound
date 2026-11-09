@@ -103,7 +103,13 @@ const BUILTIN_PRESETS: DevicePreset[] = [
 export const useDeviceStore = defineStore('device', () => {
   const portPath = ref('')
   const baudRate = ref(115200)
-  const connected = ref(false)
+  /** The USB (Web Serial) link and the network link are each up or not; both can be at once (an OSR on USB and restim). */
+  const serialUp = ref(false)
+  const netUp = ref(false)
+  /** Where the network link goes, e.g. "WebSocket localhost:12346/tcode". */
+  const netPath = ref('')
+  /** A TCode link is up, either one. */
+  const connected = computed(() => serialUp.value || netUp.value)
   const tcodeVersion = ref<'v2' | 'v3'>('v3')
   const axisConfigs = ref<Record<string, AxisConfig>>(structuredClone(DEFAULT_AXIS_CONFIGS))
   const deviceEnabled = ref(true) // master toggle
@@ -251,6 +257,9 @@ export const useDeviceStore = defineStore('device', () => {
     portPath,
     baudRate,
     connected,
+    serialUp,
+    netUp,
+    netPath,
     tcodeVersion,
     axisConfigs,
     deviceEnabled,

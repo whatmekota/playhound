@@ -37,7 +37,7 @@ export function useSerialPort() {
       await selectedPort.open({ baudRate })
       port = selectedPort
       writer = port.writable!.getWriter()
-      store.connected = true
+      store.serialUp = true
       store.baudRate = baudRate
       store.portPath = 'Web Serial Port'
       store.connectionError = null
@@ -70,7 +70,7 @@ export function useSerialPort() {
     catch (e: any) {
       console.warn('Serial close failed:', e?.message)
     }
-    store.connected = false
+    store.serialUp = false
   }
 
   async function write(data: string) {
@@ -85,7 +85,7 @@ export function useSerialPort() {
       const msg: string = e?.message ?? ''
       if (msg.includes('disconnected') || msg.includes('closed') || msg.includes('device lost')) {
         store.connectionError = msg
-        store.connected = false
+        store.serialUp = false
       }
       // Otherwise silently swallow — let the next write try again
     }
@@ -114,7 +114,7 @@ export function useSerialPort() {
         try { r.releaseLock() }
         catch {}
         if (id === readLoopId)
-          store.connected = false
+          store.serialUp = false
       }
     })()
   }

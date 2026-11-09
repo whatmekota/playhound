@@ -2,13 +2,14 @@
  * TCode over the network: a WebSocket (browser and desktop app) or UDP
  * (desktop app, through desktop/tcodenet.mjs), beside Web Serial.
  *
- * One TCode link at a time: connecting here closes the serial port, and the
- * Device panel closes this before opening a port. Either way the link's state
- * is `deviceStore.connected`, so everything that sends TCode (useTCode) and
- * everything that asks whether a device is there sees the same thing, and the
- * axis ranges, inversion, rest positions, presets, latency and update rate
- * apply unchanged: useTCode encodes exactly as for serial and hands the text
- * to both links (netWrite here), and only an open one sends it.
+ * It runs beside the serial port, not instead of it (an OSR on USB and restim
+ * on the network, say): each link has its own flag in the device store
+ * (`serialUp`, `netUp`) and `deviceStore.connected` is either, so everything
+ * that sends TCode (useTCode) and everything that asks whether a device is
+ * there sees one TCode device. The axis ranges, inversion, rest positions,
+ * presets, latency and update rate apply unchanged: useTCode encodes exactly
+ * as for serial and hands the text to both links (netWrite here), and each
+ * open one sends it.
  *
  * A link that was up and drops is tried again by itself, after 1, 2, 4, 8 and
  * then every 15 seconds, until it comes back or the user disconnects. A
@@ -23,7 +24,6 @@ import { desktop } from '~/lib/browserApi'
 import { KEYS } from '~/lib/persist'
 import { describeTarget, mixedContentBlocked, OPEN_TIMEOUT_MS, parseAddress, presetById, retryDelay, toNetMessages, wsUrl } from '~/lib/tcodeNet'
 import { useDeviceStore } from '~/stores/deviceStore'
-import { useSerialPort } from './useSerialPort'
 
 export type TcodeLink = 'usb' | 'network'
 
@@ -74,7 +74,7 @@ let gen = 0
 let wanted = false
 /** It has been up since the user connected: a failure now is a drop, not a wrong address. */
 let wasUp = false
-/** This link set deviceStore.connected, so it is the one to clear it. */
+/** This link set deviceStore.netUp, so it is the one to clear it. */
 let holding = false
 let store: ReturnType<typeof useDeviceStore> | null = null
 
@@ -132,7 +132,7 @@ function closeSockets() {
 
 function release() {
   if (holding && store) {
-    store.connected = false
+    store.netUp = false
   }
   holding = false
 }
@@ -144,8 +144,8 @@ function up(t: NetTarget) {
   error.value = null
   wasUp = true
   if (store) {
-    store.connected = true
-    store.portPath = `${t.protocol === 'ws' ? 'WebSocket' : 'UDP'} ${describeTarget(t)}`
+    store.netUp = true
+    store.netPath = `${t.protocol === 'ws' ? 'WebSocket' : 'UDP'} ${describeTarget(t)}`
     store.connectionError = null
   }
   holding = true
@@ -282,7 +282,6 @@ export function netDisconnect() {
 export function useTCodeNet() {
   store = useDeviceStore()
   const s = settings()
-  const serial = useSerialPort()
 
   /** Check the address in the settings; null when it is fine, else what is wrong. */
   function check(): { target: NetTarget, error?: undefined } | { error: string, target?: undefined } {
@@ -305,8 +304,6 @@ export function useTCodeNet() {
       error.value = c.error
       return false
     }
-    // One TCode link at a time.
-    await serial.disconnect()
     netDisconnect()
     target.value = c.target
     error.value = null

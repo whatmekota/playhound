@@ -58,7 +58,8 @@ const lastSentAt: Record<string, number> = {}
  * a moment then, so the device glides to the motion instead of jumping
  * (lib/tcodeNet, resumeInterval).
  */
-let linkWasUp = false
+/** Which links were up at the last move (1 serial, 2 network), so a link that joins another also glides in. */
+let linksWere = 0
 let linkUpAt = Number.NEGATIVE_INFINITY
 
 export function useTCode() {
@@ -66,8 +67,8 @@ export function useTCode() {
   const { write: serialWrite } = useSerialPort()
 
   /**
-   * To whichever TCode link is open: the serial port or the network. Only
-   * one is ever open (see useTCodeNet), and each ignores a write when closed.
+   * To every TCode link that is open: the serial port and the network can
+   * both be (see useTCodeNet), and each ignores a write when closed.
    */
   async function write(data: string) {
     await Promise.all([serialWrite(data), netWrite(data)])
@@ -93,10 +94,11 @@ export function useTCode() {
     emuInstance?.write(cmd)
 
     const now = performance.now()
-    const up = deviceStore.connected && deviceStore.deviceEnabled
-    if (up && !linkWasUp)
+    const links = deviceStore.deviceEnabled ? (deviceStore.serialUp ? 1 : 0) | (deviceStore.netUp ? 2 : 0) : 0
+    const up = links !== 0
+    if (links & ~linksWere)
       linkUpAt = now
-    linkWasUp = up
+    linksWere = links
 
     if (!axisCfg || !up || !axisCfg.enabled)
       return

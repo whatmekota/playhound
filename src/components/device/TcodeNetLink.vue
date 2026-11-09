@@ -62,13 +62,13 @@ async function connect() {
 // The link opens (or fails) a moment after connect() returns: say so when it does.
 watch(() => net.status.value, (now, was) => {
   if (was === 'connecting' && now === 'connected')
-    toast.success('Device connected', { detail: device.portPath, icon: 'i-carbon-network-3', key: 'tcode-net' })
+    toast.success('Device connected', { detail: device.netPath, icon: 'i-carbon-network-3', key: 'tcode-net' })
   else if (was === 'connecting' && now === 'idle' && net.error.value)
     toast.error('Could not connect', { detail: net.error.value, key: 'tcode-net' })
   else if (was === 'connected' && now === 'reconnecting')
     toast.warn('Lost the network link', { detail: 'Trying again by itself.', key: 'tcode-net' })
   else if (was === 'reconnecting' && now === 'connected')
-    toast.success('Back on the network', { detail: device.portPath, icon: 'i-carbon-network-3', key: 'tcode-net' })
+    toast.success('Back on the network', { detail: device.netPath, icon: 'i-carbon-network-3', key: 'tcode-net' })
 })
 
 function disconnect() {

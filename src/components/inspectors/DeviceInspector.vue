@@ -21,7 +21,7 @@ import { useHeartRate } from '~/composables/useHeartRate'
 import { useSerialPort } from '~/composables/useSerialPort'
 import { useSettings } from '~/composables/useSettings'
 import { axisOutput, useTCode } from '~/composables/useTCode'
-import { netDisconnect, useTCodeNet } from '~/composables/useTCodeNet'
+import { useTCodeNet } from '~/composables/useTCodeNet'
 import { toast } from '~/composables/useToast'
 import { useDeviceLatency } from '~/composables/useVideoSync'
 import { webSerial } from '~/lib/browserApi'
@@ -75,17 +75,16 @@ const transport = useLocalStorage<Transport>('ph:device.transport', 'serial')
 onMounted(() => {
   // Land on whichever link is actually up, when only one is.
   const up = ([
-    ['serial', device.connected],
+    ['serial', device.connected || net.status.value !== 'idle'],
     ['buttplug', bp.connected.value],
     ['handy', handy.connected.value],
   ] as const).filter(([, on]) => on)
   if (up.length === 1)
     transport.value = up[0][0]
-  // And on the TCode link that is up: the tab can't switch under one.
-  if (net.status.value !== 'idle')
-    net.settings.value = { ...net.settings.value, link: 'network' }
-  else if (device.connected)
-    net.settings.value = { ...net.settings.value, link: 'usb' }
+  // And on the TCode link that is up, when only one is.
+  const netOn = net.status.value !== 'idle'
+  if (netOn !== device.serialUp)
+    net.settings.value = { ...net.settings.value, link: netOn ? 'network' : 'usb' }
 })
 
 // ─── TCode link: USB (Web Serial) or the network ─────────────────────────────
@@ -96,12 +95,11 @@ const tcodeLink = computed({
     net.settings.value = { ...net.settings.value, link: v }
   },
 })
-const TCODE_LINKS = [
-  { value: 'usb' as const, label: 'USB', icon: 'i-carbon-usb', title: 'Web Serial: an OSR2, SR6 or SSR1 on a cable' },
-  { value: 'network' as const, label: 'Network', icon: 'i-carbon-network-3', title: 'WebSocket or UDP: an ESP32 build on WiFi, or restim' },
-]
-/** The link can't change under an open connection. */
-const tcodeLinkLocked = computed(() => device.connected || connecting.value || net.status.value !== 'idle')
+/** Both links can be up at once (an OSR on USB and restim, say); the switch only picks which one to look at, and says which are on. */
+const TCODE_LINKS = computed(() => [
+  { value: 'usb' as const, label: device.serialUp ? 'USB · on' : 'USB', icon: 'i-carbon-usb', title: 'Web Serial: an OSR2, SR6 or SSR1 on a cable' },
+  { value: 'network' as const, label: net.status.value !== 'idle' ? 'Network · on' : 'Network', icon: 'i-carbon-network-3', title: 'WebSocket or UDP: an ESP32 build on WiFi, or restim' },
+])
 
 const handyIcon = computed(() => (handy.link.value === 'ble' ? 'i-carbon-bluetooth' : 'i-carbon-wifi'))
 const tcodeIcon = computed(() => (tcodeNet.value ? 'i-carbon-network-3' : 'i-carbon-usb'))
@@ -137,8 +135,6 @@ function explainSerialError(msg: string) {
 
 let leaving = false
 async function connectSerial() {
-  // One TCode link at a time.
-  netDisconnect()
   await requestAndConnect(device.baudRate)
   if (device.connected) {
     toast.success('Device connected', { detail: `${device.baudRate} baud · TCode ${device.tcodeVersion}`, icon: 'i-carbon-plug-filled', key: 'serial' })
@@ -158,8 +154,8 @@ async function disconnectSerial() {
 
 // The read loop drops `connected` when the cable is pulled; say so. (A
 // network link says so itself, and reconnects on its own.)
-watch(() => device.connected, (now, was) => {
-  if (was && !now && !leaving && net.status.value === 'idle' && !tcodeNet.value) {
+watch(() => device.serialUp, (now, was) => {
+  if (was && !now && !leaving) {
     toast.warn('Device connection lost', {
       detail: explainSerialError(device.connectionError ?? 'disconnected'),
       key: 'serial',
@@ -396,7 +392,7 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
         return { tone: 'warn', label: 'Reconnecting…', detail: net.error.value ?? `Trying ${where} again` }
       case 'connected':
         return device.deviceEnabled
-          ? { tone: 'ok', label: 'Connected', detail: `${device.portPath} · TCode ${device.tcodeVersion}` }
+          ? { tone: 'ok', label: 'Connected', detail: `${device.netPath} · TCode ${device.tcodeVersion}` }
           : { tone: 'warn', label: 'Connected, output held', detail: 'Device output is switched off' }
     }
     return { tone: 'idle', label: 'Not connected', detail: net.udpAvailable ? 'An ESP32 build on WiFi, or restim' : 'An ESP32 build on WiFi (WebSocket), or restim' }
@@ -404,7 +400,7 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
   if (transport.value === 'serial') {
     if (connecting.value)
       return { tone: 'info', label: 'Connecting…', detail: 'Pick the port in the browser dialog' }
-    if (device.connected) {
+    if (device.serialUp) {
       return device.deviceEnabled
         ? { tone: 'ok', label: 'Connected', detail: `${device.portPath || 'Serial port'} · ${serialSummary.value}` }
         : { tone: 'warn', label: 'Connected, output held', detail: 'Device output is switched off' }
@@ -715,17 +711,13 @@ const logOpen = ref(false)
       <Transition name="t-fade" mode="out-in">
         <!-- TCode over the network -->
         <div v-if="transport === 'serial' && tcodeNet" key="tcode-net" class="flex flex-col gap-2.5 relative">
-          <div :class="tcodeLinkLocked ? 'pointer-events-none opacity-60' : ''" :aria-disabled="tcodeLinkLocked">
-            <UiSegmented v-model="tcodeLink" :options="TCODE_LINKS" size="sm" block />
-          </div>
+          <UiSegmented v-model="tcodeLink" :options="TCODE_LINKS" size="sm" block />
           <TcodeNetLink />
         </div>
 
         <!-- Serial -->
         <div v-else-if="transport === 'serial'" key="serial" class="flex flex-col gap-2.5 relative">
-          <div :class="tcodeLinkLocked ? 'pointer-events-none opacity-60' : ''" :aria-disabled="tcodeLinkLocked">
-            <UiSegmented v-model="tcodeLink" :options="TCODE_LINKS" size="sm" block />
-          </div>
+          <UiSegmented v-model="tcodeLink" :options="TCODE_LINKS" size="sm" block />
           <div v-if="!webSerial.supported" class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20">
             <span class="i-carbon-warning-alt text-[15px] mt-px shrink-0" />
             <span>This browser cannot talk to USB serial devices. Open playhound in Chrome or Edge, or use the network or Intiface.</span>

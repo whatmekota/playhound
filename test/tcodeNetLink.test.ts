@@ -74,7 +74,7 @@ describe('tCode over a WebSocket', () => {
     const device = useDeviceStore()
     expect(net.status.value).toBe('connected')
     expect(device.connected).toBe(true)
-    expect(device.portPath).toBe('WebSocket localhost:12346/tcode')
+    expect(device.netPath).toBe('WebSocket localhost:12346/tcode')
     expect(last().sent).toEqual(['D0\n'])
 
     const { sendPosition } = useTCode()
