@@ -201,6 +201,12 @@ export interface MotionReadout {
   phase: number | null
   /** Milliseconds until the generator's stroke is next at the bottom (where a beat lands); null while it isn't stroking. */
   nextStrokeInMs: number | null
+  /**
+   * A script is playing and drives the stroke: the generator (motion.take)
+   * waits until it stops, since the two never fight over the same axis.
+   * What a plugin sets meanwhile applies when the script stops.
+   */
+  scriptDriving: boolean
 }
 
 /** The stroke generator, while a plugin holds it. */
@@ -610,6 +616,10 @@ export interface PluginContext {
     onEnded: (fn: (id: string | null) => void) => () => void
     /** Play the library video with this fingerprint (see library.fingerprint). False if there is none. */
     playFingerprint: (fp: string) => Promise<boolean>
+    /** What the Next key does: the next in the queue (or the auto-director's pick). False if there is nothing next. */
+    next: () => Promise<boolean>
+    /** What the Previous key does. False if there is nothing before. */
+    previous: () => Promise<boolean>
     /**
      * Follow a video that plays in another app, a VR headset (permission
      * `external`): its scripts play on every device to the clock you feed
@@ -656,6 +666,8 @@ export interface PluginContext {
     panicked: () => boolean
     /** Panic (Esc) fired: stop talking, stop moving. Control was already released. */
     onPanic: (fn: () => void) => () => void
+    /** Panic was lifted (the user pressed it again). Nothing restarts by itself: take control again if you need it. */
+    onResume: (fn: () => void) => () => void
   }
   net: {
     /**
@@ -713,8 +725,18 @@ export interface PluginContext {
        * a second up), never past the limit the user set for plugins.
        * Returns where it will stop. The user turning the knob, or panic,
        * stops the move. The user sees a notice saying which plugin did it.
+       * During a panic it may only lower the knob (at once, nothing moves
+       * then anyway).
        */
       set: (level: number) => number
+      /**
+       * Put the knob back where it was before this plugin first moved it
+       * (since its last restore), even above the plugin limit, since that
+       * was the user's own level. Ramps like set(); after a panic it only
+       * goes down. Returns where it will stop, or null when this plugin
+       * hasn't moved it (or the user has turned it since).
+       */
+      restore: () => number | null
       /** The most a plugin may set, as the user chose in Settings → Plugins. */
       max: () => number
       /** The knob moved, by anyone. Returns an unsubscribe. */

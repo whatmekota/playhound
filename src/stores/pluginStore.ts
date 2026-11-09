@@ -301,6 +301,12 @@ export const usePluginStore = defineStore('plugins', () => {
   const intensityMax = useLocalStorage<number>(KEYS.pluginIntensityMax.key, DEFAULT_PLUGIN_INTENSITY_MAX)
   /** The knob moving toward what a plugin asked for, until it gets there or someone else turns it. */
   let ramp: { timer: ReturnType<typeof setInterval>, owner: string } | null = null
+  /**
+   * Where the knob was before each plugin first moved it, for restore(); and
+   * the level that plugin last left it at, so a turn by the user in between
+   * (the knob is theirs then) cancels the restore.
+   */
+  const knobBefore = new Map<string, { level: number, left: number }>()
 
   function stopRamp() {
     if (ramp)
@@ -313,14 +319,25 @@ export const usePluginStore = defineStore('plugins', () => {
    * step every 100 ms. The user turning it (or panic) stops the move where
    * it is: the knob is theirs. Returns where it will stop.
    */
-  function rampIntensity(owner: string, name: string, want: unknown): number {
+  function rampIntensity(owner: string, name: string, want: unknown, ceiling?: number): number {
     const control = useSessionControlStore()
     const safety = useSafetyStore()
-    const target = pluginTarget(want, clampLimit(intensityMax.value))
+    const target = pluginTarget(want, ceiling ?? clampLimit(intensityMax.value))
     if (target === null)
       throw new TypeError('session.intensity.set takes a number, 0.1–1')
-    if (safety.panicked)
+    const mark = knobBefore.get(owner)
+    if (!mark || Math.abs(control.intensityScale - mark.left) > 0.004)
+      knobBefore.set(owner, { level: control.intensityScale, left: target })
+    else
+      mark.left = target
+    if (safety.panicked) {
+      // Nothing moves in a panic, so lowering is safe, and at once; raising waits for the user.
+      if (target < control.intensityScale) {
+        stopRamp()
+        control.setIntensityScale(target)
+      }
       return control.intensityScale
+    }
     stopRamp()
     let pos = control.intensityScale
     let shown = pos
@@ -1114,6 +1131,7 @@ export const usePluginStore = defineStore('plugins', () => {
         device: anyDevice.value,
         phase: g ? g.phase : null,
         nextStrokeInMs: g ? Math.round((1 - g.phase) * 60_000 / g.spm) : null,
+        scriptDriving: scripts.hasScripts && player.isPlaying,
       }
     }
 
@@ -1691,6 +1709,8 @@ export const usePluginStore = defineStore('plugins', () => {
         pause: gate('playback', 'playback.pause', () => playback.pause()),
         resume: gate('playback', 'playback.resume', () => playback.resume()),
         playFingerprint: gate('playback', 'playback.playFingerprint', playFingerprint),
+        next: gate('playback', 'playback.next', () => playback.next()),
+        previous: gate('playback', 'playback.previous', () => playback.prev()),
         external: gate('external', 'playback.external', playExternal),
         onEnded: gate('player', 'playback.onEnded', (fn: (id: string | null) => void) => {
           // A video that ran to its end: the playhead reached the duration while playing.
@@ -1768,6 +1788,13 @@ export const usePluginStore = defineStore('plugins', () => {
           })
           return later(stop)
         },
+        onResume(fn) {
+          const stop = watch(() => safety.panicked, (on, was) => {
+            if (!on && was)
+              fn()
+          })
+          return later(stop)
+        },
       },
       net: {
         fetch: gate('network', 'net.fetch', pluginFetch),
@@ -1827,6 +1854,16 @@ export const usePluginStore = defineStore('plugins', () => {
         intensity: {
           get: gateRead('session.intensity.get', () => control.intensityScale),
           set: gate('session', 'session.intensity.set', (level: number) => rampIntensity(id, manifestName, level)),
+          restore: gate('session', 'session.intensity.restore', (): number | null => {
+            const mark = knobBefore.get(id)
+            knobBefore.delete(id)
+            // The user turned it since: it is theirs, leave it.
+            if (!mark || Math.abs(control.intensityScale - mark.left) > 0.004)
+              return null
+            const at = rampIntensity(id, manifestName, mark.level, Math.max(mark.level, clampLimit(intensityMax.value)))
+            knobBefore.delete(id)
+            return at
+          }),
           max: gateRead('session.intensity.max', () => clampLimit(intensityMax.value)),
           onChange: gateRead('session.intensity.onChange', (fn: (level: number) => void) => {
             const stop = watch(() => control.intensityScale, (v) => {

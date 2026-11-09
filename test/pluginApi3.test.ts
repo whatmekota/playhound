@@ -1,6 +1,7 @@
 import type { PluginContext } from '~/plugins/types'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { parseRange, requestFor, responseOf, routeOf } from '~/plugins/http'
 import { readManifest } from '~/plugins/manifest'
 import { cleanProvided, cleanProvidedList, entryOf, providedName } from '~/plugins/provider'
@@ -238,6 +239,61 @@ describe('the API holds a plugin to its permissions', () => {
     expect(await ctx.library.mediaUrl('nope.mp4')).toBeNull()
     const reader = await contextWith(['player'])
     expect(reader.session.intensity.get()).toBe(1)
+  })
+
+  it('lowers the knob at once in a panic, never raises it, and restores the user\'s own level past the limit', async () => {
+    vi.useFakeTimers()
+    try {
+      const ctx = await contextWith(['session'])
+      const { useSessionControlStore } = await import('~/stores/sessionControlStore')
+      const { useSafetyStore } = await import('~/stores/safetyStore')
+      const control = useSessionControlStore()
+      const safety = useSafetyStore()
+      // The user had it at 100%; the plugin brings it down to 50%.
+      control.setIntensityScale(1)
+      ctx.session.intensity.set(0.5)
+      await vi.advanceTimersByTimeAsync(4000)
+      expect(control.intensityScale).toBeCloseTo(0.5)
+      // Restore goes back to the user's 100%, past the plugin limit (80%).
+      expect(ctx.session.intensity.restore()).toBe(1)
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(control.intensityScale).toBeCloseTo(1)
+      // Nothing to restore now.
+      expect(ctx.session.intensity.restore()).toBeNull()
+
+      // In a panic: down at once, up not at all.
+      control.setIntensityScale(0.6)
+      safety.panicked = true
+      expect(ctx.session.intensity.set(0.3)).toBeCloseTo(0.3)
+      expect(control.intensityScale).toBeCloseTo(0.3)
+      expect(ctx.session.intensity.set(0.7)).toBeCloseTo(0.3)
+
+      // The user turning the knob after the plugin makes it theirs: no restore.
+      safety.panicked = false
+      ctx.session.intensity.restore()
+      control.setIntensityScale(0.6)
+      ctx.session.intensity.set(0.4)
+      control.setIntensityScale(0.9)
+      expect(ctx.session.intensity.restore()).toBeNull()
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('tells a plugin when panic is lifted, and when a script holds the stroke', async () => {
+    const ctx = await contextWith(['player'])
+    const { useSafetyStore } = await import('~/stores/safetyStore')
+    const safety = useSafetyStore()
+    const seen: string[] = []
+    ctx.safety.onPanic(() => seen.push('panic'))
+    ctx.safety.onResume(() => seen.push('resume'))
+    safety.panicked = true
+    await nextTick()
+    safety.panicked = false
+    await nextTick()
+    expect(seen).toEqual(['panic', 'resume'])
+    expect(ctx.motion.readout().scriptDriving).toBe(false)
   })
 
   it('follows a video playing elsewhere: the player and the device take its clock, panic stops the device', async () => {
