@@ -180,16 +180,26 @@ const listId = `ph-tags-${Math.random().toString(36).slice(2, 8)}`
           <dd class="num">
             {{ formatTime(entry.duration, '—') }}
           </dd>
-          <dt class="text-fg-faint">
-            Size
-          </dt>
-          <dd class="num">
-            {{ formatSize(entry.file.size) }}
-          </dd>
-          <dt class="text-fg-faint">
-            Modified
-          </dt>
-          <dd>{{ formatDate(entry.file.lastModified) }}</dd>
+          <template v-if="entry.remote">
+            <dt class="text-fg-faint">
+              From
+            </dt>
+            <dd class="truncate">
+              {{ entry.remote.label }}, added by a plugin
+            </dd>
+          </template>
+          <template v-else>
+            <dt class="text-fg-faint">
+              Size
+            </dt>
+            <dd class="num">
+              {{ formatSize(entry.file.size) }}
+            </dd>
+            <dt class="text-fg-faint">
+              Modified
+            </dt>
+            <dd>{{ formatDate(entry.file.lastModified) }}</dd>
+          </template>
           <dt class="text-fg-faint">
             Script
           </dt>

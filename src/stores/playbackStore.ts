@@ -1,4 +1,6 @@
 import type { ScriptMatch, VideoEntry } from './libraryStore'
+import type { ScriptFile } from './scriptStore'
+import type { ExternalClock, ExternalSample, MediaClock } from '~/lib/externalClock'
 /**
  * Playback controller — the one place that decides what plays.
  *
@@ -16,14 +18,19 @@ import { defineStore } from 'pinia'
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
+import { proxiedStream } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
+import { createExternalClock } from '~/lib/externalClock'
 import { mayLeave } from '~/lib/leaveGuard'
 import { sameKindAs } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
+import { guessVrFormat } from '~/lib/vrFormat'
+import { remoteScriptMatches } from '~/plugins/remoteScripts'
 import { useDeviceStore } from './deviceStore'
 import { useLibraryStore } from './libraryStore'
 import { usePlayerStore } from './playerStore'
 import { loadSavedQueue, useQueueStore } from './queueStore'
+import { useSafetyStore } from './safetyStore'
 import { useScriptStore } from './scriptStore'
 import { useSubtitleStore } from './subtitleStore'
 
@@ -57,6 +64,63 @@ export interface PlaybackTakeover {
   next: () => Promise<boolean> | boolean
 }
 
+/** What playhound's own controls ask of a video playing in another app. */
+export type ExternalCommand = { type: 'play' } | { type: 'pause' } | { type: 'seek', time: number } | { type: 'rate', rate: number }
+
+/** Why external playback ended: the user stopped it, another video took over, or its plugin ended it. */
+export type ExternalEndReason = 'stopped' | 'replaced' | 'ended'
+
+/**
+ * A video playing in another app (a VR headset) that playhound follows: the
+ * other app reports where it is (a plugin passes the reports on), and the
+ * device plays this video's scripts to that clock exactly as it would to the
+ * <video>'s. See playExternal.
+ */
+export interface ExternalSession {
+  /** The plugin that started it. */
+  readonly owner: string
+  /** Where it plays, as the player says it: "Playing in <label>". */
+  readonly label: string
+  readonly title: string
+  /** The library video, when it is one. */
+  readonly entry: VideoEntry | null
+  /** The clock the device follows, read like a <video>. */
+  readonly media: MediaClock
+  readonly clock: ExternalClock
+  /** A report from the other app. */
+  update: (s: ExternalSample & { duration?: number }) => void
+  /** Hear 'play', 'pause' (including panic and a quiet other app) and 'seek'; returns an unsubscribe. */
+  onEvent: (fn: (e: 'play' | 'pause' | 'seek') => void) => () => void
+  onEnd: (fn: (reason: ExternalEndReason) => void) => () => void
+  readonly ended: boolean
+  /** Whether play/pause/seek from playhound reach the other app. */
+  readonly controllable: boolean
+}
+
+/** The store's own handle on a session. */
+interface LiveExternal extends ExternalSession {
+  ended: boolean
+  /** Bring the player's state up to the clock, and start or stop the device with it. */
+  tick: () => void
+  end: (reason: ExternalEndReason) => void
+  /** playhound's controls, passed on to the other app. */
+  controls: PlayerControls
+}
+
+export interface ExternalOptions {
+  owner: string
+  label: string
+  /** The library video it is, or null for one only the plugin knows. */
+  entry: VideoEntry | null
+  /** Its name, when it isn't a library video. */
+  title?: string
+  /** Scripts to play, for a video that isn't in the library (or to use instead of its own). */
+  scripts?: ScriptFile[]
+  /** Seconds, when known. */
+  duration?: number
+  onCommand?: (c: ExternalCommand) => void
+}
+
 export const usePlaybackStore = defineStore('playback', () => {
   const player = usePlayerStore()
   const queue = useQueueStore()
@@ -64,6 +128,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   const scripts = useScriptStore()
   const device = useDeviceStore()
   const subtitles = useSubtitleStore()
+  const safety = useSafetyStore()
   const director = useAutoDirector()
   const { autoDetectFromFiles, lastRawMetadata } = useFunscript()
 
@@ -78,6 +143,9 @@ export const usePlaybackStore = defineStore('playback', () => {
   const trackSeq = ref(0)
   /** Set while something else owns "next" (see PlaybackTakeover). */
   const takeover = shallowRef<PlaybackTakeover | null>(null)
+  /** The video playing in another app that playhound follows, if one is (playExternal). */
+  const external = shallowRef<LiveExternal | null>(null)
+  let externalTimer: ReturnType<typeof setInterval> | null = null
   /**
    * The loaded main script's `metadata` block, as written (chapters, bookmarks,
    * tags…). Null with no script, so a script-less video never shows the last one's.
@@ -98,6 +166,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   async function loadFile(file: File, scriptMatches: ScriptMatch[] = [], opts: { autoplay?: boolean, startAt?: number } = {}) {
     const token = ++loadToken
     loading.value = true
+    endExternal('replaced')
     try {
       if (player.videoUrl?.startsWith('blob:'))
         URL.revokeObjectURL(player.videoUrl)
@@ -173,7 +242,7 @@ export const usePlaybackStore = defineStore('playback', () => {
   }
 
   function flushPending() {
-    if (!controls.value || player.videoDuration <= 0)
+    if (!controls.value || player.videoDuration <= 0 || external.value)
       return
     if (pendingSeek) {
       controls.value.seek(pendingSeek)
@@ -187,8 +256,244 @@ export const usePlaybackStore = defineStore('playback', () => {
   watch(() => player.videoDuration, flushPending)
 
   function loadEntry(entry: VideoEntry, opts: { autoplay?: boolean, startAt?: number } = { autoplay: true }) {
+    if (entry.remote)
+      return loadRemote(entry, opts)
     return loadFile(entry.file, entry.scriptMatches, opts)
   }
+
+  /**
+   * A video a plugin added from another app (src/plugins/provider.ts): it
+   * streams, through the local proxy when it needs headers, and its scripts
+   * are fetched the first time it plays.
+   */
+  async function loadRemote(entry: VideoEntry, opts: { autoplay?: boolean, startAt?: number }) {
+    const r = entry.remote!
+    const token = ++loadToken
+    loading.value = true
+    endExternal('replaced')
+    try {
+      if (player.videoUrl?.startsWith('blob:'))
+        URL.revokeObjectURL(player.videoUrl)
+      const url = r.headers ? await proxiedStream(r.url, r.headers, r.kind) : r.url
+      if (token !== loadToken)
+        return
+      player.setVideo('', '')
+      await nextTick()
+      player.setVideo(entry.name, url, r.kind)
+      player.vrFormat = guessVrFormat(entry.basename) ?? player.vrFormat
+      player.clearLoop()
+      currentEntry.value = entry
+      currentFile.value = null
+      trackSeq.value++
+      subtitles.clear()
+      await scripts.useTweaksFor(entry.name, false)
+      if (token !== loadToken)
+        return
+      await autoDetectFromFiles(entry.file, await remoteScriptMatches(entry))
+      if (token !== loadToken)
+        return
+      entry.channels = [...new Set(scripts.scripts.map(s => s.channel))]
+      for (const s of scripts.scripts) {
+        if (s.enabled && device.axisConfigs[s.channel])
+          device.axisConfigs[s.channel].enabled = true
+      }
+      if (entry.hasScript)
+        void director.summarise(entry)
+      if (opts.startAt)
+        pendingSeek = opts.startAt
+      if (opts.autoplay)
+        pendingPlay = true
+      flushPending()
+    }
+    catch (err) {
+      console.error('Failed to load video:', err)
+      toast.error('Could not play that video', { detail: `${entry.basename}: ${err instanceof Error ? err.message : String(err)}` })
+    }
+    finally {
+      if (token === loadToken)
+        loading.value = false
+    }
+  }
+
+  // ── Playing in another app ────────────────────────────────────────────────
+
+  /**
+   * Follow a video that plays in another app (a VR headset): this video's
+   * scripts play on every device to the other app's clock, with latency,
+   * offset, tweaks, the knob, edges and panic as for a video here. The
+   * player shows it as playing elsewhere, with its timeline following.
+   * Null if the user kept unsaved script edits.
+   */
+  async function playExternal(o: ExternalOptions): Promise<ExternalSession | null> {
+    if (!await mayLeave('Play another video'))
+      return null
+    endExternal('replaced')
+    const token = ++loadToken
+    loading.value = false
+    pendingPlay = false
+    pendingSeek = 0
+    controls.value?.pause()
+    if (player.videoUrl?.startsWith('blob:'))
+      URL.revokeObjectURL(player.videoUrl)
+    const entry = o.entry
+    const name = entry?.name ?? (o.title?.trim() || o.label)
+    player.setVideo('', '')
+    await nextTick()
+    player.setVideo(name, `external:${o.owner}`, 'external')
+    player.clearLoop()
+    currentEntry.value = entry
+    currentFile.value = null
+    subtitles.clear()
+    trackSeq.value++
+
+    const clock = createExternalClock()
+    const events = new Set<(e: 'play' | 'pause' | 'seek') => void>()
+    const ends = new Set<(r: ExternalEndReason) => void>()
+    /** Whether the device follows: the other app plays, it's been heard from, and no panic. */
+    let following = false
+    const emit = (e: 'play' | 'pause' | 'seek') => {
+      for (const fn of events) {
+        try {
+          fn(e)
+        }
+        catch (err) {
+          console.error('[playback] external listener failed', err)
+        }
+      }
+    }
+    const read = () => clock.read(performance.now())
+    const media: MediaClock = {
+      get currentTime() {
+        return read().timeMs / 1000
+      },
+      get playbackRate() {
+        return read().rate
+      },
+      get paused() {
+        return !following
+      },
+      seeking: false,
+      ended: false,
+      // As much as a <video> that can play on.
+      readyState: 4,
+    }
+    const session: LiveExternal = {
+      owner: o.owner,
+      label: o.label,
+      title: entry?.basename ?? name,
+      entry,
+      media,
+      clock,
+      ended: false,
+      controllable: typeof o.onCommand === 'function',
+      update(s) {
+        if (session.ended)
+          return
+        if (typeof s.duration === 'number' && Number.isFinite(s.duration) && s.duration > 0)
+          player.videoDuration = s.duration
+        const changed = clock.update(s, performance.now())
+        if (changed.includes('seek'))
+          emit('seek')
+        session.tick()
+      },
+      onEvent(fn) {
+        events.add(fn)
+        return () => void events.delete(fn)
+      },
+      onEnd(fn) {
+        ends.add(fn)
+        return () => void ends.delete(fn)
+      },
+      /** Bring the player's state up to the clock, and start or stop the device with it. */
+      tick() {
+        if (session.ended)
+          return
+        const r = read()
+        player.currentTime = r.timeMs / 1000
+        player.isPlaying = r.playing
+        const want = r.playing && !safety.panicked
+        if (want !== following) {
+          following = want
+          emit(want ? 'play' : 'pause')
+        }
+      },
+      end(reason) {
+        if (session.ended)
+          return
+        session.ended = true
+        following = false
+        emit('pause')
+        for (const fn of ends) {
+          try {
+            fn(reason)
+          }
+          catch (err) {
+            console.error('[playback] external end listener failed', err)
+          }
+        }
+      },
+      controls: {
+        play: () => o.onCommand?.({ type: 'play' }),
+        pause: () => o.onCommand?.({ type: 'pause' }),
+        togglePlay: () => o.onCommand?.({ type: read().playing ? 'pause' : 'play' }),
+        seek: t => o.onCommand?.({ type: 'seek', time: Math.max(0, t) }),
+        seekRelative: d => o.onCommand?.({ type: 'seek', time: Math.max(0, read().timeMs / 1000 + d) }),
+        setSpeed: rate => o.onCommand?.({ type: 'rate', rate: Math.max(0.1, Math.min(10, rate)) }),
+        // The rest are this window's: there's no picture here to show.
+        setVolume: v => controls.value?.setVolume(v),
+        toggleMute: () => controls.value?.toggleMute(),
+        toggleFullscreen: () => {},
+        togglePopout: () => {},
+        frame: () => null,
+      },
+    }
+
+    // Its scripts: the library video's own, or the plugin's.
+    await scripts.useTweaksFor(name, false)
+    if (token !== loadToken)
+      return null
+    if (o.scripts?.length)
+      scripts.setAutoDetected(o.scripts)
+    else if (entry)
+      await autoDetectFromFiles(entry.file, entry.remote ? await remoteScriptMatches(entry) : entry.scriptMatches)
+    else
+      scripts.clearScripts()
+    if (token !== loadToken)
+      return null
+    for (const s of scripts.scripts) {
+      if (s.enabled && device.axisConfigs[s.channel])
+        device.axisConfigs[s.channel].enabled = true
+    }
+    player.videoDuration = o.duration && o.duration > 0 ? o.duration : entry?.duration ?? 0
+    external.value = session
+    // The player's time a few times a second, as a <video> reports it; the
+    // device reads the clock itself, every frame.
+    externalTimer = setInterval(() => session.tick(), 250)
+    return session
+  }
+
+  /** Stop following the other app. The device stops; the other app plays on. */
+  function endExternal(reason: ExternalEndReason = 'stopped') {
+    const s = external.value
+    if (!s)
+      return
+    if (externalTimer)
+      clearInterval(externalTimer)
+    externalTimer = null
+    external.value = null
+    s.end(reason)
+    if (reason !== 'replaced') {
+      player.setVideo('', '')
+      currentEntry.value = null
+      trackSeq.value++
+    }
+  }
+
+  // Panic stops the device at once, whatever the other app does.
+  watch(() => safety.panicked, () => external.value?.tick(), { flush: 'sync' })
+
+  /** Whose controls play, pause and seek: the other app's while following it. */
+  const ctl = (): PlayerControls | null => (external.value ? external.value.controls : controls.value)
 
   /**
    * Play an entry from `startAt` seconds, slotted in after the current one
@@ -249,6 +554,7 @@ export const usePlaybackStore = defineStore('playback', () => {
       return
     ++loadToken
     loading.value = false
+    endExternal('replaced')
     if (player.videoUrl?.startsWith('blob:'))
       URL.revokeObjectURL(player.videoUrl)
     // Clearing first makes the same URL count as a change, so the <video> reloads.
@@ -333,7 +639,7 @@ export const usePlaybackStore = defineStore('playback', () => {
    */
   async function prev(): Promise<boolean> {
     if (player.currentTime > PREV_RESTART_AFTER || !queue.hasPrev) {
-      controls.value?.seek(0)
+      ctl()?.seek(0)
       return !!player.videoUrl
     }
     if (!await mayLeave('Play the previous video'))
@@ -411,18 +717,18 @@ export const usePlaybackStore = defineStore('playback', () => {
   watch(() => library.loadedAt, () => void restoreSession())
 
   // ── Passthrough controls ──────────────────────────────────────────────────
-  const togglePlay = () => controls.value?.togglePlay()
-  const pause = () => controls.value?.pause()
+  const togglePlay = () => ctl()?.togglePlay()
+  const pause = () => ctl()?.pause()
   /** The current picture of the video, small, for whoever wants a look (plugins). */
-  const grabFrame = (maxWidth = 512, quality = 0.72) => controls.value?.frame?.(maxWidth, quality) ?? null
-  const resume = () => controls.value?.play()
-  const seek = (t: number) => controls.value?.seek(t)
-  const seekRelative = (d: number) => controls.value?.seekRelative(d)
-  const setSpeed = (s: number) => controls.value?.setSpeed(s)
-  const setVolume = (v: number) => controls.value?.setVolume(v)
-  const toggleMute = () => controls.value?.toggleMute()
-  const toggleFullscreen = () => controls.value?.toggleFullscreen()
-  const togglePopout = () => controls.value?.togglePopout()
+  const grabFrame = (maxWidth = 512, quality = 0.72) => ctl()?.frame?.(maxWidth, quality) ?? null
+  const resume = () => ctl()?.play()
+  const seek = (t: number) => ctl()?.seek(t)
+  const seekRelative = (d: number) => ctl()?.seekRelative(d)
+  const setSpeed = (s: number) => ctl()?.setSpeed(s)
+  const setVolume = (v: number) => ctl()?.setVolume(v)
+  const toggleMute = () => ctl()?.toggleMute()
+  const toggleFullscreen = () => ctl()?.toggleFullscreen()
+  const togglePopout = () => ctl()?.togglePopout()
 
   function toggleShuffle() {
     queue.toggleShuffle()
@@ -446,6 +752,9 @@ export const usePlaybackStore = defineStore('playback', () => {
     bindPlayer,
     loadFile,
     loadEntry,
+    external,
+    playExternal,
+    endExternal,
     playAt,
     setTakeover,
     play,

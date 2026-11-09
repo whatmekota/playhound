@@ -1,4 +1,5 @@
 import type { Ref } from 'vue'
+import type { MediaClock } from '~/lib/externalClock'
 import type { FunscriptAction } from '~/lib/funscriptParser'
 import type { ScaledScript } from '~/lib/scriptScale'
 import { useLocalStorage } from '@vueuse/core'
@@ -21,9 +22,13 @@ import { useTCode } from './useTCode'
 
 let latency: Ref<number> | null = null
 
-/** The <video> the device follows. The session recorder times a take by its clock. */
-let attachedVideo: HTMLVideoElement | null = null
-export function syncedVideo(): HTMLVideoElement | null {
+/**
+ * What the device follows: the <video>, or the clock of a video playing in
+ * another app (playbackStore.playExternal), which reads the same. The
+ * session recorder times a take by it.
+ */
+let attachedVideo: MediaClock | null = null
+export function syncedVideo(): MediaClock | null {
   return attachedVideo
 }
 
@@ -87,7 +92,7 @@ export function useVideoSync() {
   let bpSegmentAt = Number.NaN
 
   let rafId: number | null = null
-  let videoEl: HTMLVideoElement | null = null
+  let videoEl: MediaClock | null = null
   const syncing = ref(false)
 
   let snap = true
@@ -149,7 +154,7 @@ export function useVideoSync() {
     return clampLatency(latencyMs.value) * (speed || 1)
   }
 
-  function attach(el: HTMLVideoElement) {
+  function attach(el: MediaClock) {
     videoEl = el
     attachedVideo = el
   }

@@ -236,6 +236,133 @@ const netApi = winState
           catch {}
         }
       },
+      /**
+       * A TCP connection to this computer or the local network
+       * (desktop/netsocket.mjs). req: { host, port }
+       * on: { open(address, port), data(Uint8Array), close(error | null) }
+       * Returns { send(Uint8Array), close() }.
+       */
+      socket: (req, on) => {
+        const { port1, port2 } = new MessageChannel()
+        let closed = false
+        port1.onmessage = (e) => {
+          const m = e.data
+          try {
+            if (m.type === 'open')
+              on.open(String(m.address), Number(m.port))
+            else if (m.type === 'data')
+              on.data(m.data)
+            else if (m.type === 'close')
+              on.close(m.error ? String(m.error) : null)
+          }
+          catch (err) {
+            console.error('[playhound] socket callback failed', err)
+          }
+          if (m.type === 'close') {
+            closed = true
+            port1.close()
+          }
+        }
+        ipcRenderer.postMessage('ph:net:socket', { host: String(req?.host ?? ''), port: Number(req?.port) }, [port2])
+        return {
+          send: (data) => {
+            if (!closed && data instanceof Uint8Array)
+              port1.postMessage({ type: 'send', data })
+          },
+          close: () => {
+            if (!closed)
+              port1.postMessage({ type: 'close' })
+          },
+        }
+      },
+    })
+  : null
+
+// ── Plugins' answers on the LAN server ──────────────────────────────────────
+// A request to /plugins/<id>/… or /ph-files/… on the app's server comes here
+// (desktop/pluginhttp.mjs); the page answers it, pulled a chunk at a time.
+const httpListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:http:request', (e, req) => {
+    const port = e.ports?.[0]
+    if (!port)
+      return
+    const pullers = new Set()
+    const aborters = new Set()
+    let done = false
+    port.onmessage = (ev) => {
+      const t = ev.data?.type
+      for (const cb of t === 'pull' ? pullers : t === 'abort' ? aborters : []) {
+        try {
+          cb()
+        }
+        catch (err) {
+          console.error('[playhound] http callback failed', err)
+        }
+      }
+      if (t === 'abort') {
+        done = true
+        port.close()
+      }
+    }
+    const post = (m) => {
+      if (!done)
+        port.postMessage(m)
+      if (m.type === 'end' || m.type === 'error') {
+        done = true
+        port.close()
+      }
+    }
+    const reply = Object.freeze({
+      head: (status, headers) => post({ type: 'head', status: Number(status), headers: Array.isArray(headers) ? headers.map(([k, v]) => [String(k), String(v)]) : [] }),
+      chunk: (data) => {
+        if (data instanceof Uint8Array)
+          post({ type: 'chunk', data })
+      },
+      end: () => post({ type: 'end' }),
+      error: message => post({ type: 'error', message: String(message ?? '') }),
+      onPull: (cb) => {
+        if (typeof cb === 'function')
+          pullers.add(cb)
+      },
+      onAbort: (cb) => {
+        if (typeof cb === 'function')
+          aborters.add(cb)
+      },
+    })
+    const request = Object.freeze({
+      method: String(req?.method ?? 'GET'),
+      url: String(req?.url ?? '/'),
+      headers: Array.isArray(req?.headers) ? req.headers.map(([k, v]) => [String(k), String(v)]) : [],
+      body: req?.body instanceof Uint8Array ? req.body : null,
+      remote: String(req?.remote ?? ''),
+    })
+    if (!httpListeners.size) {
+      reply.error('Nothing is listening')
+      return
+    }
+    for (const cb of httpListeners) {
+      try {
+        cb(request, reply)
+      }
+      catch (err) {
+        console.error('[playhound] http listener failed', err)
+        reply.error('Failed')
+      }
+    }
+  })
+}
+const httpApi = winState
+  ? Object.freeze({
+      /** Say whether any plugin serves anything; resolves { port } (null until a server took our paths). */
+      setOpen: on => ipcRenderer.invoke('ph:http:open', !!on),
+      /** Calls `cb(request, reply)` for each request; returns an unsubscribe. */
+      onRequest: (cb) => {
+        if (typeof cb !== 'function')
+          return () => {}
+        httpListeners.add(cb)
+        return () => void httpListeners.delete(cb)
+      },
     })
   : null
 
@@ -376,6 +503,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   popout: popoutApi ?? undefined,
   updates: updatesApi ?? undefined,
   net: netApi ?? undefined,
+  http: httpApi ?? undefined,
   plugins: pluginsApi ?? undefined,
   web: webApi ?? undefined,
   tcode: tcodeApi ?? undefined,

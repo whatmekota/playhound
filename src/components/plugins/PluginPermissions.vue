@@ -24,7 +24,7 @@ const isNew = (p: PluginPermission) => !!props.added?.includes(p)
       <span class="text-[12.5px] text-warn font-medium flex gap-1.5 items-center">
         <span class="i-carbon-warning-alt text-[14px] shrink-0" /> Full access (older plugin)
       </span>
-      <span class="hint">It was made before plugins asked for permissions, so it can do anything playhound can, including moving your device.</span>
+      <span class="hint">It was made before plugins asked for permissions, so it can do anything plugins could then, including moving your device. Anything newer it has to ask for.</span>
     </template>
     <template v-else-if="rows.length">
       <span class="text-[12px] text-fg-muted">It can:</span>

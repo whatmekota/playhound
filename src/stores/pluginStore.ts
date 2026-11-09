@@ -1,16 +1,19 @@
+import type { VideoEntry } from './libraryStore'
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { LibraryVideo, LibraryVideoInfo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
+import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, watch } from 'vue'
 import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useAutoDirector } from '~/composables/useAutoDirector'
+import { generatorStroke } from '~/composables/useMotionEngine'
 import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
 import { axisOutput } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
+import { AXIS_MAP, extractSuffix } from '~/lib/axisMap'
 import { desktop } from '~/lib/browserApi'
 import { metaCredits } from '~/lib/chapterIndex'
 import { effectiveMeta } from '~/lib/entryInfo'
@@ -25,10 +28,15 @@ import { loadUserMeta } from '~/lib/thumbs'
 import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
+import { baseUrl, serve as serveHttp, servingAvailable, shareFile, unserve, unshareAll } from '~/plugins/http'
 import { accessOf, addedPermissions, allows, permissionError, readManifest } from '~/plugins/manifest'
 import { pluginFetch } from '~/plugins/net'
+import { cleanProvidedList, entryOf } from '~/plugins/provider'
+import { remoteScriptMatches } from '~/plugins/remoteScripts'
 import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
+import { clampLimit, DEFAULT_PLUGIN_INTENSITY_MAX, pluginTarget, rampStep } from '~/plugins/session'
 import { chordId, chordOf, parseKbd, reservedBy } from '~/plugins/shortcuts'
+import { openSocket, socketsAvailable } from '~/plugins/socket'
 import { addNewDefaults, DEFAULT_SOURCES, fetchRelease, newer, parseRepo, SourceError } from '~/plugins/sources'
 import { parseStage, stageOf } from '~/plugins/stage'
 import { loadReleases, saveReleases } from '~/plugins/storeCache'
@@ -40,9 +48,12 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { usePlaylistStore } from '~/stores/playlistStore'
+import { useQueueStore } from '~/stores/queueStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
+import { useThemeStore } from '~/stores/themeStore'
 import { useUiStore } from '~/stores/uiStore'
 
 /**
@@ -284,6 +295,67 @@ export const usePluginStore = defineStore('plugins', () => {
   const devPackages = new Map<string, StoredPackage>()
 
   const find = (id: string) => plugins.value.find(p => p.manifest.id === id)
+
+  // ─── Session control: the user's limit, and one ramp at a time ────────────
+  /** Settings → Plugins: the highest intensity a plugin may set (ctx.session.intensity.set). */
+  const intensityMax = useLocalStorage<number>(KEYS.pluginIntensityMax.key, DEFAULT_PLUGIN_INTENSITY_MAX)
+  /** The knob moving toward what a plugin asked for, until it gets there or someone else turns it. */
+  let ramp: { timer: ReturnType<typeof setInterval>, owner: string } | null = null
+
+  function stopRamp() {
+    if (ramp)
+      clearInterval(ramp.timer)
+    ramp = null
+  }
+
+  /**
+   * Move the knob toward `want` for a plugin, within the user's limit, a
+   * step every 100 ms. The user turning it (or panic) stops the move where
+   * it is: the knob is theirs. Returns where it will stop.
+   */
+  function rampIntensity(owner: string, name: string, want: unknown): number {
+    const control = useSessionControlStore()
+    const safety = useSafetyStore()
+    const target = pluginTarget(want, clampLimit(intensityMax.value))
+    if (target === null)
+      throw new TypeError('session.intensity.set takes a number, 0.1–1')
+    if (safety.panicked)
+      return control.intensityScale
+    stopRamp()
+    let pos = control.intensityScale
+    let shown = pos
+    let at = performance.now()
+    const timer = setInterval(() => {
+      // Someone else moved it (the user, panic): leave it there.
+      if (safety.panicked || Math.abs(control.intensityScale - shown) > 0.004) {
+        stopRamp()
+        return
+      }
+      const now = performance.now()
+      pos = rampStep(pos, target, now - at)
+      at = now
+      control.setIntensityScale(pos)
+      shown = control.intensityScale
+      if (pos === target)
+        stopRamp()
+    }, 100)
+    ramp = { timer, owner }
+    if (Math.abs(target - control.intensityScale) >= 0.01) {
+      const capped = typeof want === 'number' && want > target + 0.001 && target >= clampLimit(intensityMax.value)
+      toast(`${name}: intensity to ${Math.round(target * 100)}%`, {
+        icon: 'i-carbon-meter-alt',
+        key: 'plugin-intensity',
+        detail: capped ? `Held to your limit for plugins (Settings → Plugins)` : `From ${Math.round(control.intensityScale * 100)}%, a little at a time`,
+      })
+    }
+    return target
+  }
+
+  // Panic stops a plugin's move at once (the next step would notice, but not before it).
+  watch(() => useSafetyStore().panicked, (on) => {
+    if (on)
+      stopRamp()
+  }, { flush: 'sync' })
 
   // Filters chain in the order the plugins are listed.
   watch(() => plugins.value.map(p => p.manifest.id), ids => motionFilters.setOrder(ids), { immediate: true })
@@ -531,6 +603,9 @@ export const usePluginStore = defineStore('plugins', () => {
     }
     if (motionHolder.value?.id === id)
       motionHolder.value.release()
+    // A move it started stops where it is.
+    if (ramp?.owner === id)
+      stopRamp()
     for (const u of r.urls)
       URL.revokeObjectURL(u)
   }
@@ -905,6 +980,7 @@ export const usePluginStore = defineStore('plugins', () => {
     const motion = useMotionStore()
     const safety = useSafetyStore()
     const anyDevice = useAnyDevice()
+    const themeStore = useThemeStore()
     const self = () => find(id) ?? info
     const later = (fn: () => void) => {
       r.cleanups.push(fn)
@@ -922,6 +998,12 @@ export const usePluginStore = defineStore('plugins', () => {
     const gate = <A extends unknown[], R>(p: PluginPermission, call: string, fn: (...a: A) => R) => (...a: A): R => {
       if (!allows(access, p))
         throw permissionError(manifestName, p, call)
+      return fn(...a)
+    }
+    /** Reading the session: what the player shows anyway (`player`), or `session`. */
+    const gateRead = <A extends unknown[], R>(call: string, fn: (...a: A) => R) => (...a: A): R => {
+      if (!allows(access, 'player') && !allows(access, 'session'))
+        throw new Error(`${manifestName} can't use ${call}: its manifest doesn't ask for the "player" or the "session" permission`)
       return fn(...a)
     }
 
@@ -1018,14 +1100,20 @@ export const usePluginStore = defineStore('plugins', () => {
       return { spm: Math.round(cur.spm), level, next, endsInS: Math.max(0, Math.round((a.durationMs - t) / 1000)) }
     }
 
-    const readout = (): MotionReadout => ({
-      spm: motion.currentSpm,
-      depth: motion.currentDepth,
-      // What was last sent to the stroke axis: the generator's or a script's, whichever drives it.
-      pos: axisOutput.L0 ?? motion.currentPos,
-      maxSpm: motion.maxSpm,
-      device: anyDevice.value,
-    })
+    const readout = (): MotionReadout => {
+      // The generator's own stroke, when it is the one moving (not a script).
+      const g = scripts.hasScripts && player.isPlaying ? null : generatorStroke()
+      return {
+        spm: motion.currentSpm,
+        depth: motion.currentDepth,
+        // What was last sent to the stroke axis: the generator's or a script's, whichever drives it.
+        pos: axisOutput.L0 ?? motion.currentPos,
+        maxSpm: motion.maxSpm,
+        device: anyDevice.value,
+        phase: g ? g.phase : null,
+        nextStrokeInMs: g ? Math.round((1 - g.phase) * 60_000 / g.spm) : null,
+      }
+    }
 
     function takeMotion(): MotionControl | null {
       if (safety.panicked)
@@ -1102,21 +1190,20 @@ export const usePluginStore = defineStore('plugins', () => {
     const device = useDeviceStore()
     const videoName = () => (player.videoPath ? player.videoPath.split(/[\\/]/).pop() ?? player.videoPath : null)
 
-    function loadScript(s: { actions: { at: number, pos: number }[], axis?: string, name?: string }): boolean {
+    /** A plugin's script as a loaded file's; null with no usable actions. Throws for an unknown axis. */
+    function scriptFileOf(s: { actions: { at: number, pos: number }[], axis?: string, name?: string }, call: string): ScriptFile | null {
       if (!s || typeof s !== 'object')
-        throw new TypeError('scripts.load takes { actions, axis?, name? }')
+        throw new TypeError(`${call} takes { actions, axis?, name? }`)
       const key = axisKeyFor(s.axis)
       if (!key)
-        throw new Error(`scripts.load: there is no axis "${String(s.axis)}" (try L0, R0, V0, or twist, roll, vib…)`)
-      if (!player.videoPath)
-        return false
+        throw new Error(`${call}: there is no axis "${String(s.axis)}" (try L0, R0, V0, or twist, roll, vib…)`)
       const actions = cleanActions(s.actions)
       if (!actions.length)
-        return false
+        return null
       const name = typeof s.name === 'string' && s.name.trim() ? s.name.trim() : `${manifestName}.funscript`
       // Through the same parser as a file, so it is shaped exactly like one.
       const axis = parseFunscriptContent(JSON.stringify({ version: '1.0', actions }), name, '', key).axes[0]
-      const file: ScriptFile = {
+      return {
         path: `plugin:${id}/${name}`,
         filename: name,
         channel: axis.channel,
@@ -1128,6 +1215,19 @@ export const usePluginStore = defineStore('plugins', () => {
         offsetMs: 0,
         parsed: axis,
       }
+    }
+
+    function loadScript(s: { actions: { at: number, pos: number }[], axis?: string, name?: string }): boolean {
+      if (!s || typeof s !== 'object')
+        throw new TypeError('scripts.load takes { actions, axis?, name? }')
+      if (!axisKeyFor(s.axis))
+        throw new Error(`scripts.load: there is no axis "${String(s.axis)}" (try L0, R0, V0, or twist, roll, vib…)`)
+      if (!player.videoPath)
+        return false
+      const file = scriptFileOf(s, 'scripts.load')
+      if (!file)
+        return false
+      const axis = file.parsed
       scripts.setScripts([...scripts.scripts.filter(x => x.channel !== axis.channel), file])
       // As a loaded file does: the axis it drives is switched on.
       const cfg = device.axisConfigs[axis.channel]
@@ -1154,6 +1254,9 @@ export const usePluginStore = defineStore('plugins', () => {
     // ─── Clock and fingerprints ────────────────────────────────────────────
     const steady = createSteadyClock()
     function clockNow(): number {
+      // Playing in another app: its clock, steadied already.
+      if (playback.external)
+        return playback.external.media.currentTime
       const v = document.querySelector<HTMLVideoElement>('video[data-ph-main]')
       if (!v || !player.videoUrl)
         return player.currentTime
@@ -1166,18 +1269,235 @@ export const usePluginStore = defineStore('plugins', () => {
       return v ? fingerprintFile(v.file) : null
     }
 
-    async function playFingerprint(fp: string): Promise<boolean> {
+    /** The library video with this fingerprint, or null. */
+    async function entryByFingerprint(fp: string): Promise<VideoEntry | null> {
       const size = fingerprintSize(fp)
       if (size === null)
-        return false
+        return null
       // Only files of the same size can match, and those are few: no need to read the rest.
-      for (const v of library.videos.filter(x => x.file.size === size)) {
-        if (await fingerprintFile(v.file) === fp) {
-          await playback.play(v, [v], manifestName)
-          return true
+      for (const v of library.videos.filter(x => !x.remote && x.file.size === size)) {
+        if (await fingerprintFile(v.file) === fp)
+          return v
+      }
+      return null
+    }
+
+    async function playFingerprint(fp: string): Promise<boolean> {
+      const v = await entryByFingerprint(fp)
+      if (!v)
+        return false
+      await playback.play(v, [v], manifestName)
+      return true
+    }
+
+    // ─── Playing in another app ────────────────────────────────────────────
+    async function playExternal(opts: ExternalPlaybackOptions): Promise<ExternalPlayback | null> {
+      if (!opts || typeof opts !== 'object' || typeof opts.label !== 'string' || !opts.label.trim())
+        throw new TypeError('playback.external takes { label, video?, fingerprint?, title?, scripts?, duration?, onCommand? }')
+      if (opts.onCommand !== undefined && typeof opts.onCommand !== 'function')
+        throw new TypeError('playback.external: onCommand must be a function')
+      let entry: VideoEntry | null = null
+      if (typeof opts.video === 'string' && opts.video)
+        entry = library.videos.find(v => v.name === opts.video) ?? null
+      else if (typeof opts.fingerprint === 'string' && opts.fingerprint)
+        entry = await entryByFingerprint(opts.fingerprint)
+      const given = Array.isArray(opts.scripts) ? opts.scripts.map(s => scriptFileOf(s, 'playback.external')).filter((f): f is ScriptFile => !!f) : []
+      // Nothing to play to its clock: no library video and no scripts.
+      if (!entry && !given.length)
+        return null
+      const onCommand = opts.onCommand
+      const s = await playback.playExternal({
+        owner: id,
+        label: opts.label.trim().slice(0, 40),
+        entry,
+        title: typeof opts.title === 'string' ? opts.title.slice(0, 200) : undefined,
+        // One per axis: the last wins, as with scripts.load.
+        scripts: given.length ? [...new Map(given.map(f => [f.channel, f])).values()] : undefined,
+        duration: typeof opts.duration === 'number' && Number.isFinite(opts.duration) ? opts.duration : undefined,
+        onCommand: onCommand
+          ? (c) => {
+              try {
+                onCommand(c)
+              }
+              catch (err) {
+                console.error(`[plugin ${id}] external onCommand failed`, err)
+              }
+            }
+          : undefined,
+      })
+      if (!s)
+        return null
+      // Switched off, it stops being followed.
+      const drop = later(() => {
+        if (playback.external === s)
+          playback.endExternal('ended')
+      })
+      s.onEnd(() => drop())
+      return {
+        update(x) {
+          if (!x || typeof x !== 'object' || typeof x.time !== 'number' || !Number.isFinite(x.time))
+            throw new TypeError('update takes { time (seconds), playing, rate?, duration? }')
+          s.update({ time: x.time, playing: !!x.playing, rate: x.rate, duration: x.duration })
+        },
+        end() {
+          if (playback.external === s)
+            playback.endExternal('ended')
+        },
+        onEnd(fn) {
+          return later(s.onEnd((reason) => {
+            try {
+              fn(reason)
+            }
+            catch (err) {
+              console.error(`[plugin ${id}] external onEnd failed`, err)
+            }
+          }))
+        },
+        get active() {
+          return !s.ended
+        },
+      }
+    }
+
+    // ─── Library sources ───────────────────────────────────────────────────
+    const queue = useQueueStore()
+    let source: { removed: boolean } | null = null
+
+    async function provide(def: LibrarySourceDef): Promise<LibrarySourceHandle> {
+      if (!def || typeof def !== 'object' || typeof def.label !== 'string' || !def.label.trim() || typeof def.videos !== 'function')
+        throw new TypeError('library.provide takes { label, videos(), scripts?(id) }')
+      if (def.scripts !== undefined && typeof def.scripts !== 'function')
+        throw new TypeError('library.provide: scripts must be a function (id) => [{ axis, actions }]')
+      const label = def.label.trim().slice(0, 40)
+      // One source per plugin: a new one replaces the last.
+      if (source)
+        source.removed = true
+      const mine = { removed: false }
+      source = mine
+      let problems: string[] = []
+      const loaderFor = (vid: string) => def.scripts
+        ? async () => (await def.scripts!(vid) ?? [])
+          .map(s => ({ axis: axisKeyFor(s?.axis), actions: cleanActions(s?.actions) }))
+          .filter((s): s is { axis: string, actions: { at: number, pos: number }[] } => !!s.axis && s.actions.length > 0)
+        : undefined
+
+      async function refresh(): Promise<number> {
+        if (mine.removed || running.get(id) !== r)
+          return 0
+        const { videos, errors } = cleanProvidedList(await def.videos(), { loader: !!def.scripts })
+        problems = errors
+        if (errors.length)
+          console.warn(`[plugin ${id}] library.provide: ${errors.length} left out`, errors.slice(0, 10))
+        if (mine.removed || running.get(id) !== r)
+          return 0
+        library.provide(id, videos.map(v => entryOf(v, id, label, { loader: v.scripts.length ? undefined : loaderFor(v.id) })))
+        return videos.length
+      }
+      function remove() {
+        mine.removed = true
+        library.unprovide(id)
+        // What it added that is still waiting in the queue goes too.
+        for (const q of queue.upcoming) {
+          if (q.entry.remote?.owner === id)
+            queue.remove(q.uid)
         }
       }
-      return false
+      later(remove)
+      await refresh()
+      return {
+        refresh,
+        remove,
+        get problems() {
+          return [...problems]
+        },
+      }
+    }
+
+    // ─── Sharing on the network ────────────────────────────────────────────
+    let sharing = false
+    /** Undo its sharing when it is switched off, from the first time it shares. */
+    function shares() {
+      if (!sharing) {
+        sharing = true
+        later(() => void unshareAll(id))
+      }
+    }
+    let servedUrl: string | null = null
+
+    async function serve(handler: HttpHandler): Promise<string | null> {
+      shares()
+      servedUrl = await serveHttp(id, handler)
+      return servedUrl
+    }
+
+    /** The library entry by id, as it is now (a rescan makes new ones). */
+    const entryNamed = (name: string) => library.videos.find(v => v.name === name) ?? null
+
+    async function mediaUrl(videoId: string): Promise<string | null> {
+      const entry = entryNamed(videoId)
+      if (!entry)
+        return null
+      // From another app: its own address, when it needs nothing to play.
+      if (entry.remote)
+        return entry.remote.headers ? null : entry.remote.url
+      shares()
+      return shareFile(id, `video:${entry.name}`, () => (entryNamed(entry.name) ?? entry).file, entry.name)
+    }
+
+    /** One axis of a video's scripts as a .funscript of its own (a merged script's too). */
+    async function axisScript(entry: VideoEntry, channel: string): Promise<Blob | null> {
+      const matches = entry.remote ? await remoteScriptMatches(entry) : entry.scriptMatches
+      for (const m of matches.filter(x => !x.isAlt)) {
+        const suffix = m.suffix ?? extractSuffix(entry.name, m.file.name)
+        try {
+          const text = await m.file.text()
+          const parsed = parseFunscriptContent(text, m.file.name, entry.name, suffix)
+          const axis = parsed.axes.find(a => a.channel === channel)
+          if (!axis)
+            continue
+          const out = {
+            version: '1.0',
+            inverted: false,
+            range: 100,
+            ...(parsed.rawMetadata ? { metadata: parsed.rawMetadata } : {}),
+            actions: axis.actions.map(a => ({ at: Math.round(a.at), pos: Math.round(a.pos * 100) })),
+          }
+          return new Blob([JSON.stringify(out)], { type: 'application/json' })
+        }
+        catch {}
+      }
+      return null
+    }
+
+    async function scriptUrl(videoId: string, axisName?: string): Promise<string | null> {
+      const entry = entryNamed(videoId)
+      const key = axisKeyFor(axisName)
+      if (!key)
+        throw new Error(`library.scriptUrl: there is no axis "${String(axisName)}" (try L0, R0, V0, or twist, roll, vib…)`)
+      if (!entry)
+        return null
+      const channel = AXIS_MAP[key].channel
+      // Only an axis it has gets a link.
+      if (!await axisScript(entry, channel))
+        return null
+      shares()
+      const base = entry.basename.replace(/[\\/:*?"<>|]/g, '_')
+      const name = key === 'default' ? `${base}.funscript` : `${base}.${key}.funscript`
+      return shareFile(id, `script:${entry.name}:${channel}`, async () => {
+        const now = entryNamed(entry.name) ?? entry
+        return (await axisScript(now, channel)) ?? new Blob(['{"actions":[]}'], { type: 'application/json' })
+      }, name)
+    }
+
+    // ─── Session ───────────────────────────────────────────────────────────
+    const control = useSessionControlStore()
+
+    function pluginEdge() {
+      control.edge('plugin', {
+        videoTime: player.videoUrl ? player.currentTime : null,
+        videoName: videoName(),
+      })
+      toast(`${manifestName} called an edge`, { icon: 'i-carbon-temperature-hot', key: `plugin-edge-${id}` })
     }
 
     // ─── Commands ──────────────────────────────────────────────────────────
@@ -1186,15 +1506,26 @@ export const usePluginStore = defineStore('plugins', () => {
         throw new TypeError('commands.register takes { id, title, run, hint?, icon?, kbd? }')
       let kbd: Chord | null = null
       let ok = true
-      if (def.kbd !== undefined && def.kbd !== null && def.kbd !== '') {
-        const c = parseKbd(def.kbd)
-        const taken = c && (reservedBy(c) ?? shortcutOwner(c, { plugin: id, command: def.id }))
-        if (!c)
-          console.warn(`[plugin ${id}] "${String(def.kbd)}" is not a shortcut a plugin can have (a letter, digit or F1–F12, with Ctrl, Alt or Shift); "${def.title}" has none`)
-        else if (taken)
-          console.warn(`[plugin ${id}] ${String(def.kbd)} is already taken by ${taken}; "${def.title}" has no shortcut`)
-        else
-          kbd = c
+      // One key, or several to try in order: the first free one wins.
+      const wanted = (Array.isArray(def.kbd) ? def.kbd : [def.kbd]).filter(k => k !== undefined && k !== null && k !== '')
+      if (wanted.length) {
+        const why: string[] = []
+        for (const k of wanted) {
+          const c = parseKbd(k)
+          const taken = c && (reservedBy(c) ?? shortcutOwner(c, { plugin: id, command: def.id }))
+          if (!c) {
+            why.push(`"${String(k)}" is not a shortcut a plugin can have (a letter, digit or F1–F12, with Ctrl, Alt or Shift)`)
+          }
+          else if (taken) {
+            why.push(`${String(k)} is already taken by ${taken}`)
+          }
+          else {
+            kbd = c
+            break
+          }
+        }
+        if (!kbd)
+          console.warn(`[plugin ${id}] ${why.join('; ')}; "${def.title}" has no shortcut`)
         ok = !!kbd
       }
       const cmd: PluginCommand = {
@@ -1294,6 +1625,19 @@ export const usePluginStore = defineStore('plugins', () => {
           document.head.appendChild(el)
           later(() => el.remove())
         },
+        theme: () => themeStore.current,
+        onThemeChange(fn) {
+          // After the DOM has the new theme, so its CSS variables read the new colours.
+          const stop = watch(() => themeStore.current, (t) => {
+            try {
+              fn(t)
+            }
+            catch (err) {
+              console.error(`[plugin ${id}] onThemeChange failed`, err)
+            }
+          }, { flush: 'post' })
+          return later(stop)
+        },
         toast(text, opts = {}) {
           const o = { detail: opts.detail }
           if (opts.tone === 'success')
@@ -1309,6 +1653,14 @@ export const usePluginStore = defineStore('plugins', () => {
         unregister(cid: string) {
           self().commands = markRaw(self().commands.filter(c => c.id !== cid))
         },
+        keyFree(k: string) {
+          const c = parseKbd(k)
+          if (!c || reservedBy(c))
+            return false
+          // Another plugin's command holding it; its own can be moved.
+          const want = chordId(c)
+          return !plugins.value.some(p => p.manifest.id !== id && p.commands.some(cmd => cmd.kbd && chordId(cmd.kbd) === want))
+        },
       },
       library: {
         list: gate('library', 'library.list', listLibrary),
@@ -1321,6 +1673,9 @@ export const usePluginStore = defineStore('plugins', () => {
         info: gate('library', 'library.info', (id: string) => videoInfo(library, id)),
         tag: gate('library-edit', 'library.tag', (id: string, change: { add?: string[], remove?: string[] }) => tagVideo(library, id, change)),
         setSource: gate('library-edit', 'library.setSource', (id: string, url: string | null) => setVideoSource(library, id, url)),
+        provide: gate('library-source', 'library.provide', provide),
+        mediaUrl: gate('serve', 'library.mediaUrl', gate('library', 'library.mediaUrl', mediaUrl)),
+        scriptUrl: gate('serve', 'library.scriptUrl', gate('library', 'library.scriptUrl', scriptUrl)),
       },
       playback: {
         play: gate('playback', 'playback.play', async (videoId: string) => {
@@ -1334,6 +1689,7 @@ export const usePluginStore = defineStore('plugins', () => {
         pause: gate('playback', 'playback.pause', () => playback.pause()),
         resume: gate('playback', 'playback.resume', () => playback.resume()),
         playFingerprint: gate('playback', 'playback.playFingerprint', playFingerprint),
+        external: gate('external', 'playback.external', playExternal),
         onEnded: gate('player', 'playback.onEnded', (fn: (id: string | null) => void) => {
           // A video that ran to its end: the playhead reached the duration while playing.
           let wasNearEnd = false
@@ -1406,7 +1762,78 @@ export const usePluginStore = defineStore('plugins', () => {
           return later(stop)
         },
       },
-      net: { fetch: gate('network', 'net.fetch', pluginFetch) },
+      net: {
+        fetch: gate('network', 'net.fetch', pluginFetch),
+        socketAvailable: socketsAvailable(),
+        socket: gate('socket', 'net.socket', async (o: { host: string, port: number }) => {
+          const sock = await openSocket(o)
+          // Closed with the plugin; once closed, nothing to do then.
+          const drop = later(() => sock.close())
+          sock.onClose(() => drop())
+          return sock
+        }),
+      },
+      http: {
+        available: servingAvailable(),
+        serve: gate('serve', 'http.serve', serve),
+        url: () => (servedUrl && baseUrl() ? servedUrl : null),
+        stop: gate('serve', 'http.stop', () => {
+          servedUrl = null
+          void unserve(id)
+        }),
+      },
+      session: {
+        edge: gate('session', 'session.edge', pluginEdge),
+        endEdge: gate('session', 'session.endEdge', () => {
+          if (!safety.panicked && control.phase !== 'idle')
+            control.release()
+        }),
+        edgeState: gateRead('session.edgeState', () => ({ phase: control.phase, remainingSec: control.remainingSec, holdBack: control.holdBack, effective: control.effectiveIntensity })),
+        onEdge: gateRead('session.onEdge', (fn: (e: { at: number, videoTime: number | null, byPlugin: boolean }) => void) => {
+          let seen = control.edges.length
+          const stop = watch(() => control.edges.length, (n) => {
+            for (const e of control.edges.slice(n < seen ? 0 : seen, n)) {
+              try {
+                fn({ at: e.at, videoTime: e.videoTime, byPlugin: e.source === 'plugin' })
+              }
+              catch (err) {
+                console.error(`[plugin ${id}] session.onEdge failed`, err)
+              }
+            }
+            seen = n
+          })
+          return later(stop)
+        }),
+        onFinish: gate('session', 'session.onFinish', (fn: (e: { at: number, videoTime: number | null }) => void) => {
+          const stop = watch(() => control.lastFinish, (f) => {
+            if (!f)
+              return
+            try {
+              fn({ at: f.at, videoTime: f.videoTime })
+            }
+            catch (err) {
+              console.error(`[plugin ${id}] session.onFinish failed`, err)
+            }
+          })
+          return later(stop)
+        }),
+        intensity: {
+          get: gateRead('session.intensity.get', () => control.intensityScale),
+          set: gate('session', 'session.intensity.set', (level: number) => rampIntensity(id, manifestName, level)),
+          max: gateRead('session.intensity.max', () => clampLimit(intensityMax.value)),
+          onChange: gateRead('session.intensity.onChange', (fn: (level: number) => void) => {
+            const stop = watch(() => control.intensityScale, (v) => {
+              try {
+                fn(v)
+              }
+              catch (err) {
+                console.error(`[plugin ${id}] session.intensity.onChange failed`, err)
+              }
+            })
+            return later(stop)
+          }),
+        },
+      },
       webview: {
         available: !!desktop?.web,
         create: gate('web', 'webview.create', (opts?: WebViewOptions) => {
@@ -1420,6 +1847,20 @@ export const usePluginStore = defineStore('plugins', () => {
       // eslint-disable-next-line no-console
       log: (...args: unknown[]) => console.log(`[plugin ${id}]`, ...args),
     } satisfies PluginContext)
+  }
+
+  /**
+   * The context a plugin with this manifest would get, without a package to
+   * run: for tests of what the API lets through. `stop` switches it off.
+   */
+  function contextFor(manifest: PluginManifest): { ctx: PluginContext, stop: () => void } {
+    const id = manifest.id
+    deactivate(id)
+    plugins.value = plugins.value.filter(p => p.manifest.id !== id)
+    plugins.value.push({ manifest, installedAt: 0, size: 0, source: null, enabled: true, status: 'on', error: null, fields: null, panel: null, page: null, overlay: null, commands: [], values: {}, dev: null })
+    const r: Running = { urls: [], cleanups: [], deactivate: null, settingsListeners: new Set() }
+    running.set(id, r)
+    return { ctx: makeContext(find(id)!, r, new Map()), stop: () => deactivate(id) }
   }
 
   // Panic releases whatever a plugin holds, before its own onPanic runs.
@@ -1641,6 +2082,8 @@ export const usePluginStore = defineStore('plugins', () => {
     setEnabled,
     setValue,
     motionHolder,
+    intensityMax,
+    contextFor,
     runCommand,
     runShortcut,
     loadFromFolder,

@@ -41,6 +41,17 @@ let lastPhase = 0
 let spm = 0
 let depth = 0
 let running = false
+/**
+ * The generator's stroke right now, for plugins (motion.readout): its phase,
+ * 0–1 with 0 at the bottom, and its rate; null while it isn't stroking.
+ */
+export function generatorStroke(): { phase: number, spm: number } | null {
+  if (!running || spm <= 0)
+    return null
+  const TWO_PI = Math.PI * 2
+  return { phase: (((phase % TWO_PI) + TWO_PI) % TWO_PI) / TWO_PI, spm }
+}
+
 /** Music source: the stroke's own 0–1 phase, steered onto the beat grid. */
 let musicPhase = 0
 /** Music variation: strokes counted, what the current one does, and its depth eased in. */

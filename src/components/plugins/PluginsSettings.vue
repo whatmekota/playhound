@@ -13,8 +13,10 @@ import UiEmpty from '~/components/ui/UiEmpty.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
+import UiSlider from '~/components/ui/UiSlider.vue'
 import UiTabs from '~/components/ui/UiTabs.vue'
 import { toast } from '~/composables/useToast'
+import { clampLimit } from '~/plugins/session'
 import { buildEntries, iconRef } from '~/plugins/storeEntry'
 import { ago, CATEGORIES, matchesQuery } from '~/plugins/storeMeta'
 import { usePluginStore } from '~/stores/pluginStore'
@@ -27,6 +29,11 @@ import { usePluginStore } from '~/stores/pluginStore'
  */
 const store = usePluginStore()
 const root = ref<HTMLElement | null>(null)
+/** The highest intensity a plugin may set (ctx.session.intensity.set). */
+const limitModel = computed({
+  get: () => clampLimit(store.intensityMax),
+  set: (v: number) => (store.intensityMax = clampLimit(v)),
+})
 
 type Tab = 'discover' | 'installed' | 'updates'
 const tab = ref<Tab>(store.plugins.length ? 'installed' : 'discover')
@@ -404,6 +411,16 @@ async function retry(key: string) {
           </UiButton>
         </UiEmpty>
         <UiEmpty v-else-if="!installed.length" size="sm" icon="i-carbon-search" title="Nothing matches" />
+
+        <!-- Yours, not theirs: no plugin can set the knob past this. -->
+        <div class="px-4 flex flex-wrap gap-3 items-center">
+          <div class="flex flex-1 flex-col gap-0.5 min-w-[180px]">
+            <span class="text-[13px] text-fg">Plugins may set intensity up to</span>
+            <span class="hint">For plugins that change the intensity knob (a partner's, say). They move it a little at a time and you see when they do. Your own knob still goes to 100%.</span>
+          </div>
+          <UiSlider v-model="limitModel" class="w-32" :min="0.1" :max="1" :step="0.05" :reset="0.8" hide-value />
+          <span class="text-[12.5px] text-fg num text-right w-10">{{ Math.round(limitModel * 100) }}%</span>
+        </div>
 
         <div
           class="p-4 border rounded-[var(--radius-lg)] border-dashed flex flex-wrap gap-3 transition-colors items-center"

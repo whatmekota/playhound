@@ -15,8 +15,12 @@ export const usePlayerStore = defineStore('player', () => {
   // Video state
   const videoPath = ref<string | null>(null)
   const videoUrl = ref<string | null>(null)
-  /** 'hls' when videoUrl is an HLS playlist, which the player plays with hls.js. */
-  const videoKind = ref<'file' | 'hls'>('file')
+  /**
+   * 'hls' when videoUrl is an HLS playlist, which the player plays with
+   * hls.js; 'external' when the video plays in another app (a VR headset)
+   * and only its clock is here (playbackStore.playExternal).
+   */
+  const videoKind = ref<'file' | 'hls' | 'external'>('file')
   /**
    * Sound with no picture: an audio file, or a stream that turned out to have
    * no video track. The stage then shows the visual picked for audio.
@@ -72,7 +76,7 @@ export const usePlayerStore = defineStore('player', () => {
   })
 
   // Actions
-  function setVideo(path: string, url: string, kind: 'file' | 'hls' = 'file') {
+  function setVideo(path: string, url: string, kind: 'file' | 'hls' | 'external' = 'file') {
     videoPath.value = path
     // A file name that says how it is laid out (_MKX200, _180_LR) wins over
     // the last choice; one that says nothing keeps it.

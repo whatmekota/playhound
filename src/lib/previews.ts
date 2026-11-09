@@ -35,6 +35,8 @@ export interface PreviewStrip {
 export interface PreviewSource {
   name: string
   file: File
+  /** Set for a video a plugin added from another app: there is no file to take frames from. */
+  remote?: unknown
 }
 
 export type PreviewPriority = 'now' | 'low'
@@ -169,8 +171,8 @@ function lookup(key: string): Promise<boolean> {
  */
 export function requestStrip(src: PreviewSource, priority: PreviewPriority = 'low'): () => void {
   const key = previewKey(src)
-  // An audio file has no frames to show.
-  if (strips.has(key) || failed.has(key) || isAudioName(src.name))
+  // An audio file has no frames to show, and a provided video is not ours to scan.
+  if (src.remote || strips.has(key) || failed.has(key) || isAudioName(src.name))
     return () => {}
 
   let req = requests.get(key)

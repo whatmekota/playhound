@@ -97,6 +97,7 @@ export const KEYS = {
   pluginSources: def('ph:plugins.sources', 'setting', 'Plugin sources (GitHub repositories)'),
   pluginsChecked: def('ph:plugins.checked', 'ui', 'When plugin sources were last checked for updates'),
   pluginDefaultsSeen: def('ph:plugins.defaultsSeen', 'setting', 'Official plugin sources already offered'),
+  pluginIntensityMax: def('ph:plugins.intensityMax', 'setting', 'Highest intensity a plugin may set'),
   slideshow: def('ph:slideshow.settings', 'setting', 'Slideshow'),
   wallSnap: def('ph:wall.snap', 'setting', 'Media wall snapping'),
   wallGrid: def('ph:wall.grid', 'setting', 'Media wall grid'),

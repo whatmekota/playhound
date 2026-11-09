@@ -65,6 +65,7 @@ declare global {
   const extendRef: typeof import('@vueuse/core').extendRef
   const faceScreenOpen: typeof import('./src/composables/useFaceScreen').faceScreenOpen
   const faceScreenSettings: typeof import('./src/composables/useFaceScreen').faceScreenSettings
+  const generatorStroke: typeof import('./src/composables/useMotionEngine').generatorStroke
   const getAnalysedGrid: typeof import('./src/composables/useSoundtrack').getAnalysedGrid
   const getBeatClock: typeof import('./src/composables/useVideoBeat').getBeatClock
   const getBeatGrid: typeof import('./src/composables/useVideoBeat').getBeatGrid
@@ -135,6 +136,7 @@ declare global {
   const presenceStatus: typeof import('./src/composables/useDiscordPresence').presenceStatus
   const provide: typeof import('vue').provide
   const provideLocal: typeof import('@vueuse/core').provideLocal
+  const proxiedStream: typeof import('./src/composables/useStreams').proxiedStream
   const publishFaceFrame: typeof import('./src/composables/useFaceScreen').publishFaceFrame
   const reactify: typeof import('@vueuse/core').reactify
   const reactifyObject: typeof import('@vueuse/core').reactifyObject
@@ -576,6 +578,7 @@ declare module 'vue' {
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly faceScreenOpen: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenOpen']>
     readonly faceScreenSettings: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenSettings']>
+    readonly generatorStroke: UnwrapRef<typeof import('./src/composables/useMotionEngine')['generatorStroke']>
     readonly getAnalysedGrid: UnwrapRef<typeof import('./src/composables/useSoundtrack')['getAnalysedGrid']>
     readonly getBeatClock: UnwrapRef<typeof import('./src/composables/useVideoBeat')['getBeatClock']>
     readonly getBeatGrid: UnwrapRef<typeof import('./src/composables/useVideoBeat')['getBeatGrid']>
@@ -646,6 +649,7 @@ declare module 'vue' {
     readonly presenceStatus: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['presenceStatus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
     readonly provideLocal: UnwrapRef<typeof import('@vueuse/core')['provideLocal']>
+    readonly proxiedStream: UnwrapRef<typeof import('./src/composables/useStreams')['proxiedStream']>
     readonly publishFaceFrame: UnwrapRef<typeof import('./src/composables/useFaceScreen')['publishFaceFrame']>
     readonly reactify: UnwrapRef<typeof import('@vueuse/core')['reactify']>
     readonly reactifyObject: UnwrapRef<typeof import('@vueuse/core')['reactifyObject']>

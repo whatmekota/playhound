@@ -61,6 +61,18 @@ export async function installYtdlp() {
   }
 }
 
+/**
+ * A stream that needs headers the <video> can't send (an API key, a cookie):
+ * the proxy fetches it with them, and this is the address to play instead.
+ */
+export async function proxiedStream(url: string, headers: Record<string, string>, kind: 'file' | 'hls' = 'file'): Promise<string> {
+  const res = await call('/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, headers, kind }) })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok || typeof body.url !== 'string')
+    throw new StreamError(body.error ?? `The proxy answered ${res.status}`)
+  return body.url
+}
+
 /** Play one resolved source. */
 export function playSource(title: string, source: StreamSource) {
   return usePlaybackStore().playStream(title, source.url, source.kind)

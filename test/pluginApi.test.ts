@@ -48,8 +48,24 @@ describe('manifest v2', () => {
     expect(addedPermissions(v(['player']), v(['network', 'player']))).toEqual(['network'])
     // From full access to a list: nothing new.
     expect(addedPermissions(accessOf(readManifest(base)), v(['device']))).toEqual([])
-    // From a list back to full access: everything else is new.
-    expect(addedPermissions(v(['device']), accessOf(readManifest(base)))).toEqual(PERMISSIONS.map(p => p.id).filter(p => p !== 'device'))
+    // From a list back to full access: everything else it covers is new.
+    expect(addedPermissions(v(['device']), accessOf(readManifest(base)))).toEqual(['scripts', 'player', 'playback', 'library', 'library-edit', 'network', 'stage', 'web'])
+  })
+
+  it('speaks API 3, and keeps full access to what there was before', () => {
+    expect(PLUGIN_API).toBe(3)
+    expect(readManifest({ ...base, api: 3, permissions: ['serve', 'socket', 'session', 'external', 'library-source'] }).permissions)
+      .toEqual(['external', 'session', 'library-source', 'socket', 'serve'])
+    const old = accessOf(readManifest(base))
+    expect(allows(old, 'web')).toBe(true)
+    // Calls that came later have to be asked for, even by an older plugin.
+    for (const p of ['external', 'session', 'library-source', 'socket', 'serve'] as const)
+      expect(allows(old, p)).toBe(false)
+    // So an older plugin updated to use them shows them as new.
+    expect(addedPermissions(old, accessOf(readManifest({ ...base, api: 3, permissions: ['device', 'serve'] })))).toEqual(['serve'])
+    // Every permission has words for the install screen.
+    for (const p of PERMISSIONS)
+      expect(p.label.length).toBeGreaterThan(10)
   })
 
   it('reads a package from a folder\'s files', () => {

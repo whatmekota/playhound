@@ -119,6 +119,7 @@ export function useSessionActions() {
     if (!name || !player.videoUrl)
       return
     const event = stats.recordFinish(name, player.currentTime)
+    ctl.noteFinish({ at: event.ts, videoTime: event.at, videoName: name })
     toast('Marked 💦', {
       detail: formatTime(event.at, '0:00'),
       icon: 'i-carbon-rain-drop',

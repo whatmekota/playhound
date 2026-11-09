@@ -40,7 +40,7 @@ A single folder wrapping all of this is fine; it's taken off.
   "description": "One line about what it does.",
   "author": "you",
   "main": "index.js",
-  "api": 2,
+  "api": 3,
   "permissions": ["player", "device"]
 }
 ```
@@ -52,34 +52,47 @@ A single folder wrapping all of this is fine; it's taken off.
   `blob:` URL, so relative imports don't resolve. Bundle everything into it
   (esbuild, rollup, vite in library mode).
 - `api`: the plugin API the plugin is written for, a whole number. Without it,
-  1. This playhound speaks 2; a plugin that needs a newer one is refused, with
-     a message saying to update playhound.
+  1. This playhound speaks 3; a plugin that needs a newer one is refused, with
+     a message saying to update playhound. Plugins written for 1 and 2 run
+     as they did. API 3 added [playing in another app](#playing-in-another-app),
+     [sockets](#sockets), [serving on the network](#serving-on-the-network),
+     [library sources](#library-sources) and [session control](#session-control),
+     plus a few smaller things marked _(3)_ below.
 - `permissions`: what the plugin needs (below). Unknown names are refused.
 - The store's own fields (an icon, screenshots, a category and so on) are
   optional; see [The store listing](#the-store-listing).
 
 ## Permissions
 
-Without a `permissions` list, an API 1 plugin keeps full access, as before
-permissions existed, and Settings → Plugins labels it **Full access (older
-plugin)**. With a list (or with `"api": 2`, which means "I list what I need"),
-the plugin gets only what it lists; asking for nothing is fine.
+Without a `permissions` list, an API 1 plugin keeps full access to what
+there was before permissions existed (the first nine below), and Settings →
+Plugins labels it **Full access (older plugin)**. With a list (or with
+`"api": 2` or more, which means "I list what I need"), the plugin gets only
+what it lists; asking for nothing is fine. The API 3 permissions always have
+to be listed, by older plugins too.
 
-| Permission     | Shown to the user as                                     | Opens                                                                       |
-| -------------- | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `device`       | Move your device, and reshape scripts on their way to it | `motion.take`, `motion.filter`                                              |
-| `scripts`      | Read the loaded scripts and load its own                 | `scripts.*`                                                                 |
-| `player`       | See what is playing, where, and the picture              | `player.state / onChange / script / frame / clock`, `playback.onEnded`      |
-| `playback`     | Play, pause, seek and change the speed of videos         | `playback.play / pause / resume / playFingerprint`, `player.seek / setRate` |
-| `library`      | Read your library: video names, stats and playlists      | `library.list / analyse / onChange / fingerprint / info`                    |
-| `library-edit` | Change your videos' tags and source links                | `library.tag`, `library.setSource`                                          |
-| `network`      | Connect to servers through playhound                     | `net.fetch`                                                                 |
-| `stage`        | Show its own page and draw over the video                | `ui.page / openPage / showStage / overlay`                                  |
-| `web`          | Open web pages inside playhound                          | `webview.create`                                                            |
+| Permission       | Shown to the user as                                                                      | Opens                                                                                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `device`         | Move your device, and reshape scripts on their way to it                                  | `motion.take`, `motion.filter`                                                                                                                 |
+| `scripts`        | Read the loaded scripts and load its own                                                  | `scripts.*`                                                                                                                                    |
+| `player`         | See what is playing, where, the picture, and your edges and intensity                     | `player.state / onChange / script / frame / clock`, `playback.onEnded`, `session.edgeState / onEdge`, `session.intensity.get / max / onChange` |
+| `playback`       | Play, pause, seek and change the speed of videos                                          | `playback.play / pause / resume / playFingerprint`, `player.seek / setRate`                                                                    |
+| `library`        | Read your library: video names, stats and playlists                                       | `library.list / analyse / onChange / fingerprint / info`                                                                                       |
+| `library-edit`   | Change your videos' tags and source links                                                 | `library.tag`, `library.setSource`                                                                                                             |
+| `network`        | Connect to servers through playhound                                                      | `net.fetch`                                                                                                                                    |
+| `stage`          | Show its own page and draw over the video                                                 | `ui.page / openPage / showStage / overlay`                                                                                                     |
+| `web`            | Open web pages inside playhound                                                           | `webview.create`                                                                                                                               |
+| `external`       | Follow a video playing in another app, such as a VR headset, and move your device with it | `playback.external`                                                                                                                            |
+| `session`        | Call edges, change the intensity and know when you finish                                 | `session.edge / endEdge / onFinish / intensity.set`, and what `player` reads of the session                                                    |
+| `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                              |
+| `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                   |
+| `serve`          | Share your library with devices on your network                                           | `http.serve / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                         |
 
 Everything else needs none: settings, storage, the panel, commands, styles,
-toasts, `ui.stage / onStageChange`, `motion.readout`, `safety.*`,
-`webview.available`, `asset`, `log`. A call outside the list throws an `Error` naming the permission to add.
+toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
+`safety.*`, `webview.available`, `net.socketAvailable`, `http.available /
+url`, `asset`, `log`. A call outside the list throws an `Error` naming the
+permission to add.
 
 A first install always shows the list and waits for the user to agree. An
 update shows it again only if it asks for something the installed version
@@ -120,36 +133,43 @@ runs when the plugin is switched off, updated or removed.
 The full contract, with comments, is in
 [`src/plugins/types.ts`](../src/plugins/types.ts). In short:
 
-| `ctx.…`                                                                   | What it gives                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `manifest`                                                                | the plugin's own manifest                                                                                                                                                                                                                                                                                                                                                        |
-| `settings.get / all / set / onChange`                                     | its settings, as the user set them                                                                                                                                                                                                                                                                                                                                               |
-| `storage.get / set / del`                                                 | a small persistent key/value store for its own data                                                                                                                                                                                                                                                                                                                              |
-| `ui.settings(fields)`                                                     | the form shown under the plugin in Settings → Plugins. Field types: `text`, `password`, `textarea`, `number`, `slider`, `switch`, `select` (fixed or fetched options, optionally free text) and `heading`, which starts a section that folds away. Any field can have `when(values)` to show it only sometimes.                                                                  |
-| `ui.panel({ title, icon, mount })`                                        | its panel: its own button on the right-hand rail and a drawer titled with its name. `icon` is an inline SVG in `currentColor` (about 16×16); without one a generic icon is used. `mount` gets a plain element; you build its DOM yourself.                                                                                                                                       |
-| `ui.page({ title, icon, mount })`                                         | its page on the main stage, where the player, the library and the media wall show, with its own button in the left nav. Same shape as a panel; `mount` gets an element filling the stage.                                                                                                                                                                                        |
-| `ui.openPage / stage / showStage`                                         | put its page on the stage; what the stage shows (`'player'`, `'library'`, `'wall'`, `'eroscripts'`…, or `'plugin:<id>'`); switch the stage to any of those                                                                                                                                                                                                                       |
-| `ui.onStageChange(fn)`                                                    | know when the stage switches                                                                                                                                                                                                                                                                                                                                                     |
-| `ui.style(css)`                                                           | CSS for that DOM. playhound's utility classes aren't available to you; its CSS variables are (`--text`, `--accent`, `--bg-850`, `--border`, `--radius-md`…), so a panel can follow the theme.                                                                                                                                                                                    |
-| `ui.toast / openPanel / openSettings`                                     | small notices, and links into playhound's own UI                                                                                                                                                                                                                                                                                                                                 |
-| `ui.overlay({ mount, interactive })`                                      | a layer over the video, on the full-size player and in fullscreen. Click-through unless `interactive`; to take clicks on a button only, leave it off and give the button `pointer-events: auto`. Not on the mini player (too small, and its controls are there) nor in the pop-out (another window your styles don't reach): `mount` runs again when the full player comes back. |
-| `commands.register({ id, title, hint, icon, kbd, run }) / unregister(id)` | a command in the palette (Ctrl K), under the plugin's name, and in the shortcuts sheet if it has a key. `kbd` is a letter, digit or F1–F12 with any of Ctrl, Alt, Shift (`"Shift+K"`, `"Alt+2"`). A key playhound, the browser or another plugin uses is refused: `register` returns false, logs why, and adds the command without one.                                          |
-| `player.state / onChange / script / frame`                                | what's playing (with its speed, `rate`); what the loaded script is doing now and next; the current picture as a small JPEG                                                                                                                                                                                                                                                       |
-| `player.clock / seek / setRate`                                           | the playback position in seconds, read off the video when called and steadied (finer than `state().time`, which moves a few times a second); jump; set the speed (the user's own speed setting). What a "watch together" plugin needs.                                                                                                                                           |
-| `scripts.current / load / onChange`                                       | copies of the loaded scripts (per axis: `axis` like `L0`, its actions as in a .funscript, `at` ms and `pos` 0–100, and the video they're for); load one for the current video as if from a file (in memory only; it replaces that axis, others stay); know when they change                                                                                                      |
-| `motion.filter((pos, { axis, t }) => pos)`                                | reshape script playback on its way to the device; see [Motion filters](#motion-filters)                                                                                                                                                                                                                                                                                          |
-| `library.list / analyse / onChange / info`                                | the user's library: videos with their length, script intensity, stars, playlists, play/finish counts, tags and source link; `info(id)` also reads its script's own metadata (the thread it came from, its creator)                                                                                                                                                               |
-| `library.tag(id, { add, remove }) / setSource(id, url)`                   | add and remove a video's tags; set the link it came from (a forum thread), which then shows in its info. Needs `library-edit`                                                                                                                                                                                                                                                    |
-| `library.fingerprint(id)`                                                 | a stable id for a video's file, the same on any machine whatever it's called: `v1:<size>:<sha-256>` over its size and three 64 KB pieces (start, middle, end). Worked out once and kept.                                                                                                                                                                                         |
-| `playback.play / pause / resume / onEnded`                                | put on a library video on its own, and know when it ends                                                                                                                                                                                                                                                                                                                         |
-| `playback.playFingerprint(fp)`                                            | play the library video with that fingerprint; false if there is none                                                                                                                                                                                                                                                                                                             |
-| `motion.take() → { set, hold, release }`                                  | the stroke generator (the Manual source), within the user's speed ceiling. Panic takes it back. Letting go restores the user's settings and leaves the generator stopped.                                                                                                                                                                                                        |
-| `motion.readout`                                                          | what the device is doing: the generator's rate and depth, and the stroke position (a script's, while one plays)                                                                                                                                                                                                                                                                  |
-| `safety.panicked / onPanic`                                               | panic (Esc). Stop everything you're doing.                                                                                                                                                                                                                                                                                                                                       |
-| `net.fetch(url, init)`                                                    | `fetch()`; in the desktop app it's made from the app itself, so local servers without CORS headers answer, and it streams                                                                                                                                                                                                                                                        |
-| `webview.create({ url, zoom })`                                           | a real web page inside playhound (desktop app only); see [Web pages](#web-pages)                                                                                                                                                                                                                                                                                                 |
-| `asset(path)`                                                             | a `blob:` URL for a file from the plugin's zip                                                                                                                                                                                                                                                                                                                                   |
-| `log(...)`                                                                | `console.log` with the plugin's name in front                                                                                                                                                                                                                                                                                                                                    |
+| `ctx.…`                                                                   | What it gives                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `manifest`                                                                | the plugin's own manifest                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `settings.get / all / set / onChange`                                     | its settings, as the user set them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `storage.get / set / del`                                                 | a small persistent key/value store for its own data                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `ui.settings(fields)`                                                     | the form shown under the plugin in Settings → Plugins. Field types: `text`, `password`, `textarea`, `number`, `slider`, `switch`, `select` (fixed or fetched options, optionally free text) and `heading`, which starts a section that folds away. Any field can have `when(values)` to show it only sometimes.                                                                                                                                                                                                                                                                                                                                                    |
+| `ui.panel({ title, icon, mount })`                                        | its panel: its own button on the right-hand rail and a drawer titled with its name. `icon` is an inline SVG in `currentColor` (about 16×16); without one a generic icon is used. `mount` gets a plain element; you build its DOM yourself.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `ui.page({ title, icon, mount })`                                         | its page on the main stage, where the player, the library and the media wall show, with its own button in the left nav. Same shape as a panel; `mount` gets an element filling the stage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `ui.openPage / stage / showStage`                                         | put its page on the stage; what the stage shows (`'player'`, `'library'`, `'wall'`, `'eroscripts'`…, or `'plugin:<id>'`); switch the stage to any of those                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `ui.onStageChange(fn)`                                                    | know when the stage switches                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ui.style(css)`                                                           | CSS for that DOM. playhound's utility classes aren't available to you; its CSS variables are (`--text`, `--accent`, `--bg-850`, `--border`, `--radius-md`…), so a panel can follow the theme.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `ui.toast / openPanel / openSettings`                                     | small notices, and links into playhound's own UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `ui.overlay({ mount, interactive })`                                      | a layer over the video, on the full-size player and in fullscreen. Click-through unless `interactive`; to take clicks on a button only, leave it off and give the button `pointer-events: auto`. Not on the mini player (too small, and its controls are there) nor in the pop-out (another window your styles don't reach): `mount` runs again when the full player comes back. _(3)_ The player's bars cover `var(--ph-controls-top)` and `var(--ph-controls-bottom)` of the picture right now (0px when hidden); `bottom: calc(var(--ph-controls-bottom) + 12px)` keeps clear. The player's root (`el.closest('[data-ph-controls]')`) says `shown` or `hidden`. |
+| `commands.register({ id, title, hint, icon, kbd, run }) / unregister(id)` | a command in the palette (Ctrl K), under the plugin's name, and in the shortcuts sheet if it has a key. `kbd` is a letter, digit or F1–F12 with any of Ctrl, Alt, Shift (`"Shift+K"`, `"Alt+2"`). A key playhound, the browser or another plugin uses is refused: `register` returns false, logs why, and adds the command without one.                                                                                                                                                                                                                                                                                                                            |
+| `player.state / onChange / script / frame`                                | what's playing (with its speed, `rate`); what the loaded script is doing now and next; the current picture as a small JPEG                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `player.clock / seek / setRate`                                           | the playback position in seconds, read off the video when called and steadied (finer than `state().time`, which moves a few times a second); jump; set the speed (the user's own speed setting). What a "watch together" plugin needs.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `scripts.current / load / onChange`                                       | copies of the loaded scripts (per axis: `axis` like `L0`, its actions as in a .funscript, `at` ms and `pos` 0–100, and the video they're for); load one for the current video as if from a file (in memory only; it replaces that axis, others stay); know when they change                                                                                                                                                                                                                                                                                                                                                                                        |
+| `motion.filter((pos, { axis, t }) => pos)`                                | reshape script playback on its way to the device; see [Motion filters](#motion-filters)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `library.list / analyse / onChange / info`                                | the user's library: videos with their length, script intensity, stars, playlists, play/finish counts, tags and source link; `info(id)` also reads its script's own metadata (the thread it came from, its creator)                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `library.tag(id, { add, remove }) / setSource(id, url)`                   | add and remove a video's tags; set the link it came from (a forum thread), which then shows in its info. Needs `library-edit`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `library.fingerprint(id)`                                                 | a stable id for a video's file, the same on any machine whatever it's called: `v1:<size>:<sha-256>` over its size and three 64 KB pieces (start, middle, end). Worked out once and kept.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `playback.play / pause / resume / onEnded`                                | put on a library video on its own, and know when it ends                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `playback.playFingerprint(fp)`                                            | play the library video with that fingerprint; false if there is none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `motion.take() → { set, hold, release }`                                  | the stroke generator (the Manual source), within the user's speed ceiling. Panic takes it back. Letting go restores the user's settings and leaves the generator stopped.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `motion.readout`                                                          | what the device is doing: the generator's rate and depth, and the stroke position (a script's, while one plays). _(3)_ `phase`, the generator's stroke phase 0–1 with 0 at the bottom, and `nextStrokeInMs`, until it is next at the bottom (where a beat lands); both null while it isn't stroking                                                                                                                                                                                                                                                                                                                                                                |
+| `safety.panicked / onPanic`                                               | panic (Esc). Stop everything you're doing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `net.fetch(url, init)`                                                    | `fetch()`; in the desktop app it's made from the app itself, so local servers without CORS headers answer, and it streams                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `webview.create({ url, zoom })`                                           | a real web page inside playhound (desktop app only); see [Web pages](#web-pages)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `playback.external({ label, video, … })` _(3)_                            | follow a video playing in another app (a VR headset); see [Playing in another app](#playing-in-another-app)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `net.socket({ host, port })` _(3)_                                        | a TCP connection to an app on the local network (desktop app only); see [Sockets](#sockets)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `http.serve / url / stop`, `library.mediaUrl / scriptUrl` _(3)_           | answer devices on the network from the desktop app's server, and links that stream library videos and scripts; see [Serving on the network](#serving-on-the-network)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `library.provide({ label, videos, scripts })` _(3)_                       | add videos from another app to the library; see [Library sources](#library-sources)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `session.*` _(3)_                                                         | edges, the intensity knob, finishes; see [Session control](#session-control)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ui.theme / onThemeChange` _(3)_                                          | the theme's id (also `data-theme` on `<html>`), and a call when it changes, after its CSS variables have the new colours: read them with `getComputedStyle(document.documentElement)` to repaint a canvas                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `commands.keyFree(kbd)` _(3)_                                             | whether a shortcut could be had. `kbd` in `register` may also be a list (`['Shift+B', 'Alt+B']`): the first free one is taken, and only when none is free is that logged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `asset(path)`                                                             | a `blob:` URL for a file from the plugin's zip                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `log(...)`                                                                | `console.log` with the plugin's name in front                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Motion filters
 
@@ -243,12 +263,167 @@ page or like playhound itself. The install screen says it plainly ("Open web
 pages inside playhound"). Show the address of whatever you load, as a
 browser would, so the user always knows where they are.
 
+## Playing in another app
+
+`ctx.playback.external()` (permission `external`) is for a video that plays
+somewhere else, a VR headset in HereSphere or DeoVR, while playhound drives
+the device. You say which video it is and keep telling playhound where the
+other app is; playhound plays that video's scripts to that clock on every
+device, exactly as for a video playing here: latency calibration, the
+per-video offset and tweaks, the intensity knob, edges, the Handy (resynced
+to the other app's time), recording and stats. The player shows **Playing
+in HereSphere** with the timeline following, and a **Stop following** button.
+
+```js
+const ext = await ctx.playback.external({
+  label: 'HereSphere',
+  video: id, // a library id, or fingerprint: '…', or title + scripts for one that isn't in the library
+  onCommand: cmd => sendToHeadset(cmd), // optional: playhound's play / pause / seek / speed, passed on
+})
+if (ext) {
+  onHeadsetTime(({ time, playing, rate }) => ext.update({ time, playing, rate }))
+  ext.onEnd(reason => ctx.log('stopped following:', reason))
+}
+```
+
+- Send `update()` whenever the other app reports, a few times a second.
+  Late and uneven reports are fine: playhound runs its own clock between them
+  and bends its speed (never more than 10%, never backwards) to stay with
+  them. A report far off is taken as a seek.
+- If nothing arrives for about 2.5 s while playing, the device stops until
+  something does: a headset that sleeps or a dropped connection never leaves
+  the device going.
+- Panic stops the device at once, whatever the other app is doing, and it
+  stays stopped until the user lifts the panic. `onCommand` gets a `pause`
+  then, if you passed one, but don't count on the headset obeying.
+- Without `onCommand`, playhound's play, pause and seek do nothing while it
+  follows; the user uses the other app's.
+- Playing anything else in playhound ends it (`onEnd('replaced')`), as does
+  the user's **Stop following** (`'stopped'`), your `end()` (`'ended'`) and
+  switching the plugin off.
+
+## Sockets
+
+`ctx.net.socket({ host, port })` (permission `socket`, desktop app only) opens
+a TCP connection from the desktop app, the way HereSphere's and DeoVR's
+timestamp servers (port 23554) are reached. It resolves once connected.
+
+- Only this computer and the local network: `localhost`, a private address
+  (`192.168.x.x`, `10.x.x.x`, `172.16–31.x.x`, link-local, and the IPv6
+  equivalents), or a `.local` name, which is looked up and refused if any
+  address it gives is outside. Anything else rejects saying why.
+- `send(string | Uint8Array)`, `onData(bytes => …)` (bytes as they arrive,
+  not split into messages: framing is the protocol's job; data that came
+  before you listened is kept for the first `onData`), `onClose(error => …)`,
+  `close()`. At most 16 are open at once; they close when the plugin is
+  switched off.
+- In a browser `ctx.net.socketAvailable` is `false` and `socket()` rejects
+  with `Network connections need the playhound desktop app`.
+
+## Serving on the network
+
+For a headset that browses the library (an XTP-style setup), a plugin can
+answer requests on the desktop app's LAN server (permission `serve`, desktop
+app only):
+
+```js
+const base = await ctx.http.serve(async (req) => {
+  if (req.path === '/library.json') {
+    const videos = await ctx.library.list()
+    return { json: await Promise.all(videos.map(async v => ({
+      title: v.title,
+      video: await ctx.library.mediaUrl(v.id),
+      script: await ctx.library.scriptUrl(v.id),
+    }))) }
+  }
+  // Nothing returned: 404.
+})
+// base: http://192.168.1.10:6969/plugins/<id>/
+```
+
+- The handler gets `{ method, path, query, headers, body, remote, text(),
+json() }`, `path` being what follows `/plugins/<id>`. It answers `{ json }`
+  or `{ status, headers, body }` (a string, `Uint8Array` or `Blob`).
+- Only the plugin's own prefix reaches it, and only while it is switched on.
+- `library.mediaUrl(id)` and `library.scriptUrl(id, axis)` (these need
+  `library` too) are links that stream one library video (with Range, so
+  seeking works) or one axis of its scripts as a `.funscript` of its own.
+  Each is an unguessable address that stops working when the plugin is
+  switched off. Nothing else from disk can be reached: the app streams the
+  files it already has open, it doesn't serve paths.
+- The address uses this computer's first LAN address. In the packaged app the
+  server is the one on port 6969 that the phone remote uses; running from
+  source (`pnpm app`) it is port 6970.
+- In a browser `ctx.http.available` is `false` and `serve()` rejects.
+
+## Library sources
+
+`ctx.library.provide()` (permission `library-source`) adds videos from
+another app (Stash, a media server) to the library:
+
+```js
+const stash = await ctx.library.provide({
+  label: 'Stash',
+  async videos() {
+    const scenes = await fetchScenes()
+    return scenes.map(s => ({
+      id: s.id,
+      title: s.title,
+      url: `${server}/scene/${s.id}/stream`,
+      headers: { ApiKey: key }, // optional: the stream then goes through playhound's local proxy
+      scripts: s.interactive ? [{ url: `${server}/scene/${s.id}/funscript` }] : [],
+      tags: s.tags.map(t => t.name),
+      chapters: s.scene_markers.map(m => ({ name: m.title, start: m.seconds })),
+      thumbnail: s.paths.screenshot,
+      duration: s.files[0]?.duration,
+      sourceUrl: `${server}/scenes/${s.id}`,
+    }))
+  },
+})
+// later: await stash.refresh()
+```
+
+- They show in the library with the source's name as a badge, and under it
+  in the folder picker, so the user can look at one source. They search,
+  sort, star, queue and go in playlists like the rest, and play through the
+  player like streams do (scripts are fetched when one first plays, with
+  `headers` if given; chapters show as the script's chapters).
+- `id` must stay the same for the same video: stars, stats and tweaks are
+  kept by it.
+- A video whose scripts aren't at a URL can say `hasScript: true`, and the
+  source's `scripts(id)` gives them when it plays (`[{ axis, actions }]`).
+- Videos that can't be used (no title, a `url` that isn't http(s)…) are left
+  out; `problems` says why. `refresh()` replaces the list; `remove()` takes it
+  out, as switching the plugin off does (and its videos leave the queue).
+- `thumbnail` must load without headers (or be a `data:` image). No preview
+  strips or fingerprints for these: there is no file.
+
+## Session control
+
+`ctx.session` is for a partner's controls (permission `session`):
+
+- `edge()` calls an edge, as E does; the user sees which plugin did.
+  `endEdge()` ends the hold early ("I'm OK"), not while panic is on.
+- `intensity.set(level)` moves the knob toward `level` (0.1–1) a little at a
+  time (10% a second up, quicker down), never past the limit the user set in
+  **Settings → Plugins** ("Plugins may set intensity up to", 80% unless they
+  change it), and returns where it will stop. The user is told, and turning
+  the knob themselves, or panic, stops the move where it is.
+- `onFinish(fn)` hears the user mark "I came".
+- Reading needs only `player` (or `session`): `edgeState()` gives `{ phase:
+'idle' | 'falling' | 'holding' | 'rebuilding', remainingSec, holdBack,
+effective }`, `effective` being what actually comes through, the knob
+  times what the edge leaves; `onEdge(fn)` hears every edge, `byPlugin`
+  marking those a plugin called; `intensity.get / max / onChange`.
+
+Panic always wins and stays on this computer: no plugin can lift it.
+
 ## An example
 
 A plugin that softens the stroke with a key, and says where the video is:
 
 ```json
-{ "id": "softer", "name": "Softer", "version": "1.0.0", "api": 2, "permissions": ["device", "player", "stage"] }
+{ "id": "softer", "name": "Softer", "version": "1.0.0", "api": 3, "permissions": ["device", "player", "stage"] }
 ```
 
 ```js

@@ -285,7 +285,8 @@ async function fromCache(entry: VideoEntry): Promise<boolean> {
  * `thumbsFor` may drop it again.
  */
 export function ensureThumb(entry: VideoEntry, opts: { lazy?: boolean } = {}): Promise<void> {
-  if (entry.thumbnailUrl || thumbFailed.has(entry.name))
+  // A video from another app has no file to take a frame from: its source's picture or none.
+  if (entry.thumbnailUrl || entry.remote || thumbFailed.has(entry.name))
     return Promise.resolve()
   const running = inflight.get(entry.name)
   if (running) {
@@ -479,7 +480,8 @@ function probeDuration(entry: VideoEntry): Promise<void> {
  * so sorting by length works straight away on the next visit.
  */
 export function ensureDuration(entry: VideoEntry): Promise<void> {
-  if (entry.duration !== null)
+  // A video from another app: its length is what the source said, or unknown until it plays.
+  if (entry.duration !== null || entry.remote)
     return Promise.resolve()
   const running = durInflight.get(entry.name)
   if (running)

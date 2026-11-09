@@ -56,6 +56,31 @@ export interface VideoEntry {
   starred: boolean
   /** Subtitle files in the same folder named after it ("clip.srt", "clip.en.vtt"). */
   subtitles?: SubtitleMatch[]
+  /**
+   * A video a plugin added from another app (src/plugins/provider.ts): it is
+   * streamed, not read from a file, and `file` is an empty stand-in.
+   */
+  remote?: RemoteSource
+}
+
+/** Where a plugin-provided video streams from and its scripts come from. */
+export interface RemoteSource {
+  /** The plugin that added it. */
+  owner: string
+  /** The source's name, shown as its badge and used as its folder ("Stash"). */
+  label: string
+  /** Its id at the source. */
+  id: string
+  url: string
+  kind: 'file' | 'hls'
+  /** Sent with the stream (through the local proxy) and with script requests. */
+  headers?: Record<string, string>
+  /** Script URLs, per axis (a funscript suffix: "default", "twist"…). */
+  scripts: { axis: string, url: string }[]
+  /** The plugin's own way to get the scripts, when it has one. */
+  loader?: () => Promise<{ axis: string, actions: { at: number, pos: number }[] }[]>
+  chapters: { name: string, start: number, end?: number }[]
+  sourceUrl: string | null
 }
 
 /** "Videos/sub" for "Videos/sub/clip.mp4"; '' for a file with no folder. */
@@ -125,8 +150,23 @@ async function cachedSniff(file: File): Promise<ScriptInfo> {
 }
 
 export const useLibraryStore = defineStore('library', () => {
-  const videos = ref<VideoEntry[]>([])
+  /** The videos in the library's folders (and dropped files). */
+  const local = ref<VideoEntry[]>([])
+  /** Videos plugins add from other apps, per plugin (src/plugins/provider.ts). */
+  const provided = ref<Record<string, VideoEntry[]>>({})
+  /** Everything in the library: the folders' videos, then what plugins add. */
+  const videos = computed<VideoEntry[]>({
+    get: () => {
+      const extra = Object.values(provided.value)
+      return extra.length ? [...local.value, ...extra.flat()] : local.value
+    },
+    set: (v) => {
+      local.value = v
+    },
+  })
   const scanning = ref(false)
+  /** Bumped after every completed scan (and when plugins add or take videos), so views can react to a fresh library. */
+  const loadedAt = ref(0)
   const folderName = ref('')
   const totalFiles = ref(0)
 
@@ -184,16 +224,16 @@ export const useLibraryStore = defineStore('library', () => {
    * restored library for that one video. Same-named entries are replaced.
    */
   async function addFiles(files: File[]) {
-    if (!videos.value.length)
+    if (!local.value.length)
       return setFiles(files)
-    const kept = videos.value
+    const kept = local.value
     const keptFolder = folderName.value
     await setFiles(files)
-    const added = new Set(videos.value.map(v => v.name))
-    videos.value = [...kept.filter(v => !added.has(v.name)), ...videos.value]
+    const added = new Set(local.value.map(v => v.name))
+    local.value = [...kept.filter(v => !added.has(v.name)), ...local.value]
       .sort((a, b) => a.name.localeCompare(b.name))
     folderName.value = keptFolder
-    totalFiles.value = videos.value.length
+    totalFiles.value = local.value.length
   }
 
   async function setFiles(files: File[]) {
@@ -279,10 +319,48 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   function clear() {
-    videos.value = []
+    local.value = []
     folderName.value = ''
     totalFiles.value = 0
   }
+
+  // ── Videos from other apps (plugins) ──────────────────────────────────────
+  /**
+   * Put a plugin's videos in the library, in place of what it added before.
+   * Starred ones keep their star, and anything the library knew of an entry
+   * with the same name (its duration, its scripts once fetched) carries over.
+   */
+  function provide(owner: string, entries: VideoEntry[]) {
+    const before = new Map((provided.value[owner] ?? []).map(e => [e.name, e]))
+    for (const e of entries) {
+      e.starred = starredNames.has(e.name)
+      const was = before.get(e.name)
+      if (was) {
+        e.duration ??= was.duration
+        e.thumbnailUrl ??= was.thumbnailUrl
+        e.userMeta ??= was.userMeta
+        if (was.remote?.url === e.remote?.url && was.scriptMatches.length) {
+          e.scriptMatches = was.scriptMatches
+          e.scriptFiles = was.scriptFiles
+          e.channels = was.channels
+        }
+      }
+    }
+    provided.value = { ...provided.value, [owner]: entries }
+    loadedAt.value = Date.now()
+  }
+
+  /** Take a plugin's videos out of the library (it was switched off). */
+  function unprovide(owner: string) {
+    if (!(owner in provided.value))
+      return
+    const { [owner]: _gone, ...rest } = provided.value
+    provided.value = rest
+    loadedAt.value = Date.now()
+  }
+
+  /** The other apps videos come from, by the name they show as ("Stash"), in the order added. */
+  const sources = computed(() => [...new Set(Object.values(provided.value).flatMap(list => list.slice(0, 1).map(e => e.remote!.label)))])
 
   // ── Folder lifecycle ──────────────────────────────────────────────────────
   // Lives here rather than in the library panel so the folders come back at
@@ -305,8 +383,6 @@ export const useLibraryStore = defineStore('library', () => {
   const folderLoaded = ref<boolean[]>([])
   const isWatching = ref(false)
   const watchNewCount = ref(0)
-  /** Bumped after every completed scan, so views can react to a fresh library. */
-  const loadedAt = ref(0)
   let watchTimer: ReturnType<typeof setInterval> | null = null
   /** One per folder; null for one opened without a handle (a browser without the folder API). */
   let roots: (FileSystemDirectoryHandle | null)[] = []
@@ -695,6 +771,10 @@ export const useLibraryStore = defineStore('library', () => {
 
   return {
     videos,
+    provided,
+    sources,
+    provide,
+    unprovide,
     scanning,
     folderName,
     totalFiles,

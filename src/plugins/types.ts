@@ -9,11 +9,16 @@
  * Plugins run inside playhound with the same access as playhound itself.
  * There is no sandbox: install only plugins you trust. From API 2 a plugin
  * lists the permissions it needs, and ctx refuses the rest (see
- * src/plugins/manifest.ts).
+ * src/plugins/manifest.ts). API 3 added playback.external, net.socket,
+ * http, library.provide / mediaUrl / scriptUrl and session; docs/plugins.md
+ * has the guide.
  */
 
 /** What a plugin can ask to do; see PERMISSIONS in src/plugins/manifest.ts. */
-export type PluginPermission = 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'library-edit' | 'network' | 'stage' | 'web'
+export type PluginPermission
+  = | 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'library-edit' | 'network' | 'stage' | 'web'
+  // API 3
+    | 'external' | 'session' | 'library-source' | 'socket' | 'serve'
 
 export interface PluginManifest {
   /** Lower-case letters, digits and dashes; the plugin's identity. */
@@ -178,6 +183,10 @@ export interface MotionReadout {
   maxSpm: number
   /** Something is connected that takes the motion. */
   device: boolean
+  /** The generator's stroke phase, 0–1 with 0 at the bottom; null while it isn't stroking (a script plays, or it is off). */
+  phase: number | null
+  /** Milliseconds until the generator's stroke is next at the bottom (where a beat lands); null while it isn't stroking. */
+  nextStrokeInMs: number | null
 }
 
 /** The stroke generator, while a plugin holds it. */
@@ -203,8 +212,10 @@ export interface CommandDef {
    * A keyboard shortcut: a letter, digit or F1–F12, with any of Ctrl, Alt
    * and Shift, e.g. "Shift+K", "Alt+2", "Ctrl+Shift+Y". Refused (logged, and
    * register() returns false) when playhound or another plugin already uses it.
+   * A list (API 3) is tried in order and the first free one is taken; only
+   * when none is free is that logged.
    */
-  kbd?: string
+  kbd?: string | string[]
   run: () => void | Promise<void>
 }
 
@@ -308,6 +319,149 @@ export interface WebViewHandle {
   readonly destroyed: boolean
 }
 
+// ─── API 3 ───────────────────────────────────────────────────────────────────
+
+/** What playhound's own controls ask of a video playing in another app. */
+export type ExternalCommand = { type: 'play' } | { type: 'pause' } | { type: 'seek', time: number } | { type: 'rate', rate: number }
+
+export interface ExternalPlaybackOptions {
+  /** Where it plays, as the player says it: "Playing in HereSphere". */
+  label: string
+  /** The library video it is (an id from library.list). */
+  video?: string
+  /** Or the library video with this fingerprint (library.fingerprint). */
+  fingerprint?: string
+  /** Its name, for a video that isn't in the library. */
+  title?: string
+  /**
+   * Scripts to play: for a video that isn't in the library, or in place of a
+   * library video's own. As in scripts.load: `axis` a TCode channel or a
+   * funscript suffix, `actions` with `at` ms and `pos` 0–100.
+   */
+  scripts?: { actions: { at: number, pos: number }[], axis?: string, name?: string }[]
+  /** Its length, seconds, when known (update() can say it later). */
+  duration?: number
+  /**
+   * playhound's play, pause, seek and speed controls, passed on, while it
+   * follows this video. Without it they do nothing (the user uses the
+   * other app's).
+   */
+  onCommand?: (cmd: ExternalCommand) => void
+}
+
+/** A video playing in another app that playhound follows. */
+export interface ExternalPlayback {
+  /**
+   * Where the other app is: `time` in seconds, whether it plays, its speed.
+   * Send it whenever the other app says, a few times a second; late and
+   * uneven is fine, playhound steadies it. If nothing comes for a few
+   * seconds while playing, the device stops until something does.
+   */
+  update: (s: { time: number, playing: boolean, rate?: number, duration?: number }) => void
+  /** Stop following it. The device stops; the other app plays on. */
+  end: () => void
+  /** It ended: 'stopped' by the user, 'replaced' by another video, or 'ended' by end(). Returns an unsubscribe. */
+  onEnd: (fn: (reason: 'stopped' | 'replaced' | 'ended') => void) => () => void
+  readonly active: boolean
+}
+
+/** A TCP connection to an app or device on the local network (desktop app only). */
+export interface NetSocket {
+  /** Send bytes, or a string as UTF-8. Throws once closed. */
+  send: (data: string | Uint8Array) => void
+  /** Bytes as they arrive (not split into messages: that's the protocol's job). Returns an unsubscribe. */
+  onData: (fn: (data: Uint8Array) => void) => () => void
+  /** It closed: `error` says why, or null when it simply ended. Returns an unsubscribe. */
+  onClose: (fn: (error: string | null) => void) => () => void
+  close: () => void
+  readonly closed: boolean
+  /** Where it is connected to: the address the name led to, and the port. */
+  readonly remote: { address: string, port: number }
+}
+
+/** A request to the plugin's address on the LAN server. */
+export interface HttpRequest {
+  method: string
+  /** After the plugin's own prefix: "/" for /plugins/<id>/, "/library.json" for /plugins/<id>/library.json. */
+  path: string
+  query: Record<string, string>
+  /** Lower-case names. */
+  headers: Record<string, string>
+  body: Uint8Array | null
+  /** The address it came from. */
+  remote: string
+  text: () => string
+  json: () => unknown
+}
+
+/** An answer: `json` (sent as JSON), or a `body`. Returning nothing answers 404. */
+export interface HttpResponse {
+  status?: number
+  headers?: Record<string, string>
+  body?: string | Uint8Array | Blob
+  json?: unknown
+}
+
+export type HttpHandler = (req: HttpRequest) => HttpResponse | null | undefined | Promise<HttpResponse | null | undefined>
+
+/** A video a plugin adds to the library from another app. */
+export interface ProvidedVideo {
+  /** Its id at the source; stable, so stars and stats stay with it. */
+  id: string | number
+  title: string
+  /** Where to stream it from (http or https): a file a <video> plays, or an HLS playlist. */
+  url: string
+  /** 'hls' for a playlist; guessed from the URL (.m3u8) when absent. */
+  kind?: 'file' | 'hls'
+  /** Headers the source wants (an API key): the stream then goes through playhound's local proxy, and script requests carry them. */
+  headers?: Record<string, string>
+  /** Its scripts, one per axis: `axis` a TCode channel or funscript suffix (stroke when absent), `url` a funscript. */
+  scripts?: { axis?: string, url: string }[]
+  /** It has scripts that the source's scripts() loader gives (instead of URLs). */
+  hasScript?: boolean
+  tags?: string[]
+  /** Chapters or markers, seconds. They show as the script's chapters. */
+  chapters?: { name: string, start: number, end?: number }[]
+  /** A picture for its card: http(s), or a data: image. */
+  thumbnail?: string
+  /** Length, seconds. */
+  duration?: number
+  /** Its page at the source, shown in its info. */
+  sourceUrl?: string
+}
+
+export interface LibrarySourceDef {
+  /** The source's name, as its badge and the library's folder picker show it ("Stash"). */
+  label: string
+  /** Everything it has. Called at once, and again on refresh(). */
+  videos: () => ProvidedVideo[] | Promise<ProvidedVideo[]>
+  /**
+   * A video's scripts, for videos with `hasScript` and no script URLs: per
+   * axis, actions as in a .funscript. Called when the video first plays.
+   */
+  scripts?: (id: string) => Promise<{ axis?: string, actions: { at: number, pos: number }[] }[]>
+}
+
+export interface LibrarySourceHandle {
+  /** Ask videos() again and put what it returns in place of the last list. Resolves the number added; rejects saying why not. */
+  refresh: () => Promise<number>
+  /** Take its videos out of the library. Done for you when the plugin is switched off. */
+  remove: () => void
+  /** Why videos in the last list were left out (a missing title, a bad URL…), for the plugin's own log. */
+  readonly problems: string[]
+}
+
+/** Where an edge is now. */
+export interface EdgeState {
+  phase: 'idle' | 'falling' | 'holding' | 'rebuilding'
+  /** Seconds left of the hold and the rebuild. */
+  remainingSec: number
+  /** How far everything is backed off, 0–1. */
+  holdBack: number
+  /** What actually reaches the device and the senses: the knob × (1 − holdBack), 0–1. */
+  effective: number
+}
+
 export interface PluginContext {
   readonly manifest: PluginManifest
   settings: {
@@ -351,6 +505,14 @@ export interface PluginContext {
     overlay: (def: OverlayDef) => () => void
     /** CSS for the plugin's own DOM; removed when it is switched off. */
     style: (css: string) => void
+    /**
+     * The theme ('dark', 'light', 'catppuccin', 'dracula'…), also on <html>
+     * as `data-theme`. Its colours are the CSS variables (`--text`,
+     * `--accent`…); read them with getComputedStyle to draw on a canvas.
+     */
+    theme: () => string
+    /** The theme changed (its CSS variables already have the new colours): repaint. Returns an unsubscribe. */
+    onThemeChange: (fn: (theme: string) => void) => () => void
     toast: (text: string, opts?: { tone?: 'info' | 'success' | 'error', detail?: string }) => void
   }
   player: {
@@ -396,6 +558,23 @@ export interface PluginContext {
     tag: (videoId: string, change: { add?: string[], remove?: string[] }) => Promise<string[] | null>
     /** Set (or clear, with null) the link a video came from, an http(s) URL (permission `library-edit`). False if it isn't in the library. */
     setSource: (videoId: string, url: string | null) => Promise<boolean>
+    /**
+     * Add videos from another app (permission `library-source`). They show
+     * in the library with the source's name, play like any video (streamed),
+     * work in the queue and playlists, and go when the plugin is switched
+     * off. One source per plugin: calling it again replaces it. Resolves
+     * once the first list is in.
+     */
+    provide: (def: LibrarySourceDef) => Promise<LibrarySourceHandle>
+    /**
+     * A link that streams this library video to devices on the network
+     * (with seeking), for as long as the plugin is on; null if there is no
+     * such video or nothing to reach it on. Desktop app only (permissions
+     * `serve` and `library`).
+     */
+    mediaUrl: (videoId: string) => Promise<string | null>
+    /** The same for one of its scripts: the .funscript for `axis` (stroke when absent); null if it has none for that axis. */
+    scriptUrl: (videoId: string, axis?: string) => Promise<string | null>
   }
   /** What plays. */
   playback: {
@@ -407,6 +586,15 @@ export interface PluginContext {
     onEnded: (fn: (id: string | null) => void) => () => void
     /** Play the library video with this fingerprint (see library.fingerprint). False if there is none. */
     playFingerprint: (fp: string) => Promise<boolean>
+    /**
+     * Follow a video that plays in another app, a VR headset (permission
+     * `external`): its scripts play on every device to the clock you feed
+     * with update(), with the user's latency, offset, tweaks, intensity,
+     * edges and panic, as for a video playing here. Null if there is no such
+     * library video (and no scripts were given), or the user kept unsaved
+     * script edits.
+     */
+    external: (opts: ExternalPlaybackOptions) => Promise<ExternalPlayback | null>
   }
   /** The loaded scripts. */
   scripts: {
@@ -451,12 +639,75 @@ export interface PluginContext {
      * local server without CORS headers answers. Streams like fetch does.
      */
     fetch: (url: string, init?: RequestInit) => Promise<Response>
+    /** Whether socket() works: the desktop app. */
+    readonly socketAvailable: boolean
+    /**
+     * A TCP connection to an app or device on your network (permission
+     * `socket`, desktop app only): `host` is localhost, a private address
+     * (192.168.x.x, 10.x.x.x, 172.16–31.x.x, link-local) or a `.local` name
+     * that leads to one. Resolves once connected; rejects saying why not.
+     * Closed for you when the plugin is switched off.
+     */
+    socket: (opts: { host: string, port: number }) => Promise<NetSocket>
+  }
+  /** Answering devices on the network from the desktop app's LAN server (permission `serve`). */
+  http: {
+    /** False outside the desktop app: there, serve() throws. */
+    readonly available: boolean
+    /**
+     * Answer requests to `http://<this computer>:<port>/plugins/<id>/…` with
+     * `handler`, until stop() or the plugin is switched off. Calling it again
+     * replaces the handler. Resolves that address (null when the LAN server
+     * isn't running).
+     */
+    serve: (handler: HttpHandler) => Promise<string | null>
+    /** The address serve() answers on, or null when it isn't serving. */
+    url: () => string | null
+    stop: () => void
+  }
+  /**
+   * The session: edges, the intensity knob, finishes. Calling an edge,
+   * setting the intensity and hearing finishes need `session`; reading the
+   * edge and the knob (edgeState, onEdge, intensity.get / max / onChange)
+   * need `player` or `session`.
+   */
+  session: {
+    /** Call an edge: everything backs off for the user's hold time and eases back. */
+    edge: () => void
+    /** End the hold early ("I'm OK"): it starts easing back now. Not while panic is on. */
+    endEdge: () => void
+    edgeState: () => EdgeState
+    /** An edge was called, by anyone (`byPlugin` when by a plugin). Returns an unsubscribe. */
+    onEdge: (fn: (e: { at: number, videoTime: number | null, byPlugin: boolean }) => void) => () => void
+    /** The user marked "I came". Returns an unsubscribe. */
+    onFinish: (fn: (e: { at: number, videoTime: number | null }) => void) => () => void
+    intensity: {
+      /** The knob, 0.1–1. */
+      get: () => number
+      /**
+       * Move the knob toward `level` (0.1–1), a little at a time (about 10%
+       * a second up), never past the limit the user set for plugins.
+       * Returns where it will stop. The user turning the knob, or panic,
+       * stops the move. The user sees a notice saying which plugin did it.
+       */
+      set: (level: number) => number
+      /** The most a plugin may set, as the user chose in Settings → Plugins. */
+      max: () => number
+      /** The knob moved, by anyone. Returns an unsubscribe. */
+      onChange: (fn: (level: number) => void) => () => void
+    }
   }
   /** Commands in the palette, with optional shortcuts. */
   commands: {
     /** Add (or replace, by id) a command. False if its shortcut is taken: the command is then added without one. */
     register: (def: CommandDef) => boolean
     unregister: (id: string) => void
+    /**
+     * Whether a shortcut could be had: a key a plugin may use that neither
+     * playhound nor another plugin has. One of this plugin's own commands
+     * holding it counts as free.
+     */
+    keyFree: (kbd: string) => boolean
   }
   /** Real web pages inside playhound. */
   webview: {

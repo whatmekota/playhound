@@ -264,6 +264,8 @@ export interface DesktopInfo {
   updates?: DesktopUpdates
   /** fetch() from the main process, for plugins (desktop/netbridge.mjs). */
   net?: DesktopNet
+  /** Plugins' answers on the LAN server (desktop/pluginhttp.mjs). Main window only; absent before 2.2. */
+  http?: DesktopHttp
   /** Plugins loaded from a folder (desktop/devplugins.mjs). Main window only; absent in older builds. */
   plugins?: DesktopPlugins
   /** Web views for plugins (desktop/webview.mjs). Main window only; absent in older builds. */
@@ -351,6 +353,42 @@ export interface DesktopNet {
     end: () => void
     error: (message: string) => void
   }) => () => void
+  /** A TCP connection to this computer or the local network (desktop/netsocket.mjs). Absent before 2.2. */
+  socket?: (req: { host: string, port: number }, on: {
+    open: (address: string, port: number) => void
+    data: (data: Uint8Array) => void
+    close: (error: string | null) => void
+  }) => { send: (data: Uint8Array) => void, close: () => void }
+}
+
+/** A request to a plugin's path on the LAN server (desktop/pluginhttp.mjs). */
+export interface DesktopHttpRequest {
+  method: string
+  /** Path and query, e.g. "/plugins/heresphere/library?x=1". */
+  url: string
+  headers: [string, string][]
+  body: Uint8Array | null
+  /** The address it came from. */
+  remote: string
+}
+
+/** How the page answers one: the head, then a chunk each time it is pulled, then the end. */
+export interface DesktopHttpReply {
+  head: (status: number, headers: [string, string][]) => void
+  chunk: (data: Uint8Array) => void
+  end: () => void
+  error: (message: string) => void
+  /** The connection can take another chunk. */
+  onPull: (cb: () => void) => void
+  /** The client went away. */
+  onAbort: (cb: () => void) => void
+}
+
+/** Plugins' answers on the LAN server. Main window only; absent before 2.2. */
+export interface DesktopHttp {
+  /** Whether any plugin serves anything; resolves the port the paths are on (null when there is no server for them). */
+  setOpen: (on: boolean) => Promise<{ port: number | null } | null>
+  onRequest: (cb: (req: DesktopHttpRequest, reply: DesktopHttpReply) => void) => () => void
 }
 
 export interface DesktopUpdates {

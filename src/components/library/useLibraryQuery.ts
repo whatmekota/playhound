@@ -38,9 +38,12 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   const search = ref('')
   const query = refDebounced(search, 120)
   const filters = shallowRef(new Set<FilterKey>())
-  /** One library folder, or null for all; a folder that leaves the library drops back to all. */
+  /**
+   * One library folder (or one app plugins add videos from, by its name), or
+   * null for all; one that leaves the library drops back to all.
+   */
   const folder = ref<string | null>(null)
-  watch(() => library.folders, (list) => {
+  watch(() => [...library.folders, ...library.sources], (list) => {
     if (folder.value && !list.includes(folder.value))
       folder.value = null
   })

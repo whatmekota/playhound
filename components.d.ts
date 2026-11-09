@@ -26,6 +26,7 @@ declare module 'vue' {
     Equaliser: typeof import('./src/components/library/Equaliser.vue')['default']
     EroScriptsView: typeof import('./src/components/views/EroScriptsView.vue')['default']
     EstimSection: typeof import('./src/components/device/EstimSection.vue')['default']
+    ExternalPlaybackCard: typeof import('./src/components/player/ExternalPlaybackCard.vue')['default']
     FaceInspector: typeof import('./src/components/inspectors/FaceInspector.vue')['default']
     FilterChips: typeof import('./src/components/library/FilterChips.vue')['default']
     FunscriptTimeline: typeof import('./src/components/player/FunscriptTimeline.vue')['default']

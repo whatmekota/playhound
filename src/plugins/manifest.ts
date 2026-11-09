@@ -17,8 +17,12 @@ import { APP_VERSION, newer, readStoreFields, shortVersion } from './storeMeta'
  * that quietly starts doing more in an update.
  */
 
-/** The newest plugin API this playhound speaks. */
-export const PLUGIN_API = 2
+/**
+ * The newest plugin API this playhound speaks. 3 added external playback,
+ * network sockets, serving on the LAN, library sources and session control;
+ * plugins written for 1 and 2 run as before.
+ */
+export const PLUGIN_API = 3
 
 export interface PermissionInfo {
   id: PluginPermission
@@ -32,7 +36,7 @@ export interface PermissionInfo {
 export const PERMISSIONS: PermissionInfo[] = [
   { id: 'device', label: 'Move your device, and reshape scripts on their way to it', api: 'motion.take, motion.filter' },
   { id: 'scripts', label: 'Read the loaded scripts and load its own', api: 'scripts.*' },
-  { id: 'player', label: 'See what is playing, where, and the picture', api: 'player.state, player.onChange, player.script, player.frame, player.clock, playback.onEnded' },
+  { id: 'player', label: 'See what is playing, where, the picture, and your edges and intensity', api: 'player.state, player.onChange, player.script, player.frame, player.clock, playback.onEnded, session.edgeState, session.onEdge, session.intensity.get / max / onChange' },
   { id: 'playback', label: 'Play, pause, seek and change the speed of videos', api: 'playback.play, pause, resume, playFingerprint, player.seek, player.setRate' },
   { id: 'library', label: 'Read your library: video names, stats and playlists', api: 'library.list, analyse, onChange, fingerprint, info' },
   { id: 'library-edit', label: 'Change your videos\' tags and source links', api: 'library.tag, library.setSource' },
@@ -41,6 +45,12 @@ export const PERMISSIONS: PermissionInfo[] = [
   // Any site, including one made to look like something else: the pages
   // themselves can't reach playhound, but what they show is the plugin's pick.
   { id: 'web', label: 'Open web pages inside playhound', api: 'webview.create' },
+  // API 3.
+  { id: 'external', label: 'Follow a video playing in another app, such as a VR headset, and move your device with it', api: 'playback.external' },
+  { id: 'session', label: 'Call edges, change the intensity and know when you finish', api: 'session.edge, endEdge, onFinish, intensity.set (and what player reads)' },
+  { id: 'library-source', label: 'Add videos to your library from another app', api: 'library.provide' },
+  { id: 'socket', label: 'Connect to apps and devices on your network', api: 'net.socket' },
+  { id: 'serve', label: 'Share your library with devices on your network', api: 'http.serve, library.mediaUrl, library.scriptUrl' },
 ]
 
 const KNOWN = new Set<string>(PERMISSIONS.map(p => p.id))
@@ -57,8 +67,15 @@ export function accessOf(m: Pick<PluginManifest, 'api' | 'permissions'>): Access
   return (m.api ?? 1) < 2 ? { full: true } : { full: false, granted: new Set() }
 }
 
+/**
+ * What "full access" covers: everything there was before plugins asked. A
+ * plugin written then can't know the newer calls, and an update that starts
+ * using them has to ask, like any other.
+ */
+const FULL_ACCESS = new Set<PluginPermission>(['device', 'scripts', 'player', 'playback', 'library', 'library-edit', 'network', 'stage', 'web'])
+
 export function allows(access: Access, p: PluginPermission): boolean {
-  return access.full || access.granted.has(p)
+  return access.full ? FULL_ACCESS.has(p) : access.granted.has(p)
 }
 
 /** Permissions in `next` that `prev` did not have; an older plugin had them all. */

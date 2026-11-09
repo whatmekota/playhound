@@ -34,6 +34,7 @@ import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useSubtitleStore } from '~/stores/subtitleStore'
 import { useUiStore } from '~/stores/uiStore'
 import EdgeBadge from './EdgeBadge.vue'
+import ExternalPlaybackCard from './ExternalPlaybackCard.vue'
 import FunscriptTimeline from './FunscriptTimeline.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import SbsViewer from './SbsViewer.vue'
@@ -108,6 +109,10 @@ const popOpacity = computed({
 const hasVideo = computed(() => !!player.videoUrl)
 /** The look-around VR view: never for an audio file, which has no picture to look around. */
 const vrView = computed(() => player.sbs180 && !player.audioOnly)
+/** The video plays in another app (a VR headset); only its clock is here. */
+const isExternal = computed(() => player.videoKind === 'external')
+/** A <video> of our own to show. */
+const hasMedia = computed(() => hasVideo.value && !isExternal.value)
 /** Fullscreen always gets the full chrome, even if it was entered from the mini player. */
 const isMini = computed(() => !!props.mini && !player.isFullscreen && !popped.value)
 
@@ -226,6 +231,32 @@ watch([videoEl, () => player.videoUrl, () => player.videoKind], async ([el, url,
 })
 onBeforeUnmount(dropHls)
 
+// ─── Playing in another app ──────────────────────────────────────────────────
+// The device follows the other app's clock instead of a <video>: the same
+// sync, attached to a clock that reads like one, started and stopped as the
+// other app (or panic) plays and pauses.
+let offExternal: (() => void) | null = null
+watch(() => playback.external, (s, old) => {
+  offExternal?.()
+  offExternal = null
+  if (old)
+    stop()
+  if (!s)
+    return
+  attach(s.media)
+  offExternal = s.onEvent((e) => {
+    if (e === 'play')
+      start()
+    else if (e === 'pause')
+      stop()
+    else
+      onSeeked()
+  })
+  if (!s.media.paused)
+    start()
+})
+onBeforeUnmount(() => offExternal?.())
+
 // Re-attach the sync every time the <video> element is created; it is v-if'd
 // on the URL, so each load is a new node.
 watch(videoEl, (el) => {
@@ -264,6 +295,11 @@ function pause() {
 }
 
 function togglePlay() {
+  // Playing elsewhere: the other app's play button (the store passes it on).
+  if (isExternal.value) {
+    playback.togglePlay()
+    return
+  }
   const v = videoEl.value
   if (!v)
     return
@@ -615,6 +651,16 @@ const subLift = computed(() => {
   return popChrome.value && hasVideo.value ? 64 : 0
 })
 
+/**
+ * How much of the picture the player's own bars cover right now, top and
+ * bottom, as CSS variables on the root: plugins' overlays (inside it) keep
+ * clear with `bottom: var(--ph-controls-bottom)`. See docs/plugins.md.
+ */
+const controlsInset = computed(() => ({
+  '--ph-controls-top': `${chromeVisible.value && !popped.value ? 64 : 0}px`,
+  '--ph-controls-bottom': `${subLift.value}px`,
+}))
+
 /** V: on and off. Shift + V: off, then each track in turn. */
 function subtitleKey(cycle: boolean) {
   const ok = cycle ? subs.cycle() : subs.toggle()
@@ -679,6 +725,19 @@ function onKeyDown(e: KeyboardEvent) {
     return
   if (!hasVideo.value)
     return
+  if (isExternal.value) {
+    // Playing elsewhere: play, pause and seek go to the other app.
+    if (e.code === 'Space') {
+      e.preventDefault()
+      playback.togglePlay()
+    }
+    else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+      e.preventDefault()
+      const step = e.shiftKey ? 30 : 5
+      playback.seekRelative(e.code === 'ArrowLeft' ? -step : step)
+    }
+    return
+  }
 
   switch (e.code) {
     case 'Space':
@@ -992,6 +1051,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       ref="rootEl"
       class="group/vp bg-black h-full w-full select-none relative overflow-hidden"
       :class="hideCursor ? 'cursor-none' : ''"
+      :data-ph-controls="chromeVisible || popChrome ? 'shown' : 'hidden'"
+      :style="controlsInset"
       @pointermove="poke"
       @pointerleave="onPointerLeave"
       @wheel="onWheel"
@@ -1000,11 +1061,11 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
     >
       <Teleport :to="popout.parking" :disabled="!parked">
         <video
-          v-if="player.videoUrl"
+          v-if="hasMedia"
           ref="videoEl"
           class="h-full w-full inset-0 absolute object-contain"
           :class="vrView ? 'invisible' : ''"
-          :src="player.videoKind === 'hls' ? undefined : player.videoUrl"
+          :src="player.videoKind === 'hls' ? undefined : player.videoUrl ?? undefined"
           data-ph-main
           :muted="player.isMuted"
           preload="metadata"
@@ -1035,15 +1096,18 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       </Teleport>
       <!-- Popped out, the picture: the video itself stays in the main window. -->
       <canvas
-        v-if="popped && player.videoUrl"
+        v-if="popped && hasMedia"
         ref="mirrorEl"
         class="h-full w-full inset-0 absolute object-contain"
         :class="vrView ? 'invisible' : ''"
       />
 
+      <!-- Playing in another app: what and where, instead of a picture. -->
+      <ExternalPlaybackCard v-if="isExternal" :mini="isMini" />
+
       <!-- 180° viewer over the (hidden but live) video -->
       <SbsViewer
-        v-if="vrView && player.videoUrl"
+        v-if="vrView && hasMedia"
         :video-el="videoEl"
         :format="vrFormat(player.vrFormat)"
         class="inset-0 absolute z-[1]"
@@ -1053,7 +1117,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
 
       <!-- Gesture surface: click, double-click edges and centre -->
       <div
-        v-if="player.videoUrl && !vrView"
+        v-if="hasMedia && !vrView"
         class="inset-0 absolute z-[1]"
         :class="isMini ? 'cursor-pointer' : ''"
         @click="onSurfaceClick"

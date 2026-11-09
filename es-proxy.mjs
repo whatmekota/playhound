@@ -116,7 +116,7 @@ function readBody(req, limit = 16 * 1024) {
 async function handleStreams(req, res) {
   const url = new URL(req.url, 'http://localhost')
   const isMedia = url.pathname.startsWith('/media/')
-  if (!isMedia && !['/resolve', '/ytdlp/status', '/ytdlp/install', '/config'].includes(url.pathname))
+  if (!isMedia && !['/resolve', '/ytdlp/status', '/ytdlp/install', '/config', '/register'].includes(url.pathname))
     return false
   const origin = req.headers.origin
   if (origin ? !APP_ORIGIN.test(origin) : !isMedia) {
@@ -140,6 +140,26 @@ async function handleStreams(req, res) {
       }
       else {
         sendJson(res, 200, proxyInfo())
+      }
+    }
+    else if (url.pathname === '/register') {
+      // A stream that needs headers (a video a plugin adds to the library):
+      // played through here, so the <video> needn't send them.
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'POST only' })
+      }
+      else {
+        const body = JSON.parse(await readBody(req) || '{}')
+        const target = new URL(String(body.url ?? ''))
+        if (target.protocol !== 'http:' && target.protocol !== 'https:')
+          throw new Error('Only http(s) streams can be played through here')
+        const headers = {}
+        for (const [k, v] of Object.entries(body.headers ?? {})) {
+          if (/^[\w-]+$/.test(k) && typeof v === 'string')
+            headers[k] = v
+        }
+        const key = register({ type: body.kind === 'hls' ? 'hls' : 'http', url: target.href, headers, name: path.basename(target.pathname) || 'x.mp4' })
+        sendJson(res, 200, { url: `http://localhost:${PORT}/media/${key}` })
       }
     }
     else if (url.pathname === '/ytdlp/status') {

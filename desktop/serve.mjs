@@ -48,12 +48,17 @@ const MIME = {
  *
  * Resolves with the listening server; rejects with the listen error (EADDRINUSE
  * when another instance or a dev server holds the port).
+ *
+ * `extra(req, res)` gets every request first and resolves true when it
+ * answered it (plugins' paths, desktop/pluginhttp.mjs).
  */
-export function serveStatic(root, { port, host }) {
+export function serveStatic(root, { port, host, extra }) {
   const base = path.resolve(root)
   const index = path.join(base, 'index.html')
 
   async function handle(req, res) {
+    if (extra && await extra(req, res))
+      return
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, { Allow: 'GET, HEAD' })
       res.end()

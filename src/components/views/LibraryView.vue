@@ -64,9 +64,13 @@ const folderPick = computed({
   set: (v: string) => (lq.folder = v || null),
 })
 const folderOptions = computed(() => [
-  { value: '', label: `All ${library.folders.length} folders` },
+  { value: '', label: library.sources.length ? 'Everything' : `All ${library.folders.length} folders` },
   ...library.folders.map(f => ({ value: f, label: f })),
+  // Videos plugins add from other apps sit under their source's name.
+  ...library.sources.map(s => ({ value: s, label: `From ${s}` })),
 ])
+/** Several folders or sources to pick between. */
+const manyPlaces = computed(() => library.folders.length + library.sources.length > 1)
 const scripts = lq.scripts
 const tagView = useLibraryTags()
 
@@ -266,7 +270,7 @@ onDeactivated(() => {
 // ─── Helpers for the template ─────────────────────────────────────────────────
 function subline(entry: VideoEntry) {
   const m = effectiveMeta(entry)
-  return [formatSize(entry.file.size), m.creator].filter(Boolean).join(' · ')
+  return [entry.remote ? `From ${entry.remote.label}` : formatSize(entry.file.size), m.creator].filter(Boolean).join(' · ')
 }
 
 const sweepPct = computed(() => scripts.sweepTotal ? scripts.sweepDone / scripts.sweepTotal : 0)
@@ -288,7 +292,7 @@ function onBackgroundClick(e: MouseEvent) {
         </h1>
         <div class="text-[12.5px] text-fg-muted mt-1 flex flex-wrap gap-x-2 gap-y-1 min-h-5 items-center">
           <template v-if="library.hasVideos">
-            <span v-if="library.folders.length > 1" class="flex gap-1.5 min-w-0 items-center">
+            <span v-if="manyPlaces" class="flex gap-1.5 min-w-0 items-center">
               <span class="i-carbon-folders text-fg-faint shrink-0" />
               <UiSelect v-model="folderPick" :options="folderOptions" class="max-w-56" />
             </span>
@@ -662,6 +666,9 @@ function onBackgroundClick(e: MouseEvent) {
                         <span v-if="entry.scriptType === 'merged'" class="text-[9.5px] text-white/70 font-semibold">M</span>
                       </span>
                       <span class="flex-1" />
+                      <span v-if="entry.remote" v-tip="`From ${entry.remote.label}, added by a plugin`" class="chip-over text-white/85">
+                        <span class="i-carbon-data-share text-[11px]" />{{ entry.remote.label }}
+                      </span>
                       <span v-if="entry.duration" class="chip-over text-white num">{{ formatTime(entry.duration) }}</span>
                     </div>
                   </div>
@@ -748,8 +755,9 @@ function onBackgroundClick(e: MouseEvent) {
                     <IntensityMeter :summary="scripts.summaryOf(entry)" />
                   </span>
                   <span class="text-[12px] text-fg-muted num text-right">{{ entry.duration ? formatTime(entry.duration) : '' }}</span>
-                  <span class="text-[12px] text-fg-muted num text-right">{{ formatSize(entry.file.size) }}</span>
-                  <span class="col-date text-[12px] text-fg-faint text-right">{{ formatDate(entry.file.lastModified) }}</span>
+                  <span v-if="entry.remote" class="text-[12px] text-fg-muted text-right truncate" :title="`From ${entry.remote.label}, added by a plugin`">{{ entry.remote.label }}</span>
+                  <span v-else class="text-[12px] text-fg-muted num text-right">{{ formatSize(entry.file.size) }}</span>
+                  <span class="col-date text-[12px] text-fg-faint text-right">{{ entry.remote ? '' : formatDate(entry.file.lastModified) }}</span>
                   <button
                     type="button"
                     class="star-inline rounded center h-7 w-7 transition-opacity"

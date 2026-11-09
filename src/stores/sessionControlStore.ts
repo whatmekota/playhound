@@ -21,11 +21,19 @@ import { useLocalStorage } from '@vueuse/core'
  * can be tested without a clock.
  */
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { createEdgeEnvelope } from '~/lib/edging'
 import { KEYS } from '~/lib/persist'
 
-export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui'
+export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui' | 'plugin'
+
+/** "I came", as marked (C, the phone, the dock). */
+export interface FinishMark {
+  /** Wall clock, ms. */
+  at: number
+  videoTime: number | null
+  videoName: string | null
+}
 
 export interface EdgeEvent {
   /** Wall clock, ms. */
@@ -121,6 +129,12 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
     edges.value = []
   }
 
+  /** The last "I came", for whoever wants to know (a partner's plugin). */
+  const lastFinish = shallowRef<FinishMark | null>(null)
+  function noteFinish(m: FinishMark) {
+    lastFinish.value = m
+  }
+
   return {
     settings,
     intensityScale,
@@ -138,5 +152,7 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
     setIntensityScale,
     nudgeIntensity,
     clearLog,
+    lastFinish,
+    noteFinish,
   }
 })

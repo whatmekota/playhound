@@ -8,6 +8,8 @@ import { startProxy } from '../es-proxy.mjs'
 import { setupBluetooth, setupDevices } from './devices.mjs'
 import { setupDevPlugins } from './devplugins.mjs'
 import { setupNetBridge } from './netbridge.mjs'
+import { setupNetSockets } from './netsocket.mjs'
+import { createPluginHttp } from './pluginhttp.mjs'
 import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
 import { probe, serveStatic } from './serve.mjs'
 import { setupTcodeUdp } from './tcodenet.mjs'
@@ -31,6 +33,11 @@ import { BROWSING_PARTITION, setupWebviews } from './webview.mjs'
 
 const APP_PORT = 6969
 const APP_URL = `http://localhost:${APP_PORT}`
+/**
+ * Plugins' LAN addresses when the app's own server isn't serving the page
+ * (development, or a dev server already holding APP_PORT).
+ */
+const PLUGIN_HTTP_PORT = Number(process.env.PH_PLUGIN_PORT) || 6970
 const DEV = !!process.env.PH_DEV
 const DEV_URL = process.env.PH_DEV_URL || APP_URL
 const MAC = process.platform === 'darwin'
@@ -122,6 +129,10 @@ let bluetooth = null
 let updater = null
 /** Plugins' web views (desktop/webview.mjs); made at boot. */
 let webviews = null
+/** Plugins' TCP sockets (desktop/netsocket.mjs); made at boot. */
+let sockets = null
+/** Plugins' addresses on the LAN server (desktop/pluginhttp.mjs); made at boot. */
+let pluginHttp = null
 
 /** The pop-out player's window (see popout below), while it is open. */
 let popout = null
@@ -409,6 +420,10 @@ async function boot() {
   setupNetBridge(ipcMain, fromMainWindow)
   // TCode over UDP (ESP32 strokers on WiFi, restim): the page cannot open a UDP socket.
   setupTcodeUdp(ipcMain, fromMainWindow)
+  // Plugins' TCP sockets, to apps on this computer and the local network only.
+  sockets = setupNetSockets(ipcMain, fromMainWindow)
+  // Plugins' answers on the LAN server (a headset browsing the library).
+  pluginHttp = createPluginHttp({ ipcMain, allowed: fromMainWindow, window: () => win })
   // Plugins loaded from a folder (Settings → Plugins → Load from folder), reloaded on save.
   setupDevPlugins({ ipcMain, allowed: fromMainWindow, window: () => win, dialog, state, save: saveState })
   // Real web pages inside the window, for plugins (ctx.webview).
@@ -467,9 +482,12 @@ async function boot() {
   })
 
   let url = DEV ? DEV_URL : APP_URL
+  /** Plugins' paths need a server of their own when ours isn't the one serving. */
+  let pluginServerNeeded = DEV
   if (!DEV) {
     try {
-      server = await serveStatic(path.join(ROOT, 'dist'), { port: APP_PORT, host: '0.0.0.0' })
+      server = await serveStatic(path.join(ROOT, 'dist'), { port: APP_PORT, host: '0.0.0.0', extra: pluginHttp.handle })
+      pluginHttp.setPort(APP_PORT)
     }
     catch (err) {
       if (err.code !== 'EADDRINUSE')
@@ -485,7 +503,13 @@ async function boot() {
       }
       console.warn(`[desktop] ${APP_URL} is already serving playhound (${who}); using that`)
       url = APP_URL
+      pluginServerNeeded = true
     }
+  }
+  if (pluginServerNeeded) {
+    await pluginHttp.listen(PLUGIN_HTTP_PORT, '0.0.0.0').catch((err) => {
+      console.warn(`[desktop] plugins can't serve on port ${PLUGIN_HTTP_PORT}:`, err.message)
+    })
   }
 
   createWindow(url)
@@ -694,6 +718,7 @@ function createWindow(url) {
   })
   win.on('closed', () => {
     webviews?.destroyAll()
+    sockets?.closeAll()
     win = null
   })
 
@@ -787,7 +812,11 @@ function createWindow(url) {
   })
   // A reload (or HMR's full reload) brings up a page that knows none of the
   // views the last one made: they go with it.
-  wc.on('did-navigate', () => webviews?.destroyAll())
+  wc.on('did-navigate', () => {
+    webviews?.destroyAll()
+    sockets?.closeAll()
+    pluginHttp?.reset()
+  })
 
   win.loadURL(url).catch((err) => {
     console.error('[desktop] could not load', url, err)
@@ -825,4 +854,6 @@ app.on('will-quit', () => {
   presence.dispose()
   proxy?.close()
   server?.close()
+  pluginHttp?.close()
+  sockets?.closeAll()
 })
