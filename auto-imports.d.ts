@@ -101,6 +101,8 @@ declare global {
   const markRaw: typeof import('vue').markRaw
   const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
   const netDisconnect: typeof import('./src/composables/useTCodeNet').netDisconnect
+  const netIsRestim: typeof import('./src/composables/useTCodeNet').netIsRestim
+  const netPanic: typeof import('./src/composables/useTCodeNet').netPanic
   const netProxy: typeof import('./src/composables/useNetProxy').netProxy
   const netProxyError: typeof import('./src/composables/useNetProxy').netProxyError
   const netProxyInfo: typeof import('./src/composables/useNetProxy').netProxyInfo
@@ -621,6 +623,8 @@ declare module 'vue' {
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
     readonly netDisconnect: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netDisconnect']>
+    readonly netIsRestim: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netIsRestim']>
+    readonly netPanic: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netPanic']>
     readonly netProxy: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxy']>
     readonly netProxyError: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxyError']>
     readonly netProxyInfo: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxyInfo']>
