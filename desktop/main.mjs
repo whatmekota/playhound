@@ -10,6 +10,7 @@ import { setupDevPlugins } from './devplugins.mjs'
 import { setupNetBridge } from './netbridge.mjs'
 import { createPresence, sanitiseActivity, validClientId } from './presence.mjs'
 import { probe, serveStatic } from './serve.mjs'
+import { setupTcodeUdp } from './tcodenet.mjs'
 import { createUpdater, UPDATER_SESSION } from './updater.mjs'
 import { BROWSING_PARTITION, setupWebviews } from './webview.mjs'
 
@@ -406,6 +407,8 @@ async function boot() {
   })
   // Plugins' fetch(), so local servers without CORS headers answer.
   setupNetBridge(ipcMain, fromMainWindow)
+  // TCode over UDP (ESP32 strokers on WiFi, restim): the page cannot open a UDP socket.
+  setupTcodeUdp(ipcMain, fromMainWindow)
   // Plugins loaded from a folder (Settings → Plugins → Load from folder), reloaded on save.
   setupDevPlugins({ ipcMain, allowed: fromMainWindow, window: () => win, dialog, state, save: saveState })
   // Real web pages inside the window, for plugins (ctx.webview).

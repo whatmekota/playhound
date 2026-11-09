@@ -269,6 +269,16 @@ export interface DesktopInfo {
   web?: DesktopWeb
   /** Files on disk: their paths, and the Recycle Bin. Main window only; absent before 2.0.2. */
   files?: DesktopFiles
+  /** TCode over UDP (desktop/tcodenet.mjs). Main window only; absent before 2.2. */
+  tcode?: DesktopTcode
+}
+
+export interface DesktopTcode {
+  udpOpen: (host: string, port: number) => Promise<{ id: number, address: string, error?: undefined } | { error: string, id?: undefined, address?: undefined }>
+  udpSend: (id: number, text: string) => void
+  udpClose: (id: number) => void
+  onUdpError: (cb: (id: number, message: string) => void) => () => void
+  onUdpMessage: (cb: (id: number, text: string) => void) => () => void
 }
 
 export interface DesktopFiles {

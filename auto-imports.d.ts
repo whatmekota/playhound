@@ -94,9 +94,11 @@ declare global {
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
   const markRaw: typeof import('vue').markRaw
   const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
+  const netDisconnect: typeof import('./src/composables/useTCodeNet').netDisconnect
   const netProxy: typeof import('./src/composables/useNetProxy').netProxy
   const netProxyError: typeof import('./src/composables/useNetProxy').netProxyError
   const netProxyInfo: typeof import('./src/composables/useNetProxy').netProxyInfo
+  const netWrite: typeof import('./src/composables/useTCodeNet').netWrite
   const nextTick: typeof import('vue').nextTick
   const number: typeof import('./src/composables/useTCode').number
   const onActivated: typeof import('vue').onActivated
@@ -193,6 +195,7 @@ declare global {
   const tryOnMounted: typeof import('@vueuse/core').tryOnMounted
   const tryOnScopeDispose: typeof import('@vueuse/core').tryOnScopeDispose
   const tryOnUnmounted: typeof import('@vueuse/core').tryOnUnmounted
+  const udpAvailable: typeof import('./src/composables/useTCodeNet').udpAvailable
   const unref: typeof import('vue').unref
   const unrefElement: typeof import('@vueuse/core').unrefElement
   const until: typeof import('@vueuse/core').until
@@ -366,6 +369,7 @@ declare global {
   const useSupported: typeof import('@vueuse/core').useSupported
   const useSwipe: typeof import('@vueuse/core').useSwipe
   const useTCode: typeof import('./src/composables/useTCode').useTCode
+  const useTCodeNet: typeof import('./src/composables/useTCodeNet').useTCodeNet
   const useTemplateRef: typeof import('vue').useTemplateRef
   const useTemplateRefsList: typeof import('@vueuse/core').useTemplateRefsList
   const useTextDirection: typeof import('@vueuse/core').useTextDirection
@@ -489,6 +493,9 @@ declare global {
   export type { AxisTap } from './src/composables/useTCode'
   import('./src/composables/useTCode')
   // @ts-ignore
+  export type { TcodeLink, TcodeNetSettings, NetStatus } from './src/composables/useTCodeNet'
+  import('./src/composables/useTCodeNet')
+  // @ts-ignore
   export type { ToastKind, Toast, ToastOptions } from './src/composables/useToast'
   import('./src/composables/useToast')
   // @ts-ignore
@@ -589,9 +596,11 @@ declare module 'vue' {
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
+    readonly netDisconnect: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netDisconnect']>
     readonly netProxy: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxy']>
     readonly netProxyError: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxyError']>
     readonly netProxyInfo: UnwrapRef<typeof import('./src/composables/useNetProxy')['netProxyInfo']>
+    readonly netWrite: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netWrite']>
     readonly nextTick: UnwrapRef<typeof import('vue')['nextTick']>
     readonly number: UnwrapRef<typeof import('./src/composables/useTCode')['number']>
     readonly onActivated: UnwrapRef<typeof import('vue')['onActivated']>
@@ -688,6 +697,7 @@ declare module 'vue' {
     readonly tryOnMounted: UnwrapRef<typeof import('@vueuse/core')['tryOnMounted']>
     readonly tryOnScopeDispose: UnwrapRef<typeof import('@vueuse/core')['tryOnScopeDispose']>
     readonly tryOnUnmounted: UnwrapRef<typeof import('@vueuse/core')['tryOnUnmounted']>
+    readonly udpAvailable: UnwrapRef<typeof import('./src/composables/useTCodeNet')['udpAvailable']>
     readonly unref: UnwrapRef<typeof import('vue')['unref']>
     readonly unrefElement: UnwrapRef<typeof import('@vueuse/core')['unrefElement']>
     readonly until: UnwrapRef<typeof import('@vueuse/core')['until']>
@@ -861,6 +871,7 @@ declare module 'vue' {
     readonly useSupported: UnwrapRef<typeof import('@vueuse/core')['useSupported']>
     readonly useSwipe: UnwrapRef<typeof import('@vueuse/core')['useSwipe']>
     readonly useTCode: UnwrapRef<typeof import('./src/composables/useTCode')['useTCode']>
+    readonly useTCodeNet: UnwrapRef<typeof import('./src/composables/useTCodeNet')['useTCodeNet']>
     readonly useTemplateRef: UnwrapRef<typeof import('vue')['useTemplateRef']>
     readonly useTemplateRefsList: UnwrapRef<typeof import('@vueuse/core')['useTemplateRefsList']>
     readonly useTextDirection: UnwrapRef<typeof import('@vueuse/core')['useTextDirection']>

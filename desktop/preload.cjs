@@ -239,6 +239,29 @@ const netApi = winState
     })
   : null
 
+// ── TCode over UDP (main window only) ───────────────────────────────────────
+// The main process holds the socket (desktop/tcodenet.mjs); errors and replies
+// come back tagged with the socket's id.
+const udpErrorListeners = new Set()
+const udpMessageListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:tcode:udp:error', (_event, id, message) => fanOut(udpErrorListeners, 'udp error', Number(id), String(message)))
+  ipcRenderer.on('ph:tcode:udp:message', (_event, id, text) => fanOut(udpMessageListeners, 'udp message', Number(id), String(text)))
+}
+const tcodeApi = winState
+  ? Object.freeze({
+      /** Resolve and connect: { id, address } or { error }. */
+      udpOpen: (host, port) => ipcRenderer.invoke('ph:tcode:udp:open', { host: String(host), port: Number(port) }),
+      /** One datagram. */
+      udpSend: (id, text) => ipcRenderer.send('ph:tcode:udp:send', Number(id), String(text)),
+      udpClose: id => ipcRenderer.send('ph:tcode:udp:close', Number(id)),
+      /** Calls `cb(id, message)` when a socket fails (it is closed then); returns an unsubscribe. */
+      onUdpError: cb => listen(udpErrorListeners)(cb),
+      /** Calls `cb(id, text)` for a reply from the device; returns an unsubscribe. */
+      onUdpMessage: cb => listen(udpMessageListeners)(cb),
+    })
+  : null
+
 // ── Plugin dev mode ─────────────────────────────────────────────────────────
 // Plugins loaded from a folder the user picked; the main process reads and
 // watches it (desktop/devplugins.mjs) and says when something in it changed.
@@ -355,6 +378,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   net: netApi ?? undefined,
   plugins: pluginsApi ?? undefined,
   web: webApi ?? undefined,
+  tcode: tcodeApi ?? undefined,
   files: winState
     ? Object.freeze({
         /** Where a File is on disk, or '' when it has no path there. */

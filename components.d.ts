@@ -89,6 +89,7 @@ declare module 'vue' {
     TagFilterMenu: typeof import('./src/components/library/TagFilterMenu.vue')['default']
     TagPill: typeof import('./src/components/library/TagPill.vue')['default']
     TagsModal: typeof import('./src/components/library/TagsModal.vue')['default']
+    TcodeNetLink: typeof import('./src/components/device/TcodeNetLink.vue')['default']
     TitleBar: typeof import('./src/components/shell/TitleBar.vue')['default']
     ToastHost: typeof import('./src/components/shell/ToastHost.vue')['default']
     UiBadge: typeof import('./src/components/ui/UiBadge.vue')['default']

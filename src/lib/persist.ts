@@ -58,6 +58,7 @@ export const KEYS = {
   deviceConfig: def('ph:device.config', 'setting', 'Device axes and presets'),
   deviceTransport: def('ph:device.transport', 'setting', 'Device connection type'),
   deviceLatency: def('ph:device.latency', 'setting', 'Device latency compensation'),
+  tcodeNet: def('ph:device.tcodeNet', 'setting', 'TCode over USB or the network, and the network address'),
   edgeSettings: def('ph:session.edge', 'setting', 'Edge cooldown and depth'),
   intensityScale: def('ph:session.intensity', 'setting', 'Intensity knob'),
   discord: def('ph:discord', 'setting', 'Discord Rich Presence'),

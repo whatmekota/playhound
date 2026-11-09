@@ -1,8 +1,10 @@
 import type { AxisLimits } from '~/lib/tcodeEncoder'
 import { logCommand } from '~/lib/serialLog'
 import { encodeTCode, SEND_INTERVAL_MS } from '~/lib/tcodeEncoder'
+import { resumeInterval } from '~/lib/tcodeNet'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useSerialPort } from './useSerialPort'
+import { netWrite } from './useTCodeNet'
 
 let emuInstance: { write: (s: string) => void } | null = null
 export function setEmuInstance(inst: { write: (s: string) => void } | null) { emuInstance = inst }
@@ -38,9 +40,26 @@ function track(channel: string, position: number, limits: AxisLimits, intervalMs
 // Per-axis rate limiting: don't flood the serial port (min 33ms between writes per axis)
 const lastSentAt: Record<string, number> = {}
 
+/**
+ * When the link (serial or network) last came up, or output was switched
+ * back on, as seen by the first move sent after it: moves are stretched for
+ * a moment then, so the device glides to the motion instead of jumping
+ * (lib/tcodeNet, resumeInterval).
+ */
+let linkWasUp = false
+let linkUpAt = Number.NEGATIVE_INFINITY
+
 export function useTCode() {
   const deviceStore = useDeviceStore()
-  const { write } = useSerialPort()
+  const { write: serialWrite } = useSerialPort()
+
+  /**
+   * To whichever TCode link is open: the serial port or the network. Only
+   * one is ever open (see useTCodeNet), and each ignores a write when closed.
+   */
+  async function write(data: string) {
+    await Promise.all([serialWrite(data), netWrite(data)])
+  }
 
   function sendPosition(
     channel: string,
@@ -61,17 +80,25 @@ export function useTCode() {
     logCommand(cmd)
     emuInstance?.write(cmd)
 
-    if (!axisCfg || !deviceStore.connected || !deviceStore.deviceEnabled || !axisCfg.enabled)
+    const now = performance.now()
+    const up = deviceStore.connected && deviceStore.deviceEnabled
+    if (up && !linkWasUp)
+      linkUpAt = now
+    linkWasUp = up
+
+    if (!axisCfg || !up || !axisCfg.enabled)
       return
 
     // Rate-limit per axis — skip if sent too recently
-    const now = performance.now()
     if (!opts.force && (now - (lastSentAt[channel] ?? 0)) < SEND_INTERVAL_MS)
       return
     lastSentAt[channel] = now
 
+    const gentle = resumeInterval(interval, now - linkUpAt)
+    const out = gentle === interval ? cmd : encodeTCode({ channel, position, interval: gentle }, limits, ver)
+
     // Fire-and-forget — do NOT await, RAF can't block waiting for serial
-    write(cmd).catch(e => console.warn('Serial write error:', e.message))
+    write(out).catch(e => console.warn('TCode write error:', e.message))
   }
 
   async function homeAllAxes(interval = 500) {
