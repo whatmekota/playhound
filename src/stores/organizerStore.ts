@@ -5,6 +5,7 @@ import { desktop } from '~/lib/browserApi'
 import { extOf, renameEntry, sanitizeFilename } from '~/lib/fsRename'
 import { walkDirectory } from '~/lib/fsWalk'
 import { handleDb } from '~/lib/idb'
+import { isAudioName, isMediaName } from '~/lib/mediaFiles'
 import { isSubtitleName, pairSubtitles } from '~/lib/subtitles'
 
 export type PairStatus = 'matched' | 'video-only' | 'script-only'
@@ -37,7 +38,6 @@ function stats(video: FsEntry | null, scripts: FsEntry[]) {
 /** A pair's key: its folder and the name of the file that leads it. */
 export const pairKey = (dir: string, video: FsEntry | null, scripts: FsEntry[]) => `${dir}/${video?.name ?? scripts[0]?.name ?? ''}`
 
-const VIDEO_EXT = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 const SCRIPT_EXT = /\.funscript$/i
 const HANDLE_KEY = 'organizerDirHandle'
 const LIBRARY_HANDLE_KEY = 'lastDirHandle'
@@ -45,7 +45,7 @@ const LIBRARY_HANDLE_KEY = 'lastDirHandle'
 export function buildPairs(entries: FsEntry[]): OrgPair[] {
   const byDir = new Map<string, FsEntry[]>()
   for (const e of entries) {
-    if (!VIDEO_EXT.test(e.name) && !SCRIPT_EXT.test(e.name) && !isSubtitleName(e.name))
+    if (!isMediaName(e.name) && !SCRIPT_EXT.test(e.name) && !isSubtitleName(e.name))
       continue
     const list = byDir.get(e.dirRelPath) ?? []
     list.push(e)
@@ -54,7 +54,10 @@ export function buildPairs(entries: FsEntry[]): OrgPair[] {
 
   const result: OrgPair[] = []
   for (const [dir, list] of byDir) {
-    const videos = list.filter(e => VIDEO_EXT.test(e.name))
+    // Videos first, so a video and an audio file of the same name leave the
+    // scripts to the video; audio files then pair like videos do.
+    const videos = list.filter(e => isMediaName(e.name))
+      .sort((a, b) => Number(isAudioName(a.name)) - Number(isAudioName(b.name)))
     const scripts = list.filter(e => SCRIPT_EXT.test(e.name))
     const usedScripts = new Set<FsEntry>()
     // Subtitles left without a video are not listed: the organizer is about
@@ -77,6 +80,9 @@ export function buildPairs(entries: FsEntry[]): OrgPair[] {
         // separator-prefixed suffix (alt-axis tag), not an unrelated longer name.
         return /^[\s\-_.(]/.test(sBase.slice(base.length))
       })
+      // An audio file with no script is just a song: not the organizer's business.
+      if (!matched.length && isAudioName(v.name))
+        continue
       matched.forEach(s => usedScripts.add(s))
       result.push({
         key: pairKey(dir, v, matched),

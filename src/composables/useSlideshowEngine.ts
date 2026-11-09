@@ -25,8 +25,12 @@ export const PHASE_TRANSITIONS: Record<string, TransitionName> = {
  * mechanical), every N beats of the binaural beat frequency, or locked to the
  * shared session pulse so slides land on the same beat as the audio and the
  * device. Only the view that shows the slideshow runs this.
+ *
+ * `beats`, when given, is a running beat count of something playing (the
+ * audio file the player has on): in Beats mode the slides then turn every N
+ * beats of that, rather than of the binaural beat, whenever it has one.
  */
-export function useSlideshowEngine() {
+export function useSlideshowEngine(opts: { beats?: () => number | null } = {}) {
   const { items, settings, isPlaying, currentIndex } = useSlideshowStore()
   const audioStore = useAudioStore()
   const lfo = useLFO()
@@ -66,6 +70,16 @@ export function useSlideshowEngine() {
   // at a similar rate.
   let lastPulsePhase = 0
   let pulsesSeen = 0
+  /** Beat-locked advance on `opts.beats`: which slide-length block of beats we are in. */
+  let beatBlock: number | null = null
+
+  /** The outside beat count, when Beats mode follows one and it has a beat. */
+  function trackBeats(): number | null {
+    if (!settings.value.beatSync || !opts.beats)
+      return null
+    const b = opts.beats()
+    return b !== null && Number.isFinite(b) ? b : null
+  }
 
   let raf: number | null = null
 
@@ -96,6 +110,19 @@ export function useSlideshowEngine() {
         progress.value = Math.min(1, (pulsesSeen + c.phase) / per)
       }
     }
+    else if (beatBlock !== null) {
+      const beats = trackBeats()
+      if (beats !== null) {
+        const per = Math.max(1, settings.value.beatsPerSlide)
+        const block = Math.floor(beats / per)
+        // A seek lands in another block: one change of slide, not a flurry.
+        if (block !== beatBlock) {
+          beatBlock = block
+          advance()
+        }
+        progress.value = Math.min(1, Math.max(0, beats / per - block))
+      }
+    }
     else if (slideDurationMs > 0) {
       progress.value = Math.min(1, (performance.now() - slideStartedAt) / slideDurationMs)
     }
@@ -120,8 +147,19 @@ export function useSlideshowEngine() {
 
   function scheduleNext() {
     clearScheduled()
+    beatBlock = null
     if (items.length === 0 || !isPlaying.value)
       return
+
+    // Beats of the track that is playing, when there are any to follow.
+    const beats = settings.value.pulseSync ? null : trackBeats()
+    if (beats !== null) {
+      beatBlock = Math.floor(beats / Math.max(1, settings.value.beatsPerSlide))
+      pausedRemaining = null
+      pulseAvailable.value = true
+      startFrames()
+      return
+    }
 
     // Pulse sync drives advances from the audio clock, not a timer.
     if (settings.value.pulseSync) {
@@ -328,6 +366,11 @@ export function useSlideshowEngine() {
     next,
     goTo,
     togglePlay,
+    /** Work out the timing again, e.g. once the track's beat becomes known. */
+    reschedule: () => {
+      if (isPlaying.value)
+        scheduleNext()
+    },
     lfo,
   }
 }

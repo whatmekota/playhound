@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { isAudioName } from '~/lib/mediaFiles'
 import { DEFAULT_VR_FORMAT, guessVrFormat, VR_FORMATS } from '~/lib/vrFormat'
 
 // Legacy storage key kept so existing data survives the rename.
@@ -16,6 +17,11 @@ export const usePlayerStore = defineStore('player', () => {
   const videoUrl = ref<string | null>(null)
   /** 'hls' when videoUrl is an HLS playlist, which the player plays with hls.js. */
   const videoKind = ref<'file' | 'hls'>('file')
+  /**
+   * Sound with no picture: an audio file, or a stream that turned out to have
+   * no video track. The stage then shows the visual picked for audio.
+   */
+  const audioOnly = ref(false)
   const videoDuration = ref(0) // seconds
   const currentTime = ref(0) // seconds
   const isPlaying = ref(false)
@@ -73,6 +79,8 @@ export const usePlayerStore = defineStore('player', () => {
     vrFormat.value = guessVrFormat(path) ?? vrFormat.value
     videoUrl.value = url
     videoKind.value = kind
+    // By name until the media says (VideoPlayer, on loadedmetadata).
+    audioOnly.value = isAudioName(path)
     currentTime.value = 0
     videoDuration.value = 0
     isPlaying.value = false
@@ -104,6 +112,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   return {
     videoKind,
+    audioOnly,
     videoPath,
     videoUrl,
     videoDuration,

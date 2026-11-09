@@ -17,8 +17,11 @@ import type { Directive } from 'vue'
  *   does not leave thousands of decodes behind it
  * - cache hits never touch the pool: an IndexedDB read is cheap
  */
+import type { TileAction } from '~/lib/audioTile'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { reactive, shallowReactive } from 'vue'
+import { fileSource, findCover } from '~/lib/audioCover'
+import { tileActions, tileColumns, tileHeat, tileHue } from '~/lib/audioTile'
 import { metaDb, thumbDb, videoMetaDb } from '~/lib/idb'
 
 const THUMB_W = 320
@@ -61,7 +64,7 @@ function pump() {
     const job = waiting.pop()!
     active++
     thumbBusy.add(job.entry.name)
-    decodeFrame(job.entry)
+    ;(job.entry.kind === 'audio' ? audioThumb(job.entry) : decodeFrame(job.entry))
       .catch(() => thumbFailed.add(job.entry.name))
       .finally(() => {
         active--
@@ -161,6 +164,103 @@ function decodeFrame(entry: VideoEntry): Promise<void> {
     video.addEventListener('error', () => done(new Error('decode error')), { once: true })
     video.src = url
   })
+}
+
+// ─── Audio files ───────────────────────────────────────────────────────────────
+// No frame to grab: the cover embedded in the file when there is one, else a
+// tile drawn from the script (see audioTile.ts).
+
+function loadImage(blob: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(blob)
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('bad cover'))
+    img.src = url
+  }).finally(() => URL.revokeObjectURL(url)) as Promise<HTMLImageElement>
+}
+
+/** A square cover in a 16:9 card: itself in the middle, a blurred copy behind. */
+function drawCover(g: CanvasRenderingContext2D, img: HTMLImageElement) {
+  const iw = img.naturalWidth || 1
+  const ih = img.naturalHeight || 1
+  const fill = Math.max(THUMB_W / iw, THUMB_H / ih)
+  g.save()
+  g.filter = 'blur(14px) brightness(0.55)'
+  g.drawImage(img, (THUMB_W - iw * fill) / 2 - 20, (THUMB_H - ih * fill) / 2 - 20, iw * fill + 40, ih * fill + 40)
+  g.restore()
+  const fit = Math.min(THUMB_W / iw, THUMB_H / ih)
+  const w = iw * fit
+  const h = ih * fit
+  g.drawImage(img, (THUMB_W - w) / 2, (THUMB_H - h) / 2, w, h)
+}
+
+/** The script, drawn: a stroke line and a speed band on the track's own colour. */
+function drawScriptTile(g: CanvasRenderingContext2D, name: string, actions: TileAction[], durationMs?: number) {
+  const hue = tileHue(name)
+  const bg = g.createLinearGradient(0, 0, THUMB_W, THUMB_H)
+  bg.addColorStop(0, `hsl(${hue} 45% 18%)`)
+  bg.addColorStop(1, `hsl(${(hue + 40) % 360} 55% 9%)`)
+  g.fillStyle = bg
+  g.fillRect(0, 0, THUMB_W, THUMB_H)
+  const cols = THUMB_W / 2
+  const { pos, speed } = tileColumns(actions, cols, durationMs)
+  const band = 14
+  for (let c = 0; c < cols; c++) {
+    if (speed[c] < 2)
+      continue
+    g.fillStyle = tileHeat(speed[c])
+    g.fillRect(c * 2, THUMB_H - band, 2.5, band)
+  }
+  const top = 22
+  const h = THUMB_H - band - top - 16
+  g.lineWidth = 1.6
+  g.lineJoin = 'round'
+  g.strokeStyle = `hsl(${hue} 90% 82% / 0.85)`
+  g.beginPath()
+  let pen = false
+  for (let c = 0; c < cols; c++) {
+    const p = pos[c]
+    if (Number.isNaN(p)) {
+      pen = false
+      continue
+    }
+    const x = c * 2 + 1
+    const y = top + h * (1 - p / 100)
+    if (pen)
+      g.lineTo(x, y)
+    else
+      g.moveTo(x, y)
+    pen = true
+  }
+  g.stroke()
+}
+
+async function audioThumb(entry: VideoEntry): Promise<void> {
+  void ensureDuration(entry)
+  const c = document.createElement('canvas')
+  c.width = THUMB_W
+  c.height = THUMB_H
+  const g = c.getContext('2d')!
+  const art = await findCover(fileSource(entry.file))
+  let drawn = false
+  if (art) {
+    try {
+      drawCover(g, await loadImage(new Blob([art.data as BlobPart], { type: art.mime })))
+      drawn = true
+    }
+    catch {
+      // A picture the browser cannot read: draw the script instead.
+    }
+  }
+  if (!drawn) {
+    const main = entry.scriptMatches.find(m => !m.isAlt) ?? entry.scriptMatches[0]
+    const actions = main ? tileActions(await main.file.text().catch(() => '')) : []
+    drawScriptTile(g, entry.name, actions, entry.duration ? entry.duration * 1000 : undefined)
+  }
+  const dataUrl = c.toDataURL('image/jpeg', 0.8)
+  entry.thumbnailUrl = dataUrl
+  void thumbDb.set(entry.name, dataUrl).catch(() => {})
 }
 
 async function fromCache(entry: VideoEntry): Promise<boolean> {

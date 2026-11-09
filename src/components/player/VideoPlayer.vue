@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AudioVisual } from '~/composables/useAudioVisual'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
@@ -6,6 +7,7 @@ import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
+import { AUDIO_VISUALS, useAudioVisual } from '~/composables/useAudioVisual'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useLoopSection } from '~/composables/useLoopSection'
 import { MIN_OPACITY, usePopout } from '~/composables/usePopout'
@@ -15,6 +17,7 @@ import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { useVideoSync } from '~/composables/useVideoSync'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
 import { cancelFrame, requestFrame } from '~/lib/frames'
+import { isAudioName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { requestStrip } from '~/lib/previews'
 import { cueHtml, isSubtitleName } from '~/lib/subtitles'
@@ -103,6 +106,8 @@ const popOpacity = computed({
 })
 
 const hasVideo = computed(() => !!player.videoUrl)
+/** The look-around VR view: never for an audio file, which has no picture to look around. */
+const vrView = computed(() => player.sbs180 && !player.audioOnly)
 /** Fullscreen always gets the full chrome, even if it was entered from the mini player. */
 const isMini = computed(() => !!props.mini && !player.isFullscreen && !popped.value)
 
@@ -115,6 +120,11 @@ function togglePopout() {
   void popout.toggle(videoAspect())
 }
 const heatmap = useLocalStorage(KEYS.timelineHeatmap.key, true)
+/** What the stage shows with an audio file (AudioStage draws it). */
+const audioVisual = useAudioVisual()
+function setAudioVisual(v: AudioVisual) {
+  audioVisual.value = v
+}
 /** The end-of-video card, while it counts down. */
 const upNext = ref<{ entry: VideoEntry, directed: boolean, key: number } | null>(null)
 /** In-player menu open in fullscreen (popovers cannot show there). */
@@ -150,8 +160,12 @@ function onLoadedMetadata() {
   // With preload="metadata" a paused video may never reach canplay, so this
   // is the point a fresh load stops counting as stalled.
   stalled.value = false
-  if (videoEl.value)
-    player.videoDuration = videoEl.value.duration
+  const el = videoEl.value
+  if (el) {
+    player.videoDuration = el.duration
+    // No picture: an audio file, or a stream that turned out to be one.
+    player.audioOnly = isAudioName(player.videoPath ?? '') || (!el.videoWidth && !el.videoHeight)
+  }
   if (popped.value)
     popout.fit(videoAspect())
 }
@@ -440,7 +454,7 @@ let wheelAcc = 0
  * zooms there), and not over anything of the player's own that scrolls.
  */
 function onWheel(e: WheelEvent) {
-  if (isMini.value || player.sbs180 || !hasVideo.value || !e.deltaY)
+  if (isMini.value || vrView.value || !hasVideo.value || !e.deltaY)
     return
   if ((e.target as Element | null)?.closest?.('aside, input, .scroll-y'))
     return
@@ -989,7 +1003,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
           v-if="player.videoUrl"
           ref="videoEl"
           class="h-full w-full inset-0 absolute object-contain"
-          :class="player.sbs180 ? 'invisible' : ''"
+          :class="vrView ? 'invisible' : ''"
           :src="player.videoKind === 'hls' ? undefined : player.videoUrl"
           data-ph-main
           :muted="player.isMuted"
@@ -1024,12 +1038,12 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         v-if="popped && player.videoUrl"
         ref="mirrorEl"
         class="h-full w-full inset-0 absolute object-contain"
-        :class="player.sbs180 ? 'invisible' : ''"
+        :class="vrView ? 'invisible' : ''"
       />
 
       <!-- 180° viewer over the (hidden but live) video -->
       <SbsViewer
-        v-if="player.sbs180 && player.videoUrl"
+        v-if="vrView && player.videoUrl"
         :video-el="videoEl"
         :format="vrFormat(player.vrFormat)"
         class="inset-0 absolute z-[1]"
@@ -1039,7 +1053,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
 
       <!-- Gesture surface: click, double-click edges and centre -->
       <div
-        v-if="player.videoUrl && !player.sbs180"
+        v-if="player.videoUrl && !vrView"
         class="inset-0 absolute z-[1]"
         :class="isMini ? 'cursor-pointer' : ''"
         @click="onSurfaceClick"
@@ -1121,6 +1135,10 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                     {{ title }}
                   </h2>
                   <div class="text-[11.5px] text-white/65 mt-1.5 flex flex-wrap gap-1.5 items-center">
+                    <span v-if="player.audioOnly" class="vp-chip">
+                      <span class="i-carbon-music text-[10px] opacity-70" />
+                      Audio
+                    </span>
                     <span v-if="playback.loading" class="vp-chip text-white/60">
                       <span class="i-carbon-renew text-[11px] animate-spin" />
                       Reading script…
@@ -1145,6 +1163,26 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                   </div>
                 </div>
               </Transition>
+              <!-- An audio file: what to show with it, kept for every track. -->
+              <div
+                v-if="player.audioOnly"
+                class="p-0.5 rounded-full bg-black/35 flex gap-0.5 pointer-events-auto backdrop-blur-md"
+                role="group"
+                aria-label="What to show with the track"
+              >
+                <UiIconButton
+                  v-for="v in AUDIO_VISUALS"
+                  :key="v.value"
+                  :icon="v.icon"
+                  :label="`${v.label}: ${v.hint.toLowerCase()}`"
+                  variant="glass"
+                  size="md"
+                  tip="bottom"
+                  class="!rounded-full"
+                  :active="audioVisual === v.value"
+                  @click="setAudioVisual(v.value)"
+                />
+              </div>
               <UiIconButton
                 v-if="playback.currentEntry"
                 :icon="playback.currentEntry.starred ? 'i-carbon-star-filled' : 'i-carbon-star'"
@@ -1404,7 +1442,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               >
                 <div class="rounded-[var(--radius-sm)] bg-white/8 shrink-0 h-9 w-16 relative overflow-hidden">
                   <img v-if="q.entry.thumbnailUrl" :src="q.entry.thumbnailUrl" alt="" class="h-full w-full object-cover">
-                  <span v-else class="i-carbon-video text-[14px] text-white/30 left-1/2 top-1/2 absolute -translate-x-1/2 -translate-y-1/2" />
+                  <span v-else :class="q.entry.kind === 'audio' ? 'i-carbon-music' : 'i-carbon-video'" class="text-[14px] text-white/30 left-1/2 top-1/2 absolute -translate-x-1/2 -translate-y-1/2" />
                   <span class="text-[16px] bg-black/50 opacity-0 center transition-opacity inset-0 absolute group-hover:opacity-100">
                     <span class="i-carbon-play-filled-alt" />
                   </span>

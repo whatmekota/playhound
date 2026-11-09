@@ -32,7 +32,21 @@ export function register(target) {
   return key
 }
 
-const TYPES = { '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.mov': 'video/quicktime', '.ts': 'video/mp2t' }
+const TYPES = {
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.mov': 'video/quicktime',
+  '.ts': 'video/mp2t',
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.ogg': 'audio/ogg',
+  '.opus': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.wav': 'audio/wav',
+}
 
 const PASS = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'last-modified', 'etag']
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges' }

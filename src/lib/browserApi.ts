@@ -1,4 +1,5 @@
 // Browser-native file & serial APIs — replaces the Electron preload bridge
+import { AUDIO_EXTS, MEDIA_ACCEPT, VIDEO_EXTS } from './mediaFiles'
 
 // ── File System Access API ────────────────────────────────────────────────────
 
@@ -6,10 +7,10 @@ export async function openVideoFile(): Promise<File | null> {
   if ('showOpenFilePicker' in window) {
     try {
       const [handle] = await (window as any).showOpenFilePicker({
-        types: [{
-          description: 'Video Files',
-          accept: { 'video/*': ['.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v', '.wmv', '.flv'] },
-        }],
+        types: [
+          { description: 'Video files', accept: { 'video/*': VIDEO_EXTS.map(e => `.${e}`) } },
+          { description: 'Audio files', accept: { 'audio/*': AUDIO_EXTS.map(e => `.${e}`) } },
+        ],
         multiple: false,
       })
       return await handle.getFile()
@@ -19,7 +20,7 @@ export async function openVideoFile(): Promise<File | null> {
     }
   }
   // Fallback: classic input
-  return inputFilePicker(['video/*', '.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v', '.wmv'])
+  return inputFilePicker(['video/*', 'audio/*', ...MEDIA_ACCEPT])
 }
 
 /** The handle each picked script came through: Save as… opens in its folder. */

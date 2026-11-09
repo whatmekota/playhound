@@ -4,6 +4,7 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { summaryDb } from '~/lib/idb'
+import { sameKindAs } from '~/lib/mediaFiles'
 import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
 import { useAudioStore } from '~/stores/audio'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -138,9 +139,10 @@ export function useAutoDirector() {
    */
   function pickNext(exclude?: string): VideoEntry | null {
     const target = steer.value ?? audio.intensity.value
-    const analysed = library.videos.filter(v =>
+    // Stay with what is playing: videos after a video, audio after audio.
+    const analysed = sameKindAs(library.videos.filter(v =>
       v.hasScript && v.name !== exclude && summaries.value[v.name],
-    )
+    ), exclude)
     // Matching on pace alone keeps landing on the same few videos over a long
     // session, so leave out what played recently while there is anything else.
     const recent = new Set(queue.history.slice(-RECENT_AVOID).map(q => q.entry.name))

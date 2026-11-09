@@ -3,10 +3,10 @@ import type { VideoMeta } from '~/lib/idb'
 import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { AXIS_MAP } from '~/lib/axisMap'
 import { collectHandleFiles, filePath, handlePathOf, openFolderWithHandle, pickDirectory, rememberPath } from '~/lib/browserApi'
 import { canWrite } from '~/lib/funscriptSave'
 import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
+import { isAudioName, isListed, matchScripts, scriptMapOf } from '~/lib/mediaFiles'
 import { sniffScript } from '~/lib/scriptSniff'
 import { isSubtitleName, pairSubtitles, subtitleLabel } from '~/lib/subtitles'
 import { editTagList, normalizeTags } from '~/lib/tags'
@@ -23,6 +23,11 @@ export interface ScriptMatch {
 export type ScriptType = 'none' | 'single' | 'multi' | 'merged'
 
 export interface VideoEntry {
+  /**
+   * 'audio' for an audio file with a script (ASMR, JOI audio, music). Absent
+   * for a video, so older code and saved data need nothing new.
+   */
+  kind?: 'audio'
   file: File
   name: string
   basename: string
@@ -196,19 +201,11 @@ export const useLibraryStore = defineStore('library', () => {
     totalFiles.value = files.length
     folderName.value = files[0]?.webkitRelativePath?.split('/')[0] ?? 'Folder'
 
-    const videoExts = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
+    // Funscripts by lower-cased name (no content read).
+    const scriptMap = scriptMapOf(files)
 
-    // Build a name→File map for funscripts only (no content read)
-    // Key: lowercase filename, Value: File handle
-    const scriptMap = new Map<string, File>()
-    for (const f of files) {
-      if (f.name.toLowerCase().endsWith('.funscript')) {
-        scriptMap.set(f.name.toLowerCase(), f)
-      }
-    }
-
-    // Collect video files
-    const videoFiles = files.filter(f => videoExts.test(f.name))
+    // Every video, and audio files that have a script (see mediaFiles.ts).
+    const videoFiles = files.filter(f => isListed(f.name, scriptMap))
 
     // Build entries in chunks of 200 to yield to the event loop between chunks
     const CHUNK = 200
@@ -217,32 +214,7 @@ export const useLibraryStore = defineStore('library', () => {
     for (let i = 0; i < videoFiles.length; i += CHUNK) {
       const chunk = videoFiles.slice(i, i + CHUNK)
       for (const f of chunk) {
-        const basename = f.name.replace(/\.[^.]+$/, '').toLowerCase()
-        const matches: ScriptMatch[] = []
-
-        for (const [key, sf] of scriptMap) {
-          if (!key.startsWith(basename))
-            continue
-          // Strip ".funscript" and the basename prefix to get the suffix
-          const withoutExt = key.slice(0, -'.funscript'.length) // e.g. "video (bounce)" or "video.twist"
-          const suffix = withoutExt.slice(basename.length).trim() // e.g. " (bounce)" or ".twist" or ""
-
-          // Clean suffix: strip surrounding parens, dots, spaces, dashes → "bounce", "twist", "r0"
-          const altName = suffix.replace(/^[\s\-_.(]+|[\s\-_.)]+$/g, '').trim()
-
-          // A known axis key (twist, r0, surge, l1, etc.) → this is a primary axis script, NOT an alt
-          const isAxisScript = altName.length > 0 && altName.toLowerCase() in AXIS_MAP
-          const isAlt = suffix.length > 0 && !isAxisScript
-
-          matches.push({ file: sf, isAlt, altName: isAlt ? altName : '' })
-        }
-
-        // Sort: primary (exact) first, then alts alphabetically
-        matches.sort((a, b) => {
-          if (a.isAlt !== b.isAlt)
-            return a.isAlt ? 1 : -1
-          return a.altName.localeCompare(b.altName)
-        })
+        const matches = matchScripts(f.name, scriptMap)
 
         // Alternate takes are the same axis done differently; they must not
         // inflate the axis count or push an entry into the multi-axis filter.
@@ -251,6 +223,7 @@ export const useLibraryStore = defineStore('library', () => {
 
         const path = filePath(f)
         entries.push({
+          ...(isAudioName(f.name) ? { kind: 'audio' as const } : {}),
           file: f,
           path,
           folder: path.includes('/') ? path.slice(0, path.indexOf('/')) : '',
@@ -339,7 +312,6 @@ export const useLibraryStore = defineStore('library', () => {
   let roots: (FileSystemDirectoryHandle | null)[] = []
   let rootFiles: (File[] | null)[] = []
   const WATCH_INTERVAL_MS = 30_000
-  const VIDEO_EXTS = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 
   /** "Videos", "Videos (2)": the label each folder's paths start with. */
   function labelsFor(names: string[]) {
@@ -694,7 +666,9 @@ export const useLibraryStore = defineStore('library', () => {
         const files = await readHandle(h, false, folders.value[i])
         if (!files)
           continue
-        const added = files.filter(f => VIDEO_EXTS.test(f.name) && !prevNames.has(f.name)).length
+        // An audio file counts once it has a script: a stray song is not new to the library.
+        const scripts = scriptMapOf(files)
+        const added = files.filter(f => !prevNames.has(f.name) && isListed(f.name, scripts)).length
         if (added) {
           fresh += added
           next[i] = files

@@ -107,6 +107,7 @@ export const AUTO_TAGS: readonly AutoTagDef[] = [
   { tag: 'multi-axis', group: 'script', hint: 'Scripts for more than one axis', onCard: false },
   { tag: 'unscripted', group: 'script', hint: 'No script found next to the video', onCard: false },
   { tag: 'vr', group: 'format', hint: 'The file or folder name says VR', onCard: true },
+  { tag: 'audio', group: 'format', hint: 'An audio file with a script, no picture', onCard: false },
 ]
 
 const AUTO_BY_TAG = new Map(AUTO_TAGS.map(d => [d.tag, d]))
@@ -128,7 +129,7 @@ export function looksVr(entry: Pick<VideoEntry, 'name' | 'path'>): boolean {
   return /(?:^|[^a-z0-9])vr(?:[^a-z0-9]|$)/i.test(entry.path || entry.name)
 }
 
-type AutoSource = Pick<VideoEntry, 'name' | 'path' | 'hasScript' | 'scriptCount' | 'scriptType' | 'duration'>
+type AutoSource = Pick<VideoEntry, 'name' | 'path' | 'hasScript' | 'scriptCount' | 'scriptType' | 'duration' | 'kind'>
 
 /**
  * The automatic tags for one video, in AUTO_TAGS order. `summary` is its
@@ -157,7 +158,9 @@ export function autoTags(entry: AutoSource, summary?: ScriptSummary | null): str
     out.push('multi-axis')
   if (!entry.hasScript)
     out.push('unscripted')
-  if (looksVr(entry))
+  if (entry.kind === 'audio')
+    out.push('audio')
+  else if (looksVr(entry))
     out.push('vr')
   return out
 }
@@ -253,8 +256,11 @@ export interface ParsedSearch {
 // space) or a bare word. An unclosed quote runs to the end, so typing
 // `tag:"no sc` already narrows the list.
 const TAG_TOKEN = /(^|\s)(-?)tag:(?:"([^"]*)"?|(\S*))/gi
+// `type:audio` and `type:video`, said the way people search for a kind of
+// file. Audio is the automatic `audio` tag, so a video is anything without it.
+const TYPE_TOKEN = /(^|\s)(-?)type:(\S*)/gi
 
-/** Pull `tag:name` and `-tag:name` out of a search box's text. */
+/** Pull `tag:name`, `-tag:name` and `type:audio|video` out of a search box's text. */
 export function parseSearch(raw: string): ParsedSearch {
   const include: string[] = []
   const exclude: string[] = []
@@ -262,6 +268,13 @@ export function parseSearch(raw: string): ParsedSearch {
     const t = normalizeTag(quoted ?? bare ?? '')
     if (t)
       (neg ? exclude : include).push(t)
+    return lead
+  }).replace(TYPE_TOKEN, (m, lead: string, neg: string, kind: string) => {
+    const k = kind.toLowerCase()
+    if (k !== 'audio' && k !== 'video') {
+      return k ? m : lead
+      // "-type:video" is audio; "-type:audio" is video.
+    }((k === 'audio') === !neg ? include : exclude).push('audio')
     return lead
   })
   return {

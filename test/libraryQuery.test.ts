@@ -112,7 +112,7 @@ describe('matching and filtering', () => {
   })
 
   it('counts chips', () => {
-    expect(filterCounts(vids)).toEqual({ scripted: 3, multi: 2, starred: 1, unscripted: 1 })
+    expect(filterCounts(vids)).toEqual({ scripted: 3, multi: 2, starred: 1, unscripted: 1, audio: 0 })
   })
 })
 

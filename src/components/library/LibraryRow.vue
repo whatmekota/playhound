@@ -47,6 +47,7 @@ defineEmits<{
       <img v-if="entry?.thumbnailUrl" :src="entry.thumbnailUrl" class="h-full w-full animate-fade-in object-cover" alt="" draggable="false">
       <span v-else-if="!entry" class="text-fg-faint center inset-0 absolute"><span class="i-carbon-unlink text-[13px]" /></span>
       <span v-else-if="!thumbFailed.has(entry.name)" class="skeleton inset-0 absolute" />
+      <span v-else-if="entry.kind === 'audio'" class="text-fg-faint center inset-0 absolute"><span class="i-carbon-music text-[13px]" /></span>
       <span v-if="current" class="text-white bg-black/45 center inset-0 absolute">
         <Equaliser :playing="!!playing" />
       </span>
@@ -58,6 +59,7 @@ defineEmits<{
       </span>
       <span class="text-[11px] text-fg-faint leading-4 mt-0.5 flex gap-1.5 items-center">
         <template v-if="entry">
+          <span v-if="entry.kind === 'audio'" v-tip="'Audio'" class="i-carbon-music text-[11px] shrink-0" />
           <span v-if="entry.duration" class="num">{{ formatTime(entry.duration) }}</span>
           <span
             v-if="entry.scriptType !== 'none'"

@@ -603,7 +603,7 @@ function onBackgroundClick(e: MouseEvent) {
                       draggable="false"
                     >
                     <div v-else-if="thumbFailed.has(entry.name)" class="text-fg-faint center inset-0 absolute">
-                      <span class="i-carbon-video-off text-[22px]" />
+                      <span :class="entry.kind === 'audio' ? 'i-carbon-music' : 'i-carbon-video-off'" class="text-[22px]" />
                     </div>
                     <div v-else class="skeleton inset-0 absolute" :class="thumbBusy.has(entry.name) ? '' : 'opacity-60'" />
 
@@ -646,6 +646,10 @@ function onBackgroundClick(e: MouseEvent) {
                     <div class="bottom-row flex gap-1 transition-opacity items-center bottom-1.5 left-1.5 right-1.5 absolute">
                       <span v-if="entry.name === currentName" class="chip-over text-accent-300 gap-1 animate-scale-in">
                         <Equaliser :playing="player.isPlaying" />
+                      </span>
+                      <span v-if="entry.kind === 'audio'" v-tip="'Audio: plays with the slideshow, the media wall or the hypno overlay'" class="chip-over text-white">
+                        <span class="i-carbon-music text-[12px]" />
+                        <span class="text-[10.5px] font-semibold">Audio</span>
                       </span>
                       <span
                         v-if="entry.scriptType !== 'none'"
@@ -724,6 +728,7 @@ function onBackgroundClick(e: MouseEvent) {
                   <span class="min-w-0">
                     <span class="text-[13px] block truncate" :class="entry.name === currentName ? 'text-accent-300 font-medium' : 'text-fg'" :title="entry.name">{{ entry.basename }}</span>
                     <span class="text-[11.5px] text-fg-faint flex gap-1.5 items-center">
+                      <UiBadge v-if="entry.kind === 'audio'" size="xs" icon="i-carbon-music" class="shrink-0">Audio</UiBadge>
                       <span v-if="effectiveMeta(entry).creator" class="truncate">{{ effectiveMeta(entry).creator }}</span>
                       <TagPill v-for="t in tagView.shown(entry, true).slice(0, 3)" :key="t.tag" :tag="t.tag" :auto="t.auto" class="shrink-0 !h-4" />
                       <span v-if="effectiveMeta(entry).rating" class="text-warn shrink-0">{{ '★'.repeat(effectiveMeta(entry).rating ?? 0) }}</span>

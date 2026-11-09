@@ -18,6 +18,7 @@ import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useFunscript } from '~/composables/useFunscript'
 import { toast } from '~/composables/useToast'
 import { mayLeave } from '~/lib/leaveGuard'
+import { sameKindAs } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { useDeviceStore } from './deviceStore'
 import { useLibraryStore } from './libraryStore'
@@ -348,8 +349,9 @@ export const usePlaybackStore = defineStore('playback', () => {
   async function random() {
     if (!await mayLeave('Play another video'))
       return
-    const pool = library.videos.filter(v => v.hasScript)
-    const from = pool.length ? pool : library.videos
+    // Scripted first, and the same kind as what is playing (video or audio).
+    const scripted = library.videos.filter(v => v.hasScript)
+    const from = sameKindAs(scripted.length ? scripted : library.videos, currentEntry.value?.name)
     if (!from.length) {
       toast('Open a folder first', { icon: 'i-carbon-folder', key: 'random' })
       return

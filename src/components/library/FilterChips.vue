@@ -19,6 +19,9 @@ const props = defineProps<{
   compact?: boolean
 }>()
 
+/** The Audio chip only in a library that has audio files, or while it is on. */
+const chips = computed(() => FILTER_CHIPS.filter(f => f.key !== 'audio' || props.lq.counts.audio > 0 || props.lq.filters.has('audio')))
+
 /** Bands only mean something once some scripts have been analysed. */
 const showBands = computed(() => props.lq.scripts.coverage.done > 0 || props.lq.bands.size > 0)
 
@@ -33,7 +36,7 @@ function tagTip(tag: string) {
 <template>
   <div class="flex flex-wrap items-center" :class="compact ? 'gap-1' : 'gap-1.5'">
     <button
-      v-for="f in FILTER_CHIPS"
+      v-for="f in chips"
       :key="f.key"
       type="button"
       class="chip focusable pressable"

@@ -84,6 +84,12 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 - **Subtitles and tags.** `.srt`, `.vtt` and `.ass` files next to a video are
   picked up (**V** turns them on). Tag videos yourself, or filter by the tags
   playhound works out from the scripts: pace, intensity, length, multi-axis, VR.
+- **Scripted audio.** ASMR, JOI audio or music with a funscript: `Track.mp3`
+  pairs with `Track.funscript` (and `.roll`, `.srt`, …) just like a video, in
+  mp3, m4a, aac, ogg, opus, flac or wav. Audio files without a script stay out
+  of the library. While a track plays, the stage shows your slideshow (it can
+  turn on the track's own beat), your media wall (muted), the hypno overlay, or
+  the track's cover, and its subtitles show as captions.
 - **Pop-out player.** **O** puts the video in a small window that stays on
   top of other apps, with the device still in sync. In the desktop app it can
   be made see-through and let clicks pass to the window underneath, so it can
@@ -193,8 +199,9 @@ pnpm install
 pnpm dev            # http://localhost:6969
 ```
 
-Open the app, pick your video folder, and it pairs each video with its scripts
-by file name (`Video.mp4` + `Video.funscript` + `Video.roll.funscript` …).
+Open the app, pick your video folder, and it pairs each video (or audio file)
+with its scripts by file name (`Video.mp4` + `Video.funscript` +
+`Video.roll.funscript` …).
 Nothing is copied or uploaded; the folder is read in place.
 
 On Windows, `start.bat` starts everything at once: the app, the
@@ -408,9 +415,12 @@ it full screen on your second display, and it needs no relay or setup.
   official plugins (by whatmekota) carry a check mark. A plugin still runs
   inside playhound, so install only ones you trust.
 - **Library:** one folder or several (a collection split across drives),
-  search (`tag:name` too), filter chips and tags, sort by folder, script intensity and speed sparklines,
+  search (`tag:name` and `type:audio` too), filter chips and tags, sort by folder, script intensity and speed sparklines,
   hover-scrub previews, and an **auto-director** that picks the next video
-  to suit the moment.
+  to suit the moment. Audio files with a script are listed with an **Audio**
+  badge and chip, and their embedded cover (or a picture of the script) as the
+  thumbnail. The buttons at the top of the player pick what plays on the stage
+  with them: **Slideshow**, **Media wall**, **Hypno** or **Cover**.
 - **Organizer:** rename a video and all its scripts and subtitles together,
   keeping the axis suffixes and language tags.
 - **EroScripts:** browse Free Scripts, play a post's video with its scripts,

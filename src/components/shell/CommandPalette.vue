@@ -5,6 +5,7 @@ import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, nextTick, ref, watch } from 'vue'
 import { filterLibraryByTag, useLibraryTags } from '~/components/library/useLibraryTags'
 import UiKbd from '~/components/ui/UiKbd.vue'
+import { AUDIO_VISUALS, useAudioVisual } from '~/composables/useAudioVisual'
 import { openFaceWindow } from '~/composables/useFaceScreen'
 import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
@@ -39,6 +40,7 @@ const emit = defineEmits<{ openFile: [] }>()
 const ui = useUiStore()
 const session = useSessionActions()
 const player = usePlayerStore()
+const audioVisual = useAudioVisual()
 const playback = usePlaybackStore()
 const queue = useQueueStore()
 const library = useLibraryStore()
@@ -144,10 +146,17 @@ const commands = computed<Item[]>(() => {
       playback.toggleFullscreen()
     } },
     !!current && { id: 'cmd:star', kind: 'command', label: current.starred ? 'Unstar current video' : 'Star current video', icon: current.starred ? 'i-carbon-star-filled' : 'i-carbon-star', keywords: 'favourite favorite like', kbd: ['S'], on: current.starred, run: starCurrent },
+    // With an audio file: what the stage shows.
+    ...(player.audioOnly && loaded
+      ? AUDIO_VISUALS.map<Item>(v => ({ id: `cmd:audio-visual:${v.value}`, kind: 'command', label: `Show with the track: ${v.label}`, hint: v.hint, icon: v.icon, keywords: 'audio visual stage slideshow wall hypno cover picture', on: audioVisual.value === v.value, run: () => {
+          audioVisual.value = v.value
+          ui.openView('player')
+        } }))
+      : []),
     loaded && { id: 'cmd:bookmark', kind: 'command', label: 'Add bookmark here', icon: 'i-carbon-bookmark-add', keywords: 'mark position', kbd: ['B'], run: addBookmark },
     queue.upcoming.length > 0 && { id: 'cmd:clear-next', kind: 'command', label: 'Clear up next', hint: `${queue.upcoming.length} queued`, icon: 'i-carbon-clean', keywords: 'queue empty', run: () => queue.clearUpcoming() },
     { id: 'cmd:open-folder', kind: 'command', label: has ? 'Switch folder…' : 'Open folder…', icon: 'i-carbon-folder-add', keywords: 'library directory open browse', run: () => void openFolder() },
-    { id: 'cmd:open-file', kind: 'command', label: 'Open video file…', icon: 'i-carbon-document-video', keywords: 'file open single', run: () => emit('openFile') },
+    { id: 'cmd:open-file', kind: 'command', label: 'Open video or audio file…', icon: 'i-carbon-document-video', keywords: 'file open single audio mp3', run: () => emit('openFile') },
     library.needsReconnect && !!library.savedFolderName && { id: 'cmd:reconnect', kind: 'command', label: `Reconnect “${library.savedFolderName}”`, icon: 'i-carbon-connect', keywords: 'folder permission restore library', run: () => void library.reconnect() },
     library.isWatching && { id: 'cmd:rescan', kind: 'command', label: 'Rescan library folder', icon: 'i-carbon-renew', keywords: 'refresh reload scan', run: () => void library.rescan() },
     scripts.hasScripts && { id: 'cmd:edit-script', kind: 'command', label: scriptEdit.open ? 'Close the script editor' : 'Edit script', hint: 'Move, add and delete points', icon: 'i-carbon-edit', keywords: 'editor points funscript change fix', run: () => {
@@ -267,6 +276,7 @@ const views = computed<Item[]>(() => ALL_VIEWS.map((v) => {
 
 function videoItem(entry: VideoEntry): Item {
   const bits = [
+    entry.kind === 'audio' ? 'Audio' : '',
     entry.hasScript ? (entry.scriptCount > 1 ? `${entry.scriptCount} axes` : 'Scripted') : 'No script',
     entry.duration ? formatTime(entry.duration) : '',
   ].filter(Boolean)
@@ -275,7 +285,7 @@ function videoItem(entry: VideoEntry): Item {
     kind: 'video',
     label: entry.basename,
     hint: bits.join(' · '),
-    icon: 'i-carbon-video',
+    icon: entry.kind === 'audio' ? 'i-carbon-music' : 'i-carbon-video',
     on: playback.currentEntry?.name === entry.name,
     meta: playback.currentEntry?.name === entry.name ? 'Playing' : undefined,
     entry,

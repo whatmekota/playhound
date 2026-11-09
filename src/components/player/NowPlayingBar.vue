@@ -468,7 +468,7 @@ const needsOverflow = computed(() => level.value > 0)
               <Transition name="t-fade">
                 <img v-if="thumb" :key="thumb" :src="thumb" alt="" class="h-full w-full inset-0 absolute object-cover">
               </Transition>
-              <span v-if="!thumb" class="i-carbon-video text-[18px] text-fg-faint left-1/2 top-1/2 absolute -translate-x-1/2 -translate-y-1/2" />
+              <span v-if="!thumb" :class="player.audioOnly ? 'i-carbon-music' : 'i-carbon-video'" class="text-[18px] text-fg-faint left-1/2 top-1/2 absolute -translate-x-1/2 -translate-y-1/2" />
               <!-- Equaliser while playing -->
               <span v-if="player.isPlaying && !playback.loading" class="p-0.5 rounded-[3px] bg-black/55 flex gap-[2px] h-3.5 items-end bottom-1 left-1 absolute">
                 <span v-for="i in 3" :key="i" class="np-eq rounded-[1px] bg-white h-full w-[2px] origin-bottom" :style="{ animationDelay: `${i * -0.27}s` }" />

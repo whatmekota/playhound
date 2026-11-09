@@ -81,6 +81,8 @@ export interface PresenceContext {
   device?: string
   /** Number of script axes loaded. */
   axes?: number
+  /** What is playing: a video or an audio file. */
+  media?: 'video' | 'audio'
 }
 
 /** The placeholders, for the settings UI. */
@@ -159,7 +161,8 @@ export function buildActivity(
   if (s.hideWhenIdle && (!ctx.state || ctx.state === 'Idle'))
     return null
 
-  const a: PresenceActivity = { type: s.activityType }
+  // Nobody watches an audio file: "Watching" becomes "Listening to" while one plays.
+  const a: PresenceActivity = { type: s.activityType === 3 && ctx.media === 'audio' ? 2 : s.activityType }
   if (s.mode === 'custom') {
     const details = renderTemplate(s.details, ctx)
     const state = renderTemplate(s.state, ctx)

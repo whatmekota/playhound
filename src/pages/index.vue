@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import OsrEmulator from '~/components/device/OsrEmulator.vue'
 import ScriptEditor from '~/components/editor/ScriptEditor.vue'
 import UnsavedEditsModal from '~/components/editor/UnsavedEditsModal.vue'
+import AudioStage from '~/components/player/AudioStage.vue'
 import HypnoOverlay from '~/components/player/HypnoOverlay.vue'
 import NowPlayingBar from '~/components/player/NowPlayingBar.vue'
 import PopoutCard from '~/components/player/PopoutCard.vue'
@@ -43,6 +44,7 @@ import { clearTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/u
 import { desktop, openVideoFile, storage } from '~/lib/browserApi'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
+import { isMediaName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { isSubtitleName } from '~/lib/subtitles'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
@@ -234,7 +236,6 @@ async function openSingleVideo() {
   }
 }
 
-const VIDEO_RE = /\.(?:mp4|mkv|webm|avi|mov|m4v|wmv|flv)$/i
 const COLLECT_DIR_MAX = 5000
 let dragDepth = 0
 
@@ -305,7 +306,8 @@ async function onDrop(e: DragEvent) {
           files.push(f)
       }
     }
-    const videos = files.filter(f => VIDEO_RE.test(f.name))
+    // Videos and audio files: a dropped audio file plays, script or not.
+    const videos = files.filter(f => isMediaName(f.name))
     // Subtitles alone go on the video that is playing. With a video they
     // pair up in the library like scripts do.
     const subFiles = files.filter(f => isSubtitleName(f.name))
@@ -319,7 +321,7 @@ async function onDrop(e: DragEvent) {
       return
     }
     if (!videos.length) {
-      toast.warn('Nothing playable in that drop', { detail: 'Drop a video file or a folder of videos' })
+      toast.warn('Nothing playable in that drop', { detail: 'Drop a video or audio file, or a folder of them' })
       return
     }
     if (files.length > 1) {
@@ -498,6 +500,8 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
         >
           <VideoPlayer :mini="mini" @expand="ui.openView('player')" @close-mini="closeMini">
             <template #overlay>
+              <!-- An audio file has no picture: the visual picked for audio instead. -->
+              <AudioStage v-if="player.audioOnly && player.videoUrl" :compact="mini && !popout.active.value" />
               <!-- Fades back with an edge, like everything else that stimulates. -->
               <div v-if="hypno.enabled && !mini" class="inset-0 absolute" :style="{ opacity: 1 - sessionControl.holdBack }">
                 <HypnoOverlay />

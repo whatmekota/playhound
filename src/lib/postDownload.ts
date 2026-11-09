@@ -1,5 +1,6 @@
 import type { PostScript } from '~/lib/postScripts'
 import { sanitizeFilename } from '~/lib/fsRename'
+import { MEDIA_EXT } from '~/lib/mediaFiles'
 
 /**
  * File names for saving a video from a post together with its scripts.
@@ -10,11 +11,9 @@ import { sanitizeFilename } from '~/lib/fsRename'
  * axis it was found to drive (see postScripts.ts).
  */
 
-const VIDEO_EXT = /\.(?:mp4|m4v|webm|mkv|mov|avi|wmv|flv)$/i
-
 /** A base name from a video title: no extension, nothing a file system rejects. */
 export function baseNameFor(title: string): string {
-  const base = sanitizeFilename(title.replace(VIDEO_EXT, ''))
+  const base = sanitizeFilename(title.replace(MEDIA_EXT, ''))
     .replace(/\s+/g, ' ')
     .replace(/[. ]+$/, '')
     .slice(0, 150)
@@ -22,12 +21,16 @@ export function baseNameFor(title: string): string {
   return base || 'video'
 }
 
-/** The extension to save a video with, from its title, its Content-Type, or mp4. */
+/** The extension to save a video (or an audio file) with, from its title, its Content-Type, or mp4. */
 export function videoExtFor(title: string, contentType?: string | null): string {
-  const fromTitle = VIDEO_EXT.exec(title)?.[0]
+  const fromTitle = MEDIA_EXT.exec(title)?.[0]
   if (fromTitle)
     return fromTitle.toLowerCase()
   const type = (contentType ?? '').toLowerCase()
+  if (type.startsWith('audio/')) {
+    const sub = type.slice(6).split(';')[0].trim()
+    return ({ 'mpeg': '.mp3', 'mp3': '.mp3', 'mp4': '.m4a', 'x-m4a': '.m4a', 'aac': '.aac', 'ogg': '.ogg', 'opus': '.opus', 'flac': '.flac', 'x-flac': '.flac', 'wav': '.wav', 'x-wav': '.wav', 'wave': '.wav' } as Record<string, string>)[sub] ?? '.mp3'
+  }
   if (type.includes('webm'))
     return '.webm'
   if (type.includes('matroska'))

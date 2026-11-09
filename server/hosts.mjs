@@ -15,7 +15,8 @@ import { API, File as MegaFile } from 'megajs'
 import { cookiesOf, getJson, netFetch, UA } from './net.mjs'
 import { extract as ytdlp } from './ytdlp.mjs'
 
-const VIDEO = /\.(?:mp4|m4v|webm|mkv|mov)$/i
+// Audio files too: a scripted track plays like a video, with no picture.
+const VIDEO = /\.(?:mp4|m4v|webm|mkv|mov|mp3|m4a|aac|ogg|opus|flac|wav)$/i
 const MAX_ITEMS = 200
 
 class ResolveError extends Error {

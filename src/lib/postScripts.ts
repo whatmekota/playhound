@@ -49,7 +49,7 @@ export function classifyPostScripts(filenames: string[]): PostScript[] {
 const tokens = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(t => t.length >= 2))
 
 /** Words in a file name that say nothing about which video it is. */
-const NOISE = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'wmv', '480p', '720p', '1080p', '1440p', '2160p', '4k', '60fps', 'funscript'])
+const NOISE = new Set(['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'wmv', 'mp3', 'm4a', 'aac', 'ogg', 'opus', 'flac', 'wav', '480p', '720p', '1080p', '1440p', '2160p', '4k', '60fps', 'funscript'])
 const nameWords = (s: string) => new Set([...tokens(s)].filter(t => !NOISE.has(t)))
 
 /** Shared words over all the words of both: `rem hj full` is closer to `rem` than to `rem oni`. */

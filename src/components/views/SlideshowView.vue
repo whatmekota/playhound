@@ -11,6 +11,7 @@ import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import AddYoutubeModal from '~/components/views/AddYoutubeModal.vue'
+import SlideshowStage from '~/components/views/SlideshowStage.vue'
 import { useIdleChrome } from '~/composables/useIdleChrome'
 import { mediaKind, pickMediaFiles, useMediaDrop } from '~/composables/useMediaDrop'
 import { useSlideshowEngine } from '~/composables/useSlideshowEngine'
@@ -145,12 +146,6 @@ function addOverlaysFromDisk() {
   })
 }
 
-function randomizeVideoStart(e: Event) {
-  const video = e.target as HTMLVideoElement
-  if (video.duration && Number.isFinite(video.duration))
-    video.currentTime = Math.random() * video.duration
-}
-
 // ─── Slide list ─────────────────────────────────────────────────────────────
 function removeSlide(id: string) {
   const idx = items.findIndex(i => i.id === id)
@@ -206,13 +201,6 @@ function ytThumb(id: string) {
 }
 
 // ─── Stage styling ──────────────────────────────────────────────────────────
-const ytUrl = computed(() => {
-  if (!currentItem.value || currentItem.value.type !== 'youtube')
-    return ''
-  const id = currentItem.value.src
-  return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&modestbranding=1&playsinline=1&rel=0`
-})
-
 // The noise bed darkens the picture a little, so louder noise reads as dimmer light.
 const brightnessOverlayOpacity = computed(() =>
   audioStore.noiseEnabled.value ? audioStore.noiseVolume.value * 0.25 : 0,
@@ -230,14 +218,7 @@ const lfoStyle = computed(() => {
 
 const activeOverlays = computed(() => overlays.filter(o => o.enabled))
 
-function overlayMediaStyle(overlay: SlideshowOverlay) {
-  const lfoOpacity = (isPlaying.value && lfoActive.value && settings.value.lfoOverlays) ? lfoValues.opacity : 1
-  return {
-    opacity: overlay.opacity * lfoOpacity,
-    mixBlendMode: overlay.blendMode as any,
-    objectFit: overlay.fit,
-  }
-}
+const overlayFade = computed(() => (isPlaying.value && lfoActive.value && settings.value.lfoOverlays) ? lfoValues.opacity : 1)
 
 // ─── Fullscreen ─────────────────────────────────────────────────────────────
 const isFullscreen = ref(false)
@@ -329,78 +310,17 @@ function toggleTray(t: 'transition' | 'timing') {
     @pointermove="chrome.poke"
     @pointerdown="chrome.poke"
   >
-    <!-- Slides -->
-    <div class="inset-0 absolute overflow-hidden" @pointerdown="tray = null" @dblclick="toggleFullscreen">
-      <Transition :name="transitionName">
-        <div
-          v-if="currentItem"
-          :key="currentItem.id"
-          class="flex items-center inset-0 justify-center absolute"
-        >
-          <img
-            v-if="currentItem.type === 'image'"
-            :src="currentItem.src"
-            :alt="currentItem.label"
-            :style="lfoStyle"
-            :class="currentItem.fit === 'cover' ? 'object-cover' : 'object-contain'"
-            class="will-change-transform h-full w-full"
-            draggable="false"
-          >
-          <video
-            v-else-if="currentItem.type === 'video'"
-            :key="`${currentItem.id}-v`"
-            :src="currentItem.src"
-            :style="lfoStyle"
-            :class="currentItem.fit === 'cover' ? 'object-cover' : 'object-contain'"
-            autoplay
-            loop
-            muted
-            playsinline
-            class="will-change-transform h-full w-full"
-            @loadedmetadata="randomizeVideoStart"
-          />
-          <iframe
-            v-else-if="currentItem.type === 'youtube'"
-            :src="ytUrl"
-            :title="currentItem.label"
-            class="border-0 h-full w-full pointer-events-none"
-            allow="autoplay; encrypted-media"
-            referrerpolicy="strict-origin-when-cross-origin"
-          />
-        </div>
-      </Transition>
-    </div>
-
-    <!-- Audio-reactive brightness -->
-    <div
-      class="bg-black pointer-events-none transition-opacity duration-500 inset-0 absolute z-10"
-      :style="{ opacity: brightnessOverlayOpacity }"
+    <!-- Slides, overlays and vignette -->
+    <SlideshowStage
+      :item="currentItem"
+      :transition="transitionName"
+      :media-style="lfoStyle"
+      :overlays="activeOverlays"
+      :overlay-fade="overlayFade"
+      :dim="brightnessOverlayOpacity"
+      @pointerdown="tray = null"
+      @dblclick="toggleFullscreen"
     />
-
-    <!-- Overlays -->
-    <div v-for="overlay in activeOverlays" :key="overlay.id" class="pointer-events-none inset-0 absolute z-[11]">
-      <img
-        v-if="overlay.type === 'image'"
-        :src="overlay.src"
-        class="h-full w-full"
-        :style="overlayMediaStyle(overlay)"
-        draggable="false"
-      >
-      <video
-        v-else
-        :src="overlay.src"
-        autoplay
-        loop
-        muted
-        playsinline
-        class="h-full w-full"
-        :style="overlayMediaStyle(overlay)"
-        @loadedmetadata="randomizeVideoStart"
-      />
-    </div>
-
-    <!-- Vignette -->
-    <div v-if="currentItem" class="vignette pointer-events-none inset-0 absolute z-[12]" />
 
     <!-- Progress through the current slide -->
     <div
@@ -835,10 +755,6 @@ function toggleTray(t: 'transition' | 'timing') {
 </template>
 
 <style scoped>
-.vignette {
-  background: radial-gradient(ellipse at center, transparent 60%, rgb(0 0 0 / 0.45) 100%);
-}
-
 .chrome {
   transform: translateX(-50%);
   transition:
@@ -849,95 +765,5 @@ function toggleTray(t: 'transition' | 'timing') {
   opacity: 0;
   transform: translate(-50%, -8px);
   pointer-events: none;
-}
-
-/* ── Slide transitions ── */
-
-/* True crossfade: entering slide at full opacity underneath, leaving fades out on top */
-.fade-leave-active {
-  z-index: 1;
-  transition: opacity 0.6s ease;
-}
-.fade-leave-to {
-  opacity: 0;
-}
-
-.slide-enter-active,
-.slide-leave-active {
-  transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.slide-enter-from {
-  transform: translateX(100%);
-}
-.slide-leave-to {
-  transform: translateX(-100%);
-}
-
-.zoom-enter-active,
-.zoom-leave-active {
-  transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
-}
-.zoom-enter-from {
-  opacity: 0;
-  transform: scale(1.08);
-}
-.zoom-leave-to {
-  opacity: 0;
-  transform: scale(0.94);
-}
-
-.flip-enter-active,
-.flip-leave-active {
-  transition:
-    transform 0.55s ease,
-    opacity 0.55s ease;
-}
-.flip-enter-from {
-  transform: perspective(900px) rotateY(90deg);
-  opacity: 0;
-}
-.flip-leave-to {
-  transform: perspective(900px) rotateY(-90deg);
-  opacity: 0;
-}
-
-.blur-enter-active,
-.blur-leave-active {
-  transition:
-    opacity 0.55s ease,
-    filter 0.55s ease;
-}
-.blur-enter-from,
-.blur-leave-to {
-  opacity: 0;
-  filter: blur(24px);
-}
-
-.wipe-enter-active,
-.wipe-leave-active {
-  transition: clip-path 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-.wipe-enter-from {
-  clip-path: inset(0 100% 0 0);
-}
-.wipe-leave-to {
-  clip-path: inset(0 0 0 100%);
-}
-
-.rotate-enter-active,
-.rotate-leave-active {
-  transition:
-    opacity 0.5s ease,
-    transform 0.5s ease;
-}
-.rotate-enter-from {
-  opacity: 0;
-  transform: rotate(-6deg) scale(0.88);
-}
-.rotate-leave-to {
-  opacity: 0;
-  transform: rotate(6deg) scale(0.88);
 }
 </style>

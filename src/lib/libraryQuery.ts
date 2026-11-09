@@ -15,7 +15,7 @@ import { manualTags, needsSummary, parseSearch, summaryFor, tagSet } from './tag
 export type SortKey = 'name' | 'path' | 'size' | 'date' | 'duration' | 'intensity' | 'peak'
 export interface SortState { key: SortKey, asc: boolean }
 
-export type FilterKey = 'scripted' | 'multi' | 'starred' | 'unscripted'
+export type FilterKey = 'scripted' | 'multi' | 'starred' | 'unscripted' | 'audio'
 
 export const SORT_LABELS: Record<SortKey, string> = {
   name: 'Name',
@@ -51,11 +51,13 @@ export function toggleFilter(set: ReadonlySet<FilterKey>, f: FilterKey): Set<Fil
     return next
   }
   next.add(f)
-  if (f === 'scripted' || f === 'multi')
+  // Audio files are only listed with a script, so "audio" contradicts "no script" too.
+  if (f === 'scripted' || f === 'multi' || f === 'audio')
     next.delete('unscripted')
   if (f === 'unscripted') {
     next.delete('scripted')
     next.delete('multi')
+    next.delete('audio')
   }
   return next
 }
@@ -183,6 +185,8 @@ export function filterEntries(videos: readonly VideoEntry[], q: Omit<LibraryQuer
       return false
     if (f.has('starred') && !v.starred)
       return false
+    if (f.has('audio') && v.kind !== 'audio')
+      return false
     if (bands.size) {
       const s = summaryOf(v.name)
       if (!s || !bands.has(intensityBand(s.meanSpeed)))
@@ -225,12 +229,15 @@ export interface FilterCounts {
   multi: number
   starred: number
   unscripted: number
+  /** Audio files (each has a script, or it would not be listed). */
+  audio: number
 }
 
 export function filterCounts(videos: readonly VideoEntry[]): FilterCounts {
   let scripted = 0
   let multi = 0
   let starred = 0
+  let audio = 0
   for (const v of videos) {
     if (v.hasScript)
       scripted++
@@ -238,8 +245,10 @@ export function filterCounts(videos: readonly VideoEntry[]): FilterCounts {
       multi++
     if (v.starred)
       starred++
+    if (v.kind === 'audio')
+      audio++
   }
-  return { scripted, multi, starred, unscripted: videos.length - scripted }
+  return { scripted, multi, starred, unscripted: videos.length - scripted, audio }
 }
 
 /** Videos per band, among those analysed. */

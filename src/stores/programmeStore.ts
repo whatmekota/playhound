@@ -199,7 +199,9 @@ export const useProgrammeStore = defineStore('programme', () => {
     void indexRevision.value
     const out: ReelSource[] = []
     for (const v of library.videos) {
-      if (!v.hasScript)
+      // A reel cuts between videos; a clip out of the middle of an audio track
+      // (someone talking, a story) does not stand on its own.
+      if (!v.hasScript || v.kind === 'audio')
         continue
       const rec = indexRecord(primaryScript(v))
       if (!rec || !rec.chapters.length)
@@ -228,7 +230,7 @@ export const useProgrammeStore = defineStore('programme', () => {
   function ensureIndex() {
     indexWanted = true
     const sources = library.videos
-      .filter(v => v.hasScript)
+      .filter(v => v.hasScript && v.kind !== 'audio')
       .map(v => ({ name: v.name, script: primaryScript(v), duration: v.duration }))
       .filter((s): s is { name: string, script: File, duration: number | null } => !!s.script)
     if (sources.length)

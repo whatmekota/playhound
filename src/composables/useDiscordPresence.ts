@@ -69,6 +69,7 @@ export function usePresenceContext() {
       axes: scripts.activeScripts.length || undefined,
       programme: programme.status !== 'idle' ? programme.plan?.name : undefined,
       phase: programme.status !== 'idle' ? programme.currentPhase?.name : undefined,
+      media: player.videoUrl ? (player.audioOnly ? 'audio' : 'video') : undefined,
     }
   })
 }

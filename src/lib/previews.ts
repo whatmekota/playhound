@@ -16,6 +16,7 @@
 import type { PreviewRecord } from '~/lib/idb'
 import { reactive, shallowReactive } from 'vue'
 import { previewDb } from '~/lib/idb'
+import { isAudioName } from '~/lib/mediaFiles'
 import { whenIdle } from '~/lib/thumbs'
 
 export interface PreviewStrip {
@@ -168,7 +169,8 @@ function lookup(key: string): Promise<boolean> {
  */
 export function requestStrip(src: PreviewSource, priority: PreviewPriority = 'low'): () => void {
   const key = previewKey(src)
-  if (strips.has(key) || failed.has(key))
+  // An audio file has no frames to show.
+  if (strips.has(key) || failed.has(key) || isAudioName(src.name))
     return () => {}
 
   let req = requests.get(key)

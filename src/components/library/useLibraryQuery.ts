@@ -17,6 +17,8 @@ export const FILTER_CHIPS: { key: FilterKey, label: string, icon: string }[] = [
   { key: 'multi', label: 'Multi-axis', icon: 'i-carbon-chart-multi-line' },
   { key: 'starred', label: 'Starred', icon: 'i-carbon-star' },
   { key: 'unscripted', label: 'No script', icon: 'i-carbon-subtract-alt' },
+  // Shown only once the library has an audio file (FilterChips).
+  { key: 'audio', label: 'Audio', icon: 'i-carbon-music' },
 ]
 
 /**
