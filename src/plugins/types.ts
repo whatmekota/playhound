@@ -384,8 +384,12 @@ export interface ExternalPlayback {
   update: (s: { time: number, playing: boolean, rate?: number, duration?: number }) => void
   /** Stop following it. The device stops; the other app plays on. */
   end: () => void
-  /** It ended: 'stopped' by the user, 'replaced' by another video, or 'ended' by end(). Returns an unsubscribe. */
-  onEnd: (fn: (reason: 'stopped' | 'replaced' | 'ended') => void) => () => void
+  /**
+   * It ended: 'stopped' by the user, 'replaced' by the user (or anything)
+   * playing another video here, 'restarted' by a new playback.external()
+   * call (yours or another plugin's), or 'ended' by end(). Returns an unsubscribe.
+   */
+  onEnd: (fn: (reason: 'stopped' | 'replaced' | 'restarted' | 'ended') => void) => () => void
   readonly active: boolean
 }
 
@@ -406,7 +410,11 @@ export interface NetSocket {
 /** A request to the plugin's address on the LAN server. */
 export interface HttpRequest {
   method: string
-  /** After the plugin's own prefix: "/" for /plugins/<id>/, "/library.json" for /plugins/<id>/library.json. */
+  /**
+   * After the plugin's own prefix: "/" for /plugins/<id>/, "/library.json" for
+   * /plugins/<id>/library.json. As sent, still percent-encoded ("/My%20Video.mp4"):
+   * decodeURIComponent each part you match against names.
+   */
   path: string
   query: Record<string, string>
   /** Lower-case names. */
@@ -700,9 +708,25 @@ export interface PluginContext {
      * replaces the handler. Resolves that address (null when the LAN server
      * isn't running).
      */
-    serve: (handler: HttpHandler) => Promise<string | null>
+    serve: (handler: HttpHandler, opts?: {
+      /**
+       * Also answer the short root paths headsets ask for on their own,
+       * `deovr` and/or `heresphere`: a request to `/deovr…` reaches your
+       * handler as `/deovr…` under your own path. The first plugin to claim
+       * one keeps it while it serves; see rootAliases() for what you got.
+       */
+      rootAliases?: ('deovr' | 'heresphere')[]
+    }) => Promise<string | null>
     /** The address serve() answers on, or null when it isn't serving. */
     url: () => string | null
+    /**
+     * The same on every address this computer has, one per network adapter
+     * (Wi-Fi, Ethernet, a VPN, a virtual machine's): url() is only the
+     * first. Show them all, or build links from a request's Host header.
+     */
+    urls: () => string[]
+    /** The root paths this plugin holds (see serve's rootAliases). */
+    rootAliases: () => ('deovr' | 'heresphere')[]
     stop: () => void
   }
   /**

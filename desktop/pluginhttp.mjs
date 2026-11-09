@@ -21,6 +21,17 @@ import { MessageChannelMain } from 'electron'
 
 export const PLUGIN_PATH = /^\/plugins\/[a-z0-9][a-z0-9-]{0,47}(?:\/|$)/
 export const FILE_PATH = /^\/ph-files\/[\w-]{16,64}(?:\/|$)/
+/** Root paths headsets ask for on their own, which one serving plugin may take (see src/plugins/http.ts). */
+export const ROOT_ALIASES = new Set(['deovr', 'heresphere'])
+const PLUGIN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
+
+/** `/deovr…` → `/plugins/<owner>/deovr…` when a plugin holds that alias; the path unchanged otherwise. */
+export function aliasPath(pathname, aliases) {
+  const m = pathname.match(/^\/([a-z]+)(\/.*)?$/)
+  if (!m || !aliases.has(m[1]))
+    return pathname
+  return `/plugins/${aliases.get(m[1])}/${m[1]}${m[2] ?? ''}`
+}
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 const MAX_BODY = 1024 * 1024
 const ANSWER_MS = 20_000
@@ -58,10 +69,19 @@ export function createPluginHttp({ ipcMain, allowed, window }) {
   let port = null
   let standalone = null
 
-  ipcMain.handle('ph:http:open', (event, on) => {
+  /** Root alias → the plugin that answers it. */
+  let aliases = new Map()
+
+  ipcMain.handle('ph:http:open', (event, on, list) => {
     if (!allowed(event))
       return null
     open = !!on
+    const next = new Map()
+    for (const a of Array.isArray(list) ? list : []) {
+      if (a && ROOT_ALIASES.has(a.name) && typeof a.owner === 'string' && PLUGIN_ID.test(a.owner) && !next.has(a.name))
+        next.set(a.name, a.owner)
+    }
+    aliases = next
     return { port }
   })
 
@@ -74,6 +94,7 @@ export function createPluginHttp({ ipcMain, allowed, window }) {
     catch {
       return false
     }
+    url.pathname = aliasPath(url.pathname, aliases)
     if (!isPluginPath(url.pathname))
       return false
     const win = window()

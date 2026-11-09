@@ -355,7 +355,7 @@ if (winState) {
 const httpApi = winState
   ? Object.freeze({
       /** Say whether any plugin serves anything; resolves { port } (null until a server took our paths). */
-      setOpen: on => ipcRenderer.invoke('ph:http:open', !!on),
+      setOpen: (on, aliases) => ipcRenderer.invoke('ph:http:open', !!on, Array.isArray(aliases) ? aliases : []),
       /** Calls `cb(request, reply)` for each request; returns an unsubscribe. */
       onRequest: (cb) => {
         if (typeof cb !== 'function')

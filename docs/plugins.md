@@ -86,7 +86,7 @@ to be listed, by older plugins too.
 | `session`        | Call edges, change the intensity and know when you finish                                 | `session.edge / endEdge / intensity.set / restore`, and what `player` reads of the session                                                                                      |
 | `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                                                               |
 | `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                                                    |
-| `serve`          | Share your library with devices on your network                                           | `http.serve / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                                                          |
+| `serve`          | Share your library with devices on your network                                           | `http.serve / url / urls / rootAliases / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                               |
 
 Everything else needs none: settings, storage, the panel, commands, styles,
 toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
@@ -342,7 +342,8 @@ const base = await ctx.http.serve(async (req) => {
 ```
 
 - The handler gets `{ method, path, query, headers, body, remote, text(),
-json() }`, `path` being what follows `/plugins/<id>`. It answers `{ json }`
+json() }`, `path` being what follows `/plugins/<id>`, still percent-encoded
+  (decode each part before matching names). It answers `{ json }`
   or `{ status, headers, body }` (a string, `Uint8Array` or `Blob`).
 - Only the plugin's own prefix reaches it, and only while it is switched on.
 - `library.mediaUrl(id)` and `library.scriptUrl(id, axis)` (these need
@@ -351,7 +352,14 @@ json() }`, `path` being what follows `/plugins/<id>`. It answers `{ json }`
   Each is an unguessable address that stops working when the plugin is
   switched off. Nothing else from disk can be reached: the app streams the
   files it already has open, it doesn't serve paths.
-- The address uses this computer's first LAN address. In the packaged app the
+- `serve(handler, { rootAliases: ['deovr', 'heresphere'] })` also takes the
+  short root paths headsets ask for by themselves, so the user types only
+  `http://<pc>:6969/deovr`; the request reaches the handler as `/deovr…`.
+  The first plugin to claim one keeps it while it serves; `rootAliases()`
+  says which you got.
+- `url()` uses this computer's first LAN address; `urls()` lists every
+  address it has (one per adapter, a VPN's or a virtual machine's too), and
+  the request's `Host` header says which one a device actually used. In the packaged app the
   server is the one on port 6969 that the phone remote uses; running from
   source (`pnpm app`) it is port 6970.
 - In a browser `ctx.http.available` is `false` and `serve()` rejects.

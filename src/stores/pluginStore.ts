@@ -28,7 +28,7 @@ import { loadUserMeta } from '~/lib/thumbs'
 import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
-import { baseUrl, serve as serveHttp, servingAvailable, shareFile, unserve, unshareAll } from '~/plugins/http'
+import { aliasesOf, baseUrl, baseUrls, serve as serveHttp, servingAvailable, shareFile, unserve, unshareAll } from '~/plugins/http'
 import { accessOf, addedPermissions, allows, permissionError, readManifest } from '~/plugins/manifest'
 import { pluginFetch } from '~/plugins/net'
 import { cleanProvidedList, entryOf } from '~/plugins/provider'
@@ -303,10 +303,18 @@ export const usePluginStore = defineStore('plugins', () => {
   let ramp: { timer: ReturnType<typeof setInterval>, owner: string } | null = null
   /**
    * Where the knob was before each plugin first moved it, for restore(); and
-   * the level that plugin last left it at, so a turn by the user in between
-   * (the knob is theirs then) cancels the restore.
+   * the value that plugin last wrote to it (each step of its ramp), so a turn
+   * by the user in between (the knob is theirs then) cancels the restore,
+   * while a knob caught halfway along the plugin's own ramp does not.
+   * `restoring`: the mark stays until the knob is back, so a set() during
+   * that ramp doesn't take the halfway level for the user's.
    */
-  const knobBefore = new Map<string, { level: number, left: number }>()
+  const knobBefore = new Map<string, { level: number, left: number, restoring?: boolean }>()
+  /** The knob is where this plugin last left it: nobody else has turned it since. */
+  function stillPlugins(owner: string, level: number): boolean {
+    const mark = knobBefore.get(owner)
+    return !!mark && Math.abs(level - mark.left) <= 0.004
+  }
 
   function stopRamp() {
     if (ramp)
@@ -319,22 +327,22 @@ export const usePluginStore = defineStore('plugins', () => {
    * step every 100 ms. The user turning it (or panic) stops the move where
    * it is: the knob is theirs. Returns where it will stop.
    */
-  function rampIntensity(owner: string, name: string, want: unknown, ceiling?: number): number {
+  function rampIntensity(owner: string, name: string, want: unknown, ceiling?: number, restoring = false): number {
     const control = useSessionControlStore()
     const safety = useSafetyStore()
     const target = pluginTarget(want, ceiling ?? clampLimit(intensityMax.value))
     if (target === null)
       throw new TypeError('session.intensity.set takes a number, 0.1–1')
-    const mark = knobBefore.get(owner)
-    if (!mark || Math.abs(control.intensityScale - mark.left) > 0.004)
-      knobBefore.set(owner, { level: control.intensityScale, left: target })
-    else
-      mark.left = target
+    if (!stillPlugins(owner, control.intensityScale))
+      knobBefore.set(owner, { level: control.intensityScale, left: control.intensityScale })
+    const mark = knobBefore.get(owner)!
+    mark.restoring = restoring
     if (safety.panicked) {
       // Nothing moves in a panic, so lowering is safe, and at once; raising waits for the user.
       if (target < control.intensityScale) {
         stopRamp()
         control.setIntensityScale(target)
+        mark.left = control.intensityScale
       }
       return control.intensityScale
     }
@@ -353,8 +361,13 @@ export const usePluginStore = defineStore('plugins', () => {
       at = now
       control.setIntensityScale(pos)
       shown = control.intensityScale
-      if (pos === target)
+      mark.left = shown
+      if (pos === target) {
         stopRamp()
+        // Back where the user had it: nothing left to restore.
+        if (mark.restoring && knobBefore.get(owner) === mark)
+          knobBefore.delete(owner)
+      }
     }, 100)
     ramp = { timer, owner }
     if (Math.abs(target - control.intensityScale) >= 0.01) {
@@ -1444,9 +1457,9 @@ export const usePluginStore = defineStore('plugins', () => {
     }
     let servedUrl: string | null = null
 
-    async function serve(handler: HttpHandler): Promise<string | null> {
+    async function serve(handler: HttpHandler, opts: { rootAliases?: string[] } = {}): Promise<string | null> {
       shares()
-      servedUrl = await serveHttp(id, handler)
+      servedUrl = await serveHttp(id, handler, Array.isArray(opts?.rootAliases) ? opts.rootAliases : [])
       return servedUrl
     }
 
@@ -1811,6 +1824,8 @@ export const usePluginStore = defineStore('plugins', () => {
         available: servingAvailable(),
         serve: gate('serve', 'http.serve', serve),
         url: () => (servedUrl && baseUrl() ? servedUrl : null),
+        urls: () => (servedUrl ? baseUrls().map(b => `${b}/plugins/${id}/`) : []),
+        rootAliases: () => aliasesOf(id),
         stop: gate('serve', 'http.stop', () => {
           servedUrl = null
           void unserve(id)
@@ -1856,13 +1871,16 @@ export const usePluginStore = defineStore('plugins', () => {
           set: gate('session', 'session.intensity.set', (level: number) => rampIntensity(id, manifestName, level)),
           restore: gate('session', 'session.intensity.restore', (): number | null => {
             const mark = knobBefore.get(id)
-            knobBefore.delete(id)
-            // The user turned it since: it is theirs, leave it.
-            if (!mark || Math.abs(control.intensityScale - mark.left) > 0.004)
+            // Never moved it, or the user turned it since: it is theirs, leave it.
+            if (!mark || !stillPlugins(id, control.intensityScale)) {
+              knobBefore.delete(id)
               return null
-            const at = rampIntensity(id, manifestName, mark.level, Math.max(mark.level, clampLimit(intensityMax.value)))
-            knobBefore.delete(id)
-            return at
+            }
+            if (Math.abs(control.intensityScale - mark.level) <= 0.004) {
+              knobBefore.delete(id)
+              return mark.level
+            }
+            return rampIntensity(id, manifestName, mark.level, Math.max(mark.level, clampLimit(intensityMax.value)), true)
           }),
           max: gateRead('session.intensity.max', () => clampLimit(intensityMax.value)),
           onChange: gateRead('session.intensity.onChange', (fn: (level: number) => void) => {

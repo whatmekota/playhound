@@ -260,6 +260,25 @@ describe('the API holds a plugin to its permissions', () => {
       // Nothing to restore now.
       expect(ctx.session.intensity.restore()).toBeNull()
 
+      // Moved again and again mid-ramp (a slider dragged), then restored mid-ramp:
+      // still the user's own level, not wherever the ramp happened to be.
+      control.setIntensityScale(0.4)
+      ctx.session.intensity.set(0.5)
+      await vi.advanceTimersByTimeAsync(300)
+      ctx.session.intensity.set(0.6)
+      await vi.advanceTimersByTimeAsync(300)
+      ctx.session.intensity.set(0.7)
+      await vi.advanceTimersByTimeAsync(300)
+      expect(ctx.session.intensity.restore()).toBe(0.4)
+      await vi.advanceTimersByTimeAsync(200)
+      // A set() while it eases back, then restore again: the user's level still.
+      ctx.session.intensity.set(0.65)
+      await vi.advanceTimersByTimeAsync(300)
+      expect(ctx.session.intensity.restore()).toBe(0.4)
+      await vi.advanceTimersByTimeAsync(8000)
+      expect(control.intensityScale).toBeCloseTo(0.4)
+      expect(ctx.session.intensity.restore()).toBeNull()
+
       // In a panic: down at once, up not at all.
       control.setIntensityScale(0.6)
       safety.panicked = true
@@ -366,5 +385,17 @@ describe('the API holds a plugin to its permissions', () => {
     stop = null
     expect(lib.videos).toEqual([])
     expect(lib.sources).toEqual([])
+  })
+})
+
+describe('short root paths for headsets', () => {
+  it('routes /deovr and /heresphere to the plugin that holds them, and nothing else', async () => {
+    const { aliasPath } = await import('../desktop/pluginhttp.mjs')
+    const held = new Map([['deovr', 'phvr']])
+    expect(aliasPath('/deovr', held)).toBe('/plugins/phvr/deovr')
+    expect(aliasPath('/deovr/video/3', held)).toBe('/plugins/phvr/deovr/video/3')
+    expect(aliasPath('/heresphere', held)).toBe('/heresphere')
+    expect(aliasPath('/deovrx', held)).toBe('/deovrx')
+    expect(aliasPath('/plugins/other/x', held)).toBe('/plugins/other/x')
   })
 })

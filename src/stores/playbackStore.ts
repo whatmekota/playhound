@@ -68,7 +68,7 @@ export interface PlaybackTakeover {
 export type ExternalCommand = { type: 'play' } | { type: 'pause' } | { type: 'seek', time: number } | { type: 'rate', rate: number }
 
 /** Why external playback ended: the user stopped it, another video took over, or its plugin ended it. */
-export type ExternalEndReason = 'stopped' | 'replaced' | 'ended'
+export type ExternalEndReason = 'stopped' | 'replaced' | 'restarted' | 'ended'
 
 /**
  * A video playing in another app (a VR headset) that playhound follows: the
@@ -327,7 +327,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   async function playExternal(o: ExternalOptions): Promise<ExternalSession | null> {
     if (!await mayLeave('Play another video'))
       return null
-    endExternal('replaced')
+    // A new external session ends the one before: 'restarted', not the user playing something else.
+    endExternal('restarted')
     const token = ++loadToken
     loading.value = false
     pendingPlay = false
@@ -482,7 +483,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     externalTimer = null
     external.value = null
     s.end(reason)
-    if (reason !== 'replaced') {
+    if (reason !== 'replaced' && reason !== 'restarted') {
       player.setVideo('', '')
       currentEntry.value = null
       trackSeq.value++

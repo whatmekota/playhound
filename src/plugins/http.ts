@@ -135,8 +135,33 @@ export function servingAvailable(): boolean {
 
 /** http://<this computer on the LAN>:<port>, or null when nothing can be reached. */
 export function baseUrl(): string | null {
-  const host = desktop?.lan?.[0]?.address
-  return host && port ? `http://${host}:${port}` : null
+  return baseUrls()[0] ?? null
+}
+
+/**
+ * Every http://<address>:<port> this computer answers on, one per network
+ * adapter (Wi-Fi, Ethernet, but also a VPN or a virtual machine's): a
+ * device can only reach some of them, so a plugin can show them all, or
+ * build its links from the Host header a request came in with.
+ */
+export function baseUrls(): string[] {
+  if (!port)
+    return []
+  return (desktop?.lan ?? []).map(a => `http://${a.address}:${port}`)
+}
+
+/**
+ * Short paths at the server's root that headsets ask for on their own
+ * (DeoVR: http://<pc>/deovr, HereSphere: http://<pc>/heresphere). A plugin
+ * serving them claims one; the first to claim it keeps it while it serves.
+ */
+export const ROOT_ALIASES = ['deovr', 'heresphere'] as const
+export type RootAlias = typeof ROOT_ALIASES[number]
+const aliases = new Map<RootAlias, string>()
+
+/** Which root aliases a plugin holds. */
+export function aliasesOf(owner: string): RootAlias[] {
+  return [...aliases].filter(([, o]) => o === owner).map(([a]) => a)
 }
 
 /** Tell the desktop app whether anything is shared, and learn the port. */
@@ -147,7 +172,7 @@ async function sync() {
   const on = handlers.size > 0 || files.size > 0
   if (on && !unlisten)
     unlisten = http.onRequest((req, reply) => void answer(req, reply))
-  const r = await http.setOpen(on).catch(() => null)
+  const r = await http.setOpen(on, [...aliases].map(([name, owner]) => ({ name, owner }))).catch(() => null)
   port = r?.port ?? null
 }
 
@@ -156,12 +181,28 @@ function token(): string {
   return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-/** A plugin's handler for `/plugins/<owner>/…`; replaces the one before. Resolves its base URL. */
-export async function serve(owner: string, handler: HttpHandler): Promise<string | null> {
+/**
+ * A plugin's handler for `/plugins/<owner>/…`; replaces the one before.
+ * `rootAliases` also routes `/deovr…` or `/heresphere…` to it (as
+ * `/plugins/<owner>/deovr…`) when no other plugin holds them. Resolves its base URL.
+ */
+export async function serve(owner: string, handler: HttpHandler, rootAliases: readonly string[] = []): Promise<string | null> {
   if (!desktop?.http)
     throw new Error(SERVE_NEEDS_DESKTOP)
   if (typeof handler !== 'function')
     throw new TypeError('http.serve takes a function (request) => response')
+  for (const a of rootAliases) {
+    if (!(ROOT_ALIASES as readonly string[]).includes(a))
+      throw new TypeError(`http.serve: "${a}" isn't a root path a plugin can take (${ROOT_ALIASES.join(', ')})`)
+  }
+  for (const [a, o] of aliases) {
+    if (o === owner && !rootAliases.includes(a))
+      aliases.delete(a)
+  }
+  for (const a of rootAliases as RootAlias[]) {
+    if (!aliases.has(a))
+      aliases.set(a, owner)
+  }
   handlers.set(owner, handler)
   await sync()
   const base = baseUrl()
@@ -169,6 +210,10 @@ export async function serve(owner: string, handler: HttpHandler): Promise<string
 }
 
 export async function unserve(owner: string) {
+  for (const [a, o] of aliases) {
+    if (o === owner)
+      aliases.delete(a)
+  }
   if (handlers.delete(owner))
     await sync()
 }
@@ -192,6 +237,10 @@ export async function shareFile(owner: string, key: string, get: SharedFile['get
 /** Everything a plugin shared stops working: its handler and its links. */
 export async function unshareAll(owner: string) {
   handlers.delete(owner)
+  for (const [a, o] of aliases) {
+    if (o === owner)
+      aliases.delete(a)
+  }
   for (const [t, f] of files) {
     if (f.owner === owner) {
       files.delete(t)

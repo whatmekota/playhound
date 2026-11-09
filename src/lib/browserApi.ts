@@ -387,7 +387,7 @@ export interface DesktopHttpReply {
 /** Plugins' answers on the LAN server. Main window only; absent before 2.2. */
 export interface DesktopHttp {
   /** Whether any plugin serves anything; resolves the port the paths are on (null when there is no server for them). */
-  setOpen: (on: boolean) => Promise<{ port: number | null } | null>
+  setOpen: (on: boolean, aliases?: { name: string, owner: string }[]) => Promise<{ port: number | null } | null>
   onRequest: (cb: (req: DesktopHttpRequest, reply: DesktopHttpReply) => void) => () => void
 }
 

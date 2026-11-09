@@ -80,8 +80,11 @@ export function openSocket(opts: { host: string, port: number }): Promise<NetSoc
         return () => void closeFns.delete(fn)
       },
       close() {
-        if (!closed)
-          link?.close()
+        if (closed)
+          return
+        // Closed for the caller at once: a send() from now on is refused, not lost in between.
+        closed = true
+        link?.close()
       },
     }
     link = api(opts, {
