@@ -18,20 +18,10 @@
 import { Buffer } from 'node:buffer'
 import http from 'node:http'
 import { MessageChannelMain } from 'electron'
+import { aliasPath, PLUGIN_ID, ROOT_ALIASES } from './pluginhttpRules.mjs'
 
 export const PLUGIN_PATH = /^\/plugins\/[a-z0-9][a-z0-9-]{0,47}(?:\/|$)/
 export const FILE_PATH = /^\/ph-files\/[\w-]{16,64}(?:\/|$)/
-/** Root paths headsets ask for on their own, which one serving plugin may take (see src/plugins/http.ts). */
-export const ROOT_ALIASES = new Set(['deovr', 'heresphere'])
-const PLUGIN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
-
-/** `/deovr…` → `/plugins/<owner>/deovr…` when a plugin holds that alias; the path unchanged otherwise. */
-export function aliasPath(pathname, aliases) {
-  const m = pathname.match(/^\/([a-z]+)(\/.*)?$/)
-  if (!m || !aliases.has(m[1]))
-    return pathname
-  return `/plugins/${aliases.get(m[1])}/${m[1]}${m[2] ?? ''}`
-}
 const METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 const MAX_BODY = 1024 * 1024
 const ANSWER_MS = 20_000

@@ -407,7 +407,7 @@ describe('the API holds a plugin to its permissions', () => {
 
 describe('short root paths for headsets', () => {
   it('routes /deovr and /heresphere to the plugin that holds them, and nothing else', async () => {
-    const { aliasPath } = await import('../desktop/pluginhttp.mjs')
+    const { aliasPath } = await import('../desktop/pluginhttpRules.mjs')
     const held = new Map([['deovr', 'phvr']])
     expect(aliasPath('/deovr', held)).toBe('/plugins/phvr/deovr')
     expect(aliasPath('/deovr/video/3', held)).toBe('/plugins/phvr/deovr/video/3')
