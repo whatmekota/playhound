@@ -20,6 +20,7 @@ declare module 'vue' {
     BookmarksInspector: typeof import('./src/components/inspectors/BookmarksInspector.vue')['default']
     BrandMark: typeof import('./src/components/shell/BrandMark.vue')['default']
     CardScrub: typeof import('./src/components/library/CardScrub.vue')['default']
+    CardTimeline: typeof import('./src/components/share/CardTimeline.vue')['default']
     CommandPalette: typeof import('./src/components/shell/CommandPalette.vue')['default']
     DeviceInspector: typeof import('./src/components/inspectors/DeviceInspector.vue')['default']
     DirectorInspector: typeof import('./src/components/inspectors/DirectorInspector.vue')['default']
