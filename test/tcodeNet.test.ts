@@ -159,3 +159,13 @@ describe('resumeInterval', () => {
     expect(resumeInterval(33, Number.NaN)).toBe(33)
   })
 })
+
+describe('restim', () => {
+  it('is restim on this computer at its TCode ports, and nothing else', async () => {
+    const { isRestimTarget } = await import('~/lib/tcodeNet')
+    expect(isRestimTarget({ protocol: 'ws', host: 'localhost', port: 12346, path: '/tcode' } as any)).toBe(true)
+    expect(isRestimTarget({ protocol: 'udp', host: '127.0.0.1', port: 12347 } as any)).toBe(true)
+    expect(isRestimTarget({ protocol: 'udp', host: 'tcode.local', port: 8000 } as any)).toBe(false)
+    expect(isRestimTarget({ protocol: 'ws', host: '192.168.1.5', port: 12346, path: '/tcode' } as any)).toBe(false)
+  })
+})

@@ -258,7 +258,7 @@ Open the **Device** panel (**D**):
 | **TCode** (OSR2, SR6, …) | Over USB (Web Serial) or the network: a WebSocket, or UDP in the desktop app, for ESP32 builds on WiFi ([TCode ESP32](https://github.com/jcfain/TCodeESP32)) and for [restim](https://github.com/diglet48/restim). Set each axis's range, inversion and resting position, and save presets. A network link that drops reconnects by itself.                                                                                                                                                                                             |
 | **Intiface / Buttplug**  | Connect to Intiface Central. Strokers get linear moves, from scripts and from the motion generator; vibrators, rotators and oscillators get a strength from the source you pick per toy.                                                                                                                                                                                                                                                                                                                                                |
 | **The Handy**            | Firmware 4, over WiFi (paste the connection key from the Handy app) or straight over Bluetooth (no internet, no key). playhound streams the stroke script a few seconds ahead and the Handy plays it on its own clock, kept in step with the video, so fast scripts play as written, and the intensity knob and edges still apply. The motion generator (music, tap tempo, gamepad) drives it live. Under Advanced: **Live**, every move sent as it happens like MultiFunPlayer, and, over WiFi, **Whole script** for slow connections. |
-| **E-stim audio**         | Experimental, untested on real hardware. The stroke as a stereo tone on a sound output of its own, for a stim box with an audio input: restim's three-phase signal, or two channels panned. Off every time the app starts; it starts silent and fades in. Read [Safety](#e-stim-audio) first.                                                                                                                                                                                                                                           |
+| **E-stim audio**         | Experimental and new: the signal is checked against restim's maths, but not yet on many boxes, so reports are welcome. The stroke as a stereo tone on a sound output of its own, for a stim box with an audio input: restim's three-phase signal, or two channels panned. Off every time the app starts; it starts silent and fades in. Read [Safety](#e-stim-audio) first.                                                                                                                                                             |
 | **Emulator**             | A 3D OSR on screen, for trying things with nothing plugged in.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 **Connecting the Handy** (firmware 4) in the Device panel's **Handy** tab:
@@ -283,6 +283,11 @@ one update on one line.
 | restim (WebSocket)    | `ws://localhost:12346/tcode` | restim reads L0 as alpha, L1 as beta and V0 as volume.                                     |
 | restim (UDP)          | `localhost:12347`            | Desktop app only.                                                                          |
 | Custom                | any host and port            | WebSocket or UDP.                                                                          |
+
+For restim, set the stroke axis (L0) to 0–100% under **Axes**, or restim never
+reaches the ends. Panic also presses **Stop** in restim (through its own
+control port, 12348), since restim would otherwise keep stimulating where the
+stroke stopped.
 
 **Latency calibration** lines the device up with the picture. A **per-video
 offset** fixes scripts that are a little early or late.
@@ -487,7 +492,9 @@ settings with the emulator or at low range first.
 
 ### E-stim audio
 
-**Experimental and untested on real hardware.** 18+. Use it only through a
+**Experimental and new.** The signal is checked against restim's own maths
+(carrier, three-phase balance, panning, fades, limits, panic), but it hasn't
+been on many boxes yet: tell us how it works with yours. 18+. Use it only through a
 stim box made for audio input, never wired straight to a headphone jack.
 Never above the waist or across the chest, never with a pacemaker or a heart
 condition. Turn the box down before you start and raise it slowly.

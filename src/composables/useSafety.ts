@@ -8,6 +8,7 @@ import { useBinauralBeats } from './useBinauralBeats'
 import { estimPanic, estimStop } from './useEstim'
 import { popoutFocused } from './usePopout'
 import { useTCode } from './useTCode'
+import { netPanic } from './useTCodeNet'
 
 /**
  * Wires panic and the idle cut-off.
@@ -44,6 +45,7 @@ export function useSafety(controls: {
     // Device first — it is the output that keeps moving on its own. E-stim
     // audio goes silent at once and stays off until started again by hand.
     estimPanic()
+    netPanic()
     motion.enabled = false
     void homeAllAxes(400)
 

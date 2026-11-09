@@ -22,7 +22,7 @@ import { useLocalStorage } from '@vueuse/core'
 import { effectScope, ref, shallowRef } from 'vue'
 import { desktop } from '~/lib/browserApi'
 import { KEYS } from '~/lib/persist'
-import { describeTarget, mixedContentBlocked, OPEN_TIMEOUT_MS, parseAddress, presetById, retryDelay, toNetMessages, wsUrl } from '~/lib/tcodeNet'
+import { describeTarget, isRestimTarget, mixedContentBlocked, OPEN_TIMEOUT_MS, parseAddress, presetById, RESTIM_STOP_URL, retryDelay, toNetMessages, wsUrl } from '~/lib/tcodeNet'
 import { useDeviceStore } from '~/stores/deviceStore'
 
 export type TcodeLink = 'usb' | 'network'
@@ -264,6 +264,28 @@ export async function netWrite(data: string): Promise<void> {
   catch (e: any) {
     console.warn('TCode network write failed:', e?.message)
   }
+}
+
+/**
+ * Panic: a TCode device goes home (useTCode.homeAllAxes), but restim would go
+ * on stimulating there. Ask it to stop its output, as its own Stop button does;
+ * the user starts it again in restim. restim's REST API sends no CORS headers,
+ * so this is a no-cors request: it arrives, the answer is not readable. Never throws.
+ */
+export function netPanic() {
+  const t = target.value
+  if (!t || status.value === 'idle' || !isRestimTarget(t))
+    return
+  try {
+    void fetch(RESTIM_STOP_URL, { mode: 'no-cors', cache: 'no-store' }).catch(() => {})
+  }
+  catch {}
+}
+
+/** The network link is up and goes to restim (see useTCode: it gets short moves). */
+export function netIsRestim(): boolean {
+  const t = target.value
+  return status.value === 'connected' && !!t && isRestimTarget(t)
 }
 
 /** Close the network link, if any, without retrying. */

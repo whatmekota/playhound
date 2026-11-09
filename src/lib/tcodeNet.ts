@@ -64,13 +64,13 @@ export const NET_PRESETS: NetPreset[] = [
   {
     id: 'restim-ws',
     label: 'restim (WebSocket)',
-    hint: 'restim on this computer. It reads L0 as alpha, L1 as beta and V0 as volume.',
+    hint: 'restim on this computer. It reads L0 as alpha, L1 as beta and V0 as volume. Set the stroke axis (L0) to 0–100% under Axes, or restim never reaches the ends. Panic also presses Stop in restim.',
     target: { protocol: 'ws', host: 'localhost', port: 12346, path: '/tcode' },
   },
   {
     id: 'restim-udp',
     label: 'restim (UDP)',
-    hint: 'restim on this computer, over UDP. Desktop app only.',
+    hint: 'restim on this computer, over UDP. Desktop app only. Set the stroke axis (L0) to 0–100% under Axes. Panic also presses Stop in restim.',
     target: { protocol: 'udp', host: 'localhost', port: 12347, path: '' },
   },
   { id: 'custom', label: 'Custom', hint: 'Any host and port that takes TCode.', target: null },
@@ -212,6 +212,18 @@ export function isLoopback(host: string): boolean {
   const h = host.toLowerCase()
   return LOOPBACK.has(h) || h.endsWith('.localhost') || /^127\.\d+\.\d+\.\d+$/.test(h)
 }
+
+/**
+ * restim on this computer: its TCode ports, on loopback. restim keeps
+ * stimulating at the last position it was sent until told otherwise (its
+ * inactivity reduction is 0% by default), so a panic has to tell it.
+ */
+export function isRestimTarget(t: NetTarget): boolean {
+  return isLoopback(t.host) && (t.port === 12346 || t.port === 12347)
+}
+
+/** restim's REST API (net/http_server.py, on by default): stops its output. */
+export const RESTIM_STOP_URL = 'http://127.0.0.1:12348/v1/actions/stop'
 
 /**
  * Whether the browser will refuse this WebSocket: a page served over https

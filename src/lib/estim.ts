@@ -31,7 +31,8 @@
  *   What restim does that this does not: it turns a 1-D funscript into alpha
  *   AND beta, drawing each stroke as a half circle with a 10% chance of
  *   swapping sides (funscript/funscript_conversion.py), where this stays on
- *   the alpha line; its centre calibration (−0.6 dB at the middle) and
+ *   the alpha line; its centre calibration (setting −0.604, read as
+ *   10^(x/10): 87% amplitude at the middle, "Center reduction 13%") and
  *   up-down/left-right hardware calibration; pulse-based waveforms, four-
  *   phase and FOC devices; volume, carrier and pulse settings driven by
  *   their own scripts (V0, C0, P0–P3); its inactivity volume reduction and

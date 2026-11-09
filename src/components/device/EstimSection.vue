@@ -133,7 +133,7 @@ function stop() {
       <span class="i-carbon-warning-alt text-[15px] text-warn mt-px shrink-0" />
       <div class="flex flex-col gap-1 min-w-0">
         <p class="text-fg font-medium">
-          18+. Untested on real hardware.
+          18+. New: tell us how it works with your box.
         </p>
         <ul class="pl-3.5 list-disc flex flex-col gap-0.5">
           <li>Only through a stim box made for audio input. Never wire electrodes to a headphone jack.</li>

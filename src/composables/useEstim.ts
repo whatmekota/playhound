@@ -146,9 +146,19 @@ function buildGraph(c: AudioContext) {
   return { sin, cos, lc, ls, rc, rs, master }
 }
 
+/**
+ * Glide `param` to `value`, starting at `t`, about `over` seconds to get there.
+ *
+ * setTargetAtTime starts from whatever the param is at `t`, so a late or early
+ * tick can never make it jump. cancelAndHoldAtTime + linearRampToValueAtTime
+ * did: in Chrome the ramp now and then started from the param's initial value
+ * (0) instead, a drop to silence and a 25 ms climb back, about once a second.
+ * An exponential approach between two mixes is still a blend of them, so it
+ * never exceeds the louder one either.
+ */
 function rampTo(param: AudioParam, value: number, t: number, over: number) {
-  param.cancelAndHoldAtTime(t)
-  param.linearRampToValueAtTime(value, t + over)
+  param.cancelScheduledValues(t)
+  param.setTargetAtTime(value, t, over / 3)
 }
 
 /** Silence at once: no ramp. */
@@ -261,24 +271,21 @@ export function useEstim() {
     const mix = mixFor(cfg.mapping, pos)
     const t = ctx.currentTime
     // Gains move to the next update's values over one update: smooth, and a
-    // straight line between two mixes never exceeds the louder of them.
+    // blend of two mixes never exceeds the louder of them.
     rampTo(nodes.lc.gain, mix.left.c, t, TICK_SEC)
     rampTo(nodes.ls.gain, mix.left.s, t, TICK_SEC)
     rampTo(nodes.rc.gain, mix.right.c, t, TICK_SEC)
     rampTo(nodes.rs.gain, mix.right.s, t, TICK_SEC)
     const g = nodes.master.gain
     rampTo(g, level.level, t, TICK_SEC)
-    // Dead man's switch: unless the next update comes, fade out.
-    g.setValueAtTime(level.level, t + DEADMAN_HOLD_SEC)
-    g.linearRampToValueAtTime(0, t + DEADMAN_HOLD_SEC + DEADMAN_FADE_SEC)
+    // Dead man's switch: unless the next update comes (and cancels this), fade out.
+    g.setTargetAtTime(0, t + DEADMAN_HOLD_SEC, DEADMAN_FADE_SEC / 3)
 
     const hz = clampCarrier(cfg.carrierHz)
     if (Math.abs(nodes.sin.frequency.value - hz) > 0.5) {
       // Both together, so they keep their quarter turn.
-      for (const o of [nodes.sin, nodes.cos]) {
-        o.frequency.cancelAndHoldAtTime(t)
-        o.frequency.linearRampToValueAtTime(hz, t + 0.2)
-      }
+      for (const o of [nodes.sin, nodes.cos])
+        rampTo(o.frequency, hz, t, 0.2)
     }
 
     if (++tickCount % METER_EVERY === 0) {
@@ -290,11 +297,19 @@ export function useEstim() {
       meter.position = pos
     }
 
-    // Stopped and silent: let the audio rest.
+    // Stopped and silent: let the audio rest, once the fade to zero just
+    // scheduled has played. Suspending in the same tick stopped the output
+    // mid-fade, about a quarter of the level, a small click at every Stop.
+    // (Panic still cuts and suspends at once: estimPanic.)
     if (!armed.value && level.level <= SILENT) {
-      cutMaster()
       stopLoop()
-      void ctx.suspend().catch(() => {})
+      const c = ctx
+      setTimeout(() => {
+        if (running.value || armed.value || ctx !== c)
+          return
+        cutMaster()
+        void c.suspend().catch(() => {})
+      }, 150)
     }
   }
 

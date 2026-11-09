@@ -4,7 +4,7 @@ import { encodeTCode, SEND_INTERVAL_MS } from '~/lib/tcodeEncoder'
 import { resumeInterval } from '~/lib/tcodeNet'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useSerialPort } from './useSerialPort'
-import { netWrite } from './useTCodeNet'
+import { netIsRestim, netWrite } from './useTCodeNet'
 
 let emuInstance: { write: (s: string) => void } | null = null
 export function setEmuInstance(inst: { write: (s: string) => void } | null) { emuInstance = inst }
@@ -48,6 +48,9 @@ function track(channel: string, position: number, limits: AxisLimits, intervalMs
   p = limits.min + p * (limits.max - limits.min)
   axisOutput[channel] = Math.max(0, Math.min(1, p))
 }
+
+/** How far ahead each move to restim aims: two updates. */
+const RESTIM_HORIZON_MS = 2 * SEND_INTERVAL_MS
 
 // Per-axis rate limiting: don't flood the serial port (min 33ms between writes per axis)
 const lastSentAt: Record<string, number> = {}
@@ -108,8 +111,18 @@ export function useTCode() {
       return
     lastSentAt[channel] = now
 
-    const gentle = resumeInterval(interval, now - linkUpAt)
-    const out = gentle === interval ? cmd : encodeTCode({ channel, position, interval: gentle }, limits, ver)
+    // restim keeps a point it was already given when a newer move ends later
+    // (stim_math/axis.py, ShortMemoryTimeline.add), so a look-ahead move that
+    // changes on the way (soft start, the knob, an edge, panic) is followed
+    // late and then jumps. Give it where the stroke will be a moment ahead.
+    let pos = position
+    let ivl = interval
+    if (opts.reported !== undefined && interval > RESTIM_HORIZON_MS && netIsRestim()) {
+      pos = opts.reported + (position - opts.reported) * (RESTIM_HORIZON_MS / interval)
+      ivl = RESTIM_HORIZON_MS
+    }
+    const gentle = resumeInterval(ivl, now - linkUpAt)
+    const out = gentle === interval && pos === position ? cmd : encodeTCode({ channel, position: pos, interval: gentle }, limits, ver)
 
     // Fire-and-forget — do NOT await, RAF can't block waiting for serial
     write(out).catch(e => console.warn('TCode write error:', e.message))

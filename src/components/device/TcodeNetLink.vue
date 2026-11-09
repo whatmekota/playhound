@@ -82,6 +82,8 @@ let clock: ReturnType<typeof setInterval> | null = null
 watch(() => net.status.value === 'reconnecting', (on) => {
   if (clock)
     clearInterval(clock)
+  // Fresh at once: otherwise the first half second counts from when the panel opened ("in 241 s").
+  now.value = performance.now()
   clock = on ? setInterval(() => (now.value = performance.now()), 500) : null
 }, { immediate: true })
 onBeforeUnmount(() => clock && clearInterval(clock))
