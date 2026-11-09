@@ -20,7 +20,7 @@ export { newer } from './storeMeta'
  * sources. A new one here reaches existing users once (see addNewDefaults):
  * one they removed stays removed.
  */
-export const DEFAULT_SOURCES = ['whatmekota/playmate', 'whatmekota/ph2gether', 'whatmekota/phbrowser']
+export const DEFAULT_SOURCES = ['whatmekota/playmate', 'whatmekota/ph2gether', 'whatmekota/phbrowser', 'whatmekota/phthreads', 'whatmekota/phbeatbar', 'whatmekota/phstash', 'whatmekota/phvr']
 
 /** What 1.5 shipped as the only default, before defaults were tracked. */
 const FIRST_DEFAULTS = ['whatmekota/playmate']

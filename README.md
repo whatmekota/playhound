@@ -81,10 +81,13 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 - **Record a session as a script.** **Shift+C** records what the device does,
   whatever drives it (manual, music, a programme, a plugin), and saves it as a
   `.funscript`, timed to the video if one was playing.
-- **Share cards.** A picture of a script to post with it: the speed heatmap in
-  funscript.io's colours, a row per extra axis, chapters, length, actions and
-  speeds. Three looks (Forum, Candy, Poster), banner or tall; copy it or save
-  it next to the video.
+- **Share cards.** A picture of a script to post with it: the strokes
+  themselves coloured by speed (playhound's own scale, or funscript.io's,
+  OpenFunScripter's or EroScripts'), a row per extra axis, chapters, length,
+  actions and speeds, a still from the video behind it, and one big picture or
+  four picked from a timeline. Three looks (Forum, Candy, Poster), banner or
+  tall; copy it or save it next to the video. The share button is on every
+  scripted video in the library.
 - **Subtitles and tags.** `.srt`, `.vtt` and `.ass` files next to a video are
   picked up (**V** turns them on). Tag videos yourself, or filter by the tags
   playhound works out from the scripts: pace, intensity, length, multi-axis, VR.
@@ -146,10 +149,20 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
     people, each with their own playhound and device, watch and play in sync
     over the internet, with a chat for swapping links. The apps connect
     directly, encrypted; five emojis to compare out loud show that nobody is
-    in between.
+    in between. Partners can hand each other the controls (edges, intensity,
+    what plays), with consent and within each side's own limits.
   - [phbrowser](https://github.com/whatmekota/phbrowser): a web browser on
     playhound's stage, so tap tempo and generated motion keep going while you
     browse (desktop app).
+  - [phthreads](https://github.com/whatmekota/phthreads): finds the EroScripts
+    threads of your library's videos, with their tags and newer versions.
+  - [phbeatbar](https://github.com/whatmekota/phbeatbar): a Cock Hero-style
+    beat bar over the video, to follow the script by hand.
+  - [phstash](https://github.com/whatmekota/phstash): your Stash collection in
+    the library, streamed with its funscripts, tags and markers.
+  - [phvr](https://github.com/whatmekota/phvr): follow a video playing in
+    HereSphere or DeoVR and drive your devices from playhound, and browse your
+    library from the headset (desktop app; new, reports welcome).
 
   Writing one is described in [docs/plugins.md](docs/plugins.md), including a
   dev mode that reloads your plugin as you save.
@@ -591,8 +604,12 @@ real hardware:
 - the Handy's Live mode and generated motion over WiFi (fixed in 1.4.0, not yet
   confirmed)
 - vibrators through Intiface, and the Handy through Intiface
-- TCode over the network (an ESP32 build, restim) and e-stim audio, both new
-  in 2.2
+- an ESP32 OSR build over the network, new in 2.2 (restim has been checked:
+  it follows playhound over WebSocket and UDP)
+- e-stim audio on a real stim box, new in 2.2: the signal is checked against
+  restim's own maths, but how it feels is up to you
+- the phvr plugin on a real headset (HereSphere, DeoVR); it was tested
+  against a stand-in
 
 Reports and fixes are welcome.
 
