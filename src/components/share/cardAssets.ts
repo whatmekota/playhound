@@ -109,14 +109,16 @@ let cached: Promise<CardAssets> | null = null
 /** Fonts and marks, loaded once. */
 export function loadCardAssets(): Promise<CardAssets> {
   cached ??= (async () => {
-    const sticker = fetch(logoUrl('sly-grin', true, true)).then(r => r.text()).then(t => svgPic(t, 480)).catch(() => null)
-    const [, wordmarkNight, wordmarkCandy, stickerCandy] = await Promise.all([
+    const stickerPic = fetch(logoUrl('sly-grin', true, true)).then(r => r.text()).then(t => svgPic(t, 480)).catch(() => null)
+    // The logo's own pink on every look: its pale rim reads on dark cards,
+    // on Candy's pink and over a frame alike, where the night colouring's
+    // dark letters sank into the card.
+    const [, wordmark, sticker] = await Promise.all([
       loadCardFonts(),
-      svgPic(wordmarkFor('night'), 1600),
       svgPic(wordmarkFor('sly-grin'), 1600),
-      sticker,
+      stickerPic,
     ])
-    return { wordmarkNight, wordmarkCandy, stickerCandy }
+    return { wordmark, sticker }
   })()
   return cached
 }
@@ -131,49 +133,5 @@ export async function picFromUrl(url: string): Promise<Pic | null> {
   }
   catch {
     return null
-  }
-}
-
-/**
- * A frame from a video file at `atSec`, decoded in a throwaway element.
- * Null when it cannot be read (an unsupported codec, a stream).
- */
-export async function frameFromFile(file: File | Blob, atSec: number, maxWidth = 1600): Promise<Pic | null> {
-  const url = URL.createObjectURL(file)
-  const v = document.createElement('video')
-  v.muted = true
-  v.preload = 'auto'
-  v.src = url
-  try {
-    await new Promise<void>((resolve, reject) => {
-      v.onloadedmetadata = () => resolve()
-      v.onerror = () => reject(new Error('unreadable'))
-      setTimeout(() => reject(new Error('timeout')), 8000)
-    })
-    const t = Math.min(Math.max(0, atSec), Math.max(0, (v.duration || 0) - 0.1))
-    await new Promise<void>((resolve, reject) => {
-      v.onseeked = () => resolve()
-      v.onerror = () => reject(new Error('unreadable'))
-      setTimeout(() => reject(new Error('timeout')), 8000)
-      v.currentTime = t
-    })
-    const scale = Math.min(1, maxWidth / (v.videoWidth || maxWidth))
-    const w = Math.round(v.videoWidth * scale)
-    const h = Math.round(v.videoHeight * scale)
-    if (!w || !h)
-      return null
-    const c = document.createElement('canvas')
-    c.width = w
-    c.height = h
-    c.getContext('2d')?.drawImage(v, 0, 0, w, h)
-    return { img: c, w, h }
-  }
-  catch {
-    return null
-  }
-  finally {
-    v.removeAttribute('src')
-    v.load()
-    URL.revokeObjectURL(url)
   }
 }

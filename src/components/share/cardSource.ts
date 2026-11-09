@@ -1,16 +1,20 @@
+import type { FrameMedia } from './cardFrames'
 import type { CardAxis, Pic } from './drawCard'
 import type { Action } from '~/lib/funscriptAnalysis'
+import type { PreviewSource } from '~/lib/previews'
 import type { CardChapter } from '~/lib/shareCard'
 import type { VideoEntry } from '~/stores/libraryStore'
 import type { ShareCardTarget } from '~/stores/uiStore'
+import { proxiedStream } from '~/composables/useStreams'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 import { authorChapters, GAP_NAME } from '~/lib/chapters'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
+import { isAudioName } from '~/lib/mediaFiles'
 import { creatorOf, titleFromName } from '~/lib/shareCard'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { sourceOf, useScriptStore } from '~/stores/scriptStore'
-import { frameFromFile, picFromUrl } from './cardAssets'
+import { picFromUrl } from './cardAssets'
 
 /**
  * Everything a share card is made from, gathered for one target: the scripts
@@ -27,8 +31,34 @@ export interface CardSource {
   video: File | null
   /** The video's file name: what the PNG is named after. */
   videoName: string
-  /** A frame for the background, fetched only when asked for. */
-  frame: () => Promise<Pic | null>
+  /** Where frames can be read from, opened only when the dialog wants them; null when they cannot. */
+  media: () => Promise<FrameMedia | null>
+  /** The picture showing in the player now: what the card uses when `media` gives nothing. */
+  playerFrame: (() => Promise<Pic | null>) | null
+  /** Where the player is, in seconds, when this is what it plays; else null. */
+  startSec: number | null
+  /** The library's scrub previews for it, when it has a file to make them from. */
+  preview: PreviewSource | null
+}
+
+/** A local file's frames, through an object URL of its own. */
+function fileMedia(file: File, name: string): FrameMedia {
+  const url = URL.createObjectURL(file)
+  return { url, name, cross: false, release: () => URL.revokeObjectURL(url) }
+}
+
+/** A plugin-provided video's frames: from its stream, through the proxy when it needs headers. HLS has none to give. */
+async function remoteMedia(entry: VideoEntry): Promise<FrameMedia | null> {
+  const r = entry.remote
+  if (!r || r.kind !== 'file')
+    return null
+  try {
+    const url = r.headers ? await proxiedStream(r.url, r.headers, r.kind) : r.url
+    return { url, name: entry.name, cross: true }
+  }
+  catch {
+    return null
+  }
 }
 
 interface RawAxis { channel: string, label: string, actions: Action[] }
@@ -98,10 +128,24 @@ async function fromLoaded(): Promise<CardSource | null> {
     chapters: chaptersOf(axes, metadata, durationMs),
     video,
     videoName,
-    frame: async () => {
+    media: async () => {
+      if (video)
+        return fileMedia(video, videoName)
+      const entry = playback.currentEntry
+      if (entry?.remote)
+        return remoteMedia(entry)
+      // A stream: the same address in an element of our own, if it is a plain file.
+      const url = player.videoUrl
+      if (!url || player.videoKind !== 'file' || player.audioOnly)
+        return null
+      return { url, name: videoName, cross: !url.startsWith('blob:') && !url.startsWith(location.origin) }
+    },
+    playerFrame: async () => {
       const url = playback.grabFrame(1600, 0.92)
       return url ? picFromUrl(url) : null
     },
+    startSec: player.currentTime > 0 ? player.currentTime : null,
+    preview: video && playback.currentEntry && !playback.currentEntry.remote ? playback.currentEntry : null,
   }
 }
 
@@ -132,8 +176,15 @@ async function fromEntry(entry: VideoEntry): Promise<CardSource | null> {
     durationMs,
     axes,
     chapters: chaptersOf(axes, metadata, durationMs),
-    video: entry.file,
+    video: entry.remote ? null : entry.file,
     videoName: entry.name,
-    frame: () => frameFromFile(entry.file, Math.max(1, (entry.duration ?? 60) * 0.35)),
+    media: async () => {
+      if (entry.kind === 'audio' || isAudioName(entry.name))
+        return null
+      return entry.remote ? remoteMedia(entry) : fileMedia(entry.file, entry.name)
+    },
+    playerFrame: null,
+    startSec: null,
+    preview: entry.remote || entry.kind === 'audio' ? null : entry,
   }
 }

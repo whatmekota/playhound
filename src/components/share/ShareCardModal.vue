@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import type { FrameGrabber } from './cardFrames'
 import type { CardSource } from './cardSource'
-import type { CardAssets, Pic } from './drawCard'
-import type { CardPrefs, CardSize, CardStyle, HeatPalette } from '~/lib/shareCard'
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import type { CardAssets, Pic, Shot } from './drawCard'
+import type { CardPicture, CardPrefs, CardSize, CardStyle, HeatPalette } from '~/lib/shareCard'
+import { computed, onBeforeUnmount, ref, shallowReactive, shallowRef, watch } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
 import UiModal from '~/components/ui/UiModal.vue'
@@ -12,18 +13,21 @@ import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { toast } from '~/composables/useToast'
 import { KEYS } from '~/lib/persist'
-import { CARD_SCALE, CARD_SIZES, CARD_STYLES, cardFileName, normaliseCardPrefs, PALETTES } from '~/lib/shareCard'
+import { getStrip } from '~/lib/previews'
+import { CARD_PICTURES, CARD_SCALE, CARD_SIZES, CARD_STYLES, cardFileName, defaultMoments, heatScale, normaliseCardPrefs, PALETTES, speedRange } from '~/lib/shareCard'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useUiStore } from '~/stores/uiStore'
 import { loadCardAssets } from './cardAssets'
 import { copyPng, savePngAs, writePng } from './cardExport'
+import { openGrabber } from './cardFrames'
 import { loadCardSource } from './cardSource'
+import CardTimeline from './CardTimeline.vue'
 import { drawCard } from './drawCard'
 
 /**
  * "Share card…": a picture of a script for its forum post. Pick a look and a
- * size, fix the title and the creator, then copy it or save it. The preview
- * is the export, drawn at the same size.
+ * size, the moments of the video it shows, fix the title and the creator,
+ * then copy it or save it. The preview is the export, drawn at the same size.
  */
 const ui = useUiStore()
 const library = useLibraryStore()
@@ -36,7 +40,7 @@ const open = computed({
   },
 })
 
-function readPrefs(): CardPrefs {
+function readPrefs(): CardPrefs & { v: number } {
   try {
     return normaliseCardPrefs(JSON.parse(localStorage.getItem(KEYS.shareCard.key) ?? 'null'))
   }
@@ -44,7 +48,7 @@ function readPrefs(): CardPrefs {
     return normaliseCardPrefs(null)
   }
 }
-const prefs = ref<CardPrefs>(readPrefs())
+const prefs = ref(readPrefs())
 watch(prefs, (p) => {
   try {
     localStorage.setItem(KEYS.shareCard.key, JSON.stringify(p))
@@ -58,13 +62,43 @@ const loading = ref(false)
 const failed = ref(false)
 const title = ref('')
 const creator = ref('')
-/** The video frame behind the card: off for every new card, the user's call each time. */
-const withFrame = ref(false)
-const frame = shallowRef<Pic | null>(null)
-const frameBusy = ref(false)
 /** A folder to save next to the video, when the library can write there. */
 const canSaveBeside = ref(false)
 const busy = ref<'copy' | 'save' | 'saveAs' | null>(null)
+
+// ─── Frames ──────────────────────────────────────────────────────────────────
+
+/**
+ * Where the frames come from: a hidden video of our own ('ready'), only the
+ * picture in the player ('player'), or nothing ('none').
+ */
+const frameState = ref<'idle' | 'opening' | 'ready' | 'player' | 'none'>('idle')
+const grabber = shallowRef<FrameGrabber | null>(null)
+/** The card's moments in seconds: the first is also the background. */
+const moments = ref<number[]>([])
+const activeMoment = ref(0)
+/**
+ * The full-size frame for each moment, by its place in `moments`, and the
+ * time it is from: kept until a moved moment's new frame is in, so the card
+ * never shows a gap while one loads.
+ */
+const pics = shallowReactive(new Map<number, { pic: Pic, sec: number }>())
+/** The player's own picture, when that is all there is. */
+const playerPic = shallowRef<Pic | null>(null)
+/** Small frames for the timeline row, when the library has no previews. */
+const thumbs = ref<[number, string][]>([])
+const durationSec = computed(() => grabber.value?.duration || (source.value?.durationMs ?? 0) / 1000)
+
+function dropFrames() {
+  grabber.value?.dispose()
+  grabber.value = null
+  pics.clear()
+  playerPic.value = null
+  thumbs.value = []
+  moments.value = []
+  activeMoment.value = 0
+  frameState.value = 'idle'
+}
 
 const preview = ref<HTMLCanvasElement | null>(null)
 const card = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(10, 10) : null
@@ -73,8 +107,7 @@ let seq = 0
 watch(() => ui.shareCard, async (target) => {
   const mine = ++seq
   source.value = null
-  frame.value = null
-  withFrame.value = false
+  dropFrames()
   failed.value = false
   canSaveBeside.value = false
   if (!target)
@@ -89,6 +122,8 @@ watch(() => ui.shareCard, async (target) => {
     failed.value = !src
     title.value = src?.title ?? ''
     creator.value = src?.creator ?? ''
+    if (src)
+      void openFrames(src, mine)
     if (src?.video)
       canSaveBeside.value = !!await library.writableDirOf(src.video, false)
   }
@@ -101,22 +136,149 @@ watch(() => ui.shareCard, async (target) => {
       loading.value = false
   }
 }, { immediate: true })
+onBeforeUnmount(dropFrames)
 
-watch(withFrame, async (on) => {
-  if (!on || frame.value || !source.value)
+async function openFrames(src: CardSource, mine: number) {
+  frameState.value = 'opening'
+  const media = await src.media().catch(() => null)
+  const g = media ? await openGrabber(media) : null
+  if (mine !== seq) {
+    g?.dispose()
     return
-  frameBusy.value = true
+  }
+  if (g) {
+    grabber.value = g
+    moments.value = defaultMoments(g.duration, src.startSec)
+    frameState.value = 'ready'
+    void wantPics()
+    void grabThumbs(g, src, mine)
+    return
+  }
+  // No frames of our own: the picture in the player, if it shows this.
+  playerPic.value = src.playerFrame ? await src.playerFrame().catch(() => null) : null
+  if (mine !== seq)
+    return
+  moments.value = [src.startSec ?? 0]
+  frameState.value = playerPic.value ? 'player' : 'none'
+}
+
+/** The timeline's row of frames, when the library has no scrub previews for it. */
+async function grabThumbs(g: FrameGrabber, src: CardSource, mine: number) {
+  if (src.preview && getStrip(src.preview))
+    return
+  const n = 12
+  for (let i = 0; i < n; i++) {
+    // The card's own frames go first.
+    for (let wait = 0; missing() >= 0 && wait < 100; wait++)
+      await new Promise(r => setTimeout(r, 150))
+    if (mine !== seq)
+      return
+    const t = ((i + 0.5) / n) * g.duration
+    const pic = await g.grab(t, 192)
+    if (mine !== seq || !pic)
+      return
+    thumbs.value = [...thumbs.value, [t, (pic.img as HTMLCanvasElement).toDataURL('image/jpeg', 0.7)]]
+  }
+}
+
+const strip = computed(() => (source.value?.preview ? getStrip(source.value.preview) : null))
+
+/** The moments the card shows now. */
+function needed(): number[] {
+  const n = prefs.value.picture === 'four' ? 4 : 1
+  return moments.value.slice(0, prefs.value.frame || prefs.value.picture !== 'none' ? n : 0)
+}
+
+/** The first moment whose frame is not in (or is from where it was before it moved); -1 for none. */
+function missing() {
+  return needed().findIndex((t, i) => pics.get(i)?.sec !== t)
+}
+
+let fetching = false
+/** Grab every moment the card shows that is not in yet, and let go of the rest. */
+async function wantPics() {
+  const g = grabber.value
+  if (!g || fetching)
+    return
+  fetching = true
   try {
-    frame.value = await source.value.frame()
+    for (;;) {
+      const n = needed().length
+      for (const i of [...pics.keys()]) {
+        if (i >= n)
+          pics.delete(i)
+      }
+      const i = missing()
+      if (i < 0 || grabber.value !== g)
+        break
+      const sec = moments.value[i]
+      const pic = await g.grab(sec, 1600, 'card')
+      if (!pic || grabber.value !== g)
+        break
+      pics.set(i, { pic, sec })
+    }
   }
   finally {
-    frameBusy.value = false
+    fetching = false
   }
-  if (!frame.value) {
-    withFrame.value = false
-    toast.error('Could not get a frame from this video')
-  }
+}
+watch(() => [prefs.value.picture, prefs.value.frame], () => void wantPics())
+
+/** A live frame for the timeline's preview. */
+async function peek(sec: number): Promise<string | null> {
+  const pic = await grabber.value?.grab(sec, 352, 'peek')
+  return pic ? (pic.img as HTMLCanvasElement).toDataURL('image/jpeg', 0.75) : null
+}
+
+/** A pin let go: its frame for the card. */
+function onCommit() {
+  void wantPics()
+}
+
+const background = computed<Pic | null>(() => {
+  if (!prefs.value.frame)
+    return null
+  if (frameState.value === 'player')
+    return playerPic.value
+  return pics.get(0)?.pic ?? null
 })
+
+const shots = computed<Shot[]>(() => {
+  if (prefs.value.picture === 'none')
+    return []
+  if (frameState.value === 'player')
+    return playerPic.value ? [{ pic: playerPic.value, atMs: (moments.value[0] ?? 0) * 1000 }] : []
+  const out: Shot[] = []
+  needed().forEach((_, i) => {
+    const p = pics.get(i)
+    if (p)
+      out.push({ pic: p.pic, atMs: p.sec * 1000 })
+  })
+  return out
+})
+
+const framesOk = computed(() => frameState.value === 'ready' || frameState.value === 'player')
+const pictureOptions = computed(() => CARD_PICTURES
+  .filter(p => p.id !== 'four' || frameState.value !== 'player')
+  .map(p => ({ value: p.id as CardPicture, label: p.label })))
+/** What the card asks for, put back when frames turn out not to be there. */
+const picture = computed({
+  get: () => (frameState.value === 'player' && prefs.value.picture === 'four' ? 'one' : prefs.value.picture),
+  set: (v: CardPicture) => (prefs.value.picture = v),
+})
+const timelineHint = computed(() => {
+  if (frameState.value === 'opening')
+    return 'Opening the video…'
+  if (frameState.value === 'player')
+    return 'Picking moments is not available for this video: the card uses the picture in the player.'
+  if (frameState.value === 'none')
+    return 'Pictures are not available for this video.'
+  if (prefs.value.picture === 'four')
+    return 'Click or drag to place each picture. Picture 1 is also the background.'
+  return 'Click or drag to pick the moment the card shows.'
+})
+
+// ─── Drawing ─────────────────────────────────────────────────────────────────
 
 const hasChapters = computed(() => (source.value?.chapters.length ?? 0) > 1)
 /** Shown off when there are none, without forgetting the choice for scripts that have them. */
@@ -127,6 +289,8 @@ const showChapters = computed({
   },
 })
 const size = computed(() => CARD_SIZES[prefs.value.size])
+const mainActions = computed(() => source.value?.axes[0]?.actions ?? [])
+const scale = computed(() => heatScale(prefs.value.palette, prefs.value.fit ? speedRange(mainActions.value) : null))
 
 function render() {
   const src = source.value
@@ -138,7 +302,7 @@ function render() {
     durationMs: src.durationMs,
     axes: src.axes,
     chapters: src.chapters,
-  }, { ...assets.value, frame: withFrame.value ? frame.value : null }, prefs.value)
+  }, { ...assets.value, frame: background.value, shots: shots.value }, { ...prefs.value, picture: picture.value })
   const c = preview.value
   if (!c)
     return
@@ -148,7 +312,7 @@ function render() {
 }
 
 let raf = 0
-watch([source, assets, title, creator, prefs, withFrame, frame, preview], () => {
+watch([source, assets, title, creator, prefs, background, shots, picture, preview], () => {
   cancelAnimationFrame(raf)
   raf = requestAnimationFrame(render)
 }, { deep: true })
@@ -248,6 +412,29 @@ const styleNote = computed(() => CARD_STYLES.find(s => s.id === prefs.value.styl
         </p>
       </div>
 
+      <div v-if="source" class="flex flex-col gap-1.5">
+        <div class="flex gap-3 items-end justify-between">
+          <span class="label">Pictures</span>
+          <UiSegmented v-model="picture" :options="pictureOptions" size="xs" :class="{ 'opacity-45 pointer-events-none': !framesOk }" />
+        </div>
+        <CardTimeline
+          v-if="frameState === 'ready' && durationSec > 0"
+          v-model:moments="moments"
+          v-model:active="activeMoment"
+          :duration-sec="durationSec"
+          :actions="mainActions"
+          :scale="scale"
+          :count="picture === 'four' ? 4 : 1"
+          :strip="strip"
+          :thumbs="thumbs"
+          :peek="peek"
+          @commit="onCommit"
+        />
+        <span class="hint flex gap-1.5 items-center">
+          <UiSpinner v-if="frameState === 'opening'" :size="12" />{{ timelineHint }}
+        </span>
+      </div>
+
       <div class="gap-x-6 gap-y-3 grid grid-cols-1 md:grid-cols-2">
         <div class="flex flex-col gap-3 min-w-0">
           <div class="flex flex-col gap-1.5">
@@ -274,6 +461,12 @@ const styleNote = computed(() => CARD_STYLES.find(s => s.id === prefs.value.styl
           </label>
         </div>
         <UiSwitch
+          v-model="prefs.fit"
+          size="sm"
+          label="Fit colours to this script"
+          hint="Stretch the colours over its own speeds, so even an all-fast script shows its shape"
+        />
+        <UiSwitch
           v-model="showChapters"
           size="sm"
           :disabled="!hasChapters"
@@ -281,11 +474,11 @@ const styleNote = computed(() => CARD_STYLES.find(s => s.id === prefs.value.styl
           :hint="hasChapters ? 'The names the script gives its parts' : 'This script names no chapters'"
         />
         <UiSwitch
-          v-model="withFrame"
+          v-model="prefs.frame"
           size="sm"
-          :disabled="!source || frameBusy"
+          :disabled="!framesOk"
           label="Video frame behind it"
-          hint="A still from the video, faded back. Off for every new card."
+          :hint="framesOk ? 'A still from the video, faded back. Remembered for the next card.' : 'Not available for this video'"
         />
       </div>
     </div>

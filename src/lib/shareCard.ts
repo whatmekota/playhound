@@ -17,7 +17,9 @@ import { detectPeaks } from './funscriptAnalysis'
 
 export type CardStyle = 'forum' | 'candy' | 'poster'
 export type CardSize = 'banner' | 'tall'
-export type HeatPalette = 'funscriptio' | 'ofs' | 'eroscripts'
+export type HeatPalette = 'playhound' | 'funscriptio' | 'ofs' | 'eroscripts'
+/** Pictures from the video on the card: none, one big one, or four moments. */
+export type CardPicture = 'none' | 'one' | 'four'
 
 export const CARD_STYLES: { id: CardStyle, label: string, note: string }[] = [
   { id: 'forum', label: 'Forum', note: 'Clean and compact, made for EroScripts\' dark theme' },
@@ -37,29 +39,52 @@ export const CARD_SIZES: Record<CardSize, { w: number, h: number, label: string 
 export const CARD_SCALE = 2
 
 export const PALETTES: { id: HeatPalette, label: string }[] = [
+  { id: 'playhound', label: 'playhound' },
   { id: 'funscriptio', label: 'funscript.io' },
   { id: 'ofs', label: 'OpenFunScripter' },
   { id: 'eroscripts', label: 'EroScripts' },
+]
+
+export const CARD_PICTURES: { id: CardPicture, label: string }[] = [
+  { id: 'none', label: 'None' },
+  { id: 'one', label: '1 big' },
+  { id: 'four', label: '4 frames' },
 ]
 
 export interface CardPrefs {
   style: CardStyle
   size: CardSize
   palette: HeatPalette
+  /** Stretch the colours over this script's own speeds rather than the scale's fixed ones. */
+  fit: boolean
   chapters: boolean
+  /** A frame of the video behind the card. */
+  frame: boolean
+  picture: CardPicture
 }
 
-export const DEFAULT_CARD_PREFS: CardPrefs = { style: 'forum', size: 'banner', palette: 'funscriptio', chapters: true }
+export const DEFAULT_CARD_PREFS: CardPrefs = { style: 'forum', size: 'banner', palette: 'playhound', fit: false, chapters: true, frame: true, picture: 'none' }
+
+/** Bumped when a default changes in a way saved prefs should pick up. */
+const PREFS_VERSION = 2
 
 /** Saved prefs, with anything missing or unknown put back to the default. */
-export function normaliseCardPrefs(v: unknown): CardPrefs {
+export function normaliseCardPrefs(v: unknown): CardPrefs & { v: number } {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   const pick = <T extends string>(x: unknown, ok: readonly T[], d: T): T => (ok.includes(x as T) ? x as T : d)
+  const bool = (x: unknown, d: boolean) => (typeof x === 'boolean' ? x : d)
+  // Before v2 the colours were saved with everything else whether picked or
+  // not; the playhound scale is the new default, so they start from it.
+  const old = o.v !== PREFS_VERSION
   return {
+    v: PREFS_VERSION,
     style: pick(o.style, ['forum', 'candy', 'poster'], DEFAULT_CARD_PREFS.style),
     size: pick(o.size, ['banner', 'tall'], DEFAULT_CARD_PREFS.size),
-    palette: pick(o.palette, ['funscriptio', 'ofs', 'eroscripts'], DEFAULT_CARD_PREFS.palette),
-    chapters: typeof o.chapters === 'boolean' ? o.chapters : DEFAULT_CARD_PREFS.chapters,
+    palette: old ? DEFAULT_CARD_PREFS.palette : pick(o.palette, ['playhound', 'funscriptio', 'ofs', 'eroscripts'], DEFAULT_CARD_PREFS.palette),
+    fit: bool(o.fit, DEFAULT_CARD_PREFS.fit),
+    chapters: bool(o.chapters, DEFAULT_CARD_PREFS.chapters),
+    frame: bool(o.frame, DEFAULT_CARD_PREFS.frame),
+    picture: pick(o.picture, ['none', 'one', 'four'], DEFAULT_CARD_PREFS.picture),
   }
 }
 
@@ -181,19 +206,181 @@ function eroscripts(speed: number): Rgb {
   return oklchToRgb(l, c, hue)
 }
 
+/**
+ * playhound's own: cool and slow to hot and fast, through blue, cyan, green,
+ * yellow, orange and red, then on past where the others stop, into pink,
+ * violet and indigo to a white-hot lilac at 1100. Speeds between marks are placed by
+ * their ratio, not their difference, so 300, 450 and 600 are as far apart as
+ * 60, 90 and 120: a gentle script uses the cool half and an intense one still
+ * has steps left. Every mark is bright enough to read on a dark well and over
+ * a frame.
+ */
+const PLAYHOUND: [number, Rgb][] = [
+  [0, [52, 72, 170]],
+  [25, [64, 98, 235]],
+  [55, [36, 148, 255]],
+  [95, [0, 200, 235]],
+  [150, [24, 214, 140]],
+  [210, [140, 226, 46]],
+  [280, [255, 214, 30]],
+  [350, [255, 140, 26]],
+  [440, [255, 62, 52]],
+  [550, [255, 34, 136]],
+  [690, [214, 52, 255]],
+  [870, [150, 110, 255]],
+  [1100, [236, 214, 255]],
+]
+
+function playhound(speed: number): Rgb {
+  const last = PLAYHOUND[PLAYHOUND.length - 1]
+  if (speed >= last[0])
+    return last[1]
+  for (let i = 1; i < PLAYHOUND.length; i++) {
+    const [b, cb] = PLAYHOUND[i]
+    if (speed > b)
+      continue
+    const [a, ca] = PLAYHOUND[i - 1]
+    // By ratio between marks (the first span, from 0, by difference).
+    const t = a > 0 ? Math.log(speed / a) / Math.log(b / a) : speed / b
+    return mixOklab(ca, cb, t)
+  }
+  return last[1]
+}
+
 /** The colour for `speed` (units/s) on `palette`, as [r, g, b] 0-255. */
-export function heatRgb(speed: number, palette: HeatPalette = 'funscriptio'): Rgb {
+export function heatRgb(speed: number, palette: HeatPalette = 'playhound'): Rgb {
   const s = Number.isFinite(speed) ? Math.max(0, speed) : 0
   if (palette === 'ofs')
     return ofs(s)
   if (palette === 'eroscripts')
     return eroscripts(s)
-  return funscriptio(s)
+  if (palette === 'funscriptio')
+    return funscriptio(s)
+  return playhound(s)
 }
 
-export function heatColor(speed: number, palette: HeatPalette = 'funscriptio', alpha = 1): string {
-  const [r, g, b] = heatRgb(speed, palette)
+export function heatColor(speed: number, palette: HeatPalette = 'playhound', alpha = 1): string {
+  return rgbCss(heatRgb(speed, palette), alpha)
+}
+
+export function rgbCss([r, g, b]: Rgb, alpha = 1): string {
   return alpha >= 1 ? `rgb(${r},${g},${b})` : `rgba(${r},${g},${b},${alpha})`
+}
+
+// ─── Heat scales ──────────────────────────────────────────────────────────────
+
+/**
+ * The speeds a palette's colours run over: below `lo` is its first colour,
+ * above `hi` its last. `log` when it is spaced by ratio.
+ */
+const RANGES: Record<HeatPalette, { lo: number, hi: number, log: boolean }> = {
+  playhound: { lo: 25, hi: 1100, log: true },
+  // Black below this, so a fitted script starts on the blue.
+  funscriptio: { lo: 40, hi: 610, log: false },
+  ofs: { lo: 12, hi: 400, log: false },
+  eroscripts: { lo: 0, hi: 780, log: false },
+}
+
+/** The speeds a scale is stretched over when fitted to a script. */
+export interface SpeedRange { lo: number, hi: number }
+
+/**
+ * A palette ready to colour a card: plain, or stretched over one script's
+ * speeds so even an all-intense script shows where it eases off and where it
+ * peaks. `at(u)` is the speed at `u` (0-1) along the legend.
+ */
+export interface HeatScale {
+  palette: HeatPalette
+  fit: SpeedRange | null
+  rgb: (speed: number) => Rgb
+  color: (speed: number, alpha?: number) => string
+  at: (u: number) => number
+}
+
+export function heatScale(palette: HeatPalette, fit: SpeedRange | null = null): HeatScale {
+  const range = RANGES[palette]
+  const native = (u: number) => {
+    const f = clamp01(u)
+    return range.log ? range.lo * (range.hi / range.lo) ** f : range.lo + (range.hi - range.lo) * f
+  }
+  // Fitted, speeds are placed by ratio across the script's own range, and
+  // then given the palette's colour for that place along its own range.
+  const rgb = fit
+    ? (s: number) => (s <= 0 ? heatRgb(0, palette) : heatRgb(native(Math.log(s / fit.lo) / Math.log(fit.hi / fit.lo)), palette))
+    : (s: number) => heatRgb(s, palette)
+  const at = fit
+    ? (u: number) => fit.lo * (fit.hi / fit.lo) ** clamp01(u)
+    : native
+  return { palette, fit, rgb, color: (s, a = 1) => rgbCss(rgb(s), a), at }
+}
+
+/**
+ * The spread of a script's speeds while it moves, time-weighted: the
+ * `loQ` and `hiQ` quantiles, what "fit to this script" stretches the colours
+ * over. Kept at least a fifth apart, so a script at one steady speed is not
+ * all one end of the scale or the other. Null for one that never moves.
+ */
+export function speedRange(actions: Action[], loQ = 0.05, hiQ = 0.98): SpeedRange | null {
+  const segs: [number, number][] = []
+  let total = 0
+  for (let i = 1; i < actions.length; i++) {
+    const dt = actions[i].at - actions[i - 1].at
+    const dp = Math.abs(actions[i].pos - actions[i - 1].pos) * 100
+    if (dt <= 0 || dp === 0)
+      continue
+    segs.push([(dp / dt) * 1000, dt])
+    total += dt
+  }
+  if (!segs.length)
+    return null
+  segs.sort((a, b) => a[0] - b[0])
+  const quantile = (q: number) => {
+    let acc = 0
+    for (const [s, dt] of segs) {
+      acc += dt
+      if (acc >= q * total)
+        return s
+    }
+    return segs[segs.length - 1][0]
+  }
+  let lo = Math.max(5, quantile(loQ))
+  let hi = Math.max(lo, quantile(hiQ))
+  if (hi < lo * 1.5) {
+    const mid = Math.sqrt(lo * hi)
+    lo = mid / 1.25
+    hi = mid * 1.25
+  }
+  return { lo, hi }
+}
+
+// OKLab, for blending between the playhound marks without muddy middles.
+function toLin(c: number) {
+  const x = c / 255
+  return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+}
+
+function rgbToOklab([r, g, b]: Rgb): [number, number, number] {
+  const R = toLin(r)
+  const G = toLin(g)
+  const B = toLin(b)
+  const l = Math.cbrt(0.4122214708 * R + 0.5363325363 * G + 0.0514459929 * B)
+  const m = Math.cbrt(0.2119034982 * R + 0.6806995451 * G + 0.1073969566 * B)
+  const s = Math.cbrt(0.0883024619 * R + 0.2817188376 * G + 0.6299787005 * B)
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+  ]
+}
+
+function mixOklab(a: Rgb, b: Rgb, t: number): Rgb {
+  const f = clamp01(t)
+  const A = rgbToOklab(a)
+  const B = rgbToOklab(b)
+  const L = A[0] + (B[0] - A[0]) * f
+  const x = A[1] + (B[1] - A[1]) * f
+  const y = A[2] + (B[2] - A[2]) * f
+  return oklchToRgb(L, Math.hypot(x, y), (Math.atan2(y, x) * 180) / Math.PI)
 }
 
 function mix(a: Rgb, b: Rgb, t: number): Rgb {
@@ -248,104 +435,100 @@ export function oklchToRgb(l: number, c: number, hDeg: number): Rgb {
 
 // ─── Heatmap columns ──────────────────────────────────────────────────────────
 
-export interface HeatBin {
-  /** Mean speed in units/s; null where the script has not started or has ended. */
+export interface StrokeCol {
+  /** Speed around here in units/s; 0 holding still; null before the script starts or after it ends. */
   speed: number | null
-  /** Bottom and top of the strokes around here, 0-1. */
+  /** Lowest and highest position the script passes through in this column, 0-1. */
   lo: number
   hi: number
 }
 
-/** How far around each column the speed is averaged, so colours do not flicker stroke by stroke. */
-const SPEED_WINDOW_MS = 2400
-/** How far around each column to look for the bottom and top of the stroke. */
-const RANGE_WINDOW_MS = 1600
-
 /**
- * The script cut into `count` columns over `durationMs`: the speed in each
- * (time-weighted over its segments, averaged across a couple of seconds the
- * way funscript.io's does) and the range the strokes cover there, which is
- * what gives a funscript.io heatmap its shape.
+ * The script's position line cut into `count` columns over `durationMs`, one
+ * per pixel of the drawing: where the line goes in each (its lowest and
+ * highest point there, from the actions themselves, so every stroke shows as
+ * a peak and a valley until strokes are narrower than a pixel) and how fast it
+ * moves around then. The speed is taken over `speedWindowMs` (or the column,
+ * when that is wider) and only over the time spent moving, so a stroke keeps
+ * its colour through the pause at its turn and a hold shows as no speed.
  */
-export function heatBins(actions: Action[], count: number, durationMs: number): HeatBin[] {
+export function strokeColumns(actions: Action[], count: number, durationMs: number, speedWindowMs = 240): StrokeCol[] {
   const n = Math.max(1, Math.floor(count))
   const span = durationMs > 0 ? durationMs : (actions.length ? actions[actions.length - 1].at : 0)
-  const out: HeatBin[] = Array.from({ length: n }, () => ({ speed: null, lo: 0.5, hi: 0.5 }))
-  if (actions.length < 2 || span <= 0)
+  const out: StrokeCol[] = Array.from({ length: n }, () => ({ speed: null, lo: 0.5, hi: 0.5 }))
+  const m = actions.length
+  if (m < 2 || span <= 0)
     return out
-  const binMs = span / n
-  const weight = new Float64Array(n)
-  const sum = new Float64Array(n)
-  const lo = new Float64Array(n).fill(Number.POSITIVE_INFINITY)
-  const hi = new Float64Array(n).fill(Number.NEGATIVE_INFINITY)
+  const colMs = span / n
+  const first = actions[0].at
+  const last = actions[m - 1].at
 
-  for (let i = 1; i < actions.length; i++) {
-    const a = actions[i - 1]
-    const b = actions[i]
+  // Running totals at each action: distance travelled and time spent moving.
+  const travel = new Float64Array(m)
+  const moving = new Float64Array(m)
+  for (let i = 1; i < m; i++) {
+    const dt = actions[i].at - actions[i - 1].at
+    const dp = Math.abs(actions[i].pos - actions[i - 1].pos) * 100
+    travel[i] = travel[i - 1] + (dt > 0 ? dp : 0)
+    moving[i] = moving[i - 1] + (dt > 0 && dp > 0 ? dt : 0)
+  }
+  /** Index of the segment holding `t`: the last action at or before it. */
+  const seg = (t: number) => {
+    let lo = 0
+    let hi = m - 1
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1
+      if (actions[mid].at <= t)
+        lo = mid
+      else
+        hi = mid - 1
+    }
+    return Math.min(lo, m - 2)
+  }
+  const posAt = (i: number, t: number) => {
+    const a = actions[i]
+    const b = actions[i + 1]
     const dt = b.at - a.at
-    if (dt <= 0)
-      continue
-    const speed = (Math.abs(b.pos - a.pos) * 100 * 1000) / dt
-    const first = Math.max(0, Math.floor(a.at / binMs))
-    const last = Math.min(n - 1, Math.floor(Math.max(a.at, b.at - 1e-6) / binMs))
-    for (let k = first; k <= last; k++) {
-      const t0 = Math.max(a.at, k * binMs)
-      const t1 = Math.min(b.at, (k + 1) * binMs)
-      if (t1 < t0)
-        continue
-      const w = t1 - t0
-      weight[k] += w
-      sum[k] += speed * w
-      const p0 = a.pos + (b.pos - a.pos) * ((t0 - a.at) / dt)
-      const p1 = a.pos + (b.pos - a.pos) * ((t1 - a.at) / dt)
-      lo[k] = Math.min(lo[k], p0, p1)
-      hi[k] = Math.max(hi[k], p0, p1)
-    }
+    return dt > 0 ? a.pos + (b.pos - a.pos) * Math.min(1, Math.max(0, (t - a.at) / dt)) : b.pos
+  }
+  /** Distance travelled and time moving from the start up to `t`. */
+  const totals = (t: number): [number, number] => {
+    const c = Math.min(last, Math.max(first, t))
+    const i = seg(c)
+    const a = actions[i]
+    const b = actions[i + 1]
+    const dt = b.at - a.at
+    const f = dt > 0 ? Math.min(1, Math.max(0, (c - a.at) / dt)) : 0
+    const dp = travel[i + 1] - travel[i]
+    return [travel[i] + dp * f, moving[i] + (dp > 0 ? (moving[i + 1] - moving[i]) * f : 0)]
   }
 
-  const covered = (k: number) => weight[k] > 0
-  const reach = (ms: number) => Math.max(0, Math.round(ms / 2 / binMs))
-  const sr = reach(SPEED_WINDOW_MS)
-  const rr = reach(RANGE_WINDOW_MS)
+  const half = Math.max(colMs, speedWindowMs) / 2
   for (let k = 0; k < n; k++) {
-    if (!covered(k))
+    const t0 = k * colMs
+    const t1 = t0 + colMs
+    if (t1 <= first || t0 > last)
       continue
-    let w = 0
-    let s = 0
-    for (let j = Math.max(0, k - sr); j <= Math.min(n - 1, k + sr); j++) {
-      w += weight[j]
-      s += sum[j]
+    const a = Math.max(t0, first)
+    const b = Math.min(t1, last)
+    let i = seg(a)
+    let lo = posAt(i, a)
+    let hi = lo
+    // Every action point inside the column, then where the line leaves it.
+    while (i + 1 < m && actions[i + 1].at <= b) {
+      i++
+      lo = Math.min(lo, actions[i].pos)
+      hi = Math.max(hi, actions[i].pos)
     }
-    let l = Number.POSITIVE_INFINITY
-    let h = Number.NEGATIVE_INFINITY
-    for (let j = Math.max(0, k - rr); j <= Math.min(n - 1, k + rr); j++) {
-      if (!covered(j))
-        continue
-      l = Math.min(l, lo[j])
-      h = Math.max(h, hi[j])
-    }
-    out[k] = { speed: w > 0 ? s / w : 0, lo: l, hi: h }
+    const pb = posAt(Math.min(i, m - 2), b)
+    lo = Math.min(lo, pb)
+    hi = Math.max(hi, pb)
+    const mid = (t0 + t1) / 2
+    const [d0, m0] = totals(mid - half)
+    const [d1, m1] = totals(mid + half)
+    const mt = m1 - m0
+    out[k] = { speed: mt > 1e-6 ? ((d1 - d0) / mt) * 1000 : 0, lo, hi }
   }
-
-  // Ease the edges of the stroke band so it reads as a shape, not a comb.
-  const smooth = (get: (b: HeatBin) => number, set: (b: HeatBin, v: number) => void) => {
-    const vals = out.map(get)
-    for (let k = 0; k < n; k++) {
-      if (out[k].speed === null)
-        continue
-      let s = 0
-      let c = 0
-      for (let j = Math.max(0, k - 2); j <= Math.min(n - 1, k + 2); j++) {
-        if (out[j].speed === null)
-          continue
-        s += vals[j]
-        c++
-      }
-      set(out[k], s / c)
-    }
-  }
-  smooth(b => b.lo, (b, v) => (b.lo = v))
-  smooth(b => b.hi, (b, v) => (b.hi = v))
   return out
 }
 
@@ -636,6 +819,59 @@ export function chapterLabels(chapters: CardChapter[], durationMs: number, width
     lastEnd = x + measure(text, size) + pad
   }
   return out
+}
+
+/**
+ * `n` equal tiles filling `area` in `cols` columns, `gap` apart, row by row.
+ * Rounded to whole card units so their edges stay crisp.
+ */
+export function tileGrid(area: Rect, n: number, cols: number, gap: number): Rect[] {
+  const c = Math.max(1, Math.min(cols, n))
+  const rows = Math.max(1, Math.ceil(n / c))
+  const w = (area.w - gap * (c - 1)) / c
+  const h = (area.h - gap * (rows - 1)) / rows
+  const out: Rect[] = []
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(area.x + (i % c) * (w + gap))
+    const y = Math.round(area.y + Math.floor(i / c) * (h + gap))
+    out.push({ x, y, w: Math.round(area.x + (i % c) * (w + gap) + w) - x, h: Math.round(area.y + Math.floor(i / c) * (h + gap) + h) - y })
+  }
+  return out
+}
+
+/**
+ * Where a picture panel goes on a banner: a box `aspect` wide per unit of
+ * height on the left of `area` (the card less its padding), and what is left
+ * beside it after `gap`. No panel (null) when the rest would be narrower than
+ * `minRest`: then the frame is only the background.
+ */
+export function bannerSplit(area: Rect, aspect: number, gap: number, minRest: number): { panel: Rect, rest: Rect } | null {
+  const w = Math.round(area.h * aspect)
+  const restW = area.w - w - gap
+  if (restW < minRest)
+    return null
+  return {
+    panel: { x: area.x, y: area.y, w, h: area.h },
+    rest: { x: area.x + w + gap, y: area.y, w: restW, h: area.h },
+  }
+}
+
+/**
+ * The moments a card's pictures start at: `first` (where the player is, or a
+ * third of the way in), then the rest spread evenly over the video, away from
+ * it. Seconds, in time order after the first.
+ */
+export function defaultMoments(durationSec: number, first: number | null, count = 4): number[] {
+  const d = Math.max(0, durationSec)
+  const start = first !== null && first > 0 && first < d ? first : d * 0.33
+  const spread = Array.from({ length: count }, (_, i) => (d * (i + 0.5)) / count)
+  // Drop the evenly spread one nearest the first, keep the others.
+  let near = 0
+  spread.forEach((t, i) => {
+    if (Math.abs(t - start) < Math.abs(spread[near] - start))
+      near = i
+  })
+  return [start, ...spread.filter((_, i) => i !== near)].map(t => Math.round(t * 10) / 10)
 }
 
 /** Cover-fit an image of `iw` × `ih` into `box`: the source rect to draw from. */

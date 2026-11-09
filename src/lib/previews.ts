@@ -292,7 +292,7 @@ async function pump() {
  * Side-by-side VR is two eyes in one frame; a crop of the middle is the seam
  * between them. Take the left eye instead.
  */
-function looksSbs(name: string, w: number, h: number) {
+export function looksSbs(name: string, w: number, h: number) {
   const aspect = w / h
   return (aspect > 1.95 && aspect < 2.05)
     || (aspect > 1.6 && /(?:^|[^a-z0-9])(?:180|vr|sbs|lr|3dh)(?:[^a-z0-9]|$)/i.test(name))
