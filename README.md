@@ -117,6 +117,17 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 - **Body in the loop.** A Bluetooth heart-rate monitor can call an edge for you
   when your rate climbs fast. Vibrators get a strength worked out from the
   script, the music or the session.
+- **Rules.** Automation without writing a plugin: "heart rate over 130 during
+  Build → edge", "after 20 minutes → intensity +10%", "on finish → cool down
+  and pause". Triggers are things the app really sees (heart rate, phases,
+  minutes in, videos and chapters, edges, finishes, intensity, the script's
+  pace, tags); actions go through the same controls as your keys. Each rule
+  has a cooldown, there is a cap on firings a minute, and panic stops them all.
+- **Insights.** Stats says what your history adds up to: time to a finish and
+  how it is trending, whether edging makes sessions longer, which scripts and
+  tags end in a finish, what ends a session, your heart rate at edges and
+  finishes. Each finding says how many sessions it rests on, and stays hidden
+  until there are enough.
 - **Streams straight from the post.** Pixeldrain, Gofile, MEGA, Iwara,
   Rule34Video and PMVHaven links play without downloading anything first, with
   seeking and a quality choice; Pornhub, XVideos, Hanime1, rule34.xyz and many
@@ -411,9 +422,15 @@ it full screen on your second display, and it needs no relay or setup.
 
 - **Left nav:** Player, Library, Playlists, Media Wall, Slideshow,
   EroScripts, Organizer, Stats, and a button for each plugin that has a page.
-- **Right rail:** Queue, Scripts, Bookmarks, Device, Motion, Programme, Remote,
-  Face, Binaural, Hypno, Director, Backup, and a button for each plugin that
-  has a panel. Middle-click a panel icon to pin it.
+- **Right rail:** Queue, Scripts, Bookmarks, Device, Motion, Programme, Rules,
+  Remote, Face, Binaural, Hypno, Director, Backup, and a button for each plugin
+  that has a panel. Middle-click a panel icon to pin it.
+- **Rules:** one trigger, any conditions (all must hold), one or more actions
+  and a cooldown each. Five starters come switched off. **Try it now** runs a
+  rule's actions straight away, and the panel logs the last 50 firings with
+  the reason. Intensity changes ramp at about 5% a second; nothing a rule does
+  can pass the speed ceiling or turn generated motion on, and a rule never
+  answers an event its own action caused. Rules are in Backup.
 - **Plugins:** Settings → Plugins installs them from the store or a zip and
   holds their settings. The install screen lists what a plugin asks for;
   official plugins (by whatmekota) carry a check mark. A plugin still runs
@@ -421,7 +438,8 @@ it full screen on your second display, and it needs no relay or setup.
 - **Library:** one folder or several (a collection split across drives),
   search (`tag:name` and `type:audio` too), filter chips and tags, sort by folder, script intensity and speed sparklines,
   hover-scrub previews, and an **auto-director** that picks the next video
-  to suit the moment. Audio files with a script are listed with an **Audio**
+  to suit the moment (and, if you switch it on, leans towards videos you
+  finish to). Audio files with a script are listed with an **Audio**
   badge and chip, and their embedded cover (or a picture of the script) as the
   thumbnail. The buttons at the top of the player pick what plays on the stage
   with them: **Slideshow**, **Media wall**, **Hypno** or **Cover**.
@@ -430,7 +448,13 @@ it full screen on your second display, and it needs no relay or setup.
 - **EroScripts:** browse Free Scripts, play a post's video with its scripts,
   download both under one name, save posts for later (see
   [The EroScripts browser](#the-eroscripts-browser)).
-- **Stats:** watch time, plays, finishes and edges, per video and per day.
+- **Stats:** watch time, plays, finishes and edges, per video and per day, and
+  Insights: this week against the last, time to finish, edging and session
+  length, finishes by script intensity and by tag, what ends a session, time
+  of day and weekday, heart rate and script pace at a finish. Sessions (start,
+  end, edges, finishes, heart rate and pace at those moments) are logged from
+  2.2 on, so those findings start then; the rest use everything recorded. A
+  session ends after half an hour with nothing playing.
 - **Themes:** dark, light, Catppuccin and Dracula, plus a choice of logos.
   In the desktop app, **Interface size** makes everything up to twice as big,
   for a screen across the room.
@@ -453,6 +477,9 @@ playhound moves real hardware, so generated motion is bounded:
   where the motion is instead of jumping there.
 - **Panic** (Esc or `) stops every output at once and covers the screen. Press
   it again to resume. It works from the keyboard, the phone and the gamepad.
+- **Rules** can only do what your own controls do, never pass the speed
+  ceiling and never switch generated motion on. Nothing fires during a panic,
+  and after it a rule has to see its trigger happen again.
 
 The motion maths lives in `src/lib/motionMath.ts`, `src/lib/edging.ts` and
 `src/lib/musicMotion.ts`, and is covered by unit tests. Still, test new
