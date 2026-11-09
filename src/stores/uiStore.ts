@@ -1,4 +1,5 @@
 import type { FloatingId, InspectorId, ViewId } from '~/lib/views'
+import type { VideoEntry } from '~/stores/libraryStore'
 /**
  * Shell state: which view owns the stage, which inspectors are open, which
  * floating windows and dialogs are up. Persisted, so a reload comes back to
@@ -8,8 +9,11 @@ import type { FloatingId, InspectorId, ViewId } from '~/lib/views'
  * (`ui.openView('library')`, `ui.openInspector('device')`) instead.
  */
 import { defineStore } from 'pinia'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { findView } from '~/lib/views'
+
+/** What a share card is made of: the scripts loaded now, or a library video's. */
+export type ShareCardTarget = { kind: 'loaded' } | { kind: 'entry', entry: VideoEntry }
 
 const LS_KEY = 'ph:ui.shell'
 
@@ -62,6 +66,8 @@ export const useUiStore = defineStore('ui', () => {
   const settingsSection = ref<string | null>(null)
   /** "Play a link…": paste a link to stream. */
   const playLinkOpen = ref(false)
+  /** "Share card…": the dialog is open for this. */
+  const shareCard = shallowRef<ShareCardTarget | null>(null)
   /** A file is being dragged over the window. */
   const dragging = ref(false)
 
@@ -180,6 +186,7 @@ export const useUiStore = defineStore('ui', () => {
     settingsOpen,
     settingsSection,
     playLinkOpen,
+    shareCard,
     dragging,
     drawerOpen,
     onPlayer,

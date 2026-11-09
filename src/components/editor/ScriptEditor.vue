@@ -310,6 +310,7 @@ const fpsOptions = [24, 25, 30, 60].map(v => ({ value: v, label: String(v) }))
         <span class="text-[11.5px] text-fg-faint num hidden lg:inline">
           {{ edit.points.length.toLocaleString() }} pts<template v-if="selected"> · {{ selected.toLocaleString() }} selected</template>
         </span>
+        <UiIconButton icon="i-carbon-image" label="Share card" size="sm" :disabled="!edit.target" @click="ui.shareCard = { kind: 'loaded' }" />
         <UiButton variant="ghost" size="sm" :disabled="!edit.target || edit.saving" @click="edit.saveAs()">
           Save as…
         </UiButton>

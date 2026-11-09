@@ -82,6 +82,7 @@ declare module 'vue' {
     ScrubPreview: typeof import('./src/components/player/ScrubPreview.vue')['default']
     SerialLogViewer: typeof import('./src/components/device/SerialLogViewer.vue')['default']
     SettingsModal: typeof import('./src/components/shell/SettingsModal.vue')['default']
+    ShareCardModal: typeof import('./src/components/share/ShareCardModal.vue')['default']
     ShortcutsModal: typeof import('./src/components/shell/ShortcutsModal.vue')['default']
     SlideshowView: typeof import('./src/components/views/SlideshowView.vue')['default']
     SpeedControl: typeof import('./src/components/player/SpeedControl.vue')['default']

@@ -151,6 +151,7 @@ export const KEYS = {
   timelineHeatmap: def('ph:ui.timeline.heatmap', 'ui', 'Timeline heatmap'),
   fsUpNext: def('ph:ui.player.fsUpNext', 'ui', 'Fullscreen up-next sheet'),
   scriptEditor: def('ph:ui.scriptEditor', 'ui', 'Script editor snapping, speed warning and height'),
+  shareCard: def('ph:ui.shareCard', 'ui', 'Share card style, size and colours'),
   eroscriptsView: def('ph:ui.eroscripts.view', 'ui', 'EroScripts grid or list'),
   organizerSort: def('ph:ui.organizer.sort', 'ui', 'Organizer sort'),
   queueHistoryOpen: def('ph:ui.queue.historyOpen', 'ui', 'Queue history section'),

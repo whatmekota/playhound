@@ -154,8 +154,10 @@ export default defineConfig({
     }),
     presetWebFonts({
       fonts: {
-        sans: 'Geist:400,500,600,700',
+        sans: 'Geist:400,500,600,700,800',
         mono: 'Geist Mono:400,500',
+        // The brand's rounded face (the wordmark is drawn from it): share cards.
+        round: 'Fredoka:500,600,700',
       },
     }),
   ],

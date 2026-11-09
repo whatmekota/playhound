@@ -237,6 +237,14 @@ const tuning = ref<string | null>(null)
         </button>
         <UiIconButton
           v-if="scripts.hasScripts"
+          icon="i-carbon-image"
+          label="Share card"
+          size="sm"
+          tip="bottom"
+          @click="ui.shareCard = { kind: 'loaded' }"
+        />
+        <UiIconButton
+          v-if="scripts.hasScripts"
           icon="i-carbon-close"
           label="Unload all scripts"
           size="sm"

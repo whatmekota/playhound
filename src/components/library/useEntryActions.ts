@@ -159,6 +159,8 @@ export function useEntryActions(opts: {
         { label: 'Info & tags…', icon: 'i-carbon-tag-edit', run: () => (infoEntry.value = one) },
         { label: 'Copy file name', icon: 'i-carbon-copy', run: () => void copyName(one) },
       )
+      if (one.hasScript)
+        items.push({ label: 'Share card…', icon: 'i-carbon-image', run: () => (ui.shareCard = { kind: 'entry', entry: one }) })
     }
     if (extra.length)
       items.push({ separator: true }, ...extra)

@@ -183,6 +183,7 @@ const commands = computed<Item[]>(() => {
       keywords: 'pattern keep reuse editor',
       run: () => scriptEdit.openPatternSave(),
     },
+    scripts.hasScripts && { id: 'cmd:share-card', kind: 'command', label: 'Share card…', hint: 'A heatmap picture of the script, for its post', icon: 'i-carbon-image', keywords: 'heatmap image picture png post forum eroscripts export share', run: () => { ui.shareCard = { kind: 'loaded' } } },
     scripts.anyTweaked && { id: 'cmd:reset-tweaks', kind: 'command', label: 'Reset script tweaks', hint: 'Play the script as written', icon: 'i-carbon-reset', keywords: 'invert range speed limit smoothing offset', run: () => scripts.resetTweaks() },
     { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
     loaded && { id: 'cmd:next-peak', kind: 'command', label: 'Jump to the next peak', icon: 'i-carbon-skip-forward-outline', keywords: 'good part intense fast chapter', kbd: ['G'], run: () => session.nextPeak() },

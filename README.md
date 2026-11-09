@@ -81,6 +81,10 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 - **Record a session as a script.** **Shift+C** records what the device does,
   whatever drives it (manual, music, a programme, a plugin), and saves it as a
   `.funscript`, timed to the video if one was playing.
+- **Share cards.** A picture of a script to post with it: the speed heatmap in
+  funscript.io's colours, a row per extra axis, chapters, length, actions and
+  speeds. Three looks (Forum, Candy, Poster), banner or tall; copy it or save
+  it next to the video.
 - **Subtitles and tags.** `.srt`, `.vtt` and `.ass` files next to a video are
   picked up (**V** turns them on). Tag videos yourself, or filter by the tags
   playhound works out from the scripts: pace, intensity, length, multi-axis, VR.

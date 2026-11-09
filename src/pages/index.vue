@@ -10,6 +10,7 @@ import NowPlayingBar from '~/components/player/NowPlayingBar.vue'
 import PopoutCard from '~/components/player/PopoutCard.vue'
 import VideoPlayer from '~/components/player/VideoPlayer.vue'
 import PluginOverlays from '~/components/plugins/PluginOverlays.vue'
+import ShareCardModal from '~/components/share/ShareCardModal.vue'
 import AppNav from '~/components/shell/AppNav.vue'
 import CommandPalette from '~/components/shell/CommandPalette.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
@@ -539,6 +540,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <PlayLinkModal />
     <RecordingSheet />
     <UnsavedEditsModal />
+    <ShareCardModal />
 
     <!-- Floating windows over whichever view is open -->
     <OsrEmulator v-if="ui.isFloatingOpen('emulator')" />
