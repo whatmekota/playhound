@@ -1,9 +1,3 @@
-<script lang="ts">
-// Device config is read from storage once per page load. The inspector can be
-// unmounted and remounted by the drawer's KeepAlive; reloading then would
-// throw away nothing, but there is no reason to do it either.
-</script>
-
 <script setup lang="ts">
 import type { ButtplugClientDevice } from 'buttplug'
 import type { MenuItem } from '~/components/ui/menu'
@@ -33,6 +27,9 @@ import { useDeviceStore } from '~/stores/deviceStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useUiStore } from '~/stores/uiStore'
 
+// Device config is read from storage once per page load. The inspector can be
+// unmounted and remounted by the drawer's KeepAlive; reloading then would
+// throw away nothing, but there is no reason to do it either.
 let hydrated = false
 
 const device = useDeviceStore()
@@ -45,6 +42,8 @@ const net = useTCodeNet()
 const { save, load, downloadGoon, importGoon } = useSettings()
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
+/** Keep a sliver of travel; min == max would pin the axis (or a toy's range) in place. */
+const MIN_SPAN = 0.05
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 onMounted(() => {
@@ -473,8 +472,6 @@ function toggleAxis(ch: string) {
   expanded.value = expanded.value === ch ? null : ch
 }
 
-/** Keep a sliver of travel; min == max would pin the axis in place. */
-const MIN_SPAN = 0.05
 function setMin(axis: AxisConfig, e: Event) {
   const el = e.target as HTMLInputElement
   const v = Math.min(Number(el.value), axis.max - MIN_SPAN)
