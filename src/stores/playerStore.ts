@@ -26,6 +26,15 @@ export const usePlayerStore = defineStore('player', () => {
    * no video track. The stage then shows the visual picked for audio.
    */
   const audioOnly = ref(false)
+  /** The picture's own size in pixels, once the media says (0 before, and for sound alone). */
+  const videoWidth = ref(0)
+  const videoHeight = ref(0)
+  /**
+   * Where the picture is drawn inside the player, in CSS px from its top-left
+   * (object-contain: letterboxed or pillarboxed), and the player's size; null
+   * with no picture. Kept by VideoPlayer, for plugins (player.picture).
+   */
+  const pictureRect = ref<{ x: number, y: number, width: number, height: number, areaWidth: number, areaHeight: number } | null>(null)
   const videoDuration = ref(0) // seconds
   const currentTime = ref(0) // seconds
   const isPlaying = ref(false)
@@ -85,6 +94,8 @@ export const usePlayerStore = defineStore('player', () => {
     videoKind.value = kind
     // By name until the media says (VideoPlayer, on loadedmetadata).
     audioOnly.value = isAudioName(path)
+    videoWidth.value = 0
+    videoHeight.value = 0
     currentTime.value = 0
     videoDuration.value = 0
     isPlaying.value = false
@@ -117,6 +128,9 @@ export const usePlayerStore = defineStore('player', () => {
   return {
     videoKind,
     audioOnly,
+    videoWidth,
+    videoHeight,
+    pictureRect,
     videoPath,
     videoUrl,
     videoDuration,

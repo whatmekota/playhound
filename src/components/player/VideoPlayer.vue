@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { AudioVisual } from '~/composables/useAudioVisual'
 import type { VideoEntry } from '~/stores/libraryStore'
-import { useLocalStorage } from '@vueuse/core'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { useElementSize, useLocalStorage } from '@vueuse/core'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch, watchEffect } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
@@ -19,6 +19,7 @@ import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/ch
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { isAudioName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
+import { containRect } from '~/lib/pictureRect'
 import { requestStrip } from '~/lib/previews'
 import { cueHtml, isSubtitleName } from '~/lib/subtitles'
 import { ensureThumb, prefetchThumbs } from '~/lib/thumbs'
@@ -170,6 +171,8 @@ function onLoadedMetadata() {
     player.videoDuration = el.duration
     // No picture: an audio file, or a stream that turned out to be one.
     player.audioOnly = isAudioName(player.videoPath ?? '') || (!el.videoWidth && !el.videoHeight)
+    player.videoWidth = el.videoWidth
+    player.videoHeight = el.videoHeight
   }
   if (popped.value)
     popout.fit(videoAspect())
@@ -654,12 +657,42 @@ const subLift = computed(() => {
 /**
  * How much of the picture the player's own bars cover right now, top and
  * bottom, as CSS variables on the root: plugins' overlays (inside it) keep
- * clear with `bottom: var(--ph-controls-bottom)`. See docs/plugins.md.
+ * clear with `bottom: var(--ph-controls-bottom)`, and sit over the picture
+ * itself with the --ph-picture-* ones. See docs/plugins.md.
  */
-const controlsInset = computed(() => ({
-  '--ph-controls-top': `${chromeVisible.value && !popped.value ? 64 : 0}px`,
-  '--ph-controls-bottom': `${subLift.value}px`,
-}))
+const { width: areaW, height: areaH } = useElementSize(rootEl)
+/**
+ * Where the picture sits in the player (object-contain), for plugins: a
+ * portrait video is pillarboxed, so an overlay that belongs over the picture
+ * reads this rather than the player's whole box. The look-around VR view
+ * fills the player.
+ */
+watchEffect(() => {
+  const W = areaW.value
+  const H = areaH.value
+  const vw = player.videoWidth
+  const vh = player.videoHeight
+  if (!W || !H || !vw || !vh || player.audioOnly || player.videoKind === 'external') {
+    player.pictureRect = null
+    return
+  }
+  if (vrView.value) {
+    player.pictureRect = { x: 0, y: 0, width: W, height: H, areaWidth: W, areaHeight: H }
+    return
+  }
+  player.pictureRect = containRect(W, H, vw, vh)
+})
+const controlsInset = computed(() => {
+  const r = player.pictureRect
+  return {
+    '--ph-controls-top': `${chromeVisible.value && !popped.value ? 64 : 0}px`,
+    '--ph-controls-bottom': `${subLift.value}px`,
+    '--ph-picture-left': `${r ? r.x : 0}px`,
+    '--ph-picture-top': `${r ? r.y : 0}px`,
+    '--ph-picture-width': r ? `${r.width}px` : '100%',
+    '--ph-picture-height': r ? `${r.height}px` : '100%',
+  }
+})
 
 /** V: on and off. Shift + V: off, then each track in turn. */
 function subtitleKey(cycle: boolean) {

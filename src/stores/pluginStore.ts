@@ -2,7 +2,7 @@ import type { VideoEntry } from './libraryStore'
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
+import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
@@ -1014,6 +1014,8 @@ export const usePluginStore = defineStore('plugins', () => {
       duration: player.videoDuration,
       hasScript: scripts.hasScripts,
       rate: player.playbackSpeed,
+      width: player.videoWidth,
+      height: player.videoHeight,
     })
 
     // ─── Library and playback ──────────────────────────────────────────────
@@ -1717,10 +1719,15 @@ export const usePluginStore = defineStore('plugins', () => {
         frame: gate('player', 'player.frame', (o: { maxWidth?: number, quality?: number } = {}) => playback.grabFrame(Math.max(64, Math.min(1280, o.maxWidth ?? 512)), Math.max(0.3, Math.min(0.95, o.quality ?? 0.72)))),
         onChange: gate('player', 'player.onChange', (fn: (s: PlayerSnapshot) => void) => {
           // What plays and whether it plays; not every tick of the clock.
-          const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts, player.playbackSpeed], () => fn(snapshot()))
+          const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts, player.playbackSpeed, player.videoWidth, player.videoHeight], () => fn(snapshot()))
           return later(stop)
         }),
         clock: gate('player', 'player.clock', clockNow),
+        picture: gate('player', 'player.picture', (): PictureRect | null => (player.pictureRect ? { ...player.pictureRect } : null)),
+        onPicture: gate('player', 'player.onPicture', (fn: (r: PictureRect | null) => void) => {
+          const stop = watch(() => player.pictureRect, r => fn(r ? { ...r } : null))
+          return later(stop)
+        }),
         seek: gate('playback', 'player.seek', (t: number) => {
           if (!player.videoUrl || typeof t !== 'number' || !Number.isFinite(t))
             return false

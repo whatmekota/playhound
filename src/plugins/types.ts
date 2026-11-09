@@ -113,6 +113,20 @@ export interface PlayerSnapshot {
   hasScript: boolean
   /** The playback speed, 1 is normal (the one player.setRate sets). */
   rate: number
+  /** The picture's own size in pixels (API 3): 0 until the video has loaded, and for sound alone or a video playing elsewhere. Portrait when height > width. */
+  width: number
+  height: number
+}
+
+/** Where the picture is drawn in the player (player.picture), in CSS px from the player's top-left. */
+export interface PictureRect {
+  x: number
+  y: number
+  width: number
+  height: number
+  /** The player's own size: the picture is centred in it, letterboxed or pillarboxed. */
+  areaWidth: number
+  areaHeight: number
 }
 
 /** A video in the library, with what playhound knows about it. */
@@ -529,6 +543,16 @@ export interface PluginContext {
      * a second). For keeping something in step with the picture.
      */
     clock: () => number
+    /**
+     * Where the picture is drawn in the player right now (API 3), in CSS px
+     * from the player's top-left, with the player's size: a portrait video is
+     * pillarboxed, a wide one letterboxed. Null with no picture (sound alone,
+     * a video playing elsewhere, nothing loaded). An overlay can also use the
+     * CSS variables --ph-picture-left / -top / -width / -height.
+     */
+    picture: () => PictureRect | null
+    /** The picture moved or changed size (a new video, a resize, fullscreen, the pop-out). Returns an unsubscribe. */
+    onPicture: (fn: (r: PictureRect | null) => void) => () => void
     /** Jump to `t` seconds. False with nothing loaded. */
     seek: (t: number) => boolean
     /** Set the playback speed (0.1–10, 1 is normal). It is the user's speed: the player shows it and keeps it. */
