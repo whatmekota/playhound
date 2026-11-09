@@ -14,6 +14,7 @@ import PluginsInspector from '~/components/inspectors/PluginsInspector.vue'
 import ProgrammeInspector from '~/components/inspectors/ProgrammeInspector.vue'
 import QueueInspector from '~/components/inspectors/QueueInspector.vue'
 import RemoteInspector from '~/components/inspectors/RemoteInspector.vue'
+import RulesInspector from '~/components/inspectors/RulesInspector.vue'
 import ScriptsInspector from '~/components/inspectors/ScriptsInspector.vue'
 import EroScriptsView from '~/components/views/EroScriptsView.vue'
 import LibraryView from '~/components/views/LibraryView.vue'
@@ -45,6 +46,7 @@ export const INSPECTOR_COMPONENTS: Record<InspectorId, Component> = {
   'library-panel': LibraryInspector,
   'playlists-panel': PlaylistsInspector,
   'programme': ProgrammeInspector,
+  'rules': RulesInspector,
   'face': FaceInspector,
   'queue': QueueInspector,
   'scripts': ScriptsInspector,

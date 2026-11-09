@@ -164,6 +164,7 @@ declare global {
   const resolveStream: typeof import('./src/composables/useStreams').resolveStream
   const saveScriptBeside: typeof import('./src/composables/useScriptSave').saveScriptBeside
   const savedPosts: typeof import('./src/composables/useSavedPosts').savedPosts
+  const sayOnFaceScreen: typeof import('./src/composables/useFaceScreen').sayOnFaceScreen
   const scaleTapTempo: typeof import('./src/composables/useVideoBeat').scaleTapTempo
   const scriptAnalysisKey: typeof import('./src/composables/useScriptAnalysis').scriptAnalysisKey
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
@@ -347,6 +348,7 @@ declare global {
   const useResizeObserver: typeof import('@vueuse/core').useResizeObserver
   const useRoute: typeof import('vue-router').useRoute
   const useRouter: typeof import('vue-router').useRouter
+  const useRules: typeof import('./src/composables/useRules').useRules
   const useSSRWidth: typeof import('@vueuse/core').useSSRWidth
   const useSafety: typeof import('./src/composables/useSafety').useSafety
   const useScreenOrientation: typeof import('@vueuse/core').useScreenOrientation
@@ -677,6 +679,7 @@ declare module 'vue' {
     readonly resolveStream: UnwrapRef<typeof import('./src/composables/useStreams')['resolveStream']>
     readonly saveScriptBeside: UnwrapRef<typeof import('./src/composables/useScriptSave')['saveScriptBeside']>
     readonly savedPosts: UnwrapRef<typeof import('./src/composables/useSavedPosts')['savedPosts']>
+    readonly sayOnFaceScreen: UnwrapRef<typeof import('./src/composables/useFaceScreen')['sayOnFaceScreen']>
     readonly scaleTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['scaleTapTempo']>
     readonly scriptAnalysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['scriptAnalysisKey']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
@@ -860,6 +863,7 @@ declare module 'vue' {
     readonly useResizeObserver: UnwrapRef<typeof import('@vueuse/core')['useResizeObserver']>
     readonly useRoute: UnwrapRef<typeof import('vue-router')['useRoute']>
     readonly useRouter: UnwrapRef<typeof import('vue-router')['useRouter']>
+    readonly useRules: UnwrapRef<typeof import('./src/composables/useRules')['useRules']>
     readonly useSSRWidth: UnwrapRef<typeof import('@vueuse/core')['useSSRWidth']>
     readonly useSafety: UnwrapRef<typeof import('./src/composables/useSafety')['useSafety']>
     readonly useScreenOrientation: UnwrapRef<typeof import('@vueuse/core')['useScreenOrientation']>

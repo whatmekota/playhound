@@ -14,6 +14,26 @@ vi.mock('~/lib/idb', () => ({
 
 const { restoreBackup } = await import('~/lib/backup')
 
+describe('rules in a backup', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('are exported with everything else and come back as they were', async () => {
+    const { collectLocal } = await import('~/lib/backup')
+    const { defaultRulesConfig, normaliseRulesConfig } = await import('~/lib/rules')
+    const cfg = defaultRulesConfig()
+    cfg.rules[0].enabled = true
+    cfg.maxPerMinute = 4
+    localStorage.setItem('ph:rules', JSON.stringify(cfg))
+    localStorage.setItem('ph:stats.sessions', JSON.stringify({ since: 1, sessions: [] }))
+    const local = collectLocal()
+    expect(Object.keys(local)).toEqual(expect.arrayContaining(['ph:rules', 'ph:stats.sessions']))
+
+    localStorage.clear()
+    await restoreBackup({ _app: 'playhound', _version: 1, _exportedAt: '', _origin: 'x', local, idb: {} }, 'replace')
+    expect(normaliseRulesConfig(JSON.parse(localStorage.getItem('ph:rules')!))).toEqual(cfg)
+  })
+})
+
 describe('restoring a backup', () => {
   beforeEach(() => {
     localStorage.clear()

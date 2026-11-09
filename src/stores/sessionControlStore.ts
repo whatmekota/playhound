@@ -25,7 +25,7 @@ import { computed, ref, shallowRef } from 'vue'
 import { createEdgeEnvelope } from '~/lib/edging'
 import { KEYS } from '~/lib/persist'
 
-export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui' | 'plugin'
+export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui' | 'plugin' | 'rule'
 
 /** "I came", as marked (C, the phone, the dock). */
 export interface FinishMark {

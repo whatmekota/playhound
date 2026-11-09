@@ -20,6 +20,7 @@ const EXPECTED: { key: string, label: string, icon: string }[] = [
   { key: 'ph:library.starred', label: 'Starred', icon: 'i-carbon-star' },
   { key: 'ph:device.config', label: 'Device settings', icon: 'i-carbon-plug' },
   { key: 'ph:editor.patterns', label: 'Script patterns', icon: 'i-carbon-chart-line-smooth' },
+  { key: 'ph:rules', label: 'Rules', icon: 'i-carbon-rule' },
 ]
 
 const IDB_LABEL: Record<string, string> = {

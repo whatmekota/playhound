@@ -24,7 +24,7 @@ export type InspectorId
   = | 'library-panel' | 'playlists-panel'
     | 'queue' | 'scripts' | 'bookmarks'
     | 'device' | 'motion' | 'remote'
-    | 'binaural' | 'hypno' | 'director' | 'programme' | 'face'
+    | 'binaural' | 'hypno' | 'director' | 'programme' | 'rules' | 'face'
     | 'backup' | 'plugins'
 
 export type FloatingId = 'emulator'
@@ -121,6 +121,7 @@ export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
       { id: 'hypno', kind: 'inspector', label: 'Hypno', icon: 'i-carbon-circle-dash', hint: 'Spiral, words and breathing ring over the video' },
       { id: 'director', kind: 'inspector', label: 'Director', icon: 'i-carbon-machine-learning-model', hint: 'Picks what plays next to match the session' },
       { id: 'programme', kind: 'inspector', label: 'Programme', icon: 'i-carbon-roadmap', hint: 'A planned session: phases, videos, sound and motion following one arc' },
+      { id: 'rules', kind: 'inspector', label: 'Rules', icon: 'i-carbon-rule', hint: 'When something happens, do something: heart rate, phases, edges, finishes' },
     ],
   },
   {

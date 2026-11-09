@@ -35,6 +35,8 @@ onMounted(() => {
   channel.onmessage = (e: MessageEvent<FaceScreenMsg>) => {
     if (e.data?.type === 'close')
       close()
+    if (e.data?.type === 'say')
+      say(e.data.text)
     if (e.data?.type !== 'frame')
       return
     msg.value = e.data.msg
@@ -88,11 +90,28 @@ useEventListener(window, 'keydown', (e: KeyboardEvent) => {
 })
 
 const { idle } = useIdle(2500)
+
+/** A line sent by a rule, shown under the face for a few seconds. */
+const line = ref<string | null>(null)
+let lineTimer: ReturnType<typeof setTimeout> | null = null
+const LINE_MS = 6000
+function say(text: string) {
+  line.value = text
+  if (lineTimer)
+    clearTimeout(lineTimer)
+  lineTimer = setTimeout(() => (line.value = null), LINE_MS)
+}
+onBeforeUnmount(() => lineTimer && clearTimeout(lineTimer))
 </script>
 
 <template>
   <main class="face-page" :class="{ 'cursor-none': idle }" @dblclick="toggleFullscreen">
     <KerfusFace class="face" :msg="connected ? msg : null" :edging="connected && edging" :color="cfg.color" :led="cfg.led" />
+    <Transition name="line">
+      <p v-if="line" :key="line" class="line" :style="{ color: KERFUS_COLORS[cfg.color] }">
+        {{ line }}
+      </p>
+    </Transition>
     <div class="controls" :class="{ shown: !idle }" @dblclick.stop>
       <button type="button" :title="fullscreen ? 'Leave full screen (Esc)' : 'Full screen (F)'" @click="toggleFullscreen">
         <span :class="fullscreen ? 'i-carbon-minimize' : 'i-carbon-maximize'" />
@@ -120,6 +139,27 @@ const { idle } = useIdle(2500)
 .face {
   width: min(92vw, calc(92vh * 320 / 140));
   height: auto;
+}
+.line {
+  position: absolute;
+  left: 50%;
+  bottom: 9vh;
+  max-width: 86vw;
+  transform: translateX(-50%);
+  font:
+    600 clamp(20px, 4.2vh, 44px) / 1.2 system-ui,
+    sans-serif;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-wrap: balance;
+}
+.line-enter-active,
+.line-leave-active {
+  transition: opacity 0.5s ease;
+}
+.line-enter-from,
+.line-leave-to {
+  opacity: 0;
 }
 .controls {
   position: absolute;

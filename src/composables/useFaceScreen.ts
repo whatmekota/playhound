@@ -23,6 +23,8 @@ export const SCREEN_PING_MS = 2000
 export type FaceScreenMsg
   = | { type: 'hello' | 'ping' | 'bye' | 'close' }
     | { type: 'frame', msg: FaceMessage, edging: boolean }
+    /** A line to show under the face for a few seconds (rules). */
+    | { type: 'say', text: string }
 
 export interface FaceScreenSettings {
   color: KerfusColor
@@ -68,6 +70,17 @@ export function faceScreenOpen(now: number) {
 
 export function publishFaceFrame(msg: FaceMessage, edging: boolean) {
   channel?.postMessage({ type: 'frame', msg, edging } satisfies FaceScreenMsg)
+}
+
+/**
+ * Show a line under the face in any open face window. Returns false when
+ * none is open. (The CYD board has no room for text; this is the window only.)
+ */
+export function sayOnFaceScreen(text: string): boolean {
+  if (!channel || !faceScreenOpen(performance.now()))
+    return false
+  channel.postMessage({ type: 'say', text: text.slice(0, 120) } satisfies FaceScreenMsg)
+  return true
 }
 
 /** Ask any open face window to close itself. */

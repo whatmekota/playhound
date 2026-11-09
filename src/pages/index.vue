@@ -32,6 +32,7 @@ import { useMotionEngine } from '~/composables/useMotionEngine'
 import { startNetProxySync } from '~/composables/useNetProxy'
 import { usePopout } from '~/composables/usePopout'
 import { useRemoteHost } from '~/composables/useRemoteHost'
+import { useRules } from '~/composables/useRules'
 import { useSafety } from '~/composables/useSafety'
 import { useScriptPulse } from '~/composables/useScriptPulse'
 import { KNOB_STEP, useSessionActions } from '~/composables/useSessionActions'
@@ -95,6 +96,7 @@ useSessionAudio()
 useScriptPulse()
 useVideoBeat()
 useHeartRate()
+useRules()
 useVibeSync()
 useDiscordPresence()
 
