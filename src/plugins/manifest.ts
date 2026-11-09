@@ -1,4 +1,5 @@
 import type { PluginManifest, PluginPermission } from './types'
+import { APP_VERSION, newer, readStoreFields, shortVersion } from './storeMeta'
 
 /**
  * Reading and checking a plugin's manifest.json, and what it may do.
@@ -94,6 +95,11 @@ export function readManifest(raw: unknown): PluginManifest {
       throw new Error(`This plugin needs a newer playhound: it is written for plugin API ${m.api}, and this version speaks ${PLUGIN_API}. Update playhound first.`)
     api = m.api
   }
+  // The store's fields (icon, screenshots, category, …) never stop an install,
+  // except a playhound too old for it.
+  const store = readStoreFields(m).fields
+  if (store.minPlayhound && newer(store.minPlayhound, APP_VERSION))
+    throw new Error(`This plugin needs playhound ${shortVersion(store.minPlayhound)} or newer, and this is ${APP_VERSION}. Update playhound first.`)
 
   let permissions: PluginPermission[] | undefined
   if (m.permissions !== undefined) {
@@ -115,6 +121,7 @@ export function readManifest(raw: unknown): PluginManifest {
     main: typeof m.main === 'string' ? m.main.trim().replace(/^\.?\//, '') : 'index.js',
     api,
     ...(permissions ? { permissions } : {}),
+    ...store,
   }
 }
 

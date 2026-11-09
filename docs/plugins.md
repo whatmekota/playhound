@@ -55,6 +55,8 @@ A single folder wrapping all of this is fine; it's taken off.
   1. This playhound speaks 2; a plugin that needs a newer one is refused, with
      a message saying to update playhound.
 - `permissions`: what the plugin needs (below). Unknown names are refused.
+- The store's own fields (an icon, screenshots, a category and so on) are
+  optional; see [The store listing](#the-store-listing).
 
 ## Permissions
 
@@ -309,20 +311,84 @@ plugin with the id of an installed one stands in for it until it's unloaded.
 
 ## Publishing it in the store
 
-The store follows GitHub repositories. Each one's **latest release** is the
-plugin. Attach two files to it:
+The store follows GitHub repositories. Each one's **latest release** (not a
+draft or pre-release) is the plugin. Attach to it:
 
 - the plugin zip (any `*.zip` name)
 - its `manifest.json`, the same one that's inside the zip. The store reads it
-  to show the plugin's name, version and description before anything is
-  downloaded.
+  to show the plugin before anything is downloaded.
+- optionally its icon and screenshots (below).
 
 Tag releases with the version (`v1.2.0`). The store offers an update when the
-latest release's version is newer than the installed one. Users add a
-repository by `owner/repo` or its github.com link in **Settings → Plugins →
-Get plugins**. Nothing installs or updates without them clicking.
+latest release's version is newer than the installed one. The release notes
+show as "What's new". Users add a repository by `owner/repo` or its
+github.com link with **Settings → Plugins → Discover → Add from GitHub**; a
+repository that doesn't exist, has no release, or whose latest release has no
+zip is refused with the reason. Nothing installs or updates without them
+clicking.
 
 Don't put API keys or other secrets in a published zip.
+
+### The store listing
+
+Everything here is optional, and a plugin without any of it still installs.
+Each field goes in `manifest.json`:
+
+```json
+{
+  "id": "my-plugin",
+  "name": "My plugin",
+  "version": "1.2.0",
+  "description": "One line about what it does.",
+  "author": "you",
+  "api": 2,
+  "permissions": ["player"],
+  "icon": "icon.png",
+  "longDescription": "What it does, **in Markdown**.\n\n- how to use it\n- what it needs",
+  "screenshots": ["screenshot-1.png", { "file": "screenshot-2.png", "caption": "The panel" }],
+  "category": "tools",
+  "keywords": ["beats", "music"],
+  "homepage": "https://example.com/my-plugin",
+  "minPlayhound": "2.2.0"
+}
+```
+
+| Field             | What the store does with it                                                                           | Rules                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `description`     | The line on the card                                                                                  | One sentence; cut after about 160 characters                                                                                          |
+| `author`          | Under the name. Without it, the repository's owner                                                    | Text                                                                                                                                  |
+| `icon`            | On the card, the details and the installed list                                                       | A file name: square PNG, 64 to 1024 px (**256 px** is best), under 256 KB; or an SVG under 64 KB                                      |
+| `screenshots`     | A strip in the details; a click shows one large                                                       | Up to 6 file names (with an optional `caption`): PNG, JPEG or WebP, 320 to 3840 px a side, under 3 MB each. **1280 × 800** reads well |
+| `longDescription` | "About" in the details. Without it, the repository's README shows                                     | Markdown, up to 10,000 characters                                                                                                     |
+| `category`        | The category filter, and a label on the card                                                          | One of `partner`, `sync`, `library`, `visuals`, `devices`, `tools`                                                                    |
+| `keywords`        | Search finds the plugin by them                                                                       | Up to 10 words of up to 32 characters                                                                                                 |
+| `homepage`        | A "Website" link in the details (the repository is always linked)                                     | An `https://` address                                                                                                                 |
+| `minPlayhound`    | An older playhound shows "Needs playhound 2.2 or newer" and won't install it, from the store or a zip | A version, like `"2.2.0"`                                                                                                             |
+
+**Where the pictures come from.** The store looks for the files the manifest
+names among the **release's assets**: attach `icon.png` and the screenshots
+next to the zip and `manifest.json`. Without an `icon` field it still finds
+an asset called `icon.png` or `icon.svg`; without `screenshots`, assets called
+`screenshot*.png` / `.jpg` / `.webp`, in name order. Once a plugin is
+installed, the icon comes from the **zip** if it's in there too, so put
+`icon.png` in the zip as well. Nothing is ever loaded from an address in the
+manifest: only the release's own files, or the zip's. Each picture is checked
+(type, size, dimensions) before it shows, and kept, so the store doesn't
+download it again. A plugin without an icon gets its initials on a colour
+picked from its id.
+
+**Text.** The README and the long description are Markdown, shown as text:
+HTML in them is dropped (its text kept), except `<img>`. Links open in the
+browser. Images in a README show only from GitHub (relative paths load from
+the repository, like on GitHub); badges from other sites show their alt text.
+
+**Checking it.** Load the plugin from its folder (dev mode) with the icon and
+screenshots next to `manifest.json`: its card shows the icon, and **Store
+listing** lists anything the store would leave out, and why.
+
+**Download count.** The store shows how often the zips of the repository's
+releases were downloaded (from GitHub; the store's own reads of
+`manifest.json` and the pictures don't count).
 
 ### Official and trusted plugins
 
@@ -331,4 +397,6 @@ store and the installed list show a check mark next to them. Authors known to
 the project can be added to a trusted list (`TRUSTED_OWNERS` in
 `src/plugins/sources.ts`); their plugins get a heart. Either mark is a
 statement about the author, not a review of every release, and neither changes
-what a plugin is allowed to do: that's still its permissions.
+what a plugin is allowed to do: that's still its permissions. Every other
+plugin's details, and its install screen, say it is **not reviewed by
+playhound**.

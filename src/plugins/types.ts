@@ -31,6 +31,18 @@ export interface PluginManifest {
    * an API 2 plugin has only what needs no permission.
    */
   permissions?: PluginPermission[]
+  // What the plugin store shows; see src/plugins/storeMeta.ts.
+  /** Square PNG (256 px) or SVG, in the zip and/or attached to the release. */
+  icon?: string
+  /** Markdown, for the store's detail view. Without it the repository's README shows. */
+  longDescription?: string
+  /** Images attached to the release (PNG, JPEG, WebP), up to 6. */
+  screenshots?: { file: string, caption?: string }[]
+  homepage?: string
+  category?: 'partner' | 'sync' | 'library' | 'visuals' | 'devices' | 'tools'
+  keywords?: string[]
+  /** The oldest playhound it runs on, like "2.2.0". An older one won't install it. */
+  minPlayhound?: string
 }
 
 export type SettingField

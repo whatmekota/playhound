@@ -29,8 +29,9 @@ import { accessOf, addedPermissions, allows, permissionError, readManifest } fro
 import { pluginFetch } from '~/plugins/net'
 import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
 import { chordId, chordOf, parseKbd, reservedBy } from '~/plugins/shortcuts'
-import { addNewDefaults, DEFAULT_SOURCES, fetchRelease, newer, parseRepo } from '~/plugins/sources'
+import { addNewDefaults, DEFAULT_SOURCES, fetchRelease, newer, parseRepo, SourceError } from '~/plugins/sources'
 import { parseStage, stageOf } from '~/plugins/stage'
+import { loadReleases, saveReleases } from '~/plugins/storeCache'
 import { createWebview } from '~/plugins/webview'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -70,11 +71,16 @@ export interface SourceState {
   repo: string
   status: 'idle' | 'checking' | 'ok' | 'error'
   error: string
+  /** The latest release as last seen; kept through a failed check, and between runs. */
   release: SourceRelease | null
+  /** When it was last checked (ms epoch), 0 if never. */
+  checkedAt: number
 }
 
-/** Sources are looked at on their own once a day at most (and whenever the Plugins page opens). */
+/** Sources are looked at on their own once a day at most. */
 const CHECK_EVERY_MS = 24 * 60 * 60 * 1000
+/** Opening the Plugins page checks them again if it's been this long; Check now always does. */
+const PAGE_CHECK_MS = 10 * 60 * 1000
 
 export interface PluginInfo {
   manifest: PluginManifest
@@ -264,6 +270,8 @@ export const usePluginStore = defineStore('plugins', () => {
   const activePanel = ref<string | null>(null)
   /** A plugin whose settings were asked for; Settings → Plugins opens its card. */
   const focusSettings = ref<string | null>(null)
+  /** A tab of Settings → Plugins to open on ("updates", from the update notice). */
+  const focusTab = ref<'discover' | 'installed' | 'updates' | null>(null)
   const ready = ref(false)
   /** The installed plugins are listed and the switched-on ones have started. */
   const loaded = ref(false)
@@ -310,7 +318,7 @@ export const usePluginStore = defineStore('plugins', () => {
         await activate(p.manifest.id)
     }
     loaded.value = true
-    void checkDaily().catch(() => {})
+    void loadSourceCache().then(checkDaily).catch(() => {})
   }
 
   async function infoFor(pkg: StoredPackage): Promise<PluginInfo> {
@@ -1443,9 +1451,66 @@ export const usePluginStore = defineStore('plugins', () => {
   /** A source's entry: the reactive one, so the page sees each change. */
   function sourceFor(repo: string): SourceState {
     if (!sources.value[repo])
-      sources.value[repo] = { repo, status: 'idle', error: '', release: null }
+      sources.value[repo] = { repo, status: 'idle', error: '', release: null, checkedAt: 0 }
     return sources.value[repo]
   }
+
+  // The releases as last checked come back from the cache, so the store
+  // opens with them (and shows them offline) while a check runs.
+  let cacheLoad: Promise<void> | null = null
+  function loadSourceCache(): Promise<void> {
+    cacheLoad ??= loadReleases().then((kept) => {
+      for (const repo of sourceList.value) {
+        const k = kept[repo]
+        const s = sourceFor(repo)
+        if (k && !s.checkedAt) {
+          s.release = k.release
+          s.error = k.error
+          s.status = k.error ? 'error' : k.release ? 'ok' : 'idle'
+          s.checkedAt = k.checkedAt
+        }
+      }
+    })
+    return cacheLoad
+  }
+  function keepSources() {
+    const all: Record<string, { release: SourceRelease | null, error: string, checkedAt: number }> = {}
+    for (const repo of sourceList.value) {
+      const s = sources.value[repo]
+      if (s?.checkedAt)
+        all[repo] = { release: s.release, error: s.error, checkedAt: s.checkedAt }
+    }
+    void saveReleases(all)
+  }
+
+  /** Check one source. A failed check keeps the release seen before, and says why. */
+  async function checkOne(repo: string) {
+    const s = sourceFor(repo)
+    s.status = 'checking'
+    try {
+      s.release = await fetchRelease(pluginFetch, repo)
+      s.error = ''
+      s.status = 'ok'
+    }
+    catch (err) {
+      s.status = 'error'
+      s.error = err instanceof Error ? err.message : String(err)
+      // Gone or no longer a plugin: nothing to offer.
+      if (err instanceof SourceError && (err.kind === 'not-found' || err.kind === 'no-release' || err.kind === 'no-zip'))
+        s.release = null
+    }
+    s.checkedAt = Date.now()
+  }
+
+  /** The Plugins page opened: what was kept shows at once, and a check runs if the last one is a while ago. */
+  async function refreshSources() {
+    await loadSourceCache()
+    if (Date.now() - checkedAt.value >= PAGE_CHECK_MS || sourceList.value.some(r => !sources.value[r]?.checkedAt))
+      await checkSources()
+  }
+
+  /** Whether a check is running. */
+  const checking = computed(() => sourceList.value.some(r => sources.value[r]?.status === 'checking'))
 
   /** The installed plugin a source's release is (by manifest id, or by where it was installed from). */
   function installedFrom(s: SourceState): PluginInfo | undefined {
@@ -1461,44 +1526,48 @@ export const usePluginStore = defineStore('plugins', () => {
 
   async function checkSources() {
     checkedAt.value = Date.now()
-    await Promise.all(sourceList.value.map(async (repo) => {
-      const s = sourceFor(repo)
-      s.status = 'checking'
-      s.error = ''
-      try {
-        s.release = await fetchRelease(pluginFetch, repo)
-        s.status = 'ok'
-      }
-      catch (err) {
-        s.status = 'error'
-        s.error = err instanceof Error ? err.message : String(err)
-      }
-    }))
+    await loadSourceCache()
+    await Promise.all(sourceList.value.map(checkOne))
+    keepSources()
   }
 
-  /** Add a source: "owner/repo" or a GitHub URL. Returns the repo, or throws why not. */
+  /**
+   * Follow a repository: "owner/repo" or a GitHub link. It's checked first:
+   * one that isn't there, or has no release with a plugin zip, isn't added,
+   * and the error says which. When GitHub can't be asked right now it's added
+   * anyway and checked again later. Returns the repo as followed.
+   */
   async function addSource(input: string): Promise<string> {
+    if (!input.trim())
+      throw new Error('Paste a GitHub repository: owner/repo, or its github.com link')
     const repo = parseRepo(input)
     if (!repo)
-      throw new Error('That isn\'t a GitHub repository (owner/repo or a github.com link)')
-    if (!sourceList.value.some(r => r.toLowerCase() === repo.toLowerCase()))
-      sourceList.value = [...sourceList.value, repo]
-    const s = sourceFor(repo)
-    s.status = 'checking'
+      throw new Error('That isn\'t a GitHub repository. Paste owner/repo (like whatmekota/playmate) or its github.com link.')
+    const have = sourceList.value.find(r => r.toLowerCase() === repo.toLowerCase())
+    if (have)
+      return have
+    const s: SourceState = { repo, status: 'checking', error: '', release: null, checkedAt: 0 }
     try {
       s.release = await fetchRelease(pluginFetch, repo)
       s.status = 'ok'
     }
     catch (err) {
+      if (!(err instanceof SourceError) || err.kind === 'not-found' || err.kind === 'no-release' || err.kind === 'no-zip' || err.kind === 'other')
+        throw err
       s.status = 'error'
-      s.error = err instanceof Error ? err.message : String(err)
+      s.error = err.message
     }
+    s.checkedAt = Date.now()
+    sources.value[repo] = s
+    sourceList.value = [...sourceList.value, repo]
+    keepSources()
     return repo
   }
 
   function removeSource(repo: string) {
     sourceList.value = sourceList.value.filter(r => r !== repo)
     delete sources.value[repo]
+    keepSources()
   }
 
   /** Download a source's latest release and install it (or update the installed one); null if the user said no. */
@@ -1523,12 +1592,19 @@ export const usePluginStore = defineStore('plugins', () => {
       toast(ups.length === 1 ? `${installedFrom(ups[0].s)?.manifest.name ?? ups[0].s.repo} ${ups[0].rel!.version} is out` : `${ups.length} plugin updates are out`, {
         icon: 'i-carbon-application',
         action: { label: 'Plugins', run: () => {
+          focusTab.value = 'updates'
           ui.settingsSection = 'plugins'
           ui.settingsOpen = true
         } },
         duration: 8000,
       })
     }
+  }
+
+  /** A file of an installed (or dev) plugin's package, for the store's icon and screenshots. */
+  async function pluginFile(id: string, path: string): Promise<Blob | null> {
+    const pkg = devPackages.get(id) ?? await pluginDb.get<StoredPackage>(`pkg:${id}`).catch(() => undefined)
+    return pkg?.files[path.replace(/^\.?\//, '')] ?? null
   }
 
   /** Plugins that are on and have a panel, in the order they're listed. */
@@ -1554,6 +1630,7 @@ export const usePluginStore = defineStore('plugins', () => {
     commandGroups,
     activePanel,
     focusSettings,
+    focusTab,
     ready,
     loaded,
     start,
@@ -1575,6 +1652,10 @@ export const usePluginStore = defineStore('plugins', () => {
     sourceList,
     sources,
     checkSources,
+    refreshSources,
+    checking,
+    checkedAt,
+    pluginFile,
     addSource,
     removeSource,
     installFromSource,

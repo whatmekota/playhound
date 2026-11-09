@@ -1,4 +1,9 @@
+import type { ImageAsset } from './storeMeta'
 import type { PluginManifest } from './types'
+import { PERMISSIONS, PLUGIN_API, readManifest } from './manifest'
+import { incompatibility, isImageAsset, readStoreFields } from './storeMeta'
+
+export { newer } from './storeMeta'
 
 /**
  * Plugin sources: GitHub repositories whose latest release carries a plugin.
@@ -6,7 +11,8 @@ import type { PluginManifest } from './types'
  * A release that wants to be found attaches the plugin zip and, next to it,
  * its manifest.json: the store reads that to show the plugin (name, version,
  * description) before anything is downloaded. Without a manifest asset the
- * release's tag and the repository's name stand in for them.
+ * release's tag and the repository's name stand in for them. Its icon and
+ * screenshots are attached to the release too (see storeMeta.ts).
  */
 
 /**
@@ -65,20 +71,6 @@ export function parseRepo(input: string): string | null {
   return m ? `${m[1]}/${m[2]}` : null
 }
 
-/** 1.10.0 > 1.9.2; a pre-release sorts below its release. Same rules as the app's own updater. */
-export function newer(a: string, b: string): boolean {
-  const parse = (v: string) => String(v).replace(/^v/, '').split('-')
-  const [ma, pa] = parse(a)
-  const [mb, pb] = parse(b)
-  const xa = ma.split('.').map(Number)
-  const xb = mb.split('.').map(Number)
-  for (let i = 0; i < 3; i++) {
-    if ((xa[i] || 0) !== (xb[i] || 0))
-      return (xa[i] || 0) > (xb[i] || 0)
-  }
-  return !pa && !!pb
-}
-
 export interface SourceRelease {
   repo: string
   version: string
@@ -88,13 +80,21 @@ export interface SourceRelease {
   zipSize: number
   pageUrl: string
   publishedAt: string
+  /** The release notes (Markdown). */
+  notes: string
+  /** How often its zips were downloaded, over all its releases. */
+  downloads: number | null
+  /** Images attached to the release: where the store's icon and screenshots come from. */
+  images: ImageAsset[]
+  /** Why this playhound can't install it (too old, a broken manifest), or null. */
+  problem: string | null
 }
 
-interface GhAsset { name: string, browser_download_url: string, size: number }
-interface GhRelease { tag_name: string, html_url: string, published_at: string, assets: GhAsset[], draft?: boolean }
+interface GhAsset { name: string, browser_download_url: string, size: number, download_count?: number }
+interface GhRelease { tag_name: string, html_url: string, published_at: string, assets: GhAsset[], draft?: boolean, prerelease?: boolean, body?: string | null }
 
-/** The plugin parts of a GitHub "latest release" answer; null if it has no zip. */
-export function readRelease(repo: string, r: GhRelease): { release: Omit<SourceRelease, 'manifest'>, manifestUrl: string | null } | null {
+/** The plugin parts of a GitHub release; null if it has no zip. */
+export function readRelease(repo: string, r: GhRelease): { release: Omit<SourceRelease, 'manifest' | 'problem'>, manifestUrl: string | null } | null {
   const zip = r.assets.find(a => /\.zip$/i.test(a.name))
   if (!zip)
     return null
@@ -107,33 +107,118 @@ export function readRelease(repo: string, r: GhRelease): { release: Omit<SourceR
       zipSize: zip.size,
       pageUrl: r.html_url,
       publishedAt: r.published_at,
+      notes: typeof r.body === 'string' ? r.body : '',
+      downloads: typeof zip.download_count === 'number' ? zip.download_count : null,
+      images: r.assets.filter(a => isImageAsset(a.name)).map(a => ({ name: a.name, url: a.browser_download_url, size: a.size })),
     },
     manifestUrl: manifest?.browser_download_url ?? null,
   }
 }
 
+/** Zip downloads over a repository's releases. */
+export function totalDownloads(releases: GhRelease[]): number | null {
+  let total = 0
+  let any = false
+  for (const r of releases) {
+    for (const a of r.assets) {
+      if (/\.zip$/i.test(a.name) && typeof a.download_count === 'number') {
+        total += a.download_count
+        any = true
+      }
+    }
+  }
+  return any ? total : null
+}
+
+/**
+ * A release's manifest.json as the store shows it. One this playhound can't
+ * install (written for a newer one, or broken) still shows, with why.
+ */
+export function listingManifest(raw: unknown): { manifest: PluginManifest | null, problem: string | null } {
+  try {
+    const manifest = readManifest(raw)
+    return { manifest, problem: null }
+  }
+  catch (err) {
+    const m = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+    const id = str(m.id)
+    const name = str(m.name)
+    const version = str(m.version)
+    const manifest: PluginManifest | null = id && name && version
+      ? {
+          id,
+          name,
+          version,
+          description: str(m.description),
+          author: str(m.author),
+          api: typeof m.api === 'number' ? m.api : undefined,
+          // The ones this playhound knows, so the store can still say what it asks for.
+          ...(Array.isArray(m.permissions) ? { permissions: PERMISSIONS.map(p => p.id).filter(p => (m.permissions as unknown[]).includes(p)) } : {}),
+          ...readStoreFields(m).fields,
+        }
+      : null
+    const why = manifest && incompatibility(manifest, PLUGIN_API)
+    return { manifest, problem: why || (err instanceof Error ? err.message : String(err)) }
+  }
+}
+
+/** Why a source can't be followed or read, with the kind of failure (adding one that isn't a plugin is refused). */
+export class SourceError extends Error {
+  constructor(public kind: 'not-found' | 'no-release' | 'no-zip' | 'rate' | 'offline' | 'other', message: string) {
+    super(message)
+  }
+}
+
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>
 
-/** The latest release of one source, with its manifest if it has one. */
-export async function fetchRelease(fetchFn: Fetch, repo: string): Promise<SourceRelease> {
-  const res = await fetchFn(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
-  if (res.status === 404)
-    throw new Error('no release there (or no such repository)')
+async function gh(fetchFn: Fetch, url: string, accept = 'application/vnd.github+json'): Promise<Response> {
+  let res: Response
+  try {
+    res = await fetchFn(url, { headers: { Accept: accept } })
+  }
+  catch {
+    throw new SourceError('offline', 'Couldn\'t reach GitHub. Check the connection (or the proxy in Settings → Network).')
+  }
   if (res.status === 403 || res.status === 429)
-    throw new Error('GitHub says to slow down; try again in a while')
+    throw new SourceError('rate', 'GitHub says to slow down. Try again in a while.')
+  return res
+}
+
+/** The latest release of one source, with its manifest if it has one. One GitHub API call. */
+export async function fetchRelease(fetchFn: Fetch, repo: string): Promise<SourceRelease> {
+  const res = await gh(fetchFn, `https://api.github.com/repos/${repo}/releases?per_page=100`)
+  if (res.status === 404)
+    throw new SourceError('not-found', 'No such repository on GitHub (or it is private)')
   if (!res.ok)
-    throw new Error(`GitHub: ${res.status}`)
-  const parts = readRelease(repo, await res.json())
+    throw new SourceError('other', `GitHub answered ${res.status}`)
+  const list = await res.json() as GhRelease[]
+  const published = Array.isArray(list) ? list.filter(r => !r.draft && !r.prerelease) : []
+  if (!published.length)
+    throw new SourceError('no-release', 'It has no releases yet, so there is nothing to install')
+  const latest = published[0]
+  const parts = readRelease(repo, latest)
   if (!parts)
-    throw new Error('its latest release has no plugin zip')
+    throw new SourceError('no-zip', `Its latest release (${latest.tag_name}) has no plugin .zip attached`)
   let manifest: PluginManifest | null = null
+  let problem: string | null = null
   if (parts.manifestUrl) {
     try {
       const m = await fetchFn(parts.manifestUrl)
       if (m.ok)
-        manifest = await m.json()
+        ({ manifest, problem } = listingManifest(await m.json()))
     }
     catch {}
   }
-  return { ...parts.release, manifest }
+  return { ...parts.release, downloads: totalDownloads(published) ?? parts.release.downloads, manifest, problem }
+}
+
+/** A repository's README, as Markdown; null if it has none. */
+export async function fetchReadme(fetchFn: Fetch, repo: string): Promise<string | null> {
+  const res = await gh(fetchFn, `https://api.github.com/repos/${repo}/readme`, 'application/vnd.github.raw+json')
+  if (res.status === 404)
+    return null
+  if (!res.ok)
+    throw new SourceError('other', `GitHub answered ${res.status}`)
+  return (await res.text()).slice(0, 100_000)
 }

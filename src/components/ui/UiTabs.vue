@@ -48,7 +48,7 @@ watch(idx, () => nextTick(measure))
       <span v-if="t.badge !== undefined && t.badge !== ''" class="text-[10.5px] text-fg-muted num px-1.5 rounded-full bg-fg/8">{{ t.badge }}</span>
     </button>
     <span
-      class="bottom--px rounded-full bg-accent h-0.5 transition-all duration-300 ease-[var(--ease-out)] absolute"
+      class="rounded-full bg-accent h-0.5 transition-all duration-300 ease-[var(--ease-out)] bottom-[-1px] absolute"
       :style="{ left: `${bar.left}px`, width: `${bar.width}px` }"
     />
   </div>
