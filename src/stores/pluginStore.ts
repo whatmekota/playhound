@@ -24,7 +24,7 @@ import { KEYS } from '~/lib/persist'
 import { intensityBand } from '~/lib/scriptIntensity'
 import { createSteadyClock } from '~/lib/steadyClock'
 import { manualTags, normalizeTags } from '~/lib/tags'
-import { loadUserMeta } from '~/lib/thumbs'
+import { ensureMediaInfo, ensureThumb, loadUserMeta } from '~/lib/thumbs'
 import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
@@ -1076,6 +1076,9 @@ export const usePluginStore = defineStore('plugins', () => {
           title: v.basename,
           path: v.path,
           durationS: v.duration,
+          width: v.width ?? null,
+          height: v.height ?? null,
+          sizeBytes: v.remote ? null : v.file.size,
           hasScript: v.hasScript,
           starred: v.starred,
           intensity: sum ? { band: intensityBand(sum.meanSpeed), meanSpm: Math.round(sum.meanSpm), meanSpeed: sum.meanSpeed, peakSpeed: sum.peakSpeed } : null,
@@ -1704,6 +1707,20 @@ export const usePluginStore = defineStore('plugins', () => {
         }),
         fingerprint: gate('library', 'library.fingerprint', fingerprint),
         info: gate('library', 'library.info', (id: string) => videoInfo(library, id)),
+        media: gate('library', 'library.media', async (id: string) => {
+          const v = library.videos.find(x => x.name === id)
+          if (!v)
+            return null
+          await ensureMediaInfo(v).catch(() => {})
+          return { durationS: v.duration, width: v.width ?? null, height: v.height ?? null, sizeBytes: v.remote ? null : v.file.size }
+        }),
+        thumbnail: gate('library', 'library.thumbnail', async (id: string) => {
+          const v = library.videos.find(x => x.name === id)
+          if (!v)
+            return null
+          await ensureThumb(v).catch(() => {})
+          return v.thumbnailUrl ?? null
+        }),
         tag: gate('library-edit', 'library.tag', (id: string, change: { add?: string[], remove?: string[] }) => tagVideo(library, id, change)),
         setSource: gate('library-edit', 'library.setSource', (id: string, url: string | null) => setVideoSource(library, id, url)),
         provide: gate('library-source', 'library.provide', provide),

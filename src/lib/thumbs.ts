@@ -441,6 +441,15 @@ export function cancelGenerateAll() {
 // ─── Durations ─────────────────────────────────────────────────────────────────
 
 const durationKey = (e: VideoEntry) => `dur:${e.name}|${e.file.size}|${e.file.lastModified}`
+const sizeKey = (e: VideoEntry) => `dim:${e.name}|${e.file.size}|${e.file.lastModified}`
+
+function setSize(entry: VideoEntry, w: number, h: number) {
+  if (!(w > 0) || !(h > 0) || (entry.width === w && entry.height === h))
+    return
+  entry.width = w
+  entry.height = h
+  void metaDb.set(sizeKey(entry), [w, h]).catch(() => {})
+}
 const durInflight = new Map<string, Promise<void>>()
 
 function setDuration(entry: VideoEntry, secs: number) {
@@ -468,6 +477,7 @@ function probeDuration(entry: VideoEntry): Promise<void> {
     video.addEventListener('loadedmetadata', () => {
       if (Number.isFinite(video.duration))
         setDuration(entry, video.duration)
+      setSize(entry, video.videoWidth, video.videoHeight)
       done()
     }, { once: true })
     video.addEventListener('error', done, { once: true })
@@ -499,6 +509,30 @@ export function ensureDuration(entry: VideoEntry): Promise<void> {
   })().finally(() => durInflight.delete(entry.name))
   durInflight.set(entry.name, p)
   return p
+}
+
+/**
+ * Its length and picture size, read from the file if they aren't known yet
+ * (remembered per file, like the duration). A provided video's are what its
+ * source said. Sound alone has no size.
+ */
+export async function ensureMediaInfo(entry: VideoEntry): Promise<void> {
+  if (entry.remote || entry.kind === 'audio')
+    return ensureDuration(entry)
+  if (entry.duration !== null && entry.width)
+    return
+  try {
+    const cached = await metaDb.get<[number, number]>(sizeKey(entry))
+    if (Array.isArray(cached))
+      setSize(entry, cached[0], cached[1])
+  }
+  catch {}
+  if (entry.duration !== null && entry.width)
+    return
+  if (entry.duration === null)
+    await ensureDuration(entry)
+  if (!entry.width)
+    await probeDuration(entry)
 }
 
 /** Durations for a short list (a playlist, the queue), a few at a time. */

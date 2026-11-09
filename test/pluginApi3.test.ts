@@ -299,6 +299,23 @@ describe('the API holds a plugin to its permissions', () => {
     }
   })
 
+  it('gives a video size and thumbnail to a plugin that reads the library', async () => {
+    const none = await contextWith([])
+    expect(() => none.library.media('x.mp4')).toThrow('"library" permission')
+    expect(() => none.library.thumbnail('x.mp4')).toThrow('"library" permission')
+    const ctx = await contextWith(['library'])
+    expect(await ctx.library.media('nope.mp4')).toBeNull()
+    expect(await ctx.library.thumbnail('nope.mp4')).toBeNull()
+    const { useLibraryStore } = await import('~/stores/libraryStore')
+    const lib = useLibraryStore()
+    const file = new File([new Uint8Array(1234)], 'clip.mp4')
+    lib.videos.push({ file, name: 'clip.mp4', basename: 'clip', hasScript: false, scriptCount: 0, altCount: 0, scriptFiles: [], scriptMatches: [], thumbnailUrl: 'data:image/jpeg;base64,AA', duration: 61, width: 1080, height: 1920, scriptType: 'none', path: 'clip.mp4', folder: '', starred: false } as any)
+    expect(await ctx.library.media('clip.mp4')).toEqual({ durationS: 61, width: 1080, height: 1920, sizeBytes: 1234 })
+    expect(await ctx.library.thumbnail('clip.mp4')).toBe('data:image/jpeg;base64,AA')
+    const listed = (await ctx.library.list()).find(v => v.id === 'clip.mp4')
+    expect(listed).toMatchObject({ width: 1080, height: 1920, sizeBytes: 1234 })
+  })
+
   it('tells a plugin when panic is lifted, and when a script holds the stroke', async () => {
     const ctx = await contextWith(['player'])
     const { useSafetyStore } = await import('~/stores/safetyStore')

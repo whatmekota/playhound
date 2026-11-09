@@ -142,6 +142,11 @@ export interface LibraryVideo {
   /** From its library folder down, e.g. "Videos/sub/clip.mp4". */
   path: string
   durationS: number | null
+  /** The picture's size in pixels (API 3), once playhound has read it from the file; null before (see library.media) and for sound alone. */
+  width: number | null
+  height: number | null
+  /** The file's size in bytes (API 3); null for a video another app provides. */
+  sizeBytes: number | null
   hasScript: boolean
   starred: boolean
   /** How hard its script goes, once analysed; null before (see library.analyse). */
@@ -596,6 +601,19 @@ export interface PluginContext {
      * the video isn't in the library.
      */
     info: (videoId: string) => Promise<LibraryVideoInfo | null>
+    /**
+     * Its length, picture size and file size, reading the file for what
+     * isn't known yet (kept, so asking again is free) (API 3). Null if the
+     * video isn't in the library.
+     */
+    media: (videoId: string) => Promise<{ durationS: number | null, width: number | null, height: number | null, sizeBytes: number | null } | null>
+    /**
+     * Its library thumbnail as a JPEG data URL (320×180, the one the library
+     * shows), made from a frame of the video if there isn't one yet. For a
+     * provided video it is the picture its source gave, which may be an
+     * http(s) link instead (API 3). Null if there is none.
+     */
+    thumbnail: (videoId: string) => Promise<string | null>
     /** Add and remove tags on a video (permission `library-edit`). Returns its tags after, or null if it isn't in the library. */
     tag: (videoId: string, change: { add?: string[], remove?: string[] }) => Promise<string[] | null>
     /** Set (or clear, with null) the link a video came from, an http(s) URL (permission `library-edit`). False if it isn't in the library. */

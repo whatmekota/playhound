@@ -46,6 +46,9 @@ export interface VideoEntry {
   scriptMatches: ScriptMatch[]
   thumbnailUrl: string | null
   duration: number | null // seconds, populated on first thumbnail/metadata load
+  /** The picture's size in pixels, once read from the file (with its duration); absent before. */
+  width?: number
+  height?: number
   scriptType: ScriptType
   /** From its library folder down: "Videos/sub/clip.mp4". Just the name for a dropped file. */
   path: string
