@@ -129,7 +129,7 @@ function stop() {
       </UiBadge>
     </template>
 
-    <div class="text-[12px] text-fg-muted leading-relaxed px-2.5 py-2 rounded-[var(--radius-md)] bg-warn/8 flex gap-2 ring-1 ring-warn/20">
+    <div class="text-[12px] text-fg-muted leading-relaxed px-2.5 py-2 border border-warn/20 rounded-[var(--radius-md)] bg-warn/8 flex gap-2">
       <span class="i-carbon-warning-alt text-[15px] text-warn mt-px shrink-0" />
       <div class="flex flex-col gap-1 min-w-0">
         <p class="text-fg font-medium">
