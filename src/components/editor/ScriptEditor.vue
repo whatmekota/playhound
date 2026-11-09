@@ -15,7 +15,9 @@ import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptEditStore } from '~/stores/scriptEditStore'
 import { useScriptStore } from '~/stores/scriptStore'
 import { useUiStore } from '~/stores/uiStore'
+import SavePatternPanel from './SavePatternPanel.vue'
 import ScriptEditorCanvas from './ScriptEditorCanvas.vue'
+import ScriptFillPanel from './ScriptFillPanel.vue'
 
 /**
  * The script editor, docked along the bottom of the stage with the video
@@ -32,6 +34,7 @@ const ui = useUiStore()
 const safety = useSafetyStore()
 
 const canvas = ref<InstanceType<typeof ScriptEditorCanvas> | null>(null)
+const fillPop = ref<InstanceType<typeof UiPopover> | null>(null)
 
 const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
 
@@ -156,6 +159,8 @@ function onKey(e: KeyboardEvent) {
       case 'Insert':
         if (!e.shiftKey)
           run = edit.insertAtPlayhead
+        else if (e.code === 'KeyI')
+          run = () => edit.openFill()
         break
       case 'ArrowLeft':
       case 'ArrowRight':
@@ -219,6 +224,37 @@ const fpsOptions = [24, 25, 30, 60].map(v => ({ value: v, label: String(v) }))
       <UiIconButton icon="i-carbon-redo" label="Redo" :kbd="`${mod} Shift Z`" size="sm" :disabled="!edit.canRedo" @click="edit.redo" />
       <UiIconButton icon="i-carbon-add-alt" label="Add a point at the playhead" kbd="I" size="sm" :disabled="!edit.target" @click="edit.insertAtPlayhead" />
       <UiIconButton icon="i-carbon-trash-can" label="Delete selected" kbd="Del" size="sm" :disabled="!selected" @click="edit.deleteSelected" />
+
+      <div class="mx-1 divider-x" />
+      <UiPopover ref="fillPop" v-model:open="edit.fillOpen" placement="top" align="start" width="600px">
+        <template #trigger>
+          <UiButton
+            v-tip="{ text: selected >= 2 ? 'Fill between the selected points' : 'Fill a stretch, or insert a pattern at the playhead', kbd: 'Shift I' }"
+            variant="ghost"
+            size="sm"
+            icon="i-carbon-chart-line-smooth"
+            :active="edit.fillOpen"
+            :disabled="!edit.target"
+            @click="edit.fillOpen ? (edit.fillOpen = false) : edit.openFill()"
+          >
+            Fill…
+          </UiButton>
+        </template>
+        <ScriptFillPanel @close="edit.fillOpen = false" @show="(a, b) => canvas?.showSpan(a, b)" @resize="fillPop?.place()" />
+      </UiPopover>
+      <UiPopover v-model:open="edit.patternSaveOpen" placement="top" align="start" width="280px">
+        <template #trigger>
+          <UiIconButton
+            icon="i-carbon-save-series"
+            label="Save the selection as a pattern"
+            size="sm"
+            :active="edit.patternSaveOpen"
+            :disabled="selected < 2"
+            @click="edit.patternSaveOpen ? (edit.patternSaveOpen = false) : edit.openPatternSave()"
+          />
+        </template>
+        <SavePatternPanel @close="edit.patternSaveOpen = false" />
+      </UiPopover>
 
       <div class="mx-1 divider-x" />
       <UiPopover placement="top" align="start" width="272px">
@@ -327,7 +363,7 @@ const fpsOptions = [24, 25, 30, 60].map(v => ({ value: v, label: String(v) }))
         <span class="divider-x" />
       </template>
       <span class="truncate">
-        Click a point to select · Shift or {{ mod }} to add · drag empty space to box-select · drag points to move · double-click or I to add · arrows nudge · , . jump between points
+        Click a point to select · Shift or {{ mod }} to add · drag empty space to box-select · Alt + drag to mark a stretch · drag points to move · double-click or I to add · Shift I to fill · arrows nudge · , . jump between points
       </span>
       <span v-if="!player.isPlaying && player.videoUrl" class="ml-auto shrink-0">Space plays</span>
     </footer>

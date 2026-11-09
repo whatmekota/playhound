@@ -156,6 +156,24 @@ const commands = computed<Item[]>(() => {
       ui.openView('player')
       scriptEdit.openEditor()
     } },
+    scriptEdit.open && !!scriptEdit.target && {
+      id: 'cmd:edit-fill',
+      kind: 'command',
+      label: scriptEdit.selection.length >= 2 ? 'Fill between the selected points…' : 'Fill or insert a pattern…',
+      hint: 'Strokes or a pattern, with a preview',
+      icon: 'i-carbon-chart-line-smooth',
+      keywords: 'fill generate strokes pattern insert gap sine ramp beats editor',
+      kbd: ['Shift', 'I'],
+      run: () => scriptEdit.openFill(),
+    },
+    scriptEdit.open && scriptEdit.selection.length >= 2 && {
+      id: 'cmd:edit-save-pattern',
+      kind: 'command',
+      label: 'Save the selection as a pattern…',
+      icon: 'i-carbon-save-series',
+      keywords: 'pattern keep reuse editor',
+      run: () => scriptEdit.openPatternSave(),
+    },
     scripts.anyTweaked && { id: 'cmd:reset-tweaks', kind: 'command', label: 'Reset script tweaks', hint: 'Play the script as written', icon: 'i-carbon-reset', keywords: 'invert range speed limit smoothing offset', run: () => scripts.resetTweaks() },
     { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
     loaded && { id: 'cmd:next-peak', kind: 'command', label: 'Jump to the next peak', icon: 'i-carbon-skip-forward-outline', keywords: 'good part intense fast chapter', kbd: ['G'], run: () => session.nextPeak() },

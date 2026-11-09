@@ -58,6 +58,27 @@ describe('script edit store', () => {
     expect(edit.points[1].pos).toBeCloseTo(0.8)
   })
 
+  it('a fill applied through commit is one undo step', async () => {
+    const { planFill } = await import('../src/lib/scriptFill')
+    const scripts = useScriptStore()
+    scripts.setScripts([file(POINTS)])
+    const edit = useScriptEditStore()
+    edit.openEditor()
+    edit.openFill(250)
+    expect(edit.fillOpen).toBe(true)
+    expect(edit.fillAt).toBe(250)
+    expect(edit.fillPrefer).toBe('at')
+    edit.setSelection([0, 2])
+    const plan = planFill(edit.points, { kind: 'between', i0: 0, i1: 2 }, { source: { kind: 'shape', shape: 'sharp' }, lo: 0, hi: 1, rate: { kind: 'count', count: 3 } })!
+    edit.commit(plan.points, plan.selection)
+    expect(edit.points.length).toBe(7)
+    edit.undo()
+    expect(edit.points.map(p => p.at)).toEqual([0, 500, 1000])
+    expect(edit.selection).toEqual([0, 2])
+    await edit.closeEditor()
+    expect(edit.fillOpen).toBe(false)
+  })
+
   it('a drag previews without history, and its commit is one undo step', () => {
     const scripts = useScriptStore()
     scripts.setScripts([file(POINTS)])

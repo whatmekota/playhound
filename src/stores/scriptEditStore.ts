@@ -40,6 +40,47 @@ export interface EditorPrefs {
   fastLimit: number
   /** The panel's height, px. */
   height: number
+  /** What Fill was last set to. */
+  fill: FillPrefs
+}
+
+/** Fill and Insert pattern, as last set. Ranges are 0–100. */
+export interface FillPrefs {
+  /** `shape:<name>` or a pattern's id. */
+  source: string
+  lo: number
+  hi: number
+  rate: 'spm' | 'count' | 'beats' | 'own'
+  spm: number
+  ramp: boolean
+  spmTo: number
+  /** Repeats per minute for a pattern. */
+  patternSpm: number
+  /** Strokes, for a shape. */
+  count: number
+  /** Repeats, for a pattern: 1 stretches it across the span. */
+  repeats: number
+  perBeat: number
+  /** Whole strokes, ending on the end point. */
+  fit: boolean
+  /** A stretch of time's ends: the script's position there, or the fill's own. */
+  edges: 'script' | 'fill'
+}
+
+export const FILL_DEFAULTS: FillPrefs = {
+  source: 'shape:sine',
+  lo: 5,
+  hi: 95,
+  rate: 'spm',
+  spm: 90,
+  ramp: false,
+  spmTo: 140,
+  patternSpm: 20,
+  count: 8,
+  repeats: 1,
+  perBeat: 1,
+  fit: true,
+  edges: 'script',
 }
 
 /** Histories follow the script object itself: Save as renames it, a new video replaces it. */
@@ -62,7 +103,11 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
     fps: 30,
     fastLimit: 500,
     height: 300,
-  }, { mergeDefaults: true })
+    fill: { ...FILL_DEFAULTS },
+  }, {
+    // One level deeper than the default merge, so a fill setting added later gets its default.
+    mergeDefaults: (stored, defaults) => ({ ...defaults, ...stored, fill: { ...defaults.fill, ...stored?.fill } }),
+  })
   const saving = ref(false)
 
   /** What the unsaved-edits dialog is asking, while it is up. */
@@ -107,14 +152,37 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
   const dirtyScripts = computed(() => scripts.scripts.filter(s => s.edited))
   const dirty = computed(() => dirtyScripts.value.length > 0)
 
+  // ─── Fill and patterns ──────────────────────────────────────────────────
+  /** The Fill / Insert pattern popover is up. */
+  const fillOpen = ref(false)
+  /** Where an insert with no span goes (script ms), fixed when the popover opens. */
+  const fillAt = ref(0)
+  /** Opened for a moment (the context menu's "Insert a pattern here") rather than for whatever is selected. */
+  const fillPrefer = ref<'auto' | 'at'>('auto')
+  /** What a fill would put in, drawn on the canvas until it is applied or closed. */
+  const fillPreview = shallowRef<{ from: number, to: number, points: readonly Pt[] } | null>(null)
+  /** A stretch of time marked by Alt-dragging, to fill with no points chosen. Script ms. */
+  const markedRange = shallowRef<{ t0: number, t1: number } | null>(null)
+  /** The Save as pattern popover is up. */
+  const patternSaveOpen = ref(false)
+
+  watch(fillOpen, (o) => {
+    if (!o)
+      fillPreview.value = null
+  })
+
   // New scripts (another video): what was selected means nothing now.
   watch(() => scripts.scripts, () => {
     if (channel.value && !editable.value.some(s => s.channel === channel.value))
       channel.value = editable.value[0]?.channel ?? null
     selection.value = []
+    markedRange.value = null
     tick.value++
   })
-  watch(channel, () => (selection.value = []))
+  watch(channel, () => {
+    selection.value = []
+    markedRange.value = null
+  })
 
   // ─── Opening ────────────────────────────────────────────────────────────
   function openEditor(ch?: string) {
@@ -132,6 +200,9 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
       return false
     open.value = false
     selection.value = []
+    fillOpen.value = false
+    patternSaveOpen.value = false
+    markedRange.value = null
     return true
   }
 
@@ -227,6 +298,26 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
 
   function selectAll() {
     selection.value = points.value.map((_, i) => i)
+  }
+
+  /**
+   * Fill between the selected points (or a marked stretch, or the A–B loop),
+   * or insert a pattern. With `at` (script ms), insert there.
+   */
+  function openFill(at?: number) {
+    if (!target.value)
+      return
+    fillAt.value = Math.max(0, Math.round(at ?? playheadMs()))
+    fillPrefer.value = at === undefined ? 'auto' : 'at'
+    patternSaveOpen.value = false
+    fillOpen.value = true
+  }
+
+  function openPatternSave() {
+    if (selection.value.length < 2)
+      return
+    fillOpen.value = false
+    patternSaveOpen.value = true
   }
 
   // ─── Saving ─────────────────────────────────────────────────────────────
@@ -480,6 +571,14 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
     insertAtPlayhead,
     deleteSelected,
     nudge,
+    fillOpen,
+    fillAt,
+    fillPrefer,
+    fillPreview,
+    markedRange,
+    patternSaveOpen,
+    openFill,
+    openPatternSave,
     save,
     saveAs,
     exportTweaked,

@@ -19,6 +19,7 @@ const EXPECTED: { key: string, label: string, icon: string }[] = [
   { key: 'ph:bookmarks', label: 'Bookmarks', icon: 'i-carbon-bookmark' },
   { key: 'ph:library.starred', label: 'Starred', icon: 'i-carbon-star' },
   { key: 'ph:device.config', label: 'Device settings', icon: 'i-carbon-plug' },
+  { key: 'ph:editor.patterns', label: 'Script patterns', icon: 'i-carbon-chart-line-smooth' },
 ]
 
 const IDB_LABEL: Record<string, string> = {
@@ -232,7 +233,7 @@ function fmtBytes(n: number) {
     <!-- Back up / restore -->
     <UiSection title="Back up" icon="i-carbon-data-backup">
       <p class="hint">
-        One file with settings, playlists, bookmarks, stats, tags and video notes. Keep a copy before
+        One file with settings, playlists, bookmarks, stats, tags, video notes and script patterns. Keep a copy before
         changing ports or browsers.
       </p>
       <div class="gap-2 grid grid-cols-2">

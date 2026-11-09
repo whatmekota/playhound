@@ -108,6 +108,8 @@ export const HOTKEY_GROUPS: HotkeyGroup[] = [
       { keys: 'Ctrl + A', label: 'Select every point', owner: 'editor' },
       { keys: 'Double-click  or  I', label: 'Add a point — where you click, or at the playhead', owner: 'editor' },
       { keys: 'Delete', label: 'Delete the selected points', owner: 'editor' },
+      { keys: 'Shift + I', label: 'Fill between the selected points, or insert a pattern at the playhead', owner: 'editor' },
+      { keys: 'Alt + drag', label: 'Mark a stretch of time to fill', owner: 'editor' },
       { keys: '← / →', label: 'Move the selection in time — 10 ms, or a frame when snapping (Shift: ×10)', owner: 'editor' },
       { keys: '↑ / ↓', label: 'Move the selection up or down by 1 (Shift: ×10)', owner: 'editor' },
       { keys: ', / .', label: 'Previous / next point', owner: 'editor' },

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { MenuItem } from '~/components/ui/menu'
 import type { MoveLimits, Pt, SelectMode } from '~/lib/scriptEdit'
 import { useElementSize } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import UiContextMenu from '~/components/ui/UiContextMenu.vue'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import {
@@ -57,6 +59,7 @@ const maxSpan = computed(() => Math.max(totalMs.value * 1.05, 5000))
 type Drag
   = | { kind: 'move', original: Pt[], sel: number[], anchor: number, x0: number, y0: number, limits: MoveLimits, moved: boolean }
     | { kind: 'box', x0: number, y0: number, x1: number, y1: number, mode: SelectMode }
+    | { kind: 'range', x0: number, x1: number }
     | { kind: 'scrub' }
 
 let drag: Drag | null = null
@@ -113,7 +116,17 @@ function showSelection() {
   setView((a + b) / 2 - span / 2, span)
 }
 
-defineExpose({ zoomIn, zoomOut, fitAll, showSelection })
+/** Bring a stretch of time (script ms) into view, unless it is already. */
+function showSpan(a: number, b: number) {
+  const t0 = viewStart.value
+  const t1 = t0 + viewSpan.value
+  if (a >= t0 && b <= t1 && b - a > viewSpan.value * 0.1)
+    return
+  const span = Math.max(MIN_SPAN, (b - a) * 1.3)
+  setView((a + b) / 2 - span / 2, span)
+}
+
+defineExpose({ zoomIn, zoomOut, fitAll, showSelection, showSpan })
 
 // ─── Playhead ────────────────────────────────────────────────────────────────
 /** While playing, the view scrolls to keep the playhead a third of the way in. */
@@ -207,6 +220,13 @@ function onPointerDown(e: PointerEvent) {
     return
   }
 
+  // Alt + drag marks a stretch of time to fill, points or none.
+  if (e.altKey) {
+    e.preventDefault()
+    drag = { kind: 'range', x0: px, x1: px }
+    return
+  }
+
   const i = hit(px, py)
   const additive = e.shiftKey
   const toggling = e.ctrlKey || e.metaKey
@@ -247,6 +267,11 @@ function onPointerMove(e: PointerEvent) {
     invalidate()
     return
   }
+  if (drag.kind === 'range') {
+    drag.x1 = px
+    invalidate()
+    return
+  }
   // Moving: a few pixels of slack, so a click on a point never nudges it.
   if (!drag.moved && Math.hypot(px - drag.x0, py - drag.y0) < 3)
     return
@@ -278,12 +303,20 @@ function onPointerUp(e: PointerEvent) {
       edit.commit(live, d.sel, d.original, d.sel)
     live = null
   }
+  else if (d.kind === 'range') {
+    const a = Math.max(0, tAt(Math.min(d.x0, d.x1)))
+    const b = tAt(Math.max(d.x0, d.x1))
+    // A plain Alt + click takes the mark away.
+    edit.markedRange = Math.abs(d.x1 - d.x0) < 3 || b - a < 2 ? null : { t0: Math.round(a), t1: Math.round(b) }
+  }
   else if (d.kind === 'box') {
     const small = Math.abs(d.x1 - d.x0) < 3 && Math.abs(d.y1 - d.y0) < 3
     if (small) {
-      // A plain click on empty space: let go of the selection.
-      if (d.mode === 'replace')
+      // A plain click on empty space: let go of the selection, and of a marked stretch.
+      if (d.mode === 'replace') {
         edit.setSelection([])
+        edit.markedRange = null
+      }
     }
     else {
       const hits = selectInBox(edit.points, tAt(d.x0), tAt(d.x1), posAt(d.y0), posAt(d.y1))
@@ -298,6 +331,36 @@ function onDoubleClick(e: MouseEvent) {
   if (py < PAD.t || hit(px, py) !== null)
     return
   edit.insertAt(tAt(px), Math.max(0, Math.min(1, posAt(py))))
+}
+
+// ─── Right-click ─────────────────────────────────────────────────────────────
+const menu = ref<{ x: number, y: number, items: MenuItem[] } | null>(null)
+const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'
+
+function onContextMenu(e: MouseEvent) {
+  const { px, py } = local(e)
+  if (py < PAD.t)
+    return
+  const at = Math.max(0, tAt(px))
+  const pos = Math.max(0, Math.min(1, posAt(py)))
+  const n = edit.selection.length
+  const fillLabel = n >= 2
+    ? 'Fill between the selected points…'
+    : edit.markedRange ? 'Fill the marked stretch…' : 'Fill…'
+  menu.value = {
+    x: e.clientX,
+    y: e.clientY,
+    items: [
+      { label: fillLabel, icon: 'i-carbon-chart-line-smooth', kbd: 'Shift I', run: () => edit.openFill() },
+      { label: 'Insert a pattern here…', icon: 'i-carbon-add-alt', run: () => edit.openFill(at) },
+      { label: 'Save the selection as a pattern…', icon: 'i-carbon-save-series', disabled: n < 2, run: () => edit.openPatternSave() },
+      { separator: true },
+      { label: 'Add a point here', icon: 'i-carbon-dot-mark', run: () => edit.insertAt(at, pos) },
+      { label: 'Select all', kbd: `${mod} A`, run: () => edit.selectAll() },
+      ...(edit.markedRange ? [{ label: 'Clear the marked stretch', icon: 'i-carbon-close', run: () => (edit.markedRange = null) }] : []),
+      { label: n === 1 ? 'Delete the selected point' : 'Delete the selected points', icon: 'i-carbon-trash-can', kbd: 'Del', danger: true, disabled: !n, run: () => edit.deleteSelected() },
+    ],
+  }
 }
 
 function onWheel(e: WheelEvent) {
@@ -436,6 +499,28 @@ function draw() {
   ctx.rect(PAD.l, PAD.t, W - PAD.l - PAD.r, H - PAD.t)
   ctx.clip()
 
+  // A marked stretch (Alt + drag), or one being marked: a band behind everything.
+  const band = drag?.kind === 'range'
+    ? { a: Math.min(drag.x0, drag.x1), b: Math.max(drag.x0, drag.x1) }
+    : edit.markedRange ? { a: x(edit.markedRange.t0), b: x(edit.markedRange.t1) } : null
+  if (band) {
+    ctx.fillStyle = p.accent
+    ctx.globalAlpha = 0.1
+    ctx.fillRect(band.a, PAD.t, band.b - band.a, H - PAD.t)
+    ctx.globalAlpha = 0.6
+    ctx.strokeStyle = p.accent
+    ctx.lineWidth = 1
+    ctx.setLineDash([4, 3])
+    for (const bx of [band.a, band.b]) {
+      ctx.beginPath()
+      ctx.moveTo(Math.round(bx) + 0.5, PAD.t)
+      ctx.lineTo(Math.round(bx) + 0.5, H)
+      ctx.stroke()
+    }
+    ctx.setLineDash([])
+    ctx.globalAlpha = 1
+  }
+
   // What plays, when tweaks change it: a faint line behind the points.
   const played = edit.played
   if (played && played.length > 1) {
@@ -490,6 +575,36 @@ function draw() {
     ctx.lineWidth = on ? 2 : 1.5
     ctx.strokeStyle = on ? p.ink : i === hover.value ? p.ink : p.line
     ctx.stroke()
+  }
+
+  // A fill being set up: what is there now dimmed, what it would become over it.
+  const fp = edit.fillPreview
+  if (fp && fp.points.length) {
+    const a = x(fp.from)
+    const b = x(fp.to)
+    ctx.fillStyle = p.bg
+    ctx.globalAlpha = 0.72
+    ctx.fillRect(a, PAD.t, b - a, H - PAD.t)
+    ctx.globalAlpha = 0.1
+    ctx.fillStyle = p.accent
+    ctx.fillRect(a, PAD.t, b - a, H - PAD.t)
+    ctx.globalAlpha = 1
+    ctx.strokeStyle = p.accent
+    ctx.lineWidth = 2
+    ctx.lineJoin = 'round'
+    polyline(ctx, fp.points as Pt[], t0, t1)
+    ctx.stroke()
+    const vis = lowerBound(fp.points, t1) - lowerBound(fp.points, t0)
+    if (vis < plotW.value / 6) {
+      ctx.fillStyle = p.accent
+      for (const q of fp.points) {
+        if (q.at < t0 || q.at > t1)
+          continue
+        ctx.beginPath()
+        ctx.arc(x(q.at), y(q.pos), 2.5, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
   }
   ctx.restore()
 
@@ -618,7 +733,7 @@ function drawOverview() {
 }
 
 watch(
-  [() => edit.points, () => edit.selection, () => edit.played, palette, width, height, viewStart, viewSpan, hover, () => edit.target],
+  [() => edit.points, () => edit.selection, () => edit.played, () => edit.fillPreview, () => edit.markedRange, palette, width, height, viewStart, viewSpan, hover, () => edit.target],
   invalidate,
   { flush: 'post' },
 )
@@ -655,7 +770,9 @@ const hoverInfo = computed(() => {
         @pointerleave="hover = null"
         @dblclick="onDoubleClick"
         @wheel="onWheel"
+        @contextmenu.prevent="onContextMenu"
       />
+      <UiContextMenu v-model="menu" />
       <div
         v-if="hoverInfo"
         class="text-[11px] text-fg num px-1.5 py-0.5 pop rounded-[var(--radius-xs)] pointer-events-none whitespace-nowrap absolute"

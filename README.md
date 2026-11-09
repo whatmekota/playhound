@@ -74,6 +74,10 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   range, invert, a speed limit, smoothing and the offset. A point editor under
   the video: click, box-select, drag a whole selection, nudge with the arrows,
   undo, and save back next to the video (the original is kept as a `.bak`).
+  **Shift+I** fills between two points with strokes (the generator's own
+  shapes, a ramp from one speed to another, or on the soundtrack's beats),
+  previewed before it goes in. Save a selection as a pattern and drop it in
+  again, stretched or repeated; a few classics come built in.
 - **Record a session as a script.** **Shift+C** records what the device does,
   whatever drives it (manual, music, a programme, a plugin), and saves it as a
   `.funscript`, timed to the video if one was playing.
