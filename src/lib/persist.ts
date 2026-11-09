@@ -46,6 +46,8 @@ export const KEYS = {
   starred: def('ph:library.starred', 'data', 'Starred videos'),
   stats: def('ph:stats', 'data', 'Watch stats'),
   statsDaily: def('ph:stats.daily', 'data', 'Watch time per day'),
+  statsSessions: def('ph:stats.sessions', 'data', 'Sessions: when each ran, its edges and finishes'),
+  rules: def('ph:rules', 'data', 'Rules'),
   wallItems: def('ph:wall.items', 'data', 'Media wall YouTube tiles'),
   programmes: def('ph:programmes', 'data', 'Session programmes'),
   scriptPatterns: def('ph:editor.patterns', 'data', 'Script editor patterns'),
@@ -87,6 +89,7 @@ export const KEYS = {
   popoutOpacity: def('ph:popout.opacity', 'setting', 'Pop-out player opacity'),
   netProxy: def('ph:net.proxy', 'setting', 'Network proxy'),
   directorEnabled: def('ph:director.enabled', 'setting', 'Director on/off'),
+  directorPrefer: def('ph:director.prefer', 'setting', 'Director leans towards videos you finish to'),
   panicOnBlur: def('ph:safety.panicOnBlur', 'setting', 'Panic when the window loses focus'),
   idleStopMinutes: def('ph:safety.idleStopMinutes', 'setting', 'Idle device stop'),
   splash: def('ph:ui.splash', 'setting', 'Splash screen'),
@@ -181,7 +184,7 @@ export function isOwnKey(key: string): boolean {
 
 // ─── Migrations ───────────────────────────────────────────────────────────────
 
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 /** Old name → new name, for the move to the `ph:` namespace (schema 1 → 2). */
 export const LEGACY_RENAMES: Record<string, string> = {
@@ -364,6 +367,17 @@ const MIGRATIONS: { from: number, run: (kv: KV) => void }[] = [
     run(kv) {
       for (const k of ORPHANED)
         kv.removeItem(k)
+    },
+  },
+  {
+    // 3 → 4: a log of sessions (start and end, edges, finishes, heart rate
+    // and pace at a finish) starts here. Older stats only have per-video
+    // totals, so stamp when logging began: Stats can then say which findings
+    // cover everything and which only the sessions since.
+    from: 3,
+    run(kv) {
+      if (kv.getItem(KEYS.statsSessions.key) === null)
+        kv.setItem(KEYS.statsSessions.key, JSON.stringify({ since: Date.now(), sessions: [] }))
     },
   },
 ]

@@ -29,7 +29,7 @@ describe('runMigrations', () => {
       'deviceConfig': '{"axes":1}',
     })
     expect(storedSchema(kv)).toBe(1)
-    expect(runMigrations(kv)).toEqual([1, 2])
+    expect(runMigrations(kv)).toEqual([1, 2, 3])
 
     expect(kv.data[KEYS.playlists.key]).toBe('[{"id":"x","name":"Mine","entries":[]}]')
     expect(kv.data[KEYS.hypnoWords.key]).toBe('["a","b"]')
@@ -91,7 +91,7 @@ describe('runMigrations', () => {
 
   it('drops keys of features that no longer exist', () => {
     const kv = memory({ 'ph:schema': '2', 'mwhoplayer:llm': '{}', 'ph-sec-beat': 'true', 'ph:playlists': '[]' })
-    expect(runMigrations(kv)).toEqual([2])
+    expect(runMigrations(kv)).toEqual([2, 3])
     expect(kv.data['mwhoplayer:llm']).toBeUndefined()
     expect(kv.data['ph-sec-beat']).toBeUndefined()
     expect(kv.data['ph:playlists']).toBe('[]')
@@ -100,9 +100,21 @@ describe('runMigrations', () => {
 
   it('walks every step from the oldest layout', () => {
     const kv = memory({ 'ph-volume': '0.5', 'ph-sec-layers': 'true' })
-    expect(runMigrations(kv)).toEqual([1, 2])
+    expect(runMigrations(kv)).toEqual([1, 2, 3])
     expect(kv.data[KEYS.audioVolume.key]).toBe('0.5')
     expect(kv.data['ph-sec-layers']).toBeUndefined()
+  })
+
+  it('stamps when the session log started, and never resets it', () => {
+    const kv = memory({ 'ph:schema': '3', 'ph:stats': '{}' })
+    expect(runMigrations(kv)).toEqual([3])
+    const log = JSON.parse(kv.data[KEYS.statsSessions.key])
+    expect(log.sessions).toEqual([])
+    expect(typeof log.since).toBe('number')
+
+    const kept = memory({ 'ph:schema': '3', [KEYS.statsSessions.key]: '{"since":5,"sessions":[]}' })
+    runMigrations(kept)
+    expect(kept.data[KEYS.statsSessions.key]).toBe('{"since":5,"sessions":[]}')
   })
 
   it('is idempotent', () => {

@@ -1,7 +1,9 @@
 import type { EdgeSource } from '~/stores/sessionControlStore'
 import { computed, ref } from 'vue'
 import { chaptersForScript } from '~/lib/chapters'
+import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { nextPeak as findNextPeak, finishChapter } from '~/lib/peakJump'
+import { momentIntensity, speedDistribution } from '~/lib/scriptIntensity'
 import { formatTime } from '~/lib/time'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -110,6 +112,18 @@ export function useSessionActions() {
     notify({ icon: 'i-carbon-flag-filled', text: 'Finish', sub: `${c.name} · ${formatTime(c.start / 1000, '0:00')}` }, 'peak')
   }
 
+  /** The script's pace and how hard it is going at the playhead, for Stats. */
+  function scriptHere(): { spm?: number, moment?: number } {
+    const a = analysis.value
+    const s = source.value
+    if (!a || !s || !a.envelope.length)
+      return {}
+    const sample = sampleEnvelope(a.envelope, player.currentTime * 1000 + (s.offsetMs ?? 0))
+    if (!sample)
+      return {}
+    return { spm: sample.spm, moment: momentIntensity(sample.speed, speedDistribution(a.envelope)) }
+  }
+
   /**
    * "I came": mark the moment on this video. It shows on the timeline and
    * counts in Stats; the toast can take it back after a mis-click.
@@ -118,7 +132,7 @@ export function useSessionActions() {
     const name = videoName.value
     if (!name || !player.videoUrl)
       return
-    const event = stats.recordFinish(name, player.currentTime)
+    const event = stats.recordFinish(name, player.currentTime, scriptHere())
     ctl.noteFinish({ at: event.ts, videoTime: event.at, videoName: name })
     toast('Marked 💦', {
       detail: formatTime(event.at, '0:00'),
@@ -128,5 +142,5 @@ export function useSessionActions() {
     })
   }
 
-  return { edge, release, nudgeIntensity, nextPeak, finish, came, chapters }
+  return { edge, release, nudgeIntensity, nextPeak, finish, came, chapters, notify }
 }
