@@ -645,6 +645,17 @@ function onBackgroundClick(e: MouseEvent) {
                     >
                       <span :class="entry.starred ? 'i-carbon-star-filled' : 'i-carbon-star'" class="text-[15px]" />
                     </button>
+                    <!-- Share card, without playing it first -->
+                    <button
+                      v-if="entry.hasScript"
+                      v-tip="'Share card'"
+                      type="button"
+                      class="star-btn rounded-full opacity-0 center h-7 w-7 transition-[opacity,transform] right-1.5 top-10 absolute group-hover:opacity-100 active:scale-90"
+                      aria-label="Share card"
+                      @click.stop="ui.shareCard = { kind: 'entry', entry }"
+                    >
+                      <span class="i-carbon-image text-[14px]" />
+                    </button>
 
                     <!-- Bottom row: playing, script, duration -->
                     <div class="bottom-row flex gap-1 transition-opacity items-center bottom-1.5 left-1.5 right-1.5 absolute">
@@ -758,15 +769,27 @@ function onBackgroundClick(e: MouseEvent) {
                   <span v-if="entry.remote" class="text-[12px] text-fg-muted text-right truncate" :title="`From ${entry.remote.label}, added by a plugin`">{{ entry.remote.label }}</span>
                   <span v-else class="text-[12px] text-fg-muted num text-right">{{ formatSize(entry.file.size) }}</span>
                   <span class="col-date text-[12px] text-fg-faint text-right">{{ entry.remote ? '' : formatDate(entry.file.lastModified) }}</span>
-                  <button
-                    type="button"
-                    class="star-inline rounded center h-7 w-7 transition-opacity"
-                    :class="entry.starred ? 'text-warn' : 'text-fg-faint opacity-0 group-hover:opacity-100 hover:text-fg'"
-                    :aria-label="entry.starred ? 'Unstar' : 'Star'"
-                    @click.stop="library.toggleStar(entry)"
-                  >
-                    <span :class="entry.starred ? 'i-carbon-star-filled' : 'i-carbon-star'" class="text-[14px]" />
-                  </button>
+                  <span class="flex items-center justify-end">
+                    <button
+                      v-if="entry.hasScript"
+                      v-tip="'Share card'"
+                      type="button"
+                      class="text-fg-faint rounded opacity-0 center h-7 w-7 transition-opacity hover:text-fg group-hover:opacity-100"
+                      aria-label="Share card"
+                      @click.stop="ui.shareCard = { kind: 'entry', entry }"
+                    >
+                      <span class="i-carbon-image text-[14px]" />
+                    </button>
+                    <button
+                      type="button"
+                      class="star-inline rounded center h-7 w-7 transition-opacity"
+                      :class="entry.starred ? 'text-warn' : 'text-fg-faint opacity-0 group-hover:opacity-100 hover:text-fg'"
+                      :aria-label="entry.starred ? 'Unstar' : 'Star'"
+                      @click.stop="library.toggleStar(entry)"
+                    >
+                      <span :class="entry.starred ? 'i-carbon-star-filled' : 'i-carbon-star'" class="text-[14px]" />
+                    </button>
+                  </span>
                 </div>
               </div>
             </template>
@@ -931,7 +954,7 @@ function onBackgroundClick(e: MouseEvent) {
 }
 .list-cols {
   display: grid;
-  grid-template-columns: 28px 64px minmax(0, 1fr) 156px 64px 72px 110px 32px;
+  grid-template-columns: 28px 64px minmax(0, 1fr) 156px 64px 72px 110px 64px;
   column-gap: 12px;
 }
 @container (max-width: 820px) {
