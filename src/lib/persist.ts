@@ -48,6 +48,7 @@ export const KEYS = {
   statsDaily: def('ph:stats.daily', 'data', 'Watch time per day'),
   wallItems: def('ph:wall.items', 'data', 'Media wall YouTube tiles'),
   programmes: def('ph:programmes', 'data', 'Session programmes'),
+  scriptPatterns: def('ph:editor.patterns', 'data', 'Script editor patterns'),
 
   // ── Settings ───────────────────────────────────────────────────────────
   theme: def('ph:theme', 'setting', 'Theme'),
