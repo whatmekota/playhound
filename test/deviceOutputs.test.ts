@@ -29,7 +29,7 @@ describe('e-stim audio section', () => {
     const w = await openSection()
     const text = w.text()
     expect(text).toContain('Experimental')
-    expect(text).toContain('Untested on real hardware')
+    expect(text).toContain('tell us how it works with your box')
     expect(text).toContain('18+')
     expect(text).toMatch(/Never above the waist/)
     expect(text).toMatch(/Start low/)
