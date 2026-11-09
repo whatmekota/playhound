@@ -40,13 +40,17 @@ const radius = computed(() => `${Math.round(props.size * 0.24)}px`)
   background: var(--bg-800);
   box-shadow: inset 0 0 0 1px var(--border);
 }
+/* Quiet, on the theme's own surfaces: a hint of the plugin's hue, never a loud tile. */
 .mono {
-  color: #fff;
+  color: color-mix(in oklch, var(--text-muted) 70%, oklch(0.72 0.12 calc(var(--h) * 1deg)));
   font-weight: 650;
   letter-spacing: -0.02em;
   background:
-    radial-gradient(120% 90% at 20% 10%, oklch(0.74 0.12 calc(var(--h) * 1deg) / 0.9), transparent 60%),
-    linear-gradient(145deg, oklch(0.62 0.14 calc(var(--h) * 1deg)), oklch(0.48 0.13 calc((var(--h) + 30) * 1deg)));
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+    radial-gradient(
+      110% 80% at 25% 10%,
+      color-mix(in oklch, var(--bg-600) 80%, oklch(0.6 0.12 calc(var(--h) * 1deg))),
+      transparent 70%
+    ),
+    var(--bg-700);
 }
 </style>
