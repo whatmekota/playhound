@@ -28,7 +28,7 @@ const error = computed(() => (props.entry.source?.status === 'error' ? props.ent
     <button type="button" class="focusable rounded-[var(--radius-lg)] inset-0 absolute" :aria-label="`About ${entry.name}`" @click="emit('open')" />
 
     <div class="flex gap-3 min-w-0 pointer-events-none items-start relative">
-      <PluginIcon :id="entry.id" :name="entry.name" :image="icon" :size="44" />
+      <PluginIcon :id="entry.id" :name="entry.name" :image="icon" :official="entry.trust === 'official'" :size="44" />
       <div class="flex flex-1 flex-col gap-0.5 min-w-0">
         <span class="flex gap-1.5 min-w-0 items-center">
           <span class="text-[13.5px] text-fg font-semibold truncate">{{ entry.name }}</span>

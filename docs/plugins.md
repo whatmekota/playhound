@@ -550,7 +550,8 @@ installed, the icon comes from the **zip** if it's in there too, so put
 manifest: only the release's own files, or the zip's. Each picture is checked
 (type, size, dimensions) before it shows, and kept, so the store doesn't
 download it again. A plugin without an icon gets its initials on a colour
-picked from its id.
+picked from its id (playhound's own plugins, from its own repositories, get
+the icon playhound ships for them instead).
 
 **Text.** The README and the long description are Markdown, shown as text:
 HTML in them is dropped (its text kept), except `<img>`. Links open in the

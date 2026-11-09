@@ -113,7 +113,7 @@ const kb = (n: number) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))
         :aria-expanded="expanded"
         @click="emit('toggle')"
       >
-        <PluginIcon :id="plugin.manifest.id" :name="plugin.manifest.name" :image="icon" :size="36" />
+        <PluginIcon :id="plugin.manifest.id" :name="plugin.manifest.name" :image="icon" :official="!!plugin.source && trustOf(plugin.source) === 'official'" :size="36" />
         <span class="flex flex-1 flex-col gap-0.5 min-w-0">
           <span class="flex gap-2 min-w-0 items-center">
             <span class="text-[13.5px] text-fg font-medium truncate">{{ plugin.manifest.name }}</span>

@@ -122,7 +122,7 @@ const TRUST_NOTE = {
 
     <!-- Header -->
     <div class="flex flex-wrap gap-4 items-start">
-      <PluginIcon :id="entry.id" :name="entry.name" :image="icon" :size="64" />
+      <PluginIcon :id="entry.id" :name="entry.name" :image="icon" :official="entry.trust === 'official'" :size="64" />
       <div class="flex flex-1 flex-col gap-1 min-w-[200px]">
         <div class="flex flex-wrap gap-x-2 gap-y-0.5 items-center">
           <h4 class="text-[17px] text-fg tracking-[-0.01em] font-semibold m-0">

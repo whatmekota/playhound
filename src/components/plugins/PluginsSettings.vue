@@ -269,6 +269,7 @@ async function retry(key: string) {
           :id="store.pendingInstall.manifest.id"
           :name="store.pendingInstall.manifest.name"
           :image="pendingEntry ? iconRef(pendingEntry, store.pluginFile) : null"
+          :official="pendingEntry?.trust === 'official'"
           :size="40"
         />
         <div class="flex flex-1 flex-col gap-0.5 min-w-0">
@@ -469,7 +470,7 @@ async function retry(key: string) {
 
         <div v-for="e in updates" :key="e.key" class="p-3.5 card flex flex-col gap-2.5">
           <div class="flex gap-3 items-center">
-            <PluginIcon :id="e.id" :name="e.name" :image="iconRef(e, store.pluginFile)" :size="36" />
+            <PluginIcon :id="e.id" :name="e.name" :image="iconRef(e, store.pluginFile)" :official="e.trust === 'official'" :size="36" />
             <button type="button" class="text-left focusable rounded-[var(--radius-sm)] flex flex-1 flex-col gap-0.5 min-w-0" @click="openDetail(e.key)">
               <span class="text-[13.5px] text-fg font-medium truncate">{{ e.name }}</span>
               <span class="text-[11.5px] text-fg-faint num">{{ e.installed!.manifest.version }} → {{ e.update!.version }} · {{ ago(e.update!.publishedAt, now) }}</span>

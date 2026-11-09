@@ -1,26 +1,35 @@
 <script setup lang="ts">
 import type { ImageRef } from '~/plugins/storeCache'
 import { computed, ref, watch } from 'vue'
+import { builtInIcon } from '~/plugins/builtInIcons'
 import { useImage } from '~/plugins/storeCache'
 import { monogram } from '~/plugins/storeMeta'
 
 /**
  * A plugin's icon: its own picture when it has one (checked and cached, see
- * storeCache), else its initials on a colour picked from its id, so each
- * plugin keeps the same one.
+ * storeCache); else, for one of playhound's own plugins (`official`: from an
+ * official repository), the icon playhound ships for it; else its initials
+ * on a colour picked from its id, so each plugin keeps the same one.
  */
 const props = withDefaults(defineProps<{
   id: string
   name: string
   image?: ImageRef | null
+  official?: boolean
   size?: number
-}>(), { size: 40, image: null })
+}>(), { size: 40, image: null, official: false })
 
 const url = useImage(() => props.image, 'icon')
 const broken = ref(false)
 watch(url, () => (broken.value = false))
+const src = computed(() => (url.value && !broken.value ? url.value : builtInIcon(props.id, props.official)))
 const mono = computed(() => monogram(props.id, props.name))
 const radius = computed(() => `${Math.round(props.size * 0.24)}px`)
+
+function onError() {
+  if (src.value === url.value)
+    broken.value = true
+}
 </script>
 
 <template>
@@ -29,7 +38,7 @@ const radius = computed(() => `${Math.round(props.size * 0.24)}px`)
     :style="{ 'width': `${size}px`, 'height': `${size}px`, 'borderRadius': radius, '--h': mono.hue }"
     aria-hidden="true"
   >
-    <img v-if="url && !broken" :src="url" alt="" class="h-full w-full block object-cover" draggable="false" @error="broken = true">
+    <img v-if="src" :src="src" alt="" class="h-full w-full block object-cover" draggable="false" @error="onError">
     <span v-else class="mono center h-full w-full" :style="{ fontSize: `${Math.round(size * (mono.letters.length > 1 ? 0.36 : 0.44))}px` }">{{ mono.letters }}</span>
   </span>
 </template>

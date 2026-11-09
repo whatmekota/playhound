@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest'
+import { builtInIcon } from '~/plugins/builtInIcons'
 import { addNewDefaults, DEFAULT_SOURCES, OFFICIAL_OWNER, trustOf } from '~/plugins/sources'
+import { buildEntries } from '~/plugins/storeEntry'
+
+describe('built-in icons for the official plugins', () => {
+  const OFFICIAL = ['playmate', 'ph2gether', 'phbrowser', 'phthreads', 'phbeatbar', 'phvr', 'phstash']
+  it('has one for each official plugin', () => {
+    const icons = OFFICIAL.map(id => builtInIcon(id, true))
+    for (const icon of icons)
+      expect(icon).toMatch(/svg/)
+    expect(new Set(icons).size).toBe(OFFICIAL.length)
+  })
+  it('gives none to a plugin that isn\'t official, even with an official id', () => {
+    expect(builtInIcon('playmate', false)).toBeNull()
+    expect(builtInIcon('something-else', true)).toBeNull()
+    expect(builtInIcon('constructor', true)).toBeNull()
+  })
+  it('goes by the repository, not the id', () => {
+    const entries = buildEntries(['whatmekota/playmate', 'someone/playmate'], {}, [])
+    expect(entries.map(e => builtInIcon(e.id, e.trust === 'official'))).toEqual([builtInIcon('playmate', true), null])
+  })
+})
 
 describe('plugin source trust', () => {
   it('marks the official owner\'s repositories, whatever the case', () => {
