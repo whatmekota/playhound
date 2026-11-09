@@ -6,6 +6,7 @@
 // biome-ignore lint: disable
 export {}
 declare global {
+  const AUDIO_VISUALS: typeof import('./src/composables/useAudioVisual').AUDIO_VISUALS
   const ESTIM_DEFAULTS: typeof import('./src/composables/useEstim').ESTIM_DEFAULTS
   const EffectScope: typeof import('vue').EffectScope
   const FACE_CHANNEL: typeof import('./src/composables/useFaceScreen').FACE_CHANNEL
@@ -225,6 +226,7 @@ declare global {
   const useAsyncQueue: typeof import('@vueuse/core').useAsyncQueue
   const useAsyncState: typeof import('@vueuse/core').useAsyncState
   const useAttrs: typeof import('vue').useAttrs
+  const useAudioVisual: typeof import('./src/composables/useAudioVisual').useAudioVisual
   const useAutoDirector: typeof import('./src/composables/useAutoDirector').useAutoDirector
   const useBase64: typeof import('@vueuse/core').useBase64
   const useBattery: typeof import('@vueuse/core').useBattery
@@ -443,6 +445,9 @@ declare global {
   export type { Component, Slot, Slots, ComponentPublicInstance, ComputedRef, DirectiveBinding, ExtractDefaultPropTypes, ExtractPropTypes, ExtractPublicPropTypes, InjectionKey, PropType, Ref, ShallowRef, MaybeRef, MaybeRefOrGetter, VNode, WritableComputedRef } from 'vue'
   import('vue')
   // @ts-ignore
+  export type { AudioVisual } from './src/composables/useAudioVisual'
+  import('./src/composables/useAudioVisual')
+  // @ts-ignore
   export type { BeatMode } from './src/composables/useBinauralBeats'
   import('./src/composables/useBinauralBeats')
   // @ts-ignore
@@ -521,6 +526,7 @@ import { UnwrapRef } from 'vue'
 declare module 'vue' {
   interface GlobalComponents {}
   interface ComponentCustomProperties {
+    readonly AUDIO_VISUALS: UnwrapRef<typeof import('./src/composables/useAudioVisual')['AUDIO_VISUALS']>
     readonly ESTIM_DEFAULTS: UnwrapRef<typeof import('./src/composables/useEstim')['ESTIM_DEFAULTS']>
     readonly EffectScope: UnwrapRef<typeof import('vue')['EffectScope']>
     readonly FACE_CHANNEL: UnwrapRef<typeof import('./src/composables/useFaceScreen')['FACE_CHANNEL']>
@@ -740,6 +746,7 @@ declare module 'vue' {
     readonly useAsyncQueue: UnwrapRef<typeof import('@vueuse/core')['useAsyncQueue']>
     readonly useAsyncState: UnwrapRef<typeof import('@vueuse/core')['useAsyncState']>
     readonly useAttrs: UnwrapRef<typeof import('vue')['useAttrs']>
+    readonly useAudioVisual: UnwrapRef<typeof import('./src/composables/useAudioVisual')['useAudioVisual']>
     readonly useAutoDirector: UnwrapRef<typeof import('./src/composables/useAutoDirector')['useAutoDirector']>
     readonly useBase64: UnwrapRef<typeof import('@vueuse/core')['useBase64']>
     readonly useBattery: UnwrapRef<typeof import('@vueuse/core')['useBattery']>

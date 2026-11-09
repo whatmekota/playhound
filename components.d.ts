@@ -13,6 +13,8 @@ declare module 'vue' {
   export interface GlobalComponents {
     AddYoutubeModal: typeof import('./src/components/views/AddYoutubeModal.vue')['default']
     AppNav: typeof import('./src/components/shell/AppNav.vue')['default']
+    AudioSlideshow: typeof import('./src/components/player/AudioSlideshow.vue')['default']
+    AudioStage: typeof import('./src/components/player/AudioStage.vue')['default']
     BackupInspector: typeof import('./src/components/inspectors/BackupInspector.vue')['default']
     BinauralInspector: typeof import('./src/components/inspectors/BinauralInspector.vue')['default']
     BookmarksInspector: typeof import('./src/components/inspectors/BookmarksInspector.vue')['default']
@@ -86,6 +88,7 @@ declare module 'vue' {
     SettingsModal: typeof import('./src/components/shell/SettingsModal.vue')['default']
     ShareCardModal: typeof import('./src/components/share/ShareCardModal.vue')['default']
     ShortcutsModal: typeof import('./src/components/shell/ShortcutsModal.vue')['default']
+    SlideshowStage: typeof import('./src/components/views/SlideshowStage.vue')['default']
     SlideshowView: typeof import('./src/components/views/SlideshowView.vue')['default']
     SpeedControl: typeof import('./src/components/player/SpeedControl.vue')['default']
     SpeedSparkline: typeof import('./src/components/library/SpeedSparkline.vue')['default']
@@ -128,6 +131,7 @@ declare module 'vue' {
     UiTabs: typeof import('./src/components/ui/UiTabs.vue')['default']
     UnsavedEditsModal: typeof import('./src/components/editor/UnsavedEditsModal.vue')['default']
     VideoPlayer: typeof import('./src/components/player/VideoPlayer.vue')['default']
+    WallStage: typeof import('./src/components/views/WallStage.vue')['default']
     WelcomeScreen: typeof import('./src/components/shell/WelcomeScreen.vue')['default']
   }
 }
