@@ -141,6 +141,9 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 | ----------------------------------------------------------- | :------------------------------------------------: | :-------------------------------------------------------------: | :---------: |
 | Your library, the player, programmes, the session engine    |                         ✓                          |                                ✓                                |      ✓      |
 | TCode devices (Web Serial), heart-rate monitors (Bluetooth) |                         ✓                          |                                ✓                                |      ✓      |
+| TCode over the network: WebSocket                           |                         ✓‡                         |                                ✓                                |      ✓      |
+| TCode over the network: UDP                                 |                                                    |                                ✓                                |             |
+| E-stim audio (experimental)                                 |                         ✓                          |                                ✓                                |      ✓      |
 | Intiface / Buttplug toys                                    |                        ✓\*                         |                                ✓                                |      ✓      |
 | The Handy, over WiFi or Bluetooth                           |                         ✓                          |                                ✓                                |     ✓†      |
 | EroScripts browser, phone remote, CYD face                  |                                                    |                                ✓                                |      ✓      |
@@ -157,6 +160,10 @@ hosted page.
 [Handy developer portal](https://user.handyfeeling.com)) in `.env.local` as
 `VITE_HANDY_APP_ID`, or pasted under the Handy tab's **Advanced**. Bluetooth
 needs nothing.
+
+‡From the hosted page, only to this computer (restim): a page served over
+https may not open a plain `ws://` link to another device. The desktop app and
+`pnpm dev` can.
 
 Bluetooth in the browser needs Chrome or Edge.
 
@@ -222,9 +229,10 @@ Open the **Device** panel (**D**):
 
 | Output                   | How                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **TCode** (OSR2, SR6, …) | Web Serial. Set each axis's range, inversion and resting position, and save presets.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **TCode** (OSR2, SR6, …) | Over USB (Web Serial) or the network: a WebSocket, or UDP in the desktop app, for ESP32 builds on WiFi ([TCode ESP32](https://github.com/jcfain/TCodeESP32)) and for [restim](https://github.com/diglet48/restim). Set each axis's range, inversion and resting position, and save presets. A network link that drops reconnects by itself.                                                                                                                                                                                             |
 | **Intiface / Buttplug**  | Connect to Intiface Central. Strokers get linear moves, from scripts and from the motion generator; vibrators, rotators and oscillators get a strength from the source you pick per toy.                                                                                                                                                                                                                                                                                                                                                |
 | **The Handy**            | Firmware 4, over WiFi (paste the connection key from the Handy app) or straight over Bluetooth (no internet, no key). playhound streams the stroke script a few seconds ahead and the Handy plays it on its own clock, kept in step with the video, so fast scripts play as written, and the intensity knob and edges still apply. The motion generator (music, tap tempo, gamepad) drives it live. Under Advanced: **Live**, every move sent as it happens like MultiFunPlayer, and, over WiFi, **Whole script** for slow connections. |
+| **E-stim audio**         | Experimental, untested on real hardware. The stroke as a stereo tone on a sound output of its own, for a stim box with an audio input: restim's three-phase signal, or two channels panned. Off every time the app starts; it starts silent and fades in. Read [Safety](#e-stim-audio) first.                                                                                                                                                                                                                                           |
 | **Emulator**             | A 3D OSR on screen, for trying things with nothing plugged in.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 **Connecting the Handy** (firmware 4) in the Device panel's **Handy** tab:
@@ -237,6 +245,18 @@ Open the **Device** panel (**D**):
 
 Then play anything with a stroke script. The Handy has its own **Sync offset**,
 separate from latency calibration.
+
+**TCode over the network**, in the **TCode** tab under **Network**: pick a
+target and connect. Commands are the same as over USB, with all the axes of
+one update on one line.
+
+| Target                | Address                      | Notes                                                                                      |
+| --------------------- | ---------------------------- | ------------------------------------------------------------------------------------------ |
+| ESP32 OSR (UDP)       | `tcode.local:8000`           | TCode ESP32 firmware on WiFi. Desktop app only. Use the board's IP if `tcode.local` fails. |
+| ESP32 OSR (WebSocket) | `ws://tcode.local/ws`        | The same firmware through its web server, for the browser.                                 |
+| restim (WebSocket)    | `ws://localhost:12346/tcode` | restim reads L0 as alpha, L1 as beta and V0 as volume.                                     |
+| restim (UDP)          | `localhost:12347`            | Desktop app only.                                                                          |
+| Custom                | any host and port            | WebSocket or UDP.                                                                          |
 
 **Latency calibration** lines the device up with the picture. A **per-video
 offset** fixes scripts that are a little early or late.
@@ -410,12 +430,38 @@ playhound moves real hardware, so generated motion is bounded:
 - **Clamped frame delta.** A tab that comes back from the background doesn't
   lurch.
 - **Stopping.** Depth eases to zero and the axes go home.
+- **Coming back.** For most of a second after a TCode link comes up (or comes
+  back after a network drop), every move is stretched, so the device glides to
+  where the motion is instead of jumping there.
 - **Panic** (Esc or `) stops every output at once and covers the screen. Press
   it again to resume. It works from the keyboard, the phone and the gamepad.
 
 The motion maths lives in `src/lib/motionMath.ts`, `src/lib/edging.ts` and
 `src/lib/musicMotion.ts`, and is covered by unit tests. Still, test new
 settings with the emulator or at low range first.
+
+### E-stim audio
+
+**Experimental and untested on real hardware.** 18+. Use it only through a
+stim box made for audio input, never wired straight to a headphone jack.
+Never above the waist or across the chest, never with a pacemaker or a heart
+condition. Turn the box down before you start and raise it slowly.
+
+- **Off at every launch.** You press **Start** each time. The volume, its
+  limit and the output are remembered; being on is not.
+- **Starts silent.** Every start fades in from silence over at least five
+  seconds, and the volume never rises faster than 10% of full scale a second.
+- **A limit you set.** Nothing goes above it, whatever drives the stroke.
+- **Fades out fast** (under half a second) on pause, stop, or when nothing
+  moves the stroke. The intensity knob and edges turn it down too.
+- **Panic** cuts it to silence at once, and it stays off until you press
+  Start again. Unplugging its output does the same.
+- **Its own output.** It refuses the system's default output, where the
+  video's sound goes.
+- **A dead man's switch.** If the page stops updating it, it fades out by
+  itself.
+
+The signal and the volume rules live in `src/lib/estim.ts`, with tests.
 
 ## Privacy
 
@@ -432,6 +478,8 @@ world only when you use a feature that needs it:
   relays only help them find each other and never see what you watch. Your
   partner sees your IP address.
 - **phbrowser** (plugin): the sites you visit, in a browsing session of its own.
+- **TCode over the network**: commands go to the address you enter (your
+  stroker on your WiFi, or restim on this computer), and nowhere else.
 - **Discord Rich Presence**: desktop app only, off by default. Its Minimal mode
   shows the app and a timer, never what's playing; titles appear only if you
   write a custom template that asks for them.
@@ -491,6 +539,8 @@ real hardware:
 - the Handy's Live mode and generated motion over WiFi (fixed in 1.4.0, not yet
   confirmed)
 - vibrators through Intiface, and the Handy through Intiface
+- TCode over the network (an ESP32 build, restim) and e-stim audio, both new
+  in 2.2
 
 Reports and fixes are welcome.
 
