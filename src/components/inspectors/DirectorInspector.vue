@@ -20,7 +20,7 @@ import { usePlaybackStore } from '~/stores/playbackStore'
 import { useUiStore } from '~/stores/uiStore'
 
 const director = useAutoDirector()
-const { enabled, userEnabled, steer, sweeping, sweepDone, sweepTotal, summaries } = director
+const { enabled, userEnabled, prefer, steer, sweeping, sweepDone, sweepTotal, summaries } = director
 const library = useLibraryStore()
 const playback = usePlaybackStore()
 const ui = useUiStore()
@@ -317,6 +317,13 @@ const targetLabel = computed(() => sessionActive.value
             <span>busy</span>
           </div>
         </div>
+
+        <UiSwitch
+          v-model="prefer"
+          size="sm"
+          label="Lean towards what works for you"
+          hint="Within the five, videos that more often end in a finish (from Stats) come up more often. Nothing is ruled out."
+        />
 
         <div class="px-2.5 py-2 well flex gap-2 items-center">
           <span class="i-carbon-meter text-fg-muted shrink-0" />

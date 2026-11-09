@@ -4,11 +4,14 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { summaryDb } from '~/lib/idb'
+import { pickWeighted, preferenceScore } from '~/lib/insights'
 import { sameKindAs } from '~/lib/mediaFiles'
+import { KEYS } from '~/lib/persist'
 import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
 import { useAudioStore } from '~/stores/audio'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useQueueStore } from '~/stores/queueStore'
+import { useStatsStore } from '~/stores/statsStore'
 import { analyseActions, analysisKey } from './useScriptAnalysis'
 
 /** How many candidates to consider before picking, so it does not become a loop. */
@@ -33,6 +36,11 @@ const enabled = computed({
   get: () => userEnabled.value || steer.value !== null,
   set: (v: boolean) => { userEnabled.value = v },
 })
+/**
+ * Within the shortlist, lean towards videos that have gone well before (see
+ * preferenceScore in lib/insights). Off by default: it narrows what you see.
+ */
+const prefer = useLocalStorage(KEYS.directorPrefer.key, false)
 const sweeping = ref(false)
 const sweepDone = ref(0)
 const sweepTotal = ref(0)
@@ -159,6 +167,10 @@ export function useAutoDirector() {
       .sort((a, b) => a.delta - b.delta)
       .slice(0, SHORTLIST)
 
+    if (prefer.value) {
+      const stats = useStatsStore()
+      return pickWeighted(scored, s => preferenceScore(stats.stats[s.v.name]), Math.random())?.v ?? null
+    }
     return scored[Math.floor(Math.random() * scored.length)]?.v ?? null
   }
 
@@ -172,6 +184,7 @@ export function useAutoDirector() {
   return {
     enabled,
     userEnabled,
+    prefer,
     steer,
     sweeping,
     sweepDone,

@@ -1,11 +1,17 @@
 <script setup lang="ts">
+import type { VideoInfo } from '~/lib/insights'
 import type { VideoStat } from '~/stores/statsStore'
 import { useElementSize, useIntervalFn } from '@vueuse/core'
 import { computed, ref } from 'vue'
+import { useAutoDirector } from '~/composables/useAutoDirector'
+import { buildInsights } from '~/lib/insights'
+import { intensityBand } from '~/lib/scriptIntensity'
+import { summaryFor, tagSet } from '~/lib/tags'
 import { formatTime } from '~/lib/time'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { dayKey, useStatsStore } from '~/stores/statsStore'
+import StatsInsights from './StatsInsights.vue'
 
 defineOptions({ name: 'StatsView' })
 
@@ -53,6 +59,27 @@ const streak = computed(() => {
   }
   return n
 })
+
+// ─── Insights ────────────────────────────────────────────────────────────────
+// What the library knows about each video now: its tags and how intense its
+// script is. Videos no longer in the library simply have neither.
+const director = useAutoDirector()
+const libraryByName = computed(() => new Map(library.videos.map(v => [v.name, v])))
+function infoFor(name: string): VideoInfo | null {
+  const v = libraryByName.value.get(name)
+  if (!v)
+    return null
+  const summary = summaryFor(v, n => director.summaries.value[n])
+  return { tags: [...tagSet(v, summary)], band: summary ? intensityBand(summary.meanSpeed) : null }
+}
+const insights = computed(() => buildInsights({
+  now: now.value,
+  videos: all.value,
+  daily: stats.daily,
+  history: stats.history,
+  liveMs: liveMs.value,
+  info: library.videos.length ? infoFor : undefined,
+}, !!stats.live))
 
 // ─── Formatting ──────────────────────────────────────────────────────────────
 function fmtDur(ms: number): string {
@@ -263,6 +290,8 @@ function fmtDay(ts: number, long = false) {
             <UiStat label="Day streak" :value="streak" :unit="streak === 1 ? 'day' : 'days'" size="lg" hint="Consecutive days with something watched" />
           </div>
         </div>
+
+        <StatsInsights :report="insights" />
 
         <!-- Per day -->
         <section class="p-4 card flex flex-col gap-3">
@@ -479,7 +508,7 @@ function fmtDay(ts: number, long = false) {
 
     <UiModal v-model:open="confirmClear" title="Clear all stats?" icon="i-carbon-trash-can" width="420px">
       <p class="text-[13px] text-fg-muted leading-relaxed">
-        Watch time, plays, the daily history and every recorded finish are deleted from this browser.
+        Watch time, plays, the daily history, the session log and every recorded finish are deleted from this browser.
         Export a backup first if you might want them back.
       </p>
       <template #footer>
