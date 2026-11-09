@@ -94,6 +94,9 @@ describe('compatibility', () => {
   it('says what this playhound lacks', () => {
     expect(incompatibility({ minPlayhound: '2.2.0' }, 2, '2.1.1')).toBe('Needs playhound 2.2 or newer')
     expect(incompatibility({ minPlayhound: '2.2.0' }, 2, '2.2.0')).toBeNull()
+    // A beta of 2.2.0 runs plugins made for 2.2.0; 2.1.9 still doesn't.
+    expect(incompatibility({ minPlayhound: '2.2.0' }, 2, '2.2.0-beta.1')).toBeNull()
+    expect(incompatibility({ minPlayhound: '2.2.0' }, 2, '2.1.9')).toBe('Needs playhound 2.2 or newer')
     expect(incompatibility({ api: 3 }, 2, '2.1.1')).toBe('Needs a newer playhound (plugin API 3)')
     expect(incompatibility({}, 2)).toBeNull()
   })

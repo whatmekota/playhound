@@ -190,6 +190,15 @@ export function newer(a: string, b: string): boolean {
   return !pa && !!pb
 }
 
+/**
+ * playhound `app` is new enough for a plugin that needs `min`. A beta of a
+ * version counts as that version (2.2.0-beta.1 runs plugins made for 2.2.0:
+ * the betas are how they get tested before the release).
+ */
+export function meetsMin(min: string, app: string = APP_VERSION): boolean {
+  return !newer(String(min).replace(/^v/, '').split('-')[0], String(app).replace(/^v/, '').split('-')[0])
+}
+
 /** "2.2.0" → "2.2", "2.2.1" stays: how a version reads in a sentence. */
 export const shortVersion = (v: string) => v.replace(/^v/, '').replace(/(\.0)+$/, '').replace(/^(\d+)$/, '$1.0')
 
@@ -198,7 +207,7 @@ export const shortVersion = (v: string) => v.replace(/^v/, '').replace(/(\.0)+$/
  * API than it speaks, or a newer playhound than it is.
  */
 export function incompatibility(m: { api?: number, minPlayhound?: string }, api: number, app: string = APP_VERSION): string | null {
-  if (m.minPlayhound && newer(m.minPlayhound, app))
+  if (m.minPlayhound && !meetsMin(m.minPlayhound, app))
     return `Needs playhound ${shortVersion(m.minPlayhound)} or newer`
   if ((m.api ?? 1) > api)
     return `Needs a newer playhound (plugin API ${m.api})`
