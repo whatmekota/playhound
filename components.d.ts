@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AddYoutubeModal: typeof import('./src/components/views/AddYoutubeModal.vue')['default']
+    AndroidStatus: typeof import('./src/components/shell/AndroidStatus.vue')['default']
     AppNav: typeof import('./src/components/shell/AppNav.vue')['default']
     AudioSlideshow: typeof import('./src/components/player/AudioSlideshow.vue')['default']
     AudioStage: typeof import('./src/components/player/AudioStage.vue')['default']
@@ -47,6 +48,7 @@ declare module 'vue' {
     LoopControls: typeof import('./src/components/player/LoopControls.vue')['default']
     MediaWallItem: typeof import('./src/components/views/MediaWallItem.vue')['default']
     MediaWallView: typeof import('./src/components/views/MediaWallView.vue')['default']
+    MobileNav: typeof import('./src/components/shell/MobileNav.vue')['default']
     MotionInspector: typeof import('./src/components/inspectors/MotionInspector.vue')['default']
     MusicScriptCard: typeof import('./src/components/player/MusicScriptCard.vue')['default']
     NewPlaylistModal: typeof import('./src/components/library/NewPlaylistModal.vue')['default']

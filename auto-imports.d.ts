@@ -243,6 +243,7 @@ declare global {
   const useClipboardItems: typeof import('@vueuse/core').useClipboardItems
   const useCloned: typeof import('@vueuse/core').useCloned
   const useColorMode: typeof import('@vueuse/core').useColorMode
+  const useCompactLayout: typeof import('./src/composables/useCompactLayout').useCompactLayout
   const useConfirmDialog: typeof import('@vueuse/core').useConfirmDialog
   const useCountdown: typeof import('@vueuse/core').useCountdown
   const useCounter: typeof import('@vueuse/core').useCounter
@@ -765,6 +766,7 @@ declare module 'vue' {
     readonly useClipboardItems: UnwrapRef<typeof import('@vueuse/core')['useClipboardItems']>
     readonly useCloned: UnwrapRef<typeof import('@vueuse/core')['useCloned']>
     readonly useColorMode: UnwrapRef<typeof import('@vueuse/core')['useColorMode']>
+    readonly useCompactLayout: UnwrapRef<typeof import('./src/composables/useCompactLayout')['useCompactLayout']>
     readonly useConfirmDialog: UnwrapRef<typeof import('@vueuse/core')['useConfirmDialog']>
     readonly useCountdown: UnwrapRef<typeof import('@vueuse/core')['useCountdown']>
     readonly useCounter: UnwrapRef<typeof import('@vueuse/core')['useCounter']>
