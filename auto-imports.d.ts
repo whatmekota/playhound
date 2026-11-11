@@ -135,6 +135,7 @@ declare global {
   const pausableWatch: typeof import('@vueuse/core').pausableWatch
   const pickMediaFiles: typeof import('./src/composables/useMediaDrop').pickMediaFiles
   const playSource: typeof import('./src/composables/useStreams').playSource
+  const playerChrome: typeof import('./src/composables/playerChrome').playerChrome
   const popoutFocused: typeof import('./src/composables/usePopout').popoutFocused
   const presenceStatus: typeof import('./src/composables/useDiscordPresence').presenceStatus
   const provide: typeof import('vue').provide
@@ -273,6 +274,7 @@ declare global {
   const useElementHover: typeof import('@vueuse/core').useElementHover
   const useElementSize: typeof import('@vueuse/core').useElementSize
   const useElementVisibility: typeof import('@vueuse/core').useElementVisibility
+  const useEmulatorPhone: typeof import('./src/composables/useEmulatorPhone').useEmulatorPhone
   const useEstim: typeof import('./src/composables/useEstim').useEstim
   const useEventBus: typeof import('@vueuse/core').useEventBus
   const useEventListener: typeof import('@vueuse/core').useEventListener
@@ -346,6 +348,7 @@ declare global {
   const usePresenceSettings: typeof import('./src/composables/useDiscordPresence').usePresenceSettings
   const usePrevious: typeof import('@vueuse/core').usePrevious
   const useRafFn: typeof import('@vueuse/core').useRafFn
+  const useRailLayout: typeof import('./src/composables/useCompactLayout').useRailLayout
   const useRefHistory: typeof import('@vueuse/core').useRefHistory
   const useRemoteHost: typeof import('./src/composables/useRemoteHost').useRemoteHost
   const useRemoteLink: typeof import('./src/composables/useRemoteLink').useRemoteLink
@@ -658,6 +661,7 @@ declare module 'vue' {
     readonly pausableWatch: UnwrapRef<typeof import('@vueuse/core')['pausableWatch']>
     readonly pickMediaFiles: UnwrapRef<typeof import('./src/composables/useMediaDrop')['pickMediaFiles']>
     readonly playSource: UnwrapRef<typeof import('./src/composables/useStreams')['playSource']>
+    readonly playerChrome: UnwrapRef<typeof import('./src/composables/playerChrome')['playerChrome']>
     readonly popoutFocused: UnwrapRef<typeof import('./src/composables/usePopout')['popoutFocused']>
     readonly presenceStatus: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['presenceStatus']>
     readonly provide: UnwrapRef<typeof import('vue')['provide']>
@@ -796,6 +800,7 @@ declare module 'vue' {
     readonly useElementHover: UnwrapRef<typeof import('@vueuse/core')['useElementHover']>
     readonly useElementSize: UnwrapRef<typeof import('@vueuse/core')['useElementSize']>
     readonly useElementVisibility: UnwrapRef<typeof import('@vueuse/core')['useElementVisibility']>
+    readonly useEmulatorPhone: UnwrapRef<typeof import('./src/composables/useEmulatorPhone')['useEmulatorPhone']>
     readonly useEstim: UnwrapRef<typeof import('./src/composables/useEstim')['useEstim']>
     readonly useEventBus: UnwrapRef<typeof import('@vueuse/core')['useEventBus']>
     readonly useEventListener: UnwrapRef<typeof import('@vueuse/core')['useEventListener']>
@@ -869,6 +874,7 @@ declare module 'vue' {
     readonly usePresenceSettings: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['usePresenceSettings']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
+    readonly useRailLayout: UnwrapRef<typeof import('./src/composables/useCompactLayout')['useRailLayout']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>
     readonly useRemoteHost: UnwrapRef<typeof import('./src/composables/useRemoteHost')['useRemoteHost']>
     readonly useRemoteLink: UnwrapRef<typeof import('./src/composables/useRemoteLink')['useRemoteLink']>

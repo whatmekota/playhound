@@ -15,6 +15,7 @@
  */
 import type { PreviewRecord } from '~/lib/idb'
 import { reactive, shallowReactive } from 'vue'
+import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { previewDb } from '~/lib/idb'
 import { isAudioName } from '~/lib/mediaFiles'
@@ -57,8 +58,11 @@ const MAX_FRAMES = 120
 const SHEET_COLS = 10
 /** One seek that never lands (broken index, odd codec) gives up after this. */
 const SEEK_TIMEOUT_MS = 8000
-/** Strips kept decoded in memory; each is a few hundred KB. */
-const MEMORY_STRIPS = 48
+/**
+ * Strips kept in memory; each is a few hundred KB, and several MB once
+ * drawn. Fewer on a phone, where memory is what ends the renderer.
+ */
+const MEMORY_STRIPS = isAndroidApp ? 12 : 48
 /** Strips kept on disk. */
 const DISK_STRIPS = 300
 

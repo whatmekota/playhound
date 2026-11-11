@@ -20,6 +20,7 @@ import type { Directive } from 'vue'
 import type { TileAction } from '~/lib/audioTile'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { reactive, shallowReactive } from 'vue'
+import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { fileSource, findCover } from '~/lib/audioCover'
 import { tileActions, tileColumns, tileHeat, tileHue } from '~/lib/audioTile'
@@ -27,8 +28,14 @@ import { metaDb, thumbDb, videoMetaDb } from '~/lib/idb'
 
 const THUMB_W = 320
 const THUMB_H = 180
-/** Concurrent frame decodes. More than this starves playback of the decoder. */
-const WORKERS = 2
+/**
+ * Concurrent frame decodes. More than this starves playback of the decoder.
+ * On a phone, one: every decode is a <video> with its own buffers, and
+ * memory is what gets the WebView's renderer killed.
+ */
+const WORKERS = isAndroidApp ? 1 : 2
+/** Files probed for their length at once (a <video> each, metadata only). */
+const DURATION_BATCH = isAndroidApp ? 2 : 6
 /** A file that never reports `seeked` (broken index, odd codec) gives up after this. */
 const DECODE_TIMEOUT_MS = 15_000
 
@@ -542,7 +549,7 @@ export async function ensureMediaInfo(entry: VideoEntry): Promise<void> {
 
 /** Durations for a short list (a playlist, the queue), a few at a time. */
 export async function ensureDurations(entries: VideoEntry[]) {
-  const BATCH = 6
+  const BATCH = DURATION_BATCH
   const todo = entries.filter(e => e.duration === null)
   for (let i = 0; i < todo.length; i += BATCH)
     await Promise.all(todo.slice(i, i + BATCH).map(ensureDuration))
@@ -553,7 +560,7 @@ let durationRun = 0
 /** Fill in every missing duration in the background. A newer call supersedes an older one. */
 export async function loadDurations(entries: VideoEntry[]) {
   const run = ++durationRun
-  const BATCH = 6
+  const BATCH = DURATION_BATCH
   const todo = entries.filter(e => e.duration === null)
   for (let i = 0; i < todo.length; i += BATCH) {
     if (run !== durationRun)

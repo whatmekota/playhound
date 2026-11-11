@@ -2,6 +2,7 @@
 import type { StyleValue } from 'vue'
 import type { SlideshowItem, SlideshowOverlay } from '~/stores/slideshow'
 import { computed } from 'vue'
+import { vReleaseMedia } from '~/lib/releaseMedia'
 
 /**
  * The slideshow's picture: the current slide with its transition, the
@@ -67,6 +68,7 @@ function randomizeVideoStart(e: Event) {
           <video
             v-else-if="item.type === 'video'"
             :key="`${item.id}-v`"
+            v-release-media
             :src="item.src"
             :style="mediaStyle"
             :class="item.fit === 'cover' ? 'object-cover' : 'object-contain'"
@@ -106,6 +108,7 @@ function randomizeVideoStart(e: Event) {
       >
       <video
         v-else
+        v-release-media
         :src="overlay.src"
         autoplay
         loop

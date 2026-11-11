@@ -87,12 +87,33 @@ class FoldersPlugin : Plugin() {
     /** The folders this app still has access to. */
     @PluginMethod
     fun trees(call: PluginCall) {
-        work.execute {
+        background(call) {
             val list = JSArray()
             for (p in context.contentResolver.persistedUriPermissions) {
                 if (p.isReadPermission) list.put(treeJson(p.uri))
             }
             call.resolve(JSObject().put("trees", list))
+        }
+    }
+
+    /**
+     * Work off the bridge's thread. Whatever it throws is the call's error:
+     * an exception escaping a pool thread would end the app.
+     */
+    private fun background(call: PluginCall, body: () -> Unit) {
+        try {
+            work.execute {
+                try {
+                    body()
+                }
+                catch (e: Throwable) {
+                    Log.w(TAG, "${call.methodName}: $e")
+                    call.reject(e.message ?: e.javaClass.simpleName)
+                }
+            }
+        }
+        catch (e: java.util.concurrent.RejectedExecutionException) {
+            call.reject("The app is closing")
         }
     }
 
@@ -122,7 +143,7 @@ class FoldersPlugin : Plugin() {
         catch (_: Exception) {
             return call.reject("extensions must be a list of strings")
         }
-        work.execute {
+        background(call) {
             val started = System.nanoTime()
             try {
                 val scanner = TreeScanner(context.contentResolver, Uri.parse(uri), label, exts) { files ->
@@ -156,7 +177,7 @@ class FoldersPlugin : Plugin() {
 
     @PluginMethod
     fun server(call: PluginCall) {
-        work.execute {
+        background(call) {
             try {
                 call.resolve(JSObject().put("base", mediaServer().base))
             }
@@ -169,9 +190,21 @@ class FoldersPlugin : Plugin() {
     @PluginMethod
     fun readText(call: PluginCall) {
         val uri = call.getString("uri") ?: return call.reject("No uri")
-        work.execute {
+        background(call) {
             try {
-                val text = context.contentResolver.openInputStream(Uri.parse(uri))?.use { it.readBytes().toString(Charsets.UTF_8) }
+                // Scripts and subtitles: a few MB at most. Anything bigger is
+                // not what this is for, and would not fit through the bridge.
+                val text = context.contentResolver.openInputStream(Uri.parse(uri))?.use { input ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        if (out.size() + n > MAX_TEXT_BYTES) throw java.io.IOException("Too big to read as text")
+                        out.write(buf, 0, n)
+                    }
+                    out.toString(Charsets.UTF_8.name())
+                }
                 if (text == null) call.reject("Could not open it") else call.resolve(JSObject().put("text", text))
             }
             catch (e: Exception) {
@@ -182,5 +215,6 @@ class FoldersPlugin : Plugin() {
 
     private companion object {
         const val TAG = "PhFolders"
+        const val MAX_TEXT_BYTES = 32 * 1024 * 1024
     }
 }

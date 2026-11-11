@@ -2,6 +2,7 @@
 import type { WallItem } from '~/stores/mediaWall'
 import { useElementSize } from '@vueuse/core'
 import { computed, ref } from 'vue'
+import { vReleaseMedia } from '~/lib/releaseMedia'
 
 /**
  * The media wall as it is laid out, to look at rather than arrange: behind an
@@ -59,6 +60,7 @@ function onMeta(e: Event, item: WallItem) {
         >
         <video
           v-else-if="item.type === 'video'"
+          v-release-media
           :src="item.src"
           muted
           loop

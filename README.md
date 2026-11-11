@@ -606,6 +606,19 @@ CAP_SERVER_URL=http://<this PC>:7140 pnpm mobile:sync   # and reinstall
 Debug builds only, signed with the toolchain folder's debug key; no signing
 key goes in the repo.
 
+The phone layout (`useCompactLayout`: a bottom bar upright, a rail on the left
+sideways, `CompactDock` for the player) can be styled in a desktop browser:
+`pnpm mobile:dev`, then open `http://localhost:7140/?phone` with the browser's
+device toolbar (`?phone=0` turns it off). Only the layout changes; files and
+devices stay the browser's.
+
+Crashes: the app keeps a journal in its private storage (`…/crash/`: Java
+crashes, the WebView's renderer crashing or being killed for memory, which the
+app recovers from by starting the page again, what Android says ended the last
+run) and the page's last errors. After a bad end it shows "playhound closed
+unexpectedly last time" with **Copy report**; Settings → Android app → Copy
+report has the same. With the phone on USB, `adb logcat -d > log.txt` has the rest.
+
 Conventions that keep it in one piece:
 
 - **`playbackStore` is the only way to change what plays.** The library, queue,

@@ -17,3 +17,26 @@ function detectAndroidApp(): boolean {
 }
 
 export const isAndroidApp = detectAndroidApp()
+
+/**
+ * Development only: the Android app's phone layout in a desktop browser, for
+ * styling and screenshots. `?phone` in the address turns it on for the tab
+ * (it survives reloads), `?phone=0` off. Nothing native is pretended:
+ * isAndroidApp stays false, so files, devices and the rest are the browser's.
+ * A production build leaves this out entirely.
+ */
+function detectDevPhoneLayout(): boolean {
+  if (!import.meta.env.DEV || typeof location === 'undefined' || typeof sessionStorage === 'undefined')
+    return false
+  try {
+    const q = new URLSearchParams(location.search).get('phone')
+    if (q !== null)
+      sessionStorage.setItem('ph-dev-phone', q === '0' ? '0' : '1')
+    return sessionStorage.getItem('ph-dev-phone') === '1'
+  }
+  catch {
+    return false
+  }
+}
+
+export const devPhoneLayout = detectDevPhoneLayout()

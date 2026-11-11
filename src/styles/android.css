@@ -20,6 +20,14 @@
 .ph-compact {
   --mobile-nav-h: 58px;
 }
+/* Held sideways: the nav is a rail on the left, nothing along the bottom. */
+.ph-rail {
+  --mobile-nav-h: 0px;
+  --phone-rail-w: 72px;
+}
+.ph-rail .ph-shell {
+  padding-left: var(--phone-rail-w);
+}
 
 .mobile-nav {
   height: var(--mobile-nav-h);
@@ -41,9 +49,50 @@
   background: color-mix(in srgb, var(--text) 6%, transparent);
 }
 
+.mobile-rail {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--phone-rail-w);
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 0;
+}
+.mobile-rail .mobile-tab {
+  flex: 0 0 auto;
+  width: 100%;
+  height: 62px;
+}
+
 .mobile-sheet {
+  left: 0;
+  right: 0;
   bottom: var(--mobile-nav-h);
+  max-height: 70vh;
   border-radius: 16px 16px 0 0;
+}
+/* Sideways: in from the right, the full height, beside the video. */
+.ph-rail .mobile-sheet {
+  top: 0;
+  bottom: 0;
+  left: auto;
+  width: min(440px, 64vw);
+  max-height: none;
+  border-top: none;
+  border-left: 1px solid var(--border);
+  border-radius: 16px 0 0 16px;
+}
+.ph-rail .mobile-sheet-handle {
+  display: none;
+}
+
+/* The emulator docked (OsrEmulator.vue): a strip upright, a panel sideways. */
+.emu-dock-strip {
+  height: clamp(150px, 26vh, 240px);
+}
+.emu-dock-side {
+  width: clamp(200px, 30vw, 300px);
 }
 
 .mobile-grid {
@@ -94,14 +143,4 @@
   padding: 0;
 }
 
-/* ── The now-playing dock: the title column gives way to the controls ──── */
-
-.ph-compact .np-dock > .grid {
-  grid-template-columns: auto minmax(0, 1fr) !important;
-  gap: 8px;
-  padding-left: 8px;
-  padding-right: 8px;
-}
-.ph-compact .np-dock > .grid > :first-child {
-  display: none;
-}
+/* The player bar is its own component on a phone: player/CompactDock.vue. */

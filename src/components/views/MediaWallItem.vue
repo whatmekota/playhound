@@ -4,6 +4,7 @@ import type { WallItem } from '~/stores/mediaWall'
 import { computed, ref, watch } from 'vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import { MOVE_EDGES, resizeRect } from '~/composables/wallGeometry'
+import { vReleaseMedia } from '~/lib/releaseMedia'
 
 /**
  * One tile on the media wall.
@@ -202,6 +203,7 @@ const typeIcon = computed(() => props.item.type === 'youtube'
       <video
         v-else-if="item.type === 'video'"
         ref="videoEl"
+        v-release-media
         :src="item.src"
         :muted="item.muted"
         loop

@@ -149,6 +149,48 @@ class MediaServerTest {
     }
 
     @Test
+    fun answersTheHealthCheck() {
+        assertEquals(200, get(server.base + "ping").responseCode)
+        assertEquals(404, get("http://127.0.0.1:${server.port}/nottoken/ping").responseCode)
+        // An empty id is not a file.
+        assertEquals(404, get(server.base + "f?u=").responseCode)
+    }
+
+    @Test
+    fun survivesABadEscape() {
+        // URLDecoder throws on "%zz": that ends the connection, not the server.
+        try {
+            get(server.base + "f?u=%zz").responseCode
+        }
+        catch (_: java.io.IOException) {
+        }
+        assertEquals(200, get(server.base + "ping").responseCode)
+    }
+
+    @Test
+    fun closesAReaderThatStoppedReading() {
+        val slow = MediaServer({ BigFile(5L * 1024 * 1024 * 1024) }, stallMs = 300)
+        try {
+            Socket("127.0.0.1", slow.port).use { s ->
+                s.receiveBufferSize = 4096
+                val path = slow.urlFor("content://x/any").substringAfter(":${slow.port}")
+                s.getOutputStream().apply {
+                    write("GET $path HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".toByteArray())
+                    flush()
+                }
+                // Never read: the server's writes block until the reaper steps in.
+                val deadline = System.currentTimeMillis() + 10_000
+                Thread.sleep(200)
+                while (slow.openConnections > 0 && System.currentTimeMillis() < deadline) Thread.sleep(50)
+                assertEquals(0, slow.openConnections)
+            }
+        }
+        finally {
+            slow.close()
+        }
+    }
+
+    @Test
     fun queryDecoding() {
         val req = HttpRequest("GET", "/t/f?u=content%3A%2F%2Fa%2Fb%20c&x=1", "HTTP/1.1", emptyMap())
         assertEquals("content://a/b c", req.query("u"))

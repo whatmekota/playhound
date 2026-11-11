@@ -8,12 +8,18 @@
 
 import type { SoundtrackAnalysis } from './beatTrack'
 import type { SoundtrackJob, SoundtrackReply } from '~/workers/soundtrack.worker'
+import { isAndroidApp } from './android/detect'
 import { ANALYSIS_VERSION } from './beatTrack'
 import { soundtrackDb } from './idb'
 
 /** Plenty for beats and loudness, and a quarter of the memory of 44.1 kHz stereo. */
 export const ANALYSIS_RATE = 22050
 export const MAX_FILE_BYTES = 1.5 * 1024 ** 3
+/**
+ * On a phone the whole file in memory, plus its decoded audio, is enough to
+ * get the WebView's renderer killed well before 1.5 GB.
+ */
+export const MAX_FILE_BYTES_ANDROID = 300 * 1024 ** 2
 export const MAX_AUDIO_SECONDS = 60 * 60
 
 export type SoundtrackFailure = 'too-big' | 'too-long' | 'no-audio' | 'unsupported' | 'failed'
@@ -40,7 +46,7 @@ export function soundtrackKey(f: { name: string, size: number, lastModified: num
 
 /** Decode a video file's audio as mono at ANALYSIS_RATE. */
 export async function decodeSoundtrack(file: File, opts: { durationHint?: number } = {}): Promise<{ samples: Float32Array<ArrayBuffer>, sampleRate: number }> {
-  if (file.size > MAX_FILE_BYTES)
+  if (file.size > (isAndroidApp ? MAX_FILE_BYTES_ANDROID : MAX_FILE_BYTES))
     throw new SoundtrackError('too-big', FAILURE_TEXT['too-big'])
   if ((opts.durationHint ?? 0) > MAX_AUDIO_SECONDS)
     throw new SoundtrackError('too-long', FAILURE_TEXT['too-long'])

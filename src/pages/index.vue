@@ -5,6 +5,7 @@ import OsrEmulator from '~/components/device/OsrEmulator.vue'
 import ScriptEditor from '~/components/editor/ScriptEditor.vue'
 import UnsavedEditsModal from '~/components/editor/UnsavedEditsModal.vue'
 import AudioStage from '~/components/player/AudioStage.vue'
+import CompactDock from '~/components/player/CompactDock.vue'
 import HypnoOverlay from '~/components/player/HypnoOverlay.vue'
 import NowPlayingBar from '~/components/player/NowPlayingBar.vue'
 import PopoutCard from '~/components/player/PopoutCard.vue'
@@ -13,6 +14,7 @@ import PluginOverlays from '~/components/plugins/PluginOverlays.vue'
 import ShareCardModal from '~/components/share/ShareCardModal.vue'
 import AppNav from '~/components/shell/AppNav.vue'
 import CommandPalette from '~/components/shell/CommandPalette.vue'
+import CrashBanner from '~/components/shell/CrashBanner.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
 import InspectorRail from '~/components/shell/InspectorRail.vue'
 import MobileNav from '~/components/shell/MobileNav.vue'
@@ -26,8 +28,9 @@ import SplashScreen from '~/components/shell/SplashScreen.vue'
 import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
-import { useCompactLayout } from '~/composables/useCompactLayout'
+import { useCompactLayout, useRailLayout } from '~/composables/useCompactLayout'
 import { useDiscordPresence } from '~/composables/useDiscordPresence'
+import { useEmulatorPhone } from '~/composables/useEmulatorPhone'
 import { useGamepad } from '~/composables/useGamepad'
 import { useHeartRate } from '~/composables/useHeartRate'
 import { useMotionEngine } from '~/composables/useMotionEngine'
@@ -89,6 +92,11 @@ const recorder = useRecordingStore()
 const scriptEdit = useScriptEditStore()
 /** The phone layout (Android app only): nav along the bottom, panels full screen. */
 const compact = useCompactLayout()
+/** Held sideways: the nav is a rail on the left and the player bar lies over the video. */
+const rail = useRailLayout()
+/** On a phone the emulator can dock: a strip above the player bar, or a panel beside the video. */
+const emuPhone = useEmulatorPhone()
+const emuDocked = computed(() => compact.value && ui.isFloatingOpen('emulator') && emuPhone.value.mode === 'dock')
 startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
@@ -474,7 +482,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
 
 <template>
   <div
-    class="text-fg bg-surface-950 flex flex-col h-screen select-none overflow-hidden"
+    class="ph-shell text-fg bg-surface-950 flex flex-col h-screen select-none overflow-hidden"
     @dragenter="onDragEnter"
     @dragleave="onDragLeave"
     @dragover="onDragOver"
@@ -484,6 +492,8 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <PartySplash />
     <!-- The desktop window is frameless; the page draws its title bar. -->
     <TitleBar v-if="desktop?.window" />
+    <!-- The Android app, after a crash: offer the report, once. -->
+    <CrashBanner v-if="isAndroidApp" />
 
     <div class="flex flex-1 min-h-0">
       <AppNav v-if="!compact" @open="openSingleVideo" />
@@ -538,12 +548,19 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
         />
       </main>
 
+      <!-- The emulator docked beside the video, held sideways -->
+      <div v-if="emuDocked && rail" id="ph-emu-dock-side" class="emu-dock-side border-l border-edge shrink-0" />
+
       <InspectorDrawer />
       <InspectorRail v-if="!compact" />
     </div>
 
-    <NowPlayingBar />
-    <MobileNav v-if="compact" @open="openSingleVideo" />
+    <!-- The emulator docked above the player bar, upright -->
+    <div v-if="emuDocked && !rail" id="ph-emu-dock-strip" class="emu-dock-strip border-t border-edge shrink-0" />
+
+    <NowPlayingBar v-if="!compact" />
+    <CompactDock v-else />
+    <MobileNav v-if="compact" :rail="rail" @open="openSingleVideo" />
 
     <ToastHost />
     <CommandPalette @open-file="openSingleVideo" />

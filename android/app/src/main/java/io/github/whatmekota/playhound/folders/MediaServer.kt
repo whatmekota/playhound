@@ -15,8 +15,10 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 /**
  * Something the server streams: a file in a picked folder, by its id (a
@@ -145,9 +147,17 @@ fun readRequest(input: InputStream): HttpRequest? {
  * with a random token the page learns over the plugin bridge. The page is on
  * http://localhost, another origin, so answers carry CORS headers (canvas
  * thumbnails need them, with crossorigin="anonymous" on the <video>).
+ *
+ * Every connection is cleaned up whatever happens to it: a <video> drops one
+ * on every seek, and nothing that goes wrong in one may reach the thread's
+ * uncaught-exception handler (on Android that ends the app). A connection
+ * whose reader stopped reading without closing (a paused or forgotten
+ * <video>) is closed after STALL_MS, so its thread and file descriptor do not
+ * pile up; a socket has a read timeout but no write timeout.
  */
 class MediaServer(
     private val source: MediaSource,
+    private val stallMs: Long = STALL_MS,
     private val log: (String) -> Unit = {},
 ) : Closeable {
     val token: String = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
@@ -158,6 +168,17 @@ class MediaServer(
 
     @Volatile
     private var closed = false
+
+    /** A connection being served, and when its last write got through (0: not writing). */
+    private class Conn(val socket: Socket) {
+        @Volatile
+        var writingSince = 0L
+    }
+
+    private val conns = ConcurrentHashMap.newKeySet<Conn>()
+
+    /** Connections open right now (tests, and the page's checks). */
+    val openConnections: Int get() = conns.size
 
     val port: Int get() = server.localPort
 
@@ -176,9 +197,46 @@ class MediaServer(
                     if (!closed) log("accept: ${e.message}")
                     break
                 }
-                pool.execute { serve(s) }
+                try {
+                    pool.execute { serve(s) }
+                }
+                catch (_: RejectedExecutionException) {
+                    // Closing down while a connection came in.
+                    quietly { s.close() }
+                }
             }
         }, "ph-media-accept").apply { isDaemon = true }.start()
+        Thread({
+            while (!closed) {
+                try {
+                    Thread.sleep(minOf(10_000L, maxOf(50L, stallMs / 4)))
+                }
+                catch (_: InterruptedException) {
+                    break
+                }
+                reapStalled()
+            }
+        }, "ph-media-reaper").apply { isDaemon = true }.start()
+    }
+
+    /** Close connections whose writes have not moved for stallMs. */
+    private fun reapStalled() {
+        val now = System.nanoTime()
+        for (c in conns) {
+            val since = c.writingSince
+            if (since != 0L && (now - since) / 1_000_000 > stallMs) {
+                log("closing a stalled connection")
+                quietly { c.socket.close() }
+            }
+        }
+    }
+
+    private inline fun quietly(f: () -> Unit) {
+        try {
+            f()
+        }
+        catch (_: Exception) {
+        }
     }
 
     override fun close() {
@@ -189,9 +247,12 @@ class MediaServer(
         catch (_: IOException) {
         }
         pool.shutdownNow()
+        for (c in conns) quietly { c.socket.close() }
     }
 
     private fun serve(socket: Socket) {
+        val conn = Conn(socket)
+        conns.add(conn)
         socket.use { s ->
             try {
                 s.soTimeout = 30_000
@@ -202,7 +263,7 @@ class MediaServer(
                     val req = readRequest(input) ?: break
                     // Requests here have no body (GET, HEAD, OPTIONS), so the
                     // next one starts right after this head.
-                    if (!answer(req, out) || !req.keepAlive) break
+                    if (!answer(req, out, conn) || !req.keepAlive) break
                 }
             }
             catch (_: SocketTimeoutException) {
@@ -213,16 +274,27 @@ class MediaServer(
             catch (e: IOException) {
                 log("serve: ${e.message}")
             }
+            catch (e: Throwable) {
+                // Anything else (a provider's SecurityException, a bad escape
+                // in a URL, even running out of memory) ends this connection,
+                // never the app.
+                log("serve: ${e.javaClass.simpleName}: ${e.message}")
+            }
+            finally {
+                conns.remove(conn)
+            }
         }
     }
 
-    private fun tokenOk(path: String): Boolean {
+    /** The route after the token ("f" for a file, "ping" for a health check), or null for a wrong token. */
+    private fun routeOf(path: String): String? {
         val parts = path.trimStart('/').split('/', limit = 2)
-        return parts.size == 2 && MessageDigest.isEqual(parts[0].toByteArray(), token.toByteArray()) && parts[1] == "f"
+        if (parts.size != 2 || !MessageDigest.isEqual(parts[0].toByteArray(), token.toByteArray())) return null
+        return parts[1]
     }
 
     /** Answer one request; false when the connection must close after it. */
-    private fun answer(req: HttpRequest, out: OutputStream): Boolean {
+    private fun answer(req: HttpRequest, out: OutputStream, conn: Conn): Boolean {
         if (req.method == "OPTIONS") {
             head(out, 204, "No Content", listOf("Content-Length" to "0"))
             out.flush()
@@ -232,7 +304,12 @@ class MediaServer(
             plain(out, 405, "Method Not Allowed")
             return true
         }
-        val id = if (tokenOk(req.path)) req.query("u") else null
+        val route = routeOf(req.path)
+        if (route == "ping") {
+            plain(out, 200, "OK")
+            return true
+        }
+        val id = if (route == "f") req.query("u")?.takeIf { it.isNotEmpty() } else null
         if (id == null) {
             plain(out, 404, "Not Found")
             return true
@@ -262,7 +339,7 @@ class MediaServer(
                         "Content-Range" to "bytes ${r.range.start}-${r.range.end}/$size",
                         "Content-Length" to r.range.length.toString(),
                     ))
-                    if (req.method == "GET") f.streamFrom(r.range.start).use { copy(it, out, r.range.length) }
+                    if (req.method == "GET") f.streamFrom(r.range.start).use { copy(it, out, r.range.length, conn) }
                     out.flush()
                     return true
                 }
@@ -271,7 +348,7 @@ class MediaServer(
                     // body is the end of the connection.
                     val known = size >= 0
                     head(out, 200, "OK", common + if (known) listOf("Content-Length" to size.toString()) else listOf("Connection" to "close"))
-                    if (req.method == "GET") f.streamFrom(0).use { copy(it, out, if (known) size else Long.MAX_VALUE) }
+                    if (req.method == "GET") f.streamFrom(0).use { copy(it, out, if (known) size else Long.MAX_VALUE, conn) }
                     out.flush()
                     return known
                 }
@@ -293,22 +370,34 @@ class MediaServer(
         out.flush()
     }
 
-    private fun copy(input: InputStream, out: OutputStream, length: Long) {
+    private fun copy(input: InputStream, out: OutputStream, length: Long, conn: Conn) {
         val buf = ByteArray(64 * 1024)
         var left = length
-        while (left > 0) {
-            val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-            if (n < 0) {
-                if (length != Long.MAX_VALUE) throw IOException("File ended early")
-                break
+        try {
+            while (left > 0) {
+                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                if (n < 0) {
+                    if (length != Long.MAX_VALUE) throw IOException("File ended early")
+                    break
+                }
+                // A write blocks while the reader is not reading: the reaper
+                // watches how long since the last one got through.
+                conn.writingSince = System.nanoTime()
+                out.write(buf, 0, n)
+                left -= n
             }
-            out.write(buf, 0, n)
-            left -= n
+            out.flush()
+        }
+        finally {
+            conn.writingSince = 0L
         }
     }
 
-    private companion object {
-        val CORS = listOf(
+    companion object {
+        /** A connection that has taken no data for this long is given up. */
+        const val STALL_MS = 90_000L
+
+        private val CORS = listOf(
             "Access-Control-Allow-Origin" to "*",
             "Access-Control-Allow-Methods" to "GET, HEAD, OPTIONS",
             "Access-Control-Allow-Headers" to "Range",

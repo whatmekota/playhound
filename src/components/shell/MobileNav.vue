@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FloatingId, InspectorId, ViewId } from '~/lib/views'
 import { computed, ref, watch } from 'vue'
+import MobileSheet from '~/components/shell/MobileSheet.vue'
 import { offeredHere } from '~/lib/android/features'
 import { INSPECTOR_GROUPS, VIEW_GROUPS } from '~/lib/views'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -12,8 +13,12 @@ import { useUiStore } from '~/stores/uiStore'
  * The phone layout's nav (useCompactLayout): a bar along the bottom with the
  * views used most, the device panel, and two sheets for everything else, in
  * place of the nav on the left and the tool rail on the right.
+ *
+ * Held sideways (`rail`), the same five down a narrow rail on the left, so the
+ * player keeps the whole height.
  */
 
+defineProps<{ rail?: boolean }>()
 const emit = defineEmits<{ open: [] }>()
 const ui = useUiStore()
 const player = usePlayerStore()
@@ -85,65 +90,72 @@ const actions = [
 function toggleSheet(which: 'tools' | 'more') {
   sheet.value = sheet.value === which ? null : which
 }
+
+const sheetOpen = computed({
+  get: () => sheet.value !== null,
+  set: (v: boolean) => {
+    if (!v)
+      sheet.value = null
+  },
+})
 </script>
 
 <template>
-  <!-- The sheet over the stage, above the bar -->
-  <Transition name="t-fade">
-    <div v-if="sheet" class="bg-black/40 inset-0 fixed z-[640]" @pointerdown.self="sheet = null">
-      <div class="mobile-sheet px-3 pb-3 pt-2 scroll-y border-t border-edge bg-surface-900 max-h-[70vh] shadow-[var(--shadow-pop)] inset-x-0 absolute">
-        <div class="mx-auto mb-2 rounded-full bg-fg/20 h-1 w-10" />
-        <template v-if="sheet === 'tools'">
-          <div class="mobile-grid">
-            <button
-              v-for="t in tools"
-              :key="t.id"
-              type="button"
-              class="mobile-tile"
-              :class="(t.id === 'emulator' ? ui.isFloatingOpen('emulator') : ui.inspector === t.id) ? 'text-accent-300 bg-accent-soft' : ''"
-              @click="tool(t.id)"
-            >
-              <span :class="t.icon" class="text-[22px]" />
-              <span class="text-[11.5px] leading-tight">{{ t.label }}</span>
-            </button>
-            <button
-              v-for="p in pluginStore.panels"
-              :key="p.manifest.id"
-              type="button"
-              class="mobile-tile"
-              @click="openPluginPanel(p.manifest.id)"
-            >
-              <span v-if="p.panel?.icon" class="plugin-icon text-[22px]" v-html="p.panel.icon" />
-              <span v-else class="i-carbon-application text-[22px]" />
-              <span class="text-[11.5px] leading-tight">{{ p.panel?.title || p.manifest.name }}</span>
-            </button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="mobile-grid">
-            <button v-for="v in moreViews" :key="v.id" type="button" class="mobile-tile" :class="viewOn(v.id) ? 'text-accent-300 bg-accent-soft' : ''" @click="go(v.id)">
-              <span :class="v.icon" class="text-[22px]" />
-              <span class="text-[11.5px] leading-tight">{{ v.label }}</span>
-            </button>
-            <button v-for="p in pluginStore.pages" :key="p.manifest.id" type="button" class="mobile-tile" @click="openPluginPage(p.manifest.id)">
-              <span v-if="p.page?.icon" class="plugin-icon text-[22px]" v-html="p.page.icon" />
-              <span v-else class="i-carbon-application text-[22px]" />
-              <span class="text-[11.5px] leading-tight">{{ p.page?.title || p.manifest.name }}</span>
-            </button>
-          </div>
-          <div class="my-3 divider-y" />
-          <div class="mobile-grid">
-            <button v-for="a in actions" :key="a.label" type="button" class="mobile-tile" @click="sheet = null; a.run()">
-              <span :class="a.icon" class="text-[22px]" />
-              <span class="text-[11.5px] leading-tight">{{ a.label }}</span>
-            </button>
-          </div>
-        </template>
+  <!-- The sheet over the stage, above the bar (beside the rail, sideways) -->
+  <MobileSheet v-model:open="sheetOpen" :label="sheet === 'tools' ? 'Tools' : 'More'">
+    <template v-if="sheet === 'tools'">
+      <div class="mobile-grid">
+        <button
+          v-for="t in tools"
+          :key="t.id"
+          type="button"
+          class="mobile-tile"
+          :class="(t.id === 'emulator' ? ui.isFloatingOpen('emulator') : ui.inspector === t.id) ? 'text-accent-300 bg-accent-soft' : ''"
+          @click="tool(t.id)"
+        >
+          <span :class="t.icon" class="text-[22px]" />
+          <span class="text-[11.5px] leading-tight">{{ t.label }}</span>
+        </button>
+        <button
+          v-for="p in pluginStore.panels"
+          :key="p.manifest.id"
+          type="button"
+          class="mobile-tile"
+          @click="openPluginPanel(p.manifest.id)"
+        >
+          <span v-if="p.panel?.icon" class="plugin-icon text-[22px]" v-html="p.panel.icon" />
+          <span v-else class="i-carbon-application text-[22px]" />
+          <span class="text-[11.5px] leading-tight">{{ p.panel?.title || p.manifest.name }}</span>
+        </button>
       </div>
-    </div>
-  </Transition>
+    </template>
+    <template v-else>
+      <div class="mobile-grid">
+        <button v-for="v in moreViews" :key="v.id" type="button" class="mobile-tile" :class="viewOn(v.id) ? 'text-accent-300 bg-accent-soft' : ''" @click="go(v.id)">
+          <span :class="v.icon" class="text-[22px]" />
+          <span class="text-[11.5px] leading-tight">{{ v.label }}</span>
+        </button>
+        <button v-for="p in pluginStore.pages" :key="p.manifest.id" type="button" class="mobile-tile" @click="openPluginPage(p.manifest.id)">
+          <span v-if="p.page?.icon" class="plugin-icon text-[22px]" v-html="p.page.icon" />
+          <span v-else class="i-carbon-application text-[22px]" />
+          <span class="text-[11.5px] leading-tight">{{ p.page?.title || p.manifest.name }}</span>
+        </button>
+      </div>
+      <div class="my-3 divider-y" />
+      <div class="mobile-grid">
+        <button v-for="a in actions" :key="a.label" type="button" class="mobile-tile" @click="sheet = null; a.run()">
+          <span :class="a.icon" class="text-[22px]" />
+          <span class="text-[11.5px] leading-tight">{{ a.label }}</span>
+        </button>
+      </div>
+    </template>
+  </MobileSheet>
 
-  <nav class="mobile-nav border-t border-edge bg-surface-900 flex shrink-0 relative z-[650]" aria-label="Views">
+  <nav
+    class="border-edge bg-surface-900 flex shrink-0 z-[650]"
+    :class="rail ? 'mobile-rail border-r flex-col' : 'mobile-nav border-t relative'"
+    aria-label="Views"
+  >
     <button
       v-for="t in TABS"
       :key="t.id"

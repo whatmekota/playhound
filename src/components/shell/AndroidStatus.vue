@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import { toast } from '~/composables/useToast'
+import { buildCrashReport, clearCrashReports, pageErrors } from '~/lib/android/crashReport'
 import { ANDROID_LATER } from '~/lib/android/features'
 import { getMediaBase } from '~/lib/android/nativeFile'
 
@@ -38,9 +39,11 @@ async function mediaServer(): Promise<Check> {
     }
   }
   try {
-    // Any answer at all (a 404 for no file) means it is listening.
-    const res = await fetch(`${getMediaBase()}f?u=`, { method: 'HEAD' })
-    return { label: 'Media server', value: `listening (${res.status})`, ok: true }
+    // Its health check: 200 when it is up and the token is right.
+    const res = await fetch(`${getMediaBase()}ping`, { cache: 'no-store' })
+    return res.ok
+      ? { label: 'Media server', value: 'OK', ok: true }
+      : { label: 'Media server', value: `answers ${res.status}`, ok: false }
   }
   catch (err) {
     return { label: 'Media server', value: `not reachable: ${(err as Error).message}`, ok: false }
@@ -95,11 +98,19 @@ async function run() {
 
 onMounted(run)
 
+const errorCount = ref(pageErrors().length)
+
+async function clearReports() {
+  await clearCrashReports()
+  errorCount.value = 0
+  toast('Crash reports cleared', { icon: 'i-carbon-trash-can' })
+}
+
 async function copy() {
   const text = checks.value.map(c => `${c.label}: ${c.value}`).join('\n')
   try {
-    await navigator.clipboard.writeText(`playhound Android checks\n${text}`)
-    toast.success('Copied the checks')
+    await navigator.clipboard.writeText(`playhound Android checks\n${text}\n\n${await buildCrashReport()}`)
+    toast.success('Copied the checks and crash reports')
   }
   catch {
     toast.error('Could not copy them')
@@ -135,6 +146,20 @@ async function copy() {
           <span class="text-fg-muted flex-1">{{ c.label }}</span>
           <span class="text-fg text-right max-w-[60%] break-words">{{ c.value }}</span>
         </div>
+      </div>
+    </section>
+
+    <section class="flex flex-col gap-2">
+      <span class="eyebrow">Crash reports</span>
+      <p class="hint">
+        If playhound closes unexpectedly, it says so on the next start. "Copy report" above includes what it
+        recorded: crashes, the page's renderer being closed for memory, and the page's last
+        {{ errorCount }} error{{ errorCount === 1 ? '' : 's' }}. Nothing leaves the phone unless you paste it somewhere.
+      </p>
+      <div>
+        <UiButton size="xs" icon="i-carbon-trash-can" @click="clearReports">
+          Clear crash reports
+        </UiButton>
       </div>
     </section>
 

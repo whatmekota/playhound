@@ -76,7 +76,7 @@ function onSplitDown(e: PointerEvent) {
     <aside
       v-if="ui.drawerOpen"
       class="border-l border-edge bg-surface-900 flex shrink-0 overflow-hidden"
-      :class="compact ? 'fixed inset-x-0 top-0 bottom-[var(--mobile-nav-h)] z-[600]' : 'relative'"
+      :class="compact ? 'fixed right-0 top-0 left-[var(--phone-rail-w,0px)] bottom-[var(--mobile-nav-h)] z-[600]' : 'relative'"
       :style="compact ? undefined : { width: `${ui.drawerWidth}px` }"
     >
       <div

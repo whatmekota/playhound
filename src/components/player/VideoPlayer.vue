@@ -7,14 +7,17 @@ import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
+import { playerChrome } from '~/composables/playerChrome'
 import { AUDIO_VISUALS, useAudioVisual } from '~/composables/useAudioVisual'
 import { useAutoDirector } from '~/composables/useAutoDirector'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { useLoopSection } from '~/composables/useLoopSection'
 import { MIN_OPACITY, usePopout } from '~/composables/usePopout'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { sessionNotice, useSessionActions } from '~/composables/useSessionActions'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { useVideoSync } from '~/composables/useVideoSync'
+import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
 import { cancelFrame, requestFrame } from '~/lib/frames'
@@ -395,8 +398,14 @@ function poke() {
   idleTimer = setTimeout(() => (awake.value = false), IDLE_MS)
 }
 
-function onPointerLeave() {
+/** The phone layout (Android app): touch first, see onSurfaceClick and onPointerLeave. */
+const compact = useCompactLayout()
+
+function onPointerLeave(e: PointerEvent) {
   overChrome.value = false
+  // A finger "leaves" every time it lifts: on a phone the bars fade on their timer.
+  if (compact.value && e.pointerType === 'touch')
+    return
   // Popped out, the drag strip along the top is the window's frame: the
   // pointer "leaves" onto it. Let the bars fade on their own instead.
   if (popped.value)
@@ -412,6 +421,9 @@ const chromeVisible = computed(() =>
 const popChrome = computed(() => popped.value && !player.isFullscreen
   && (awake.value || overChrome.value || !player.isPlaying || !hasVideo.value))
 const hideCursor = computed(() => hasVideo.value && !isMini.value && player.isPlaying && !chromeVisible.value)
+// Shared with the phone layout's player bar, which fades with these bars when held sideways.
+watchEffect(() => (playerChrome.shown = chromeVisible.value))
+playerChrome.poke = poke
 
 // ─── Feedback: play/pause flash, seek ripple, OSD ────────────────────────────
 const flash = ref<{ playing: boolean, key: number } | null>(null)
@@ -538,6 +550,14 @@ function zoneOf(clientX: number): 'left' | 'centre' | 'right' {
 function onSurfaceClick(e: MouseEvent) {
   if (isMini.value) {
     emit('expand')
+    return
+  }
+  // On a phone the first tap on a bare picture brings the controls back;
+  // only a tap with them up plays or pauses, the way phone players work.
+  if (compact.value && !chromeVisible.value && !pendingToggle) {
+    poke()
+    // A second tap straight after still makes a double tap (skip, fullscreen).
+    pendingToggle = setTimeout(() => (pendingToggle = null), DOUBLE_MS)
     return
   }
   poke()
@@ -1294,7 +1314,9 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                 :class="playback.currentEntry.starred ? '!text-warn' : ''"
                 @click="toggleStar"
               />
+              <!-- The Android WebView has no window to pop out into. -->
               <UiIconButton
+                v-if="!isAndroidApp"
                 icon="i-carbon-popup"
                 label="Pop out — a small window that stays on top"
                 kbd="O"
