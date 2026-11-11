@@ -33,7 +33,7 @@ export const MISSING = isAndroidApp
       heartRate: 'Bluetooth did not start in the app. Close playhound and open it again.',
       serial: 'USB did not start in the app. Close playhound and open it again, or use TCode over the network.',
       serialShort: 'USB did not start: reopen the app',
-      streaming: 'Streaming from file hosts is coming to the Android app.',
+      streaming: 'This site needs yt-dlp, which only runs in the desktop app.',
     }
   : {
       bluetooth: 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app.',
@@ -43,6 +43,13 @@ export const MISSING = isAndroidApp
       serialShort: 'Use Chrome or Edge for a USB device',
       streaming: 'Streaming needs the playhound app (or start.bat) running on this computer',
     }
+
+/**
+ * A screen with no mouse and no keyboard to speak of (a phone, a tablet):
+ * no hover, a coarse pointer. Hints then say "tap", and keyboard shortcuts
+ * are left out of them.
+ */
+export const isTouchOnly: boolean = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches
 
 /** The modifier key as a keycap: ⌘ on a Mac, Ctrl elsewhere. */
 export const MOD_KEY = isMac ? '⌘' : 'Ctrl'

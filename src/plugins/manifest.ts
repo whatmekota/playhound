@@ -1,4 +1,5 @@
 import type { PluginManifest, PluginPermission } from './types'
+import { isAndroidApp } from '../lib/android/detect'
 import { APP_VERSION, meetsMin, readStoreFields, shortVersion } from './storeMeta'
 
 /**
@@ -127,6 +128,9 @@ export function readManifest(raw: unknown): PluginManifest {
       throw new Error(`manifest.json: unknown permission${unknown.length > 1 ? 's' : ''} ${unknown.map(p => `"${p}"`).join(', ')}. Known: ${[...KNOWN].join(', ')}`)
     // In the app's order, once each.
     permissions = PERMISSIONS.map(p => p.id).filter(p => (m.permissions as string[]).includes(p))
+    const why = desktopOnlyReason(permissions)
+    if (why)
+      throw new Error(why)
   }
 
   return {
@@ -140,6 +144,23 @@ export function readManifest(raw: unknown): PluginManifest {
     ...(permissions ? { permissions } : {}),
     ...store,
   }
+}
+
+/** What only the desktop app can do: web views (Electron's), sockets and the LAN server (its main process). */
+export const DESKTOP_ONLY_PERMISSIONS: readonly PluginPermission[] = ['web', 'socket', 'serve']
+
+/**
+ * Why a plugin that asks for these permissions can't run here, or null: in
+ * the Android app, one that needs a desktop-only part is refused at install
+ * (and shown so in the store) rather than failing once it runs.
+ */
+export function desktopOnlyReason(permissions: readonly string[] | undefined, android = isAndroidApp): string | null {
+  if (!android || !permissions)
+    return null
+  const needs = PERMISSIONS.filter(p => DESKTOP_ONLY_PERMISSIONS.includes(p.id) && permissions.includes(p.id))
+  if (!needs.length)
+    return null
+  return `This plugin needs the desktop app: it asks to ${needs.map(p => p.label.charAt(0).toLowerCase() + p.label.slice(1)).join(', and to ')}, which the Android app can't do.`
 }
 
 /** The error a call outside the plugin's permissions throws. */

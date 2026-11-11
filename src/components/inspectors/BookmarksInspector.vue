@@ -8,6 +8,7 @@ import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiPanel from '~/components/ui/UiPanel.vue'
 import { toast } from '~/composables/useToast'
+import { isTouchOnly } from '~/lib/platform'
 import { formatTime } from '~/lib/time'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -143,7 +144,10 @@ const pct = (t: number) => `${duration.value > 0 ? Math.min(100, (t / duration.v
       title="No bookmarks yet"
     >
       <template #description>
-        <p class="text-[12.5px] text-fg-muted leading-relaxed">
+        <p v-if="isTouchOnly" class="text-[12.5px] text-fg-muted leading-relaxed">
+          Tap Add while watching to mark the moment, then tap a bookmark to jump straight back to it.
+        </p>
+        <p v-else class="text-[12.5px] text-fg-muted leading-relaxed">
           Press <UiKbd>B</UiKbd> while watching to mark the moment, then click a bookmark to jump straight back to it.
         </p>
       </template>

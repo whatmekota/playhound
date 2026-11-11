@@ -154,11 +154,17 @@ fun readRequest(input: InputStream): HttpRequest? {
  * whose reader stopped reading without closing (a paused or forgotten
  * <video>) is closed after STALL_MS, so its thread and file descriptor do not
  * pile up; a socket has a read timeout but no write timeout.
+ *
+ * Besides files ("f"), other parts of the app serve their own paths through
+ * `routes` (the net proxy, registered streams, writes into picked folders):
+ * "<token>/<name>/…" goes to the route of that name. Those may have a body
+ * (Content-Length only; the WebView never sends a chunked one).
  */
 class MediaServer(
     private val source: MediaSource,
     private val stallMs: Long = STALL_MS,
     private val log: (String) -> Unit = {},
+    private val routes: Map<String, Route> = emptyMap(),
 ) : Closeable {
     val token: String = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
     private val server = ServerSocket(0, 64, InetAddress.getByName("127.0.0.1"))
@@ -261,9 +267,17 @@ class MediaServer(
                 val out = BufferedOutputStream(s.getOutputStream(), 64 * 1024)
                 while (!closed) {
                     val req = readRequest(input) ?: break
-                    // Requests here have no body (GET, HEAD, OPTIONS), so the
-                    // next one starts right after this head.
-                    if (!answer(req, out, conn) || !req.keepAlive) break
+                    if (req.headers.containsKey("transfer-encoding")) {
+                        // No chunked bodies: the next request would be lost in it.
+                        plain(out, 411, "Length Required")
+                        break
+                    }
+                    val length = req.headers["content-length"]?.toLongOrNull()?.coerceAtLeast(0) ?: 0L
+                    val body = LimitedInput(input, length)
+                    val keep = answer(req, body, out, conn)
+                    // Whatever of the body was not read, so the next request
+                    // starts where it should.
+                    if (keep && req.keepAlive) body.drain() else break
                 }
             }
             catch (_: SocketTimeoutException) {
@@ -294,17 +308,24 @@ class MediaServer(
     }
 
     /** Answer one request; false when the connection must close after it. */
-    private fun answer(req: HttpRequest, out: OutputStream, conn: Conn): Boolean {
+    private fun answer(req: HttpRequest, body: InputStream, out: OutputStream, conn: Conn): Boolean {
         if (req.method == "OPTIONS") {
-            head(out, 204, "No Content", listOf("Content-Length" to "0"))
+            // A preflight: whatever headers the page means to send (the net
+            // proxy's carry its own), and the methods the routes take.
+            val asked = req.headers["access-control-request-headers"]?.takeIf { it.isNotBlank() } ?: "Range"
+            head(out, 204, "No Content", listOf("Content-Length" to "0", "Access-Control-Allow-Headers" to asked))
             out.flush()
             return true
+        }
+        val route = routeOf(req.path)
+        val handler = route?.let { routes[it.substringBefore('/')] }
+        if (route != null && handler != null) {
+            return handler.serve(Exchange(req, route.substringAfter('/', ""), body, out) { conn.writingSince = it })
         }
         if (req.method != "GET" && req.method != "HEAD") {
             plain(out, 405, "Method Not Allowed")
             return true
         }
-        val route = routeOf(req.path)
         if (route == "ping") {
             plain(out, 200, "OK")
             return true
@@ -356,53 +377,166 @@ class MediaServer(
         }
     }
 
-    private fun head(out: OutputStream, status: Int, reason: String, headers: List<Pair<String, String>>) {
-        val sb = StringBuilder("HTTP/1.1 $status $reason\r\n")
-        for ((k, v) in headers + CORS) sb.append(k).append(": ").append(v).append("\r\n")
-        sb.append("\r\n")
-        out.write(sb.toString().toByteArray(Charsets.ISO_8859_1))
-    }
+    private fun head(out: OutputStream, status: Int, reason: String, headers: List<Pair<String, String>>) =
+        writeHead(out, status, reason, headers)
 
-    private fun plain(out: OutputStream, status: Int, reason: String) {
-        val body = reason.toByteArray()
-        head(out, status, reason, listOf("Content-Type" to "text/plain", "Content-Length" to body.size.toString()))
-        out.write(body)
-        out.flush()
-    }
+    private fun plain(out: OutputStream, status: Int, reason: String) = writePlain(out, status, reason)
 
-    private fun copy(input: InputStream, out: OutputStream, length: Long, conn: Conn) {
-        val buf = ByteArray(64 * 1024)
-        var left = length
-        try {
-            while (left > 0) {
-                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-                if (n < 0) {
-                    if (length != Long.MAX_VALUE) throw IOException("File ended early")
-                    break
-                }
-                // A write blocks while the reader is not reading: the reaper
-                // watches how long since the last one got through.
-                conn.writingSince = System.nanoTime()
-                out.write(buf, 0, n)
-                left -= n
-            }
-            out.flush()
-        }
-        finally {
-            conn.writingSince = 0L
-        }
-    }
+    private fun copy(input: InputStream, out: OutputStream, length: Long, conn: Conn) =
+        copyCounted(input, out, length) { conn.writingSince = it }
 
     companion object {
         /** A connection that has taken no data for this long is given up. */
         const val STALL_MS = 90_000L
-
-        private val CORS = listOf(
-            "Access-Control-Allow-Origin" to "*",
-            "Access-Control-Allow-Methods" to "GET, HEAD, OPTIONS",
-            "Access-Control-Allow-Headers" to "Range",
-            "Access-Control-Expose-Headers" to "Content-Range, Content-Length, Accept-Ranges",
-            "Access-Control-Max-Age" to "86400",
-        )
     }
+}
+
+/** On every answer; a route's own headers of the same name win. */
+internal val CORS = listOf(
+    "Access-Control-Allow-Origin" to "*",
+    "Access-Control-Allow-Methods" to "GET, HEAD, POST, PUT, OPTIONS",
+    "Access-Control-Allow-Headers" to "Range",
+    "Access-Control-Expose-Headers" to "Content-Range, Content-Length, Accept-Ranges",
+    "Access-Control-Max-Age" to "86400",
+)
+
+internal fun writeHead(out: OutputStream, status: Int, reason: String, headers: List<Pair<String, String>>) {
+    val sb = StringBuilder("HTTP/1.1 $status $reason\r\n")
+    val own = headers.map { it.first.lowercase() }.toSet()
+    for ((k, v) in headers + CORS.filter { it.first.lowercase() !in own }) {
+        // A header value is one line of Latin-1: anything else is dropped from it.
+        val clean = v.filter { it != '\r' && it != '\n' && it.code < 256 }
+        sb.append(k).append(": ").append(clean).append("\r\n")
+    }
+    sb.append("\r\n")
+    out.write(sb.toString().toByteArray(Charsets.ISO_8859_1))
+}
+
+internal fun writePlain(out: OutputStream, status: Int, text: String, type: String = "text/plain; charset=utf-8") {
+    val body = text.toByteArray(Charsets.UTF_8)
+    writeHead(out, status, reasonOf(status), listOf("Content-Type" to type, "Content-Length" to body.size.toString()))
+    out.write(body)
+    out.flush()
+}
+
+/**
+ * Copy `length` bytes (Long.MAX_VALUE: to the end), telling `writing` when
+ * each write starts (System.nanoTime) and 0 when done, for the stall reaper.
+ */
+internal fun copyCounted(input: InputStream, out: OutputStream, length: Long, writing: (Long) -> Unit) {
+    val buf = ByteArray(64 * 1024)
+    var left = length
+    try {
+        while (left > 0) {
+            val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+            if (n < 0) {
+                if (length != Long.MAX_VALUE) throw IOException("File ended early")
+                break
+            }
+            // A write blocks while the reader is not reading: the reaper
+            // watches how long since the last one got through.
+            writing(System.nanoTime())
+            out.write(buf, 0, n)
+            left -= n
+        }
+        out.flush()
+    }
+    finally {
+        writing(0L)
+    }
+}
+
+fun reasonOf(status: Int): String = when (status) {
+    200 -> "OK"
+    201 -> "Created"
+    204 -> "No Content"
+    206 -> "Partial Content"
+    301 -> "Moved Permanently"
+    302 -> "Found"
+    304 -> "Not Modified"
+    400 -> "Bad Request"
+    403 -> "Forbidden"
+    404 -> "Not Found"
+    405 -> "Method Not Allowed"
+    410 -> "Gone"
+    411 -> "Length Required"
+    413 -> "Content Too Large"
+    416 -> "Range Not Satisfiable"
+    500 -> "Internal Server Error"
+    502 -> "Bad Gateway"
+    504 -> "Gateway Timeout"
+    else -> "Status"
+}
+
+/** A path of its own on the server: "<token>/<name>/…" (see MediaServer's routes). */
+fun interface Route {
+    /** Answer one request; false when the connection must close after it. */
+    fun serve(ex: Exchange): Boolean
+}
+
+/**
+ * One request to a route: what came in (`sub` is the path after the route's
+ * name, `body` exactly the request's body), and how to answer.
+ */
+class Exchange(
+    val req: HttpRequest,
+    val sub: String,
+    val body: InputStream,
+    val out: OutputStream,
+    private val writing: (Long) -> Unit = {},
+) {
+    fun head(status: Int, headers: List<Pair<String, String>>) = writeHead(out, status, reasonOf(status), headers)
+
+    fun plain(status: Int, text: String) = writePlain(out, status, text)
+
+    fun json(status: Int, text: String) = writePlain(out, status, text, "application/json")
+
+    /** Send `length` bytes of `input` (Long.MAX_VALUE: all of it), watched for stalls. */
+    fun copy(input: InputStream, length: Long) = copyCounted(input, out, length, writing)
+
+    /** The whole body, refused past `max` bytes. */
+    fun readBody(max: Int): ByteArray {
+        val buf = java.io.ByteArrayOutputStream()
+        val chunk = ByteArray(64 * 1024)
+        while (true) {
+            val n = body.read(chunk)
+            if (n < 0) break
+            if (buf.size() + n > max) throw IOException("Body too large")
+            buf.write(chunk, 0, n)
+        }
+        return buf.toByteArray()
+    }
+}
+
+/** Exactly `length` bytes of `input`, then the end; drain() skips what is left. */
+class LimitedInput(private val input: InputStream, length: Long) : InputStream() {
+    private var left = length
+
+    override fun read(): Int {
+        if (left <= 0) return -1
+        val c = input.read()
+        if (c >= 0) left-- else left = 0
+        return c
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (left <= 0) return -1
+        val n = input.read(b, off, minOf(len.toLong(), left).toInt())
+        if (n < 0) {
+            left = 0
+            throw IOException("Body cut short")
+        }
+        left -= n
+        return n
+    }
+
+    override fun available(): Int = minOf(input.available().toLong(), left).toInt()
+
+    fun drain() {
+        val buf = ByteArray(16 * 1024)
+        while (left > 0 && read(buf, 0, buf.size) >= 0) Unit
+    }
+
+    // The connection's stream outlives the request.
+    override fun close() {}
 }

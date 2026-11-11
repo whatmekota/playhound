@@ -374,6 +374,8 @@ export interface UpdateState {
   auto: boolean
   /** Where to download it by hand (manual). */
   url: string | null
+  /** The release's notes (Markdown), where the updater has them (the Android app). */
+  notes?: string | null
 }
 
 export interface DesktopNetRequest {

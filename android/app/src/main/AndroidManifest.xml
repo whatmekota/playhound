@@ -41,6 +41,12 @@
             android:name=".session.SessionService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <!-- EroScripts' sign-in page (net/ForumLoginActivity.kt). -->
+        <activity
+            android:name=".net.ForumLoginActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -92,4 +98,7 @@
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
+    <!-- The in-app updater hands a downloaded release APK to Android's
+         installer (app/AppPlugin.kt); Android asks the user once. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>

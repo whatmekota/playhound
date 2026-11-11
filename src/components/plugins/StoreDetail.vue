@@ -195,7 +195,7 @@ const TRUST_NOTE = {
 
     <p v-if="entry.problem" class="text-[12.5px] text-warn m-0 px-3 py-2.5 rounded-[var(--radius-md)] bg-warn/10 flex gap-2 items-start">
       <span class="i-carbon-warning-alt text-[15px] mt-px shrink-0" />
-      <span>{{ entry.problem.replace(/\.$/, '') }}. <template v-if="/^Needs/.test(entry.problem)">Update playhound in Settings → Updates, then install it.</template></span>
+      <span>{{ entry.problem.replace(/\.$/, '') }}. <template v-if="/^Needs (?:playhound|a newer)/.test(entry.problem)">Update playhound in Settings → Updates, then install it.</template></span>
     </p>
     <p v-if="entry.source?.status === 'error'" class="text-[12px] text-danger m-0 px-3 py-2 rounded-[var(--radius-md)] bg-danger/10">
       Last check: {{ entry.source.error }}

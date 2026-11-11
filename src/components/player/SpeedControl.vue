@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
+import { isTouchOnly } from '~/lib/platform'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 
@@ -62,7 +63,10 @@ const speed = computed({
         </button>
       </div>
       <UiSlider v-model="speed" :min="MIN" :max="MAX" :step="0.05" :reset="1" hide-value />
-      <p class="hint">
+      <p v-if="isTouchOnly" class="hint">
+        Double-tap the slider for 1×.
+      </p>
+      <p v-else class="hint">
         Double-click the slider for 1×. Keys: <span class="num">[ ]</span> step, <span class="num">\</span> reset.
       </p>
     </div>

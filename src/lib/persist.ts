@@ -174,6 +174,7 @@ export const KEYS = {
   androidErrors: def('ph:android.errors', 'ui', 'Android app: recent errors in the page, for a crash report'),
   androidBleDevices: def('ph:android.bleDevices', 'setting', 'Android app: Bluetooth devices picked before, to reconnect without asking'),
   androidNotifyAsked: def('ph:android.notifyAsked', 'ui', 'Android app: notification permission asked once'),
+  androidUpdates: def('ph:android.updates', 'setting', 'Android app: check for updates on its own, and when it last did'),
   emulatorPhone: def('ph:ui.emulator.phone', 'ui', 'Emulator on a phone: docked or floating, and where'),
 } as const satisfies Record<string, KeyDef>
 

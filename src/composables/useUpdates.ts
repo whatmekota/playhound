@@ -1,14 +1,20 @@
 import type { UpdateState } from '~/lib/browserApi'
 import { computed, ref, watch } from 'vue'
+import { createAndroidUpdates } from '~/lib/android/updater'
 import { desktop } from '~/lib/browserApi'
+import { isAndroidApp } from '~/lib/platform'
+import { APP_VERSION } from '~/plugins/storeMeta'
 import { toast } from './useToast'
 
 /**
  * The desktop app's updates (desktop/updater.mjs), for the title bar and
- * Settings → Updates. Null state in a browser, which is always up to date.
+ * Settings → Updates; the Android app's (lib/android/updater.ts), for its
+ * banner and Settings → Updates. Null state in a browser, which is always
+ * up to date.
  */
 
-const api = desktop?.updates ?? null
+const android = !desktop?.updates && isAndroidApp ? createAndroidUpdates(APP_VERSION) : null
+const api = desktop?.updates ?? android
 const state = ref<UpdateState | null>(api?.state() ?? null)
 api?.onState(s => (state.value = s))
 
@@ -19,6 +25,11 @@ export function startUpdates() {
   if (started || !api)
     return
   started = true
+  // The Android app says so in a banner of its own (UpdateBanner.vue).
+  if (android) {
+    android.start()
+    return
+  }
   watch(() => [state.value?.status, state.value?.version] as const, ([status, version]) => {
     if (status === 'ready') {
       toast(`playhound ${version} is ready`, {

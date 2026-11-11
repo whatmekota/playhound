@@ -137,6 +137,7 @@ declare module 'vue' {
     UiSwitch: typeof import('./src/components/ui/UiSwitch.vue')['default']
     UiTabs: typeof import('./src/components/ui/UiTabs.vue')['default']
     UnsavedEditsModal: typeof import('./src/components/editor/UnsavedEditsModal.vue')['default']
+    UpdateBanner: typeof import('./src/components/shell/UpdateBanner.vue')['default']
     VideoPlayer: typeof import('./src/components/player/VideoPlayer.vue')['default']
     WallStage: typeof import('./src/components/views/WallStage.vue')['default']
     WelcomeScreen: typeof import('./src/components/shell/WelcomeScreen.vue')['default']

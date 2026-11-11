@@ -14,6 +14,8 @@ import io.github.whatmekota.playhound.folders.FoldersPlugin;
 import io.github.whatmekota.playhound.session.SessionBus;
 import io.github.whatmekota.playhound.session.SessionPlugin;
 import io.github.whatmekota.playhound.usb.UsbSerialPlugin;
+import io.github.whatmekota.playhound.net.NetPlugin;
+import io.github.whatmekota.playhound.app.AppPlugin;
 import java.util.ArrayDeque;
 
 public class MainActivity extends BridgeActivity {
@@ -33,6 +35,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CrashPlugin.class);
         registerPlugin(UsbSerialPlugin.class);
         registerPlugin(SessionPlugin.class);
+        registerPlugin(NetPlugin.class);
+        registerPlugin(AppPlugin.class);
         // Capacitor answers "renderer gone" with false unless a listener says
         // otherwise, and then the WebView takes the whole app down with it.
         bridgeBuilder.addWebViewListener(

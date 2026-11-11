@@ -8,6 +8,7 @@ import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useLoopSection } from '~/composables/useLoopSection'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { chapterAt, chaptersForScript } from '~/lib/chapters'
+import { isTouchOnly } from '~/lib/platform'
 import { formatTime } from '~/lib/time'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -153,7 +154,7 @@ function loopChapter() {
         />
       </div>
       <p class="hint">
-        Drag the markers on the timeline, or right-click it to set them anywhere.
+        {{ isTouchOnly ? 'Drag the markers on the timeline.' : 'Drag the markers on the timeline, or right-click it to set them anywhere.' }}
       </p>
     </div>
   </component>

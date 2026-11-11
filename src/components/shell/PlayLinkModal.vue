@@ -6,6 +6,7 @@ import UiInput from '~/components/ui/UiInput.vue'
 import UiModal from '~/components/ui/UiModal.vue'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
+import { isAndroidApp } from '~/lib/platform'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -96,12 +97,12 @@ const fmtSize = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB
     title="Play a link"
     icon="i-carbon-link"
     width="460px"
-    subtitle="Pixeldrain, Gofile, MEGA, Iwara, Rule34Video, PMVHaven, and many more through yt-dlp"
+    :subtitle="isAndroidApp ? 'Pixeldrain, Gofile, MEGA, Iwara, Rule34Video, PMVHaven (yt-dlp sites need the desktop app)' : 'Pixeldrain, Gofile, MEGA, Iwara, Rule34Video, PMVHaven, and many more through yt-dlp'"
   >
     <div class="flex flex-col gap-3">
       <UiInput ref="input" v-model="url" size="md" placeholder="https://…" clearable @enter="result ? play() : resolve()" />
       <p v-if="host && !result && !error" class="hint">
-        {{ host.label }}{{ host.ytdlp ? ' · through yt-dlp' : '' }}
+        {{ host.label }}{{ host.ytdlp ? (isAndroidApp ? ' · yt-dlp, desktop app only' : ' · through yt-dlp') : '' }}
       </p>
       <p v-if="error" class="text-[12px]" :class="needsYtdlp ? 'text-fg-muted' : 'text-danger'">
         {{ needsYtdlp ? 'This site streams through yt-dlp, a free open-source downloader. playhound can fetch the official release (about 20 MB) and keep it up to date.' : error }}

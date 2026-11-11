@@ -1,3 +1,4 @@
+import { isAndroidApp } from '~/lib/android/detect'
 import { desktop } from '~/lib/browserApi'
 
 /**
@@ -8,6 +9,9 @@ import { desktop } from '~/lib/browserApi'
  */
 export async function pluginFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const net = desktop?.net
+  // The Android app makes it natively (lib/android/net.ts), CORS-free as on the desktop.
+  if (!net && isAndroidApp && /^https?:/i.test(url))
+    return (await import('~/lib/android/net')).nativeFetch(url, init)
   if (!net)
     return fetch(url, init)
 

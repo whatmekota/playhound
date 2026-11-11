@@ -27,6 +27,7 @@ import ShortcutsModal from '~/components/shell/ShortcutsModal.vue'
 import SplashScreen from '~/components/shell/SplashScreen.vue'
 import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
+import UpdateBanner from '~/components/shell/UpdateBanner.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
 import { useCompactLayout, useRailLayout } from '~/composables/useCompactLayout'
 import { useDiscordPresence } from '~/composables/useDiscordPresence'
@@ -183,10 +184,9 @@ watch(() => motion.serialize(), v => storage.set(KEYS.motionConfig.key, v), { de
 onMounted(() => {
   // Bring the last folder back at startup, whichever view is open.
   void library.restoreFolder()
-  // Tell the local proxy which network proxy to use (Settings → Network).
-  // The Android app has no local proxy.
-  if (!isAndroidApp)
-    startNetProxySync()
+  // Tell the local proxy which network proxy to use (Settings → Network);
+  // in the Android app, the app itself (it fetches natively).
+  startNetProxySync()
 })
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -506,6 +506,8 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <TitleBar v-if="desktop?.window" />
     <!-- The Android app, after a crash: offer the report, once. -->
     <CrashBanner v-if="isAndroidApp && !phoneFs" />
+    <!-- The Android app: a newer release is out. -->
+    <UpdateBanner v-if="isAndroidApp && !phoneFs" />
 
     <div class="flex flex-1 min-h-0">
       <AppNav v-if="!compact" @open="openSingleVideo" />

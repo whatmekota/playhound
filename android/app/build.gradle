@@ -1,6 +1,37 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+/**
+ * The release key, never in the repo: from the environment
+ *   PH_KEYSTORE, PH_KEYSTORE_PASSWORD, PH_KEY_ALIAS, PH_KEY_PASSWORD
+ * or from a keystore.properties outside it, named by PH_KEYSTORE_PROPERTIES
+ * (android/run.mjs points it at <toolchain>\keys\keystore.properties):
+ *   storeFile=playhound-release.jks   (relative to the properties file)
+ *   storePassword=…
+ *   keyAlias=playhound
+ *   keyPassword=…
+ * The environment wins over the file. Null when neither names a keystore.
+ */
+def releaseSigning() {
+    def env = System.getenv()
+    def props = new Properties()
+    def propsFile = env.PH_KEYSTORE_PROPERTIES ? file(env.PH_KEYSTORE_PROPERTIES) : null
+    if (propsFile != null && propsFile.isFile()) propsFile.withInputStream { props.load(it) }
+    def pick = { String envName, String key -> env[envName] ?: props.getProperty(key) }
+    def store = pick('PH_KEYSTORE', 'storeFile')
+    if (!store) return null
+    def storeFile = new File(store)
+    if (!storeFile.isAbsolute() && propsFile != null && !env.PH_KEYSTORE) storeFile = new File(propsFile.parentFile, store)
+    if (!storeFile.isFile()) throw new GradleException("The release keystore is not there: ${storeFile}")
+    return [
+        storeFile: storeFile,
+        storePassword: pick('PH_KEYSTORE_PASSWORD', 'storePassword'),
+        keyAlias: pick('PH_KEY_ALIAS', 'keyAlias') ?: 'playhound',
+        keyPassword: pick('PH_KEY_PASSWORD', 'keyPassword') ?: pick('PH_KEYSTORE_PASSWORD', 'storePassword'),
+    ]
+}
+def releaseKey = releaseSigning()
+
 android {
     namespace = "io.github.whatmekota.playhound"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -18,10 +49,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (releaseKey != null) {
+            release {
+                storeFile releaseKey.storeFile
+                storePassword releaseKey.storePassword
+                keyAlias releaseKey.keyAlias
+                keyPassword releaseKey.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Unsigned without a key (see releaseSigning below); run.mjs refuses to ship that.
+            if (releaseKey != null) signingConfig signingConfigs.release
         }
     }
 }
@@ -63,6 +106,8 @@ dependencies {
     // USB OTG serial (usb/UsbSerialPlugin.kt). MIT. github.com/mik3y/usb-serial-for-android
     implementation 'com.github.mik3y:usb-serial-for-android:3.11.0'
     testImplementation "junit:junit:$junitVersion"
+    // android.jar's org.json is a stub in JVM tests; the net routes' tests need the real one.
+    testImplementation "org.json:json:20250517"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

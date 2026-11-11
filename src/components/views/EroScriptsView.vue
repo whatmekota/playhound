@@ -11,6 +11,7 @@ import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/us
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
 import { desktop } from '~/lib/browserApi'
+import { isAndroidApp } from '~/lib/platform'
 import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -141,7 +142,28 @@ function forgetCookie() {
 // The desktop app signs in with a session of its own (the forum's own login
 // page, in a window of the app). A pasted cookie is the same session as the
 // browser's, and the two log each other out as Discourse swaps the token.
-const esApp = desktop?.eroscripts ?? null
+// The Android app does the same with the forum's login page in a WebView of
+// its own, and fetches natively (lib/android/net.ts): no local proxy there.
+const androidNet = isAndroidApp ? import('~/lib/android/net') : null
+const esApp = desktop?.eroscripts ?? (androidNet
+  ? {
+      status: async () => (await androidNet).androidEroScripts.status(),
+      login: async () => (await androidNet).androidEroScripts.login(),
+      logout: async () => (await androidNet).androidEroScripts.logout(),
+      onChange: (cb: (s: { signedIn: boolean }) => void) => {
+        let off: (() => void) | null = null
+        let gone = false
+        void androidNet.then((m) => {
+          if (!gone)
+            off = m.androidEroScripts.onChange(cb) as () => void
+        })
+        return () => {
+          gone = true
+          off?.()
+        }
+      },
+    }
+  : null)
 /** Signed in through the app: the proxy then uses that session, and no cookie is sent. */
 const appSignedIn = ref(false)
 const signedIn = computed(() => appSignedIn.value || !!sessionCookie.value)
@@ -195,13 +217,20 @@ const needsSession = ref(false)
 /** Waits before trying again when the proxy could not get through: right after start that is often a blip. */
 const UNREACHABLE_RETRIES_MS = [800, 2500]
 
+/** A request for the local proxy; in the Android app, the app makes it as the proxy would. */
+async function viaProxy(url: string, headers: Record<string, string>): Promise<Response> {
+  if (androidNet) {
+    const net = await androidNet
+    return url.startsWith(PROXY) ? net.forumProxyFetch(url, { headers }) : net.nativeFetch(url, { headers })
+  }
+  return fetch(url, { headers })
+}
+
 async function apiFetch(path: string) {
   await esReady
-  const get = () => fetch(`${PROXY}${path}`, {
-    headers: {
-      Accept: 'application/json',
-      ...cookieHeader.value,
-    },
+  const get = () => viaProxy(`${PROXY}${path}`, {
+    Accept: 'application/json',
+    ...cookieHeader.value,
   })
   let res = await get()
   for (const ms of UNREACHABLE_RETRIES_MS) {
@@ -233,8 +262,11 @@ async function apiFetch(path: string) {
 }
 
 function fail(e: any, fallback: string) {
-  if (e instanceof TypeError)
+  // In the Android app there is no proxy to be down: a TypeError is the network.
+  if (e instanceof TypeError && !isAndroidApp)
     proxyDown.value = true
+  else if (e instanceof TypeError)
+    error.value = `Could not reach EroScripts: ${e.message}`
   else
     error.value = e?.message ?? fallback
 }
@@ -242,9 +274,7 @@ function fail(e: any, fallback: string) {
 /** Proxy-aware fetch for script and file URLs: only the proxy gets the cookie. */
 async function proxyFetch(url: string) {
   await esReady
-  return fetch(url, {
-    headers: url.startsWith(PROXY) ? cookieHeader.value : {},
-  })
+  return viaProxy(url, url.startsWith(PROXY) ? cookieHeader.value : {})
 }
 
 const copied = ref(false)
@@ -586,7 +616,8 @@ async function addPixeldrainFolderScripts(topic: ESTopic, link: VideoLink) {
     return
   try {
     // The list API is public; no proxy or cookie needed.
-    const files: PdFile[] = (await fetch(`https://pixeldrain.com/api/list/${id}`).then(r => r.json())).files ?? []
+    const list = `https://pixeldrain.com/api/list/${id}`
+    const files: PdFile[] = (await (androidNet ? (await androidNet).nativeFetch(list) : fetch(list)).then(r => r.json())).files ?? []
     for (const sf of files.filter(f => /\.funscript$/i.test(f.name))) {
       const url = `${PROXY}/pd/${sf.id}`
       if (!topic.funscriptUrls!.some(e => e.url === url))
@@ -963,7 +994,7 @@ onBeforeUnmount(() => {
           EroScripts
         </h1>
         <p class="text-[12.5px] text-fg-muted mt-0.5">
-          Free scripts from discuss.eroscripts.com, fetched through the local proxy.
+          Free scripts from discuss.eroscripts.com, fetched {{ isAndroidApp ? 'by the app' : 'through the local proxy' }}.
         </p>
       </div>
       <div class="flex shrink-0 gap-1.5 items-center">
@@ -1508,7 +1539,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Session cookie -->
-    <UiModal v-model:open="cookieOpen" title="EroScripts session" subtitle="Lets the proxy fetch posts and files as you." icon="i-carbon-key" width="480px">
+    <UiModal v-model:open="cookieOpen" title="EroScripts session" :subtitle="isAndroidApp ? 'Lets the app fetch posts and files as you.' : 'Lets the proxy fetch posts and files as you.'" icon="i-carbon-key" width="480px">
       <div class="flex flex-col gap-4">
         <div v-if="esApp" class="p-3 card flex flex-col gap-2.5">
           <div class="flex gap-3 items-center">
@@ -1517,7 +1548,7 @@ onBeforeUnmount(() => {
             </span>
             <div class="flex flex-1 flex-col min-w-0">
               <span class="text-[13px] text-fg font-medium">{{ appSignedIn ? 'Signed in' : 'Sign in to EroScripts' }}</span>
-              <span class="hint">{{ appSignedIn ? 'playhound has its own session, separate from your browser.' : 'Opens the forum login page in a window of the app.' }}</span>
+              <span class="hint">{{ appSignedIn ? 'playhound has its own session, separate from your browser.' : isAndroidApp ? 'Opens the forum login page inside the app.' : 'Opens the forum login page in a window of the app.' }}</span>
             </div>
             <UiButton v-if="appSignedIn" size="sm" variant="ghost" @click="signOutHere">
               Sign out
@@ -1553,7 +1584,7 @@ onBeforeUnmount(() => {
             </ol>
             <UiInput v-model="cookieDraft" mono size="md" placeholder="Paste the _t value" :autofocus="!esApp" @enter="saveCookie" />
             <p class="hint">
-              Stored on this computer only. It can expire at any time, since the forum replaces it as your browser
+              Stored {{ isAndroidApp ? 'in the app only' : 'on this computer only' }}. It can expire at any time, since the forum replaces it as your browser
               uses it; come back here when posts stop loading.
             </p>
           </div>
@@ -1575,7 +1606,7 @@ onBeforeUnmount(() => {
           </ol>
           <UiInput v-model="cookieDraft" mono size="md" placeholder="Paste the _t value" :autofocus="!esApp" @enter="saveCookie" />
           <p class="hint">
-            Stored on this computer only. It can expire at any time, since the forum replaces it as your browser
+            Stored {{ isAndroidApp ? 'in the app only' : 'on this computer only' }}. It can expire at any time, since the forum replaces it as your browser
             uses it; come back here when posts stop loading.
           </p>
         </template>

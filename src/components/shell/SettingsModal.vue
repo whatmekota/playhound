@@ -134,8 +134,11 @@ const updateLine = computed(() => {
     case 'checking': return 'Asking GitHub…'
     case 'none': return 'Up to date.'
     case 'downloading': return `Downloading ${s.version ?? 'the update'}… ${s.percent}%`
-    case 'ready': return `${s.version} is downloaded. It installs when you quit, or restart now.`
-    case 'available': return `${s.version} is out. ${s.portable ? 'The portable version' : 'This copy'} updates by hand.`
+    case 'ready': return isAndroidApp ? `${s.version} is downloaded. Install opens Android's installer.` : `${s.version} is downloaded. It installs when you quit, or restart now.`
+    case 'available':
+      if (isAndroidApp)
+        return s.manual ? `${s.version} is out. This debug build cannot be updated by a release: uninstall it, then install the release by hand.` : `${s.version} is out.`
+      return `${s.version} is out. ${s.portable ? 'The portable version' : 'This copy'} updates by hand.`
     case 'error': return s.error ?? 'The last check failed.'
   }
   return ''
@@ -321,7 +324,7 @@ function applyProxy() {
 const proxyStatus = computed(() => {
   const info = netProxyInfo.value
   if (!info)
-    return { tone: 'muted', text: 'The local proxy is not running, so there is nothing to apply this to. It runs with the desktop app, start.bat or pnpm dev:proxy.' }
+    return { tone: 'muted', text: isAndroidApp ? 'The network bridge of the app is not answering.' : 'The local proxy is not running, so there is nothing to apply this to. It runs with the desktop app, start.bat or pnpm dev:proxy.' }
   if (netProxyError.value)
     return { tone: 'danger', text: netProxyError.value }
   if (info.configured)
@@ -543,13 +546,16 @@ function openBackup() {
                 <UiProgress v-if="upd.status === 'downloading'" :value="upd.percent / 100" />
                 <div class="flex flex-wrap gap-2">
                   <UiButton v-if="upd.status === 'ready'" variant="primary" icon="i-carbon-renew" @click="updates.install()">
-                    Restart and update
+                    {{ isAndroidApp ? 'Install' : 'Restart and update' }}
+                  </UiButton>
+                  <UiButton v-else-if="upd.status === 'available' && isAndroidApp && !upd.manual" variant="primary" icon="i-carbon-download" @click="updates.install()">
+                    Update to {{ upd.version }}
                   </UiButton>
                   <UiButton v-else-if="upd.status === 'available'" variant="primary" icon="i-carbon-download" @click="updates.download()">
                     Download {{ upd.version }}
                   </UiButton>
                   <UiButton
-                    v-if="upd.status !== 'ready' && upd.status !== 'off'"
+                    v-if="(upd.status !== 'ready' || isAndroidApp) && upd.status !== 'off'"
                     icon="i-carbon-search"
                     :loading="upd.status === 'checking'"
                     :disabled="upd.status === 'downloading'"
@@ -563,9 +569,11 @@ function openBackup() {
                 <UiSwitch
                   :model-value="upd.auto"
                   label="Check for updates on my own"
-                  :hint="upd.manual ?? upd.portable
-                    ? `At startup and every few hours. ${upd.portable ? 'The portable version' : 'This copy'} only says when one is out; download it by hand.`
-                    : 'At startup and every few hours. A new version downloads in the background and installs when you quit, or when you restart from the title bar.'"
+                  :hint="isAndroidApp
+                    ? 'When the app starts, and once a day. It says when one is out; Update downloads it and opens the installer.'
+                    : upd.manual ?? upd.portable
+                      ? `At startup and every few hours. ${upd.portable ? 'The portable version' : 'This copy'} only says when one is out; download it by hand.`
+                      : 'At startup and every few hours. A new version downloads in the background and installs when you quit, or when you restart from the title bar.'"
                   :disabled="upd.status === 'off'"
                   @update:model-value="updates.setAuto($event)"
                 />
@@ -702,7 +710,11 @@ function openBackup() {
               <div class="p-4 card flex flex-col gap-3">
                 <div class="flex flex-col gap-1">
                   <span class="text-[13px] text-fg font-medium">Proxy</span>
-                  <span class="hint">
+                  <span v-if="isAndroidApp" class="hint">
+                    For the EroScripts browser and streaming. Some of these sites are blocked on some networks, and
+                    an HTTP proxy gets you through (no user name and password). Leave it empty to connect directly.
+                  </span>
+                  <span v-else class="hint">
                     For the EroScripts browser, streaming and yt-dlp. Some of these sites are blocked on some
                     networks, and an HTTP proxy gets you through. Leave it empty to use HTTPS_PROXY from this
                     computer, if it has one.
