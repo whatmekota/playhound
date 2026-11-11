@@ -21,6 +21,7 @@ import { useDeviceLatency } from '~/composables/useVideoSync'
 import { webSerial } from '~/lib/browserApi'
 import { HANDY_OTA_URL } from '~/lib/handy'
 import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
+import { MISSING } from '~/lib/platform'
 import { serialLog } from '~/lib/serialLog'
 import { VIBE_SOURCES } from '~/lib/vibeMap'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -318,7 +319,7 @@ const heartSummary = computed(() => {
 const heartDetail = computed(() => {
   switch (heart.status) {
     case 'unsupported':
-      return 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app.'
+      return MISSING.heartRate
     case 'connecting':
       return 'Pick the monitor in the dialog'
     case 'connected':
@@ -405,7 +406,7 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
         : { tone: 'warn', label: 'Connected, output held', detail: 'Device output is switched off' }
     }
     if (!webSerial.supported)
-      return { tone: 'danger', label: 'Web Serial unavailable', detail: 'Use Chrome or Edge for a USB device' }
+      return { tone: 'danger', label: 'Web Serial unavailable', detail: MISSING.serialShort }
     return { tone: 'idle', label: 'Not connected', detail: 'Plug the device in by USB, then connect' }
   }
   if (transport.value === 'handy') {
@@ -418,7 +419,7 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
       return { tone: 'ok', label: 'Connected', detail: handy.info.value ? `${handy.info.value.model} · ${via}` : via }
     }
     if (handyBle.value && !handy.bluetoothSupported)
-      return { tone: 'danger', label: 'Web Bluetooth unavailable', detail: 'Use Chrome, Edge or the desktop app' }
+      return { tone: 'danger', label: 'Web Bluetooth unavailable', detail: MISSING.bluetoothShort }
     return { tone: 'idle', label: 'Not connected', detail: handyBle.value ? 'Turn the Handy on, then connect' : 'Enter the connection key from the Handy app' }
   }
   if (bpConnecting.value)
@@ -717,7 +718,7 @@ const logOpen = ref(false)
           <UiSegmented v-model="tcodeLink" :options="TCODE_LINKS" size="sm" block />
           <div v-if="!webSerial.supported" class="text-[12px] text-danger px-2.5 py-2 rounded-[var(--radius-md)] bg-danger/10 flex gap-2 ring-1 ring-danger/20">
             <span class="i-carbon-warning-alt text-[15px] mt-px shrink-0" />
-            <span>This browser cannot talk to USB serial devices. Open playhound in Chrome or Edge, or use the network or Intiface.</span>
+            <span>{{ MISSING.serial }}</span>
           </div>
 
           <UiButton
@@ -1028,7 +1029,7 @@ const logOpen = ref(false)
             generator (music, tap tempo, gamepad) drives it too. Close the Handy app's Bluetooth link first; only one
             program can hold it.
             <template v-if="!handy.bluetoothSupported">
-              This browser has no Web Bluetooth: use Chrome, Edge or the desktop app.
+              {{ MISSING.bluetooth }}
             </template>
           </p>
           <p v-else class="hint">

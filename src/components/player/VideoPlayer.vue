@@ -15,6 +15,7 @@ import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { sessionNotice, useSessionActions } from '~/composables/useSessionActions'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { useVideoSync } from '~/composables/useVideoSync'
+import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { isAudioName } from '~/lib/mediaFiles'
@@ -1099,6 +1100,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
           class="h-full w-full inset-0 absolute object-contain"
           :class="vrView ? 'invisible' : ''"
           :src="player.videoKind === 'hls' ? undefined : player.videoUrl ?? undefined"
+          :crossorigin="isNativeMediaUrl(player.videoUrl) ? 'anonymous' : undefined"
           data-ph-main
           :muted="player.isMuted"
           preload="metadata"

@@ -579,6 +579,33 @@ es-proxy.mjs    EroScripts CORS proxy (:7071) and remote relay (:7072)
 test/           Vitest suites
 ```
 
+### Android app (in progress)
+
+A Capacitor shell in `android/` around the same build, phase 1: library
+folders through Android's folder picker (`src/lib/android/`, and the Kotlin
+plugin in `android/app/src/main/java/…/folders/`, which lists them and streams
+them to the player with byte ranges), playback with scripts, the Handy over
+WiFi, TCode over WebSocket and a phone layout. Bluetooth, USB serial, the
+EroScripts browser and file-host streaming are not in it yet; Settings →
+Android app on the phone lists what is and checks its WebView.
+
+It needs JDK 21 and the Android SDK (platform 36, build-tools 36). The scripts
+expect them in one folder, `F:\tools\android` (`jdk-21\`, `sdk\`), or wherever
+`PH_ANDROID_TOOLS` points, and keep Gradle's and Android's caches there too;
+`android\env.cmd` (or `env.ps1`) sets the same up for a shell.
+
+```bash
+pnpm mobile:apk      # vite build, cap sync, debug APK → release/android/playhound-debug.apk
+pnpm mobile:install  # adb install it on the phone (USB debugging on)
+pnpm mobile:test     # the Kotlin plugin's JVM tests
+pnpm mobile:icons    # launcher icons and splash from public/favicon.svg
+pnpm mobile:dev      # dev server on :7140 for live reload, then:
+CAP_SERVER_URL=http://<this PC>:7140 pnpm mobile:sync   # and reinstall
+```
+
+Debug builds only, signed with the toolchain folder's debug key; no signing
+key goes in the repo.
+
 Conventions that keep it in one piece:
 
 - **`playbackStore` is the only way to change what plays.** The library, queue,

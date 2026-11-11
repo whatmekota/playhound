@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { InspectorId } from '~/lib/views'
 import { computed, ref } from 'vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { INSPECTOR_COMPONENTS } from '~/lib/viewComponents'
 import { findView } from '~/lib/views'
 import { usePluginStore } from '~/stores/pluginStore'
@@ -8,6 +9,8 @@ import { DRAWER_MAX, DRAWER_MIN, useUiStore } from '~/stores/uiStore'
 
 const ui = useUiStore()
 const pluginStore = usePluginStore()
+/** On a phone the drawer is a full-screen page with one panel: no width, no split, no pin. */
+const compact = useCompactLayout()
 
 /** The Plugins drawer is titled after the plugin it shows. */
 function titleOf(id: InspectorId) {
@@ -18,6 +21,10 @@ const pluginIcon = (id: InspectorId) => (id === 'plugins' ? pluginStore.shownPan
 
 const slots = computed(() => {
   const out: { id: InspectorId, pinned: boolean }[] = []
+  if (compact.value) {
+    const id = ui.inspector ?? ui.pinned
+    return id ? [{ id, pinned: false }] : out
+  }
   if (ui.pinned)
     out.push({ id: ui.pinned, pinned: true })
   if (ui.inspector && ui.inspector !== ui.pinned)
@@ -68,16 +75,18 @@ function onSplitDown(e: PointerEvent) {
   <Transition name="drawer">
     <aside
       v-if="ui.drawerOpen"
-      class="border-l border-edge bg-surface-900 flex shrink-0 relative overflow-hidden"
-      :style="{ width: `${ui.drawerWidth}px` }"
+      class="border-l border-edge bg-surface-900 flex shrink-0 overflow-hidden"
+      :class="compact ? 'fixed inset-x-0 top-0 bottom-[var(--mobile-nav-h)] z-[600]' : 'relative'"
+      :style="compact ? undefined : { width: `${ui.drawerWidth}px` }"
     >
       <div
+        v-if="!compact"
         class="w-1.5 cursor-col-resize transition-colors bottom-0 left-0 top-0 absolute z-10"
         :class="resizing ? 'bg-accent/50' : 'hover:bg-accent/30'"
         @pointerdown="onResizeDown"
       />
 
-      <div ref="bodyEl" class="flex flex-1 flex-col min-w-0" :style="{ width: `${ui.drawerWidth}px` }">
+      <div ref="bodyEl" class="flex flex-1 flex-col min-w-0" :style="compact ? undefined : { width: `${ui.drawerWidth}px` }">
         <template v-for="(slot, i) in slots" :key="slot.id">
           <div
             v-if="i > 0"
@@ -97,6 +106,7 @@ function onSplitDown(e: PointerEvent) {
               </h2>
               <div class="ml-auto flex shrink-0 gap-0.5 items-center">
                 <UiIconButton
+                  v-if="!compact"
                   :icon="slot.pinned ? 'i-carbon-pin-filled' : 'i-carbon-pin'"
                   :label="slot.pinned ? 'Unpin' : 'Pin above other panels'"
                   :active="slot.pinned"
@@ -104,7 +114,7 @@ function onSplitDown(e: PointerEvent) {
                   size="sm"
                   @click="ui.togglePin(slot.id)"
                 />
-                <UiIconButton icon="i-carbon-close" label="Close" tip="bottom" size="sm" @click="ui.closeInspector(slot.id)" />
+                <UiIconButton icon="i-carbon-close" label="Close" tip="bottom" :size="compact ? 'lg' : 'sm'" @click="ui.closeInspector(slot.id)" />
               </div>
             </header>
             <Transition name="t-fade" mode="out-in">

@@ -1,5 +1,6 @@
 import { onUnmounted, ref } from 'vue'
 import { webSerial } from '~/lib/browserApi'
+import { isAndroidApp, MISSING } from '~/lib/platform'
 import { useDeviceStore } from '~/stores/deviceStore'
 
 // ── Singleton port state — shared across all callers ─────────────────────────
@@ -15,7 +16,7 @@ export function useSerialPort() {
 
   async function requestAndConnect(baudRate = 115200) {
     if (!webSerial.supported) {
-      store.connectionError = 'Web Serial API not supported in this browser. Use Chrome/Edge.'
+      store.connectionError = isAndroidApp ? MISSING.serial : 'Web Serial API not supported in this browser. Use Chrome/Edge.'
       return
     }
     connecting.value = true

@@ -6,6 +6,7 @@ import { effectScope, reactive, readonly, ref, shallowRef, triggerRef } from 'vu
 import { desktop } from '~/lib/browserApi'
 import { createGuardState, createHeartRateProcessor, DEFAULT_GUARD, parseHeartRateMeasurement, stepGuard } from '~/lib/heartRate'
 import { KEYS } from '~/lib/persist'
+import { MISSING } from '~/lib/platform'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { toast } from './useToast'
@@ -200,7 +201,7 @@ function explain(e: unknown): string | null {
 /** Pick a monitor and connect. Must come from a click. */
 async function connect() {
   if (!supported) {
-    state.error = 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app.'
+    state.error = MISSING.heartRate
     return
   }
   if (retryTimer !== null) {

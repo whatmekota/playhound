@@ -1,0 +1,107 @@
+/*
+ * The Android app (html.ph-android), and its phone layout (html.ph-compact,
+ * see useCompactLayout). Nothing here applies in a browser or the desktop app.
+ *
+ * Phase 1: the existing shell made usable on a phone, not a redesign.
+ */
+
+.ph-android {
+  /* No grey flash on every tap, no double-tap zoom delay. */
+  -webkit-tap-highlight-color: transparent;
+}
+.ph-android button,
+.ph-android [role='button'],
+.ph-android a {
+  touch-action: manipulation;
+}
+
+/* ── The bottom bar and its sheets ─────────────────────────────────────── */
+
+.ph-compact {
+  --mobile-nav-h: 58px;
+}
+
+.mobile-nav {
+  height: var(--mobile-nav-h);
+}
+
+.mobile-tab {
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+}
+.mobile-tab:active {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.mobile-sheet {
+  bottom: var(--mobile-nav-h);
+  border-radius: 16px 16px 0 0;
+}
+
+.mobile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+
+.mobile-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 8px 4px;
+  border-radius: var(--radius-md);
+  text-align: center;
+  color: var(--text-muted);
+}
+.mobile-tile:active {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* ── Touch targets ─────────────────────────────────────────────────────── */
+
+/*
+ * The desktop's 24–28 px icon buttons are too small for a finger. Their hit
+ * area grows past the drawn button instead of the button itself, so layouts
+ * stay as they are.
+ */
+.ph-compact button.pressable::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+/* ── Dialogs: full screen ──────────────────────────────────────────────── */
+
+.ph-compact .ui-modal-card {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  max-height: 100dvh !important;
+  border-radius: 0 !important;
+}
+/* The backdrop's padding would leave a frame round it. */
+.ph-compact div:has(> .ui-modal-card) {
+  padding: 0;
+}
+
+/* ── The now-playing dock: the title column gives way to the controls ──── */
+
+.ph-compact .np-dock > .grid {
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  gap: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.ph-compact .np-dock > .grid > :first-child {
+  display: none;
+}

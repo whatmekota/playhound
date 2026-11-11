@@ -3,10 +3,12 @@ import type { VideoMeta } from '~/lib/idb'
 import type { ScriptInfo } from '~/lib/scriptSniff'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { collectHandleFiles, filePath, handlePathOf, openFolderWithHandle, pickDirectory, rememberPath } from '~/lib/browserApi'
+import { toast } from '~/composables/useToast'
+import { canPickDirectory, collectHandleFiles, filePath, handlePathOf, openFolderWithHandle, pickDirectory, rememberPath } from '~/lib/browserApi'
 import { canWrite } from '~/lib/funscriptSave'
 import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
 import { isAudioName, isListed, matchScripts, scriptMapOf } from '~/lib/mediaFiles'
+import { isAndroidApp } from '~/lib/platform'
 import { sniffScript } from '~/lib/scriptSniff'
 import { isSubtitleName, pairSubtitles, subtitleLabel } from '~/lib/subtitles'
 import { editTagList, normalizeTags } from '~/lib/tags'
@@ -426,12 +428,54 @@ export const useLibraryStore = defineStore('library', () => {
     try {
       const list = await handleDb.getList(FOLDERS_KEY)
       if (Array.isArray(list) && list.length)
-        return list
+        return revive(list)
       const one = await handleDb.get(HANDLE_KEY)
-      return one ? [one] : []
+      return one ? revive([one]) : []
     }
     catch {
       return []
+    }
+  }
+
+  /** IndexedDB keeps an Android folder as a plain object; make it one again. */
+  async function revive(list: FileSystemDirectoryHandle[]): Promise<FileSystemDirectoryHandle[]> {
+    if (!isAndroidApp)
+      return list
+    const { reviveTree } = await import('~/lib/android/folders')
+    return list.map(h => reviveTree(h) as unknown as FileSystemDirectoryHandle)
+  }
+
+  /**
+   * In the Android app, let go of the grants on folders taken out of the
+   * library, except one that is (picked again) still in it.
+   */
+  async function release(handles: (FileSystemDirectoryHandle | null)[], keep: FileSystemDirectoryHandle | null = null) {
+    if (!isAndroidApp)
+      return
+    const { isAndroidTree, releaseTree } = await import('~/lib/android/folders')
+    for (const h of handles) {
+      if (isAndroidTree(h) && !(isAndroidTree(keep) && keep.uri === h.uri))
+        await releaseTree(h)
+    }
+  }
+
+  /**
+   * In the Android app a folder is listed natively, which takes a while on a
+   * network share and fails outright when the folder is gone: show both.
+   */
+  async function nativeStep(run: () => Promise<boolean>): Promise<boolean> {
+    if (!isAndroidApp)
+      return run()
+    scanning.value = true
+    try {
+      return await run()
+    }
+    catch (err) {
+      toast.error('Could not read that folder', { detail: (err as Error)?.message ?? String(err) })
+      return false
+    }
+    finally {
+      scanning.value = false
     }
   }
 
@@ -470,10 +514,15 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /** Ask the user for a folder and make it the whole library. Returns false when they cancel. */
-  async function pickFolder(): Promise<boolean> {
+  function pickFolder(): Promise<boolean> {
+    return nativeStep(pickFolderNow)
+  }
+
+  async function pickFolderNow(): Promise<boolean> {
     const { files, handle } = await openFolderWithHandle()
     if (!files.length)
       return false
+    void release(roots, handle)
     roots = [handle]
     rootFiles = [files]
     folders.value = labelsFor([handle?.name ?? files[0]?.webkitRelativePath?.split('/')[0] ?? 'Folder'])
@@ -484,12 +533,16 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /** Add another folder to the library. Returns false when cancelled or already there. */
-  async function addFolder(): Promise<boolean> {
+  function addFolder(): Promise<boolean> {
+    return nativeStep(addFolderNow)
+  }
+
+  async function addFolderNow(): Promise<boolean> {
     if (!roots.length)
-      return pickFolder()
+      return pickFolderNow()
     let handle: FileSystemDirectoryHandle | null = null
     let files: File[]
-    if ('showDirectoryPicker' in window) {
+    if (canPickDirectory()) {
       handle = await pickDirectory()
       if (!handle)
         return false
@@ -522,6 +575,7 @@ export const useLibraryStore = defineStore('library', () => {
       return
     if (roots.length === 1)
       return forgetFolder()
+    void release([roots[index]])
     roots = roots.filter((_, i) => i !== index)
     rootFiles = rootFiles.filter((_, i) => i !== index)
     folders.value = folders.value.filter((_, i) => i !== index)
@@ -537,7 +591,7 @@ export const useLibraryStore = defineStore('library', () => {
   async function replaceFolder(index: number): Promise<boolean> {
     if (index < 0 || index >= roots.length)
       return false
-    if (roots.length === 1 || !('showDirectoryPicker' in window))
+    if (roots.length === 1 || !canPickDirectory())
       return roots.length === 1 ? pickFolder() : false
     const handle = await pickDirectory()
     if (!handle)
@@ -561,6 +615,7 @@ export const useLibraryStore = defineStore('library', () => {
       else
         files.push(rootFiles[i])
     }
+    void release([roots[index]], handle)
     roots = roots.map((r, i) => (i === index ? handle : r))
     rootFiles = files
     folders.value = labels
@@ -617,6 +672,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function forgetFolder() {
     stopWatching()
+    void release(roots)
     roots = []
     rootFiles = []
     folders.value = []
@@ -732,6 +788,10 @@ export const useLibraryStore = defineStore('library', () => {
   /** Look for new videos in every folder now and then. */
   function startWatching() {
     stopWatching()
+    // Not in the Android app: every look is a full listing over the folder
+    // provider (a network share, maybe), every 30 seconds. Rescan instead.
+    if (isAndroidApp)
+      return
     isWatching.value = true
     watchNewCount.value = 0
     watchTimer = setInterval(async () => {

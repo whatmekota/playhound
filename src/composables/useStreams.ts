@@ -1,5 +1,6 @@
 import type { ResolvedStream, StreamSource } from '~/lib/streamHosts'
 import { ref } from 'vue'
+import { MISSING } from '~/lib/platform'
 import { friendlyResolveError } from '~/lib/streamHosts'
 import { usePlaybackStore } from '~/stores/playbackStore'
 
@@ -26,7 +27,7 @@ async function call(path: string, init?: RequestInit): Promise<Response> {
     return await fetch(`${STREAM_PROXY}${path}`, init)
   }
   catch {
-    throw new StreamError('Streaming needs the playhound app (or start.bat) running on this computer', 'no-proxy')
+    throw new StreamError(MISSING.streaming, 'no-proxy')
   }
 }
 

@@ -49,6 +49,7 @@ import { clockOffset, HANDY_API, HANDY_HOSTING, handyError, handyFunscript, hand
 import { bluetoothSupported, HandyBleError, handyModelName, openHandyBle, pickHandy } from '~/lib/handyBle'
 import { MODE_HSP, NOTE } from '~/lib/handyProto'
 import { KEYS } from '~/lib/persist'
+import { isAndroidApp, MISSING } from '~/lib/platform'
 import { logCommand } from '~/lib/serialLog'
 import { createMovePlanner, scriptMove } from '~/lib/strokePlan'
 import { ceilingPerMs, filterActions, motionFilters, motionFilterVersion } from '~/plugins/filters'
@@ -721,7 +722,7 @@ export function useHandy() {
   /** Pick a Handy and connect over Bluetooth. Must come from a click. */
   async function connectBle() {
     if (!bluetoothSupported) {
-      error.value = 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app, or connect over WiFi.'
+      error.value = isAndroidApp ? MISSING.bluetooth : 'This browser has no Web Bluetooth. Use Chrome, Edge or the desktop app, or connect over WiFi.'
       return
     }
     const seq = ++bleSeq

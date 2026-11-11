@@ -9,6 +9,7 @@ import { AUDIO_VISUALS, useAudioVisual } from '~/composables/useAudioVisual'
 import { openFaceWindow } from '~/composables/useFaceScreen'
 import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
+import { offeredHere } from '~/lib/android/features'
 import { plural } from '~/lib/entryInfo'
 import { formatTime } from '~/lib/time'
 import { ALL_VIEWS } from '~/lib/views'
@@ -251,7 +252,7 @@ const pluginCommands = computed<{ id: string, title: string, items: Item[] }[]>(
   })),
 })))
 
-const views = computed<Item[]>(() => ALL_VIEWS.map((v) => {
+const views = computed<Item[]>(() => ALL_VIEWS.filter(v => offeredHere(v.id)).map((v) => {
   const open = v.kind === 'view'
     ? ui.view === v.id
     : v.kind === 'inspector'

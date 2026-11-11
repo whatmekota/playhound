@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ViewId } from '~/lib/views'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { offeredHere } from '~/lib/android/features'
 import { desktop } from '~/lib/browserApi'
 import { MOD_KEY } from '~/lib/platform'
 import { VIEW_GROUPS } from '~/lib/views'
@@ -15,6 +16,8 @@ const ui = useUiStore()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
 const pluginStore = usePluginStore()
+/** What this build offers (the Android app leaves a few views out for now). */
+const groups = VIEW_GROUPS.map(g => ({ ...g, items: g.items.filter(i => offeredHere(i.id)) })).filter(g => g.items.length)
 /** The desktop title bar already carries the brand. */
 const showBrand = !desktop?.window
 
@@ -85,7 +88,7 @@ const pageTitle = (p: (typeof pluginStore.pages)[number]) => p.page?.title || p.
         class="rounded-[var(--radius-md)] bg-fg/8 transition-all duration-300 ease-[var(--ease-out)] left-2.5 right-2.5 absolute"
         :style="{ top: `${indicator.top}px`, height: `${indicator.height}px`, opacity: indicator.show ? 1 : 0 }"
       />
-      <template v-for="(group, gi) in VIEW_GROUPS" :key="group.id">
+      <template v-for="(group, gi) in groups" :key="group.id">
         <div
           class="text-[10px] tracking-[0.08em] font-semibold px-2 whitespace-nowrap uppercase transition-all duration-200 overflow-hidden"
           :class="[gi === 0 ? 'mt-0' : 'mt-3', ui.navExpanded ? 'text-fg-faint h-5 opacity-100' : 'h-0 opacity-0']"

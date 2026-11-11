@@ -14,6 +14,7 @@ import UiModal from '~/components/ui/UiModal.vue'
 import UiProgress from '~/components/ui/UiProgress.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/composables/useDiscordPresence'
 import { netProxy, netProxyError, netProxyInfo, refreshNetProxy } from '~/composables/useNetProxy'
 import { toast } from '~/composables/useToast'
@@ -23,7 +24,7 @@ import { desktop } from '~/lib/browserApi'
 import { LOGOS } from '~/lib/logos'
 import { createPartyCounter, partyOpen } from '~/lib/party'
 import { KEYS } from '~/lib/persist'
-import { MOD_KEY } from '~/lib/platform'
+import { isAndroidApp, MOD_KEY } from '~/lib/platform'
 import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
@@ -31,6 +32,7 @@ import { SUBTITLE_DEFAULTS, useSubtitleStore } from '~/stores/subtitleStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
 import { useUiStore } from '~/stores/uiStore'
 import { version } from '../../../package.json'
+import AndroidStatus from './AndroidStatus.vue'
 import BrandMark from './BrandMark.vue'
 
 /**
@@ -140,8 +142,9 @@ const updateLine = computed(() => {
 })
 const SCALE_OPTIONS = UI_SCALES.map(s => ({ value: s as number, label: `${Math.round(s * 100)}%` }))
 
-type SectionId = 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
-const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
+type SectionId = 'android' | 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
+const ALL_SECTIONS: { id: SectionId, label: string, icon: string }[] = [
+  { id: 'android', label: 'Android app', icon: 'i-carbon-mobile' },
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
   { id: 'playback', label: 'Playback', icon: 'i-carbon-play-outline' },
   { id: 'startup', label: 'Startup', icon: 'i-carbon-rocket' },
@@ -154,7 +157,11 @@ const SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'updates', label: 'Updates', icon: 'i-carbon-renew' },
   { id: 'about', label: 'About', icon: 'i-carbon-information' },
 ]
-const section = ref<SectionId>('appearance')
+/** The Android app has its own section (checks, what is not there yet) and no Discord. */
+const SECTIONS = ALL_SECTIONS.filter(s => (isAndroidApp ? s.id !== 'discord' : s.id !== 'android'))
+const section = ref<SectionId>(isAndroidApp ? 'android' : 'appearance')
+/** On a phone the sections run along the top. */
+const compact = useCompactLayout()
 const current = computed(() => SECTIONS.find(s => s.id === section.value)!)
 
 const THEME_NOTE: Record<ThemeId, string> = {
@@ -341,15 +348,19 @@ function openBackup() {
 
 <template>
   <UiModal v-model:open="ui.settingsOpen" title="Settings" icon="i-carbon-settings" width="780px" flush>
-    <div class="border-t border-edge flex h-[min(560px,70vh)]">
+    <div class="border-t border-edge flex" :class="compact ? 'flex-col h-[calc(100dvh-76px)]' : 'h-[min(560px,70vh)]'">
       <!-- Sections -->
-      <nav class="p-2 border-r border-edge bg-surface-900/40 flex shrink-0 flex-col gap-0.5 w-[184px]" aria-label="Settings sections">
+      <nav
+        class="p-2 bg-surface-900/40 flex shrink-0 gap-0.5"
+        :class="compact ? 'border-b border-edge overflow-x-auto' : 'border-r border-edge flex-col w-[184px]'"
+        aria-label="Settings sections"
+      >
         <button
           v-for="s in SECTIONS"
           :key="s.id"
           type="button"
-          class="text-[13px] px-2.5 focusable rounded-[var(--radius-md)] flex gap-2.5 h-9 transition-colors items-center"
-          :class="section === s.id ? 'bg-fg/8 text-fg font-medium' : 'text-fg-muted hover:text-fg hover:bg-fg/4'"
+          class="text-[13px] px-2.5 focusable rounded-[var(--radius-md)] flex shrink-0 gap-2.5 whitespace-nowrap transition-colors items-center"
+          :class="[compact ? 'h-10' : 'h-9', section === s.id ? 'bg-fg/8 text-fg font-medium' : 'text-fg-muted hover:text-fg hover:bg-fg/4']"
           :aria-current="section === s.id ? 'page' : undefined"
           @click="section = s.id"
         >
@@ -359,7 +370,7 @@ function openBackup() {
       </nav>
 
       <!-- Content -->
-      <div class="px-6 py-5 scroll-y flex-1 min-w-0">
+      <div class="scroll-y flex-1 min-h-0 min-w-0" :class="compact ? 'px-4 py-4' : 'px-6 py-5'">
         <Transition name="t-view" mode="out-in">
           <div :key="section" class="flex flex-col gap-5">
             <h3 class="text-[15px] text-fg font-semibold m-0">
@@ -512,6 +523,10 @@ function openBackup() {
             <!-- Updates -->
             <template v-else-if="section === 'plugins'">
               <PluginsSettings />
+            </template>
+
+            <template v-else-if="section === 'android'">
+              <AndroidStatus />
             </template>
 
             <template v-else-if="section === 'updates'">

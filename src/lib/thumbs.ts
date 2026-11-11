@@ -20,6 +20,7 @@ import type { Directive } from 'vue'
 import type { TileAction } from '~/lib/audioTile'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { reactive, shallowReactive } from 'vue'
+import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { fileSource, findCover } from '~/lib/audioCover'
 import { tileActions, tileColumns, tileHeat, tileHue } from '~/lib/audioTile'
 import { metaDb, thumbDb, videoMetaDb } from '~/lib/idb'
@@ -114,6 +115,10 @@ function decodeFrame(entry: VideoEntry): Promise<void> {
         resolve()
     }
     timer = setTimeout(() => done(new Error('decode timeout')), DECODE_TIMEOUT_MS)
+    // The Android app streams library files from another origin (its media
+    // server, with CORS): drawing the frame needs a CORS request.
+    if (isNativeMediaUrl(url))
+      video.crossOrigin = 'anonymous'
 
     video.addEventListener('loadedmetadata', () => {
       if (Number.isFinite(video.duration)) {

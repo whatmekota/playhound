@@ -2,6 +2,7 @@
 import type { FloatingId, InspectorId } from '~/lib/views'
 import { computed } from 'vue'
 import { useAnyDevice } from '~/composables/useAnyDevice'
+import { offeredHere } from '~/lib/android/features'
 import { INSPECTOR_GROUPS } from '~/lib/views'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
@@ -20,7 +21,7 @@ const pluginStore = usePluginStore()
 
 /** The built-in panels; plugins get a button each, below them (see the template). */
 const groups = computed(() => INSPECTOR_GROUPS
-  .map(g => ({ ...g, items: g.items.filter(i => i.id !== 'plugins') }))
+  .map(g => ({ ...g, items: g.items.filter(i => i.id !== 'plugins' && offeredHere(i.id)) }))
   .filter(g => g.items.length))
 
 const showsPlugin = (id: string) => (ui.inspector === 'plugins' || ui.pinned === 'plugins') && pluginStore.shownPanel?.manifest.id === id

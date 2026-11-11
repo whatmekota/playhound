@@ -15,6 +15,7 @@
  */
 import type { PreviewRecord } from '~/lib/idb'
 import { reactive, shallowReactive } from 'vue'
+import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { previewDb } from '~/lib/idb'
 import { isAudioName } from '~/lib/mediaFiles'
 import { whenIdle } from '~/lib/thumbs'
@@ -381,6 +382,9 @@ async function buildStrip(src: PreviewSource, signal: AbortSignal): Promise<Prev
   video.playsInline = true
   try {
     const meta = once(video, 'loadedmetadata', signal, SEEK_TIMEOUT_MS * 2)
+    // Another origin in the Android app (see thumbs.ts): frames need CORS.
+    if (isNativeMediaUrl(url))
+      video.crossOrigin = 'anonymous'
     video.src = url
     await meta
     const duration = video.duration

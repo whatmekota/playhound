@@ -1,4 +1,5 @@
 // Browser-native file & serial APIs — replaces the Electron preload bridge
+import { isAndroidApp } from './android/detect'
 import { AUDIO_EXTS, MEDIA_ACCEPT, VIDEO_EXTS } from './mediaFiles'
 
 // ── File System Access API ────────────────────────────────────────────────────
@@ -58,6 +59,11 @@ export const openDirectory = openFolderInput
  * (handle can be stored in IDB and reused after refresh).
  */
 export async function openFolderWithHandle(): Promise<{ files: File[], handle: FileSystemDirectoryHandle | null }> {
+  if (isAndroidApp) {
+    // Android's folder picker; the tree stands in for a directory handle.
+    const handle = await pickDirectory()
+    return { files: handle ? await collectHandleFiles(handle) : [], handle }
+  }
   if ('showDirectoryPicker' in window) {
     try {
       const dirHandle = await (window as any).showDirectoryPicker({ mode: 'read' })
@@ -132,6 +138,9 @@ export function rememberPath(f: File, path: string) {
 
 /** Every file under a directory, recursively, each with its path recorded (see filePath). */
 export async function collectHandleFiles(dirHandle: any, prefix: string = dirHandle.name): Promise<File[]> {
+  // A folder in the Android app (android/folders.ts) lists itself natively.
+  if (typeof dirHandle.collectFiles === 'function')
+    return dirHandle.collectFiles(prefix)
   const files: File[] = []
   for await (const entry of dirHandle.values()) {
     if (entry.kind === 'file') {
@@ -152,8 +161,17 @@ export async function collectHandleFiles(dirHandle: any, prefix: string = dirHan
   return files
 }
 
+/** Whether a folder can be picked as a handle (and so be added, replaced, remembered). */
+export function canPickDirectory(): boolean {
+  return isAndroidApp || (typeof window !== 'undefined' && 'showDirectoryPicker' in window)
+}
+
 /** The browser's folder picker alone. Null when cancelled or unavailable. */
 export async function pickDirectory(): Promise<FileSystemDirectoryHandle | null> {
+  if (isAndroidApp) {
+    const { pickTree } = await import('./android/folders')
+    return await pickTree() as unknown as FileSystemDirectoryHandle | null
+  }
   if (!('showDirectoryPicker' in window))
     return null
   try {

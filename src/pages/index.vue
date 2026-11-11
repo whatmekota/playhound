@@ -15,6 +15,7 @@ import AppNav from '~/components/shell/AppNav.vue'
 import CommandPalette from '~/components/shell/CommandPalette.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
 import InspectorRail from '~/components/shell/InspectorRail.vue'
+import MobileNav from '~/components/shell/MobileNav.vue'
 import PanicCover from '~/components/shell/PanicCover.vue'
 import PartySplash from '~/components/shell/PartySplash.vue'
 import PlayLinkModal from '~/components/shell/PlayLinkModal.vue'
@@ -25,6 +26,7 @@ import SplashScreen from '~/components/shell/SplashScreen.vue'
 import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { useDiscordPresence } from '~/composables/useDiscordPresence'
 import { useGamepad } from '~/composables/useGamepad'
 import { useHeartRate } from '~/composables/useHeartRate'
@@ -48,6 +50,7 @@ import { cancelFrame, requestFrame } from '~/lib/frames'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { isMediaName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
+import { isAndroidApp } from '~/lib/platform'
 import { isSubtitleName } from '~/lib/subtitles'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
@@ -84,6 +87,8 @@ const plugins = usePluginStore()
 const recorder = useRecordingStore()
 // Made here, at startup: it is also what asks before unsaved script edits are replaced.
 const scriptEdit = useScriptEditStore()
+/** The phone layout (Android app only): nav along the bottom, panels full screen. */
+const compact = useCompactLayout()
 startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
@@ -159,7 +164,9 @@ onMounted(() => {
   // Bring the last folder back at startup, whichever view is open.
   void library.restoreFolder()
   // Tell the local proxy which network proxy to use (Settings → Network).
-  startNetProxySync()
+  // The Android app has no local proxy.
+  if (!isAndroidApp)
+    startNetProxySync()
 })
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -211,11 +218,13 @@ const playerVisible = computed(() => ui.onPlayer || (!!player.videoUrl && !miniD
 
 const MINI_W = 352
 const MINI_MARGIN = 16
+/** On a phone the mini player is smaller, and clear of the bottom bar's sheet edge. */
+const MINI_W_COMPACT = 220
 const playerBox = computed(() => {
   const { w, h } = stageSize.value
   if (!mini.value)
     return { left: 0, top: 0, width: w, height: editorShown.value ? Math.max(0, h - editorHeight.value) : h, radius: 0 }
-  const mw = Math.min(MINI_W, Math.max(200, w * 0.4))
+  const mw = compact.value ? Math.min(MINI_W_COMPACT, w * 0.6) : Math.min(MINI_W, Math.max(200, w * 0.4))
   const mh = mw * 9 / 16
   return { left: w - mw - MINI_MARGIN, top: h - mh - MINI_MARGIN, width: mw, height: mh, radius: 14 }
 })
@@ -477,7 +486,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <TitleBar v-if="desktop?.window" />
 
     <div class="flex flex-1 min-h-0">
-      <AppNav @open="openSingleVideo" />
+      <AppNav v-if="!compact" @open="openSingleVideo" />
 
       <!-- Stage -->
       <main ref="stageEl" class="flex-1 min-w-0 relative overflow-hidden">
@@ -530,10 +539,11 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
       </main>
 
       <InspectorDrawer />
-      <InspectorRail />
+      <InspectorRail v-if="!compact" />
     </div>
 
     <NowPlayingBar />
+    <MobileNav v-if="compact" @open="openSingleVideo" />
 
     <ToastHost />
     <CommandPalette @open-file="openSingleVideo" />

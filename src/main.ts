@@ -1,6 +1,8 @@
 import { runMigrations } from './lib/persist'
 
 import './styles/main.css'
+// Only under html.ph-android: nothing in it applies in a browser or the desktop app.
+import './styles/android.css'
 import 'uno.css'
 
 // Storage has to be in its current layout before any store module loads, and

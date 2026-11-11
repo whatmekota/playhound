@@ -6,6 +6,7 @@ import type { CardChapter } from '~/lib/shareCard'
 import type { VideoEntry } from '~/stores/libraryStore'
 import type { ShareCardTarget } from '~/stores/uiStore'
 import { proxiedStream } from '~/composables/useStreams'
+import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 import { authorChapters, GAP_NAME } from '~/lib/chapters'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
@@ -44,7 +45,8 @@ export interface CardSource {
 /** A local file's frames, through an object URL of its own. */
 function fileMedia(file: File, name: string): FrameMedia {
   const url = URL.createObjectURL(file)
-  return { url, name, cross: false, release: () => URL.revokeObjectURL(url) }
+  // In the Android app a library file streams from the media server, another origin.
+  return { url, name, cross: isNativeMediaUrl(url), release: () => URL.revokeObjectURL(url) }
 }
 
 /** A plugin-provided video's frames: from its stream, through the proxy when it needs headers. HLS has none to give. */
