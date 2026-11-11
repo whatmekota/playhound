@@ -407,6 +407,30 @@ describe('highlight reel', () => {
     expect(playAt.mock.calls[1][0].name).toBe(prog.reel[1].video)
   })
 
+  it('stays on the reel when its own clip loads after a wait, as the real player does', async () => {
+    // The real playAt asks about unsaved script edits first, then loads: the
+    // track changes after the call returns. That must not count as the user's.
+    playAt.mockImplementation(async () => {
+      await Promise.resolve()
+      playback.trackSeq++
+    })
+    try {
+      const prog = useProgrammeStore()
+      prog.start(programme())
+      await nextTick()
+      await Promise.resolve()
+      await nextTick()
+      expect(prog.offReel).toBe(false)
+      await playback.takeover!.next()
+      await nextTick()
+      expect(prog.clipIndex).toBe(1)
+      expect(prog.offReel).toBe(false)
+    }
+    finally {
+      playAt.mockImplementation(async () => {})
+    }
+  })
+
   it('takes over Next, and hands it back when the run ends', async () => {
     const prog = useProgrammeStore()
     prog.start(programme())
