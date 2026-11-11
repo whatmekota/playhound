@@ -5,8 +5,9 @@ import MusicScriptCard from '~/components/player/MusicScriptCard.vue'
 import { useFunscript } from '~/composables/useFunscript'
 import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
 import { useSoundtrack } from '~/composables/useSoundtrack'
+import { toast } from '~/composables/useToast'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
-import { openScriptFiles } from '~/lib/browserApi'
+import { openScriptFiles, splitPickedScripts } from '~/lib/browserApi'
 import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
 import { describeTweaks } from '~/lib/scriptTweaks'
 import { formatTime } from '~/lib/time'
@@ -164,7 +165,14 @@ function pick(s: ScriptFile) {
 }
 
 async function loadManually() {
-  const files = await openScriptFiles()
+  const { scripts: files, refused } = splitPickedScripts(await openScriptFiles())
+  if (refused.length) {
+    const names = refused.slice(0, 3).map(f => f.name).join(', ') + (refused.length > 3 ? ` and ${refused.length - 3} more` : '')
+    toast.error(refused.length === 1 ? 'Not a funscript' : `${refused.length} files are not funscripts`, {
+      detail: `${names} not loaded. Pick .funscript files.`,
+      key: 'pick-scripts',
+    })
+  }
   if (!files.length)
     return
   const base = player.videoPath?.replace(/\.[^.]+$/, '') ?? ''

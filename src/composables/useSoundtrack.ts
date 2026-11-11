@@ -5,14 +5,17 @@ import { computed, effectScope, markRaw, reactive, ref, shallowReactive, shallow
 import { createAnalysedGrid } from '~/lib/beatTrack'
 import { musicFunscript, musicScript } from '~/lib/musicScript'
 import {
+  analyseFileInWorker,
   analyseInWorker,
   cachedAnalysis,
   decodeSoundtrack,
   FAILURE_TEXT,
+  MAX_AUDIO_SECONDS,
   SoundtrackError,
   soundtrackKey,
   storeAnalysis,
 } from '~/lib/soundtrack'
+import { STREAM_ABOVE_BYTES } from '~/lib/soundtrackLimits'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -25,7 +28,7 @@ export type SoundtrackStatus = 'idle' | 'decoding' | 'analysing' | 'ready' | 'fa
 
 export interface SoundtrackState {
   status: SoundtrackStatus
-  /** 0–1 while analysing; decoding has no measurable progress. */
+  /** 0–1 while analysing; decoding a whole file at once has no measurable progress. */
   progress: number
   error: string | null
   reason: SoundtrackFailure | null
@@ -36,7 +39,7 @@ export interface SoundtrackState {
 
 const states = shallowReactive(new Map<string, SoundtrackState>())
 const pending = new Map<string, Promise<SoundtrackAnalysis | null>>()
-// Decoding holds a whole video in memory; never two at once.
+// Decoding can hold a whole video in memory, and is heavy either way: never two at once.
 let chain: Promise<unknown> = Promise.resolve()
 
 let grid: AnalysedGrid | null = null
@@ -89,11 +92,31 @@ export function analyseSoundtrack(file: File, opts: { durationHint?: number } = 
     st.error = null
     st.reason = null
     const run = chain.then(async () => {
-      const { samples, sampleRate } = await decodeSoundtrack(file, opts)
-      st.status = 'analysing'
-      const a = await analyseInWorker(samples, sampleRate, (p) => {
+      const onProgress = (p: number) => {
+        st.status = 'analysing'
         st.progress = p
-      })
+      }
+      // Whole when it fits (faster); in pieces for a file over 1 GB or over an
+      // hour (MP4 / MOV / M4A), which decoding whole can't take.
+      const long = file.size > STREAM_ABOVE_BYTES || (opts.durationHint ?? 0) > MAX_AUDIO_SECONDS
+      let a = long ? await analyseFileInWorker(file, onProgress) : null
+      if (!a) {
+        st.status = 'decoding'
+        st.progress = 0
+        try {
+          const { samples, sampleRate } = await decodeSoundtrack(file, opts)
+          st.status = 'analysing'
+          a = await analyseInWorker(samples, sampleRate, onProgress)
+        }
+        catch (err) {
+          // Over an hour once decoded, with no length known beforehand: in pieces after all.
+          if (long || !(err instanceof SoundtrackError) || err.reason !== 'too-long')
+            throw err
+          a = await analyseFileInWorker(file, onProgress)
+          if (!a)
+            throw err
+        }
+      }
       void storeAnalysis(key, a)
       return a
     })
@@ -213,6 +236,8 @@ function install() {
         maxSpm: motion.maxSpm,
         minDepth: motion.minDepth,
         maxDepth: motion.maxDepth,
+        depthFollows: motion.musicDepthFollows,
+        anchor: motion.musicAnchor,
         centre: motion.center,
         centreRange: scriptOptions.centreRange,
         restInGaps: scriptOptions.restInGaps,

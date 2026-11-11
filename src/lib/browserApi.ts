@@ -48,7 +48,25 @@ export async function openScriptFiles(): Promise<File[]> {
       return []
     }
   }
-  return inputFilePicker(['.funscript'], true)
+  return inputFilePicker(scriptInputAccept(), true)
+}
+
+/**
+ * What the plain file input accepts for scripts. Android knows no type for
+ * .funscript and greys such files out of its picker, so it gets no filter
+ * there; the picked files are checked afterwards (splitPickedScripts).
+ */
+export function scriptInputAccept(userAgent = globalThis.navigator?.userAgent ?? ''): string[] {
+  return /Android/i.test(userAgent) ? [] : ['.funscript']
+}
+
+/** Sort picked files into scripts and the rest, by name. */
+export function splitPickedScripts<T extends { name: string }>(files: T[]): { scripts: T[], refused: T[] } {
+  const scripts: T[] = []
+  const refused: T[] = []
+  for (const f of files)
+    (/\.funscript$/i.test(f.name) ? scripts : refused).push(f)
+  return { scripts, refused }
 }
 
 /** Open an entire directory and return all files in it — alias for openFolderInput */
@@ -201,13 +219,14 @@ function inputFilePicker(accept: string[], multiple = false): Promise<File | Fil
   return new Promise((resolve) => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = accept.join(',')
+    if (accept.length)
+      input.accept = accept.join(',')
     input.multiple = multiple
     input.onchange = () => {
       const files = Array.from(input.files ?? [])
       resolve(multiple ? files : (files[0] ?? null))
     }
-    input.oncancel = () => resolve(null)
+    input.oncancel = () => resolve(multiple ? [] : null)
     input.click()
   })
 }

@@ -1,7 +1,7 @@
-import type { MusicPace } from '~/lib/musicMotion'
+import type { MusicPace, StrokeAnchor } from '~/lib/musicMotion'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { MUSIC_PACES } from '~/lib/musicMotion'
+import { MUSIC_PACES, STROKE_ANCHORS } from '~/lib/musicMotion'
 
 /**
  * Where the device's stroke position comes from.
@@ -68,6 +68,10 @@ export const useMotionStore = defineStore('motion', () => {
   const musicPace = ref<MusicPace>('auto')
   /** Music: how often strokes double up or come up short, 0–1. */
   const musicVariation = ref(0)
+  /** Music: stroke depth follows the loudness (off: every stroke at maxDepth). Live source and generated scripts. */
+  const musicDepthFollows = ref(true)
+  /** Music: strokes centred on `center`, or each rising from the bottom of the range to its depth. */
+  const musicAnchor = ref<StrokeAnchor>('centre')
 
   // Manual mapping
   const manualSpm = ref(60)
@@ -134,6 +138,8 @@ export const useMotionStore = defineStore('motion', () => {
       beatBandHi: beatBandHi.value,
       musicPace: musicPace.value,
       musicVariation: musicVariation.value,
+      musicDepthFollows: musicDepthFollows.value,
+      musicAnchor: musicAnchor.value,
       manualSpm: manualSpm.value,
       manualDepth: manualDepth.value,
       manualMode: manualMode.value,
@@ -173,6 +179,10 @@ export const useMotionStore = defineStore('motion', () => {
     if (MUSIC_PACES.includes(data.musicPace))
       musicPace.value = data.musicPace
     musicVariation.value = Math.min(1, Math.max(0, musicVariation.value))
+    if (typeof data.musicDepthFollows === 'boolean')
+      musicDepthFollows.value = data.musicDepthFollows
+    if (STROKE_ANCHORS.includes(data.musicAnchor))
+      musicAnchor.value = data.musicAnchor
     if (typeof data.ceilingUnlocked === 'boolean')
       ceilingUnlocked.value = data.ceilingUnlocked
     // Never load a ceiling past what is unlocked.
@@ -220,6 +230,8 @@ export const useMotionStore = defineStore('motion', () => {
     beatBandHi,
     musicPace,
     musicVariation,
+    musicDepthFollows,
+    musicAnchor,
     manualSpm,
     manualDepth,
     manualMode,

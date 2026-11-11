@@ -212,7 +212,8 @@ function parabolicOffset(a: number, b: number, c: number): number {
 
 // ─── Onset envelope ──────────────────────────────────────────────────────────
 
-interface Features {
+/** Per-frame features: everything the analysis needs from the raw samples. */
+export interface Features {
   fps: number
   /** Time of frame 0, seconds; frame i is at t0 + i / fps. */
   t0: number
@@ -229,30 +230,90 @@ interface Features {
   /** Mean square of the signal per hop-sized block. */
   blockMs: Float64Array
   hop: number
+  sampleRate: number
 }
 
-function extractFeatures(x: Float32Array, sr: number, progress: (f: number) => void): Features | null {
-  const n = 2 ** Math.round(Math.log2(sr * 0.046))
-  const hop = Math.max(1, Math.round(sr / FPS))
-  const fps = sr / hop
-  const frames = x.length >= n ? Math.floor((x.length - n) / hop) + 1 : 0
+function hopOf(sr: number): number {
+  return Math.max(1, Math.round(sr / FPS))
+}
 
-  // Block energy: an exact partition of the signal for per-beat loudness.
-  const blocks = Math.ceil(x.length / hop)
-  const blockMs = new Float64Array(blocks)
-  let total = 0
-  for (let b = 0; b < blocks; b++) {
-    const a = b * hop
-    const e = Math.min(x.length, a + hop)
-    let s = 0
-    for (let i = a; i < e; i++)
-      s += x[i] * x[i]
-    total += s
-    blockMs[b] = s / Math.max(1, e - a)
+/** A Float64Array that grows as it is written to. */
+function growable(initial: number) {
+  let a = new Float64Array(Math.max(16, initial))
+  return {
+    get array() {
+      return a
+    },
+    reserve(n: number) {
+      if (n <= a.length)
+        return
+      const b = new Float64Array(Math.max(n, a.length * 2))
+      b.set(a)
+      a = b
+    },
   }
-  const rms = Math.sqrt(total / Math.max(1, x.length))
-  if (frames < 3 || !(rms > 1e-5))
-    return null
+}
+
+/**
+ * Loudness of a signal fed to it piece by piece: the mean square of every
+ * hop-sized block (an exact partition, for per-beat loudness) and the RMS of
+ * the whole. The same sums in the same order whatever the pieces.
+ */
+export function createLevelMeter(sr: number, opts: { expectedSamples?: number } = {}) {
+  const hop = hopOf(sr)
+  const blocks = growable(Math.ceil((opts.expectedSamples ?? 0) / hop) + 1)
+  let count = 0
+  let total = 0
+  let acc = 0
+  let inBlock = 0
+  let length = 0
+
+  return {
+    push(x: Float32Array) {
+      length += x.length
+      for (let i = 0; i < x.length; i++) {
+        acc += x[i] * x[i]
+        if (++inBlock === hop) {
+          blocks.reserve(count + 1)
+          blocks.array[count++] = acc / hop
+          total += acc
+          acc = 0
+          inBlock = 0
+        }
+      }
+    },
+    /** Samples measured so far. */
+    get length() {
+      return length
+    },
+    rms(): number {
+      // A partial last block counts, exactly as when it is closed.
+      return Math.sqrt((inBlock ? total + acc : total) / Math.max(1, length))
+    },
+    /** The block mean squares, the partial last block included. */
+    blocks(): Float64Array {
+      const out = new Float64Array(count + (inBlock ? 1 : 0))
+      out.set(blocks.array.subarray(0, count))
+      if (inBlock)
+        out[count] = acc / inBlock
+      return out
+    },
+  }
+}
+
+/**
+ * The spectral features of a mono signal, fed to it in pieces of any size.
+ *
+ * The log compression is relative to the track's level, so the RMS of the
+ * whole signal has to be known before the first frame: measure it first with
+ * createLevelMeter. Given the same samples, the result is the same however
+ * they are split.
+ */
+export function createFeatureExtractor(sr: number, rms: number, opts: { expectedSamples?: number } = {}) {
+  const n = 2 ** Math.round(Math.log2(sr * 0.046))
+  const hop = hopOf(sr)
+  const fps = sr / hop
+  const meter = createLevelMeter(sr, opts)
 
   // Per-bin normalisation: a white noise at the track's level reads ~1, so
   // the log compression treats every track alike regardless of its gain.
@@ -286,21 +347,29 @@ function extractFeatures(x: Float32Array, sr: number, progress: (f: number) => v
   // A ring of the last LAG+1 frames' band levels.
   const ring = Array.from({ length: LAG + 1 }, () => new Float64Array(BANDS))
   const lowRing = new Float64Array(LAG + 1)
-  const flux = new Float64Array(frames)
-  const lowFlux = new Float64Array(frames)
-  const centroid = new Float64Array(frames)
-  const weight = new Float64Array(frames)
+  const expectedFrames = Math.ceil((opts.expectedSamples ?? 0) / hop) + 2
+  const flux = growable(expectedFrames)
+  const lowFlux = growable(expectedFrames)
+  const centroid = growable(expectedFrames)
+  const weight = growable(expectedFrames)
   const level = new Float64Array(BANDS)
 
-  let nextReport = 0
-  // Two real frames per complex FFT: one in the real part, one in the imaginary.
-  for (let f = 0; f < frames; f += 2) {
-    const a0 = f * hop
-    const a1 = (f + 1) * hop
-    const second = f + 1 < frames
+  /** The next frame to analyse; frames go two at a time, 0+1, 2+3, … */
+  let next = 0
+  /** Samples fed so far. */
+  let total = 0
+  /** Unanalysed samples carried over between pieces, starting at sample `bufStart`. */
+  let buf = new Float32Array(0)
+  let bufStart = 0
+  let bufLen = 0
+
+  /** Frames `fi` (and `fi + 1` when `second`), read from `src` at index `o0`. */
+  function frames(src: Float32Array, o0: number, fi0: number, second: boolean) {
+    const o1 = o0 + hop
+    // Two real frames per complex FFT: one in the real part, one in the imaginary.
     for (let i = 0; i < n; i++) {
-      re[i] = x[a0 + i] * window[i] * norm
-      im[i] = second ? x[a1 + i] * window[i] * norm : 0
+      re[i] = src[o0 + i] * window[i] * norm
+      im[i] = second ? src[o1 + i] * window[i] * norm : 0
     }
     fft(re, im)
     for (let k = 0; k < half; k++) {
@@ -313,8 +382,15 @@ function extractFeatures(x: Float32Array, sr: number, progress: (f: number) => v
       mags[1][k] = Math.sqrt(br * br + bi * bi)
     }
 
-    for (let s = 0; s < (second ? 2 : 1); s++) {
-      const fi = f + s
+    const count = second ? 2 : 1
+    for (const g of [flux, lowFlux, centroid, weight])
+      g.reserve(fi0 + count)
+    const fl = flux.array
+    const lf = lowFlux.array
+    const ce = centroid.array
+    const we = weight.array
+    for (let s = 0; s < count; s++) {
+      const fi = fi0 + s
       const mag = mags[s]
       level.fill(0)
       let num = 0
@@ -330,8 +406,8 @@ function extractFeatures(x: Float32Array, sr: number, progress: (f: number) => v
         if (b >= 0)
           level[b] += m
       }
-      centroid[fi] = den > 1e-9 ? num / den : Number.NaN
-      weight[fi] = den
+      ce[fi] = den > 1e-9 ? num / den : Number.NaN
+      we[fi] = den
 
       const cur = ring[fi % (LAG + 1)]
       for (let b = 0; b < BANDS; b++)
@@ -340,59 +416,167 @@ function extractFeatures(x: Float32Array, sr: number, progress: (f: number) => v
       lowRing[fi % (LAG + 1)] = lowLevel
       if (fi >= LAG) {
         const prev = ring[(fi - LAG) % (LAG + 1)]
-        let fl = 0
+        let d = 0
         for (let b = 0; b < BANDS; b++) {
-          const d = cur[b] - prev[b]
-          if (d > 0)
-            fl += d
+          const v = cur[b] - prev[b]
+          if (v > 0)
+            d += v
         }
-        flux[fi] = fl
-        lowFlux[fi] = Math.max(0, lowLevel - lowRing[(fi - LAG) % (LAG + 1)])
+        fl[fi] = d
+        lf[fi] = Math.max(0, lowLevel - lowRing[(fi - LAG) % (LAG + 1)])
+      }
+      else {
+        fl[fi] = 0
+        lf[fi] = 0
       }
     }
+  }
 
-    if (f >= nextReport) {
-      progress(f / frames)
-      nextReport = f + Math.max(2, Math.floor(frames / 50))
+  /**
+   * Analyse the frames that `src` (sample `srcStart` onward) holds whole,
+   * in pairs; a lone frame only at the very end. Stops before a frame that
+   * starts at or past `limit`.
+   */
+  function run(src: Float32Array, srcStart: number, srcLen: number, final: boolean, limit = Infinity) {
+    const srcEnd = srcStart + srcLen
+    while (next * hop < limit) {
+      const a0 = next * hop
+      if (a0 + n > srcEnd)
+        break
+      const second = a0 + hop + n <= srcEnd
+      if (!second && !final)
+        break
+      frames(src, a0 - srcStart, next, second)
+      next += second ? 2 : 1
+      if (!second)
+        break
     }
   }
 
-  // Remove the slowly varying part, so a loud chorus does not outweigh the
-  // beats in a quiet verse: the tracker cares about attacks, not level.
-  const mean = movingAverage(flux, Math.round(fps * 0.5))
-  const envAc = new Float64Array(frames)
-  const env = new Float64Array(frames)
-  let sq = 0
-  for (let i = 0; i < frames; i++) {
-    envAc[i] = flux[i] - mean[i]
-    env[i] = Math.max(0, envAc[i])
-    sq += env[i] * env[i]
+  function keep(src: Float32Array, srcStart: number, from: number, to: number) {
+    // `from`..`to` are absolute sample indices inside `src`.
+    const len = to - from
+    if (buf.length < len)
+      buf = new Float32Array(Math.max(len, buf.length * 2, n + 2 * hop))
+    buf.set(src.subarray(from - srcStart, to - srcStart), 0)
+    bufStart = from
+    bufLen = len
   }
-  const sd = Math.sqrt(sq / frames) || 1
-  for (let i = 0; i < frames; i++)
-    env[i] /= sd
 
-  const lowMean = movingAverage(lowFlux, Math.round(fps * 0.5))
-  let lsq = 0
-  for (let i = 0; i < frames; i++) {
-    lowFlux[i] = Math.max(0, lowFlux[i] - lowMean[i])
-    lsq += lowFlux[i] * lowFlux[i]
+  function append(x: Float32Array) {
+    if (bufLen + x.length > buf.length) {
+      const b = new Float32Array(Math.max(bufLen + x.length, buf.length * 2))
+      b.set(buf.subarray(0, bufLen))
+      buf = b
+    }
+    buf.set(x, bufLen)
+    bufLen += x.length
   }
-  const lsd = Math.sqrt(lsq / frames) || 1
-  for (let i = 0; i < frames; i++)
-    lowFlux[i] /= lsd
+
+  /** Drop the carried samples no frame still needs. */
+  function compact() {
+    const from = Math.min(next * hop, bufStart + bufLen)
+    const drop = from - bufStart
+    if (drop <= 0)
+      return
+    buf.copyWithin(0, drop, bufLen)
+    bufLen -= drop
+    bufStart = from
+  }
 
   return {
-    fps,
-    t0: n / 2 / sr + ONSET_SHIFT_S,
-    env,
-    envAc,
-    low: lowFlux,
-    centroid,
-    weight,
-    blockMs,
-    hop,
+    push(x: Float32Array) {
+      meter.push(x)
+      const xStart = total
+      total += x.length
+      if (bufLen > 0) {
+        if (x.length <= n + hop) {
+          append(x)
+          run(buf, bufStart, bufLen, false)
+          compact()
+          return
+        }
+        // Enough of the new piece to finish every frame that starts in the
+        // carried samples; the rest is read from the piece itself.
+        append(x.subarray(0, n + hop))
+        run(buf, bufStart, bufLen, false, xStart)
+        bufLen = 0
+      }
+      run(x, xStart, x.length, false)
+      keep(x, xStart, Math.min(total, Math.max(xStart, next * hop)), total)
+    },
+    /** Samples fed so far. */
+    get length() {
+      return total
+    },
+    finish(): Features | null {
+      if (bufLen > 0)
+        run(buf, bufStart, bufLen, true)
+      buf = new Float32Array(0)
+      bufLen = 0
+      const count = next
+      const blockMs = meter.blocks()
+      const ownRms = meter.rms()
+      if (count < 3 || !(ownRms > 1e-5))
+        return null
+
+      const fluxA = flux.array.subarray(0, count)
+      const lowA = lowFlux.array.subarray(0, count)
+      // Remove the slowly varying part, so a loud chorus does not outweigh the
+      // beats in a quiet verse: the tracker cares about attacks, not level.
+      const mean = movingAverage(fluxA, Math.round(fps * 0.5))
+      const envAc = new Float64Array(count)
+      const env = new Float64Array(count)
+      let sq = 0
+      for (let i = 0; i < count; i++) {
+        envAc[i] = fluxA[i] - mean[i]
+        env[i] = Math.max(0, envAc[i])
+        sq += env[i] * env[i]
+      }
+      const sd = Math.sqrt(sq / count) || 1
+      for (let i = 0; i < count; i++)
+        env[i] /= sd
+
+      const lowMean = movingAverage(lowA, Math.round(fps * 0.5))
+      const low = new Float64Array(count)
+      let lsq = 0
+      for (let i = 0; i < count; i++) {
+        low[i] = Math.max(0, lowA[i] - lowMean[i])
+        lsq += low[i] * low[i]
+      }
+      const lsd = Math.sqrt(lsq / count) || 1
+      for (let i = 0; i < count; i++)
+        low[i] /= lsd
+
+      return {
+        fps,
+        t0: n / 2 / sr + ONSET_SHIFT_S,
+        env,
+        envAc,
+        low,
+        centroid: centroid.array.slice(0, count),
+        weight: weight.array.slice(0, count),
+        blockMs,
+        hop,
+        sampleRate: sr,
+      }
+    },
   }
+}
+
+/** Features of a whole signal at once: the same as feeding it in pieces. */
+export function extractFeatures(x: Float32Array, sr: number, progress: (f: number) => void = () => {}, pieceSamples = 1 << 18): Features | null {
+  const meter = createLevelMeter(sr)
+  meter.push(x)
+  const rms = meter.rms()
+  if (!(rms > 1e-5))
+    return null
+  const ex = createFeatureExtractor(sr, rms, { expectedSamples: x.length })
+  for (let a = 0; a < x.length; a += pieceSamples) {
+    ex.push(x.subarray(a, Math.min(x.length, a + pieceSamples)))
+    progress(Math.min(1, (a + pieceSamples) / x.length))
+  }
+  return ex.finish()
 }
 
 // ─── Tempo ───────────────────────────────────────────────────────────────────
@@ -655,9 +839,20 @@ function sampleAt(x: Float64Array, f: number): number {
 
 /** Analyse a mono signal. */
 export function analyseBeats(samples: Float32Array, sampleRate: number, opts: BeatTrackOptions = {}): SoundtrackAnalysis {
+  const report = opts.onProgress ?? (() => {})
+  // The spectrum is ~85% of the work; everything after is quick.
+  const feat = extractFeatures(samples, sampleRate, f => report(f * 0.85))
+  return analyseFeatures(feat, samples.length / sampleRate, opts)
+}
+
+/**
+ * The analysis, from a signal's features (see createFeatureExtractor) and
+ * its length in seconds. Reports progress from 0.9 on: the features are the
+ * slow part, and whoever made them reports that.
+ */
+export function analyseFeatures(feat: Features | null, duration: number, opts: BeatTrackOptions = {}): SoundtrackAnalysis {
   const o = { ...DEFAULTS, ...opts }
   const report = opts.onProgress ?? (() => {})
-  const duration = samples.length / sampleRate
   const empty: SoundtrackAnalysis = {
     version: ANALYSIS_VERSION,
     duration,
@@ -671,8 +866,6 @@ export function analyseBeats(samples: Float32Array, sampleRate: number, opts: Be
     gaps: duration > 0 ? [{ start: 0, end: duration }] : [],
   }
 
-  // The spectrum is ~85% of the work; everything after is quick.
-  const feat = extractFeatures(samples, sampleRate, f => report(f * 0.85))
   if (!feat) {
     report(1)
     return empty
@@ -702,7 +895,7 @@ export function analyseBeats(samples: Float32Array, sampleRate: number, opts: Be
   // Loudness and brightness of each beat's span.
   const energy: number[] = []
   const centroid: number[] = []
-  const blockS = feat.hop / sampleRate
+  const blockS = feat.hop / feat.sampleRate
   for (let i = 0; i < n; i++) {
     const a = Math.max(0, Math.floor(beats[i] / blockS))
     const b = Math.min(feat.blockMs.length, Math.max(a + 1, Math.floor(ends[i] / blockS)))

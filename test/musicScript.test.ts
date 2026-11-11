@@ -140,6 +140,42 @@ describe('musicScript', () => {
     expect(Math.max(...centres) - Math.min(...centres)).toBeGreaterThan(0.2)
   })
 
+  it('strokes at the deepest everywhere when depth does not follow the music', () => {
+    const a = steady(120, 60, { energy: t => -35 + 30 * Math.abs(Math.sin(t / 6)) })
+    const follows = planStrokes(a, OPTS).filter(s => !s.rest)
+    expect(Math.max(...follows.map(s => s.depth)) - Math.min(...follows.map(s => s.depth))).toBeGreaterThan(0.3)
+    const fixed = planStrokes(a, { ...OPTS, depthFollows: false }).filter(s => !s.rest)
+    for (const s of fixed)
+      expect(s.depth).toBe(OPTS.maxDepth)
+  })
+
+  it('runs every stroke from the bottom up to its depth when strokes start at the bottom', () => {
+    const a = steady(120, 60, { energy: t => -35 + 30 * Math.abs(Math.sin(t / 6)), gaps: [[30, 40]] })
+    const o = { ...OPTS, anchor: 'bottom' as const, centre: 0.7, centreRange: 1 }
+    const plan = planStrokes(a, o)
+    for (const s of plan)
+      expect(s.centre).toBeCloseTo(s.depth / 2, 12)
+    const actions = musicScript(a, o)
+    for (const s of plan.slice(1, -1).filter(p => !p.rest)) {
+      const bottom = actions.find(x => x.at === Math.round(s.start * 1000))!
+      const top = actions.find(x => x.at === Math.round(((s.start + s.end) / 2) * 1000))!
+      expect(bottom.pos).toBe(0)
+      expect(top.pos).toBe(Math.round(s.depth * 100))
+    }
+    // Rests at the bottom in a gap, not at the centre.
+    expect(posAt(actions, 35000)).toBe(0)
+  })
+
+  it('still starts at the bottom when the speed limit shrinks a stroke', () => {
+    // As musicScript lays out strokes from the bottom: shrinking toward 0.
+    const pts = Array.from({ length: 10 }, (_, i) => ({ t: i * 200, pos: i % 2 ? 100 : 0, c: 0 }))
+    const out = limitSpeed(pts, speedLimit(75))
+    expect(maxSpeed(out)).toBeLessThanOrEqual(speedLimit(75) + 1e-9)
+    expect(out.filter((_, i) => i % 2 === 0).every(a => a.pos === 0)).toBe(true)
+    expect(out[5].pos).toBeGreaterThanOrEqual(49)
+    expect(out[5].pos).toBeLessThanOrEqual(51)
+  })
+
   it('keeps times strictly increasing and positions in range', () => {
     const actions = musicScript(steady(175, 30, { jitter: 0.1 }), { ...OPTS, bandHi: 300, maxSpm: 400 })
     for (let i = 1; i < actions.length; i++)

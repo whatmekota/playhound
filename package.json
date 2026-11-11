@@ -31,6 +31,7 @@
     "@vueuse/core": "catalog:frontend",
     "buttplug": "catalog:frontend",
     "hls.js": "catalog:frontend",
+    "mp4box": "catalog:frontend",
     "osr-emu": "catalog:frontend",
     "pinia": "catalog:frontend",
     "three": "catalog:frontend",

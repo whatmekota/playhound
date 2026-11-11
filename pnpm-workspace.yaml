@@ -47,6 +47,7 @@ catalogs:
     '@vueuse/core': ^14.2.1
     buttplug: ^5.0.2
     hls.js: 1.7.3
+    mp4box: ^2.4.1
     osr-emu: ^0.7.0
     pinia: ^3.0.3
     three: ^0.184.0

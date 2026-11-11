@@ -541,9 +541,10 @@ export const useProgrammeStore = defineStore('programme', () => {
     clipIndex.value = k
     offReel.value = false
     switchingSince = performance.now()
+    // Ours until the load is done: playAt awaits (the unsaved-edits check)
+    // before it loads, so the track changes after this call returns.
     selfLoad = true
     const loading = playback.playAt(entry, clip.start)
-    selfLoad = false
     log.value.push({
       phase: Math.max(0, phaseIndex.value),
       at: elapsed.value,
@@ -551,7 +552,12 @@ export const useProgrammeStore = defineStore('programme', () => {
       basename: entry.basename,
       clip: { start: clip.start, end: clip.end, chapter: clip.name },
     })
-    await loading
+    try {
+      await loading
+    }
+    finally {
+      selfLoad = false
+    }
     return true
   }
 
