@@ -107,8 +107,8 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   strokes in time with it, or writes a real `.funscript` from the whole track
   that you can save and edit. Depth can follow how loud the music is or stay at
   the deepest, and strokes can centre where you set or start at the bottom.
-  MP4, MOV and M4A soundtracks of any file size, up to six hours, are read in
-  pieces; other formats up to an hour and 1.5 GB. If it hears the beat wrong,
+  MP4, MOV and M4A files over 1 GB or an hour are read in pieces, so any size
+  up to six hours works; other formats up to an hour and 1.5 GB. If it hears the beat wrong,
   tap it in with **T**, even with no video at all: tap along to anything and
   the device follows.
 - **Stays in control.** **E** edges: everything backs off for a while and eases

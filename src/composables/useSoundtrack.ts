@@ -10,10 +10,12 @@ import {
   cachedAnalysis,
   decodeSoundtrack,
   FAILURE_TEXT,
+  MAX_AUDIO_SECONDS,
   SoundtrackError,
   soundtrackKey,
   storeAnalysis,
 } from '~/lib/soundtrack'
+import { STREAM_ABOVE_BYTES } from '~/lib/soundtrackLimits'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
@@ -94,14 +96,26 @@ export function analyseSoundtrack(file: File, opts: { durationHint?: number } = 
         st.status = 'analysing'
         st.progress = p
       }
-      // In pieces when the file allows it (MP4 / MOV / M4A), whole otherwise.
-      let a = await analyseFileInWorker(file, onProgress)
+      // Whole when it fits (faster); in pieces for a file over 1 GB or over an
+      // hour (MP4 / MOV / M4A), which decoding whole can't take.
+      const long = file.size > STREAM_ABOVE_BYTES || (opts.durationHint ?? 0) > MAX_AUDIO_SECONDS
+      let a = long ? await analyseFileInWorker(file, onProgress) : null
       if (!a) {
         st.status = 'decoding'
         st.progress = 0
-        const { samples, sampleRate } = await decodeSoundtrack(file, opts)
-        st.status = 'analysing'
-        a = await analyseInWorker(samples, sampleRate, onProgress)
+        try {
+          const { samples, sampleRate } = await decodeSoundtrack(file, opts)
+          st.status = 'analysing'
+          a = await analyseInWorker(samples, sampleRate, onProgress)
+        }
+        catch (err) {
+          // Over an hour once decoded, with no length known beforehand: in pieces after all.
+          if (long || !(err instanceof SoundtrackError) || err.reason !== 'too-long')
+            throw err
+          a = await analyseFileInWorker(file, onProgress)
+          if (!a)
+            throw err
+        }
       }
       void storeAnalysis(key, a)
       return a
