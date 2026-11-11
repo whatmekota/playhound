@@ -50,4 +50,7 @@
          a dev server for live reload. Library folders need no storage
          permission: the folder picker grants each one. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The in-app updater hands a downloaded release APK to Android's
+         installer (app/AppPlugin.kt); Android asks the user once. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>

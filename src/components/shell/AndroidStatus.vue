@@ -61,6 +61,28 @@ async function folders(): Promise<Check> {
   }
 }
 
+async function build(): Promise<Check> {
+  try {
+    const { appInfo } = await import('~/lib/android/app')
+    const i = await appInfo()
+    return { label: 'App', value: `${i.version} (${i.code}) · ${i.debug ? 'debug build' : 'release build'}`, ok: null }
+  }
+  catch (err) {
+    return { label: 'App plugin', value: `not answering: ${(err as Error).message}`, ok: false }
+  }
+}
+
+async function forum(): Promise<Check> {
+  try {
+    const { PhNet } = await import('~/lib/android/net')
+    const { signedIn } = await PhNet.forumStatus()
+    return { label: 'EroScripts session', value: signedIn ? 'signed in' : 'not signed in', ok: null }
+  }
+  catch (err) {
+    return { label: 'Net plugin', value: `not answering: ${(err as Error).message}`, ok: false }
+  }
+}
+
 function webgl(): boolean {
   try {
     return !!document.createElement('canvas').getContext('webgl2')
@@ -76,10 +98,12 @@ async function run() {
   const android = navigator.userAgent.match(/Android ([\d.]+)/)?.[1] ?? '?'
   const yes = (b: boolean) => (b ? 'yes' : 'no')
   const list: Check[] = [
+    await build(),
     { label: 'Android / WebView', value: `Android ${android} · Chrome ${chrome}`, ok: null },
     { label: 'Secure context', value: yes(window.isSecureContext), ok: window.isSecureContext },
     await mediaServer(),
     await folders(),
+    await forum(),
     { label: 'Web Audio (binaural, e-stim)', value: yes(typeof AudioContext !== 'undefined'), ok: typeof AudioContext !== 'undefined' },
     { label: 'WebCodecs', value: yes(typeof (globalThis as any).VideoDecoder !== 'undefined'), ok: typeof (globalThis as any).VideoDecoder !== 'undefined' },
     { label: 'WebGL 2 (emulator, VR view)', value: yes(webgl()), ok: webgl() },
@@ -121,8 +145,8 @@ async function copy() {
 <template>
   <div class="flex flex-col gap-5">
     <p class="hint">
-      The Android app is new: phase 1. Library folders, playback with scripts and the Handy over WiFi are in; the rest
-      follows as native pieces arrive.
+      The Android app is new. Library folders (reading and saving), playback with scripts, the Handy over WiFi, the
+      EroScripts browser and streaming from file hosts are in; the rest follows as native pieces arrive.
     </p>
 
     <section class="flex flex-col gap-2">

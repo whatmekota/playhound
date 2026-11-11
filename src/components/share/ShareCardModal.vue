@@ -12,7 +12,9 @@ import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { toast } from '~/composables/useToast'
+import { pickDirectory } from '~/lib/browserApi'
 import { KEYS } from '~/lib/persist'
+import { isAndroidApp, isTouchOnly } from '~/lib/platform'
 import { getStrip } from '~/lib/previews'
 import { CARD_PICTURES, CARD_SCALE, CARD_SIZES, CARD_STYLES, cardFileName, defaultMoments, heatScale, normaliseCardPrefs, PALETTES, speedRange } from '~/lib/shareCard'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -64,7 +66,7 @@ const title = ref('')
 const creator = ref('')
 /** A folder to save next to the video, when the library can write there. */
 const canSaveBeside = ref(false)
-const busy = ref<'copy' | 'save' | 'saveAs' | null>(null)
+const busy = ref<'copy' | 'save' | 'saveAs' | 'share' | null>(null)
 
 // ─── Frames ──────────────────────────────────────────────────────────────────
 
@@ -273,9 +275,10 @@ const timelineHint = computed(() => {
     return 'Picking moments is not available for this video: the card uses the picture in the player.'
   if (frameState.value === 'none')
     return 'Pictures are not available for this video.'
+  const verb = isTouchOnly ? 'Tap' : 'Click'
   if (prefs.value.picture === 'four')
-    return 'Click or drag to place each picture. Picture 1 is also the background.'
-  return 'Click or drag to pick the moment the card shows.'
+    return `${verb} or drag to place each picture. Picture 1 is also the background.`
+  return `${verb} or drag to pick the moment the card shows.`
 })
 
 // ─── Drawing ─────────────────────────────────────────────────────────────────
@@ -354,6 +357,48 @@ async function saveBeside() {
     }
     await writePng(dir, fileName.value, await png())
     toast.success('Card saved next to the video', { detail: fileName.value, icon: 'i-carbon-image' })
+  }
+  catch {
+    toast.error('Could not save the card')
+  }
+  finally {
+    busy.value = null
+  }
+}
+
+/** The Android app: the share sheet, which posts, sends or saves it wherever the user likes. */
+async function share() {
+  busy.value = 'share'
+  try {
+    const { shareFile } = await import('~/lib/android/app')
+    await shareFile(await png(), fileName.value, 'Share card')
+  }
+  catch (err) {
+    toast.error('Could not share the card', { detail: (err as Error)?.message })
+  }
+  finally {
+    busy.value = null
+  }
+}
+
+/**
+ * The Android app: into the video's folder when the library can write
+ * there, else a folder picked now (Android has no save dialog).
+ */
+async function saveToFolder() {
+  if (canSaveBeside.value)
+    return saveBeside()
+  busy.value = 'save'
+  try {
+    const dir = await pickDirectory()
+    if (!dir)
+      return
+    if (await (dir as any).queryPermission({ mode: 'readwrite' }) !== 'granted') {
+      toast.error('Android gave read-only access to that folder')
+      return
+    }
+    await writePng(dir, fileName.value, await png())
+    toast.success('Card saved', { detail: `${fileName.value} · in ${dir.name}`, icon: 'i-carbon-image' })
   }
   catch {
     toast.error('Could not save the card')
@@ -485,15 +530,25 @@ const styleNote = computed(() => CARD_STYLES.find(s => s.id === prefs.value.styl
 
     <template #footer>
       <span class="hint num mr-auto">{{ size.w * CARD_SCALE }} × {{ size.h * CARD_SCALE }} PNG</span>
-      <UiButton variant="ghost" :disabled="!source" :loading="busy === 'saveAs'" @click="saveAs">
-        Save as…
-      </UiButton>
-      <UiButton v-if="canSaveBeside" :disabled="!source" icon="i-carbon-save" :loading="busy === 'save'" @click="saveBeside">
-        Save next to the video
-      </UiButton>
-      <UiButton variant="primary" icon="i-carbon-copy" :disabled="!source" :loading="busy === 'copy'" @click="copy">
-        Copy image
-      </UiButton>
+      <template v-if="isAndroidApp">
+        <UiButton :disabled="!source" icon="i-carbon-folder" :loading="busy === 'save'" @click="saveToFolder">
+          {{ canSaveBeside ? 'Save next to the video' : 'Save to folder' }}
+        </UiButton>
+        <UiButton variant="primary" icon="i-carbon-share" :disabled="!source" :loading="busy === 'share'" @click="share">
+          Share…
+        </UiButton>
+      </template>
+      <template v-else>
+        <UiButton variant="ghost" :disabled="!source" :loading="busy === 'saveAs'" @click="saveAs">
+          Save as…
+        </UiButton>
+        <UiButton v-if="canSaveBeside" :disabled="!source" icon="i-carbon-save" :loading="busy === 'save'" @click="saveBeside">
+          Save next to the video
+        </UiButton>
+        <UiButton variant="primary" icon="i-carbon-copy" :disabled="!source" :loading="busy === 'copy'" @click="copy">
+          Copy image
+        </UiButton>
+      </template>
     </template>
   </UiModal>
 </template>
