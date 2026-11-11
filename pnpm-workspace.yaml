@@ -52,6 +52,10 @@ catalogs:
     three: ^0.184.0
     vue: ^3.5.29
     vue-router: ^5.0.3
+  mobile:
+    '@capacitor/android': ^8.6.0
+    '@capacitor/cli': ^8.6.0
+    '@capacitor/core': ^8.6.0
 ignoredBuiltDependencies:
   # Squirrel.Windows support in electron-builder; the app ships as NSIS / portable.
   - electron-winstaller

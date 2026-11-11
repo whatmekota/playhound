@@ -27,3 +27,23 @@ __pycache__/
 /appid
 /appkey
 /handytoken
+
+# Android app (android/): Gradle and Kotlin output, the web build that cap
+# sync copies in, generated config, the local SDK path. Listed here as well as
+# in android/.gitignore so the root tools (ESLint) skip them too.
+android/.gradle/
+android/.kotlin/
+android/.idea/
+android/build/
+android/app/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+android/capacitor-cordova-android-plugins/
+android/local.properties
+*.apk
+*.aab
+# Signing keys never go in the repo (debug builds sign with the toolchain's own key).
+*.keystore
+*.jks

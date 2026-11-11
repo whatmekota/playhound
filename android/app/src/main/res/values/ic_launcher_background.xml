@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The tile's own magenta, round the adaptive icon's front layer (android/icons.mjs). -->
+    <color name="ic_launcher_background">#C026D3</color>
+</resources>
