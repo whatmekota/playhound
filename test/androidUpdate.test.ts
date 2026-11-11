@@ -40,3 +40,13 @@ describe('the Android updater', () => {
     expect(pickAndroidRelease([release('v2.5.0', { draft: true })], '2.2.0')).toBeNull()
   })
 })
+
+describe('plugins in the Android app', () => {
+  it('refuses the ones that need a desktop-only part', async () => {
+    const { desktopOnlyReason } = await import('~/plugins/manifest')
+    expect(desktopOnlyReason(['player', 'serve'], true)).toMatch(/^This plugin needs the desktop app/)
+    expect(desktopOnlyReason(['player', 'network'], true)).toBeNull()
+    expect(desktopOnlyReason(['web'], false)).toBeNull()
+    expect(desktopOnlyReason(undefined, true)).toBeNull()
+  })
+})

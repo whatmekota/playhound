@@ -15,7 +15,7 @@ export const ANDROID_LATER: readonly { id: AnyViewId | null, label: string, why:
   { id: null, label: 'Sites that need yt-dlp (Pornhub, XVideos, Hanime1…)', why: 'yt-dlp is a desktop program; Pixeldrain, Gofile, MEGA, Iwara, Rule34Video and PMVHaven stream here' },
   { id: null, label: 'Bluetooth: the Handy over Bluetooth, heart-rate monitors', why: 'the WebView has no Web Bluetooth; a native BLE plugin is next' },
   { id: null, label: 'USB serial (OSR over USB OTG)', why: 'the WebView has no Web Serial; a native USB plugin is next' },
-  { id: null, label: 'Plugins with web views, the LAN server for plugins', why: 'desktop app only' },
+  { id: null, label: 'Plugins that open web pages, connect to devices on the network or share the library on it', why: 'desktop app only; the plugin store says so and will not install them' },
 ]
 
 const hidden = new Set<AnyViewId>(isAndroidApp ? ANDROID_LATER.flatMap(f => (f.id ? [f.id] : [])) : [])

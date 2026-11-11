@@ -623,6 +623,8 @@ EroScripts sign-in is the forum's login page in a WebView activity
 (`net/ForumLoginActivity.kt`); its `_t` cookie stays in the WebView's cookie
 store, in the app's private storage.
 
+Plugins: their `fetch` goes through `p` too. Plugins that ask for `web`, `socket` or `serve` need the desktop app; the store says so and the Android app will not install them.
+
 It needs JDK 21 and the Android SDK (platform 36, build-tools 36). The scripts
 expect them in one folder, `F:\tools\android` (`jdk-21\`, `sdk\`), or wherever
 `PH_ANDROID_TOOLS` points, and keep Gradle's and Android's caches there too;

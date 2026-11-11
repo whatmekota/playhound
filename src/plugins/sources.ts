@@ -1,6 +1,6 @@
 import type { ImageAsset } from './storeMeta'
 import type { PluginManifest } from './types'
-import { PERMISSIONS, PLUGIN_API, readManifest } from './manifest'
+import { desktopOnlyReason, PERMISSIONS, PLUGIN_API, readManifest } from './manifest'
 import { incompatibility, isImageAsset, readStoreFields } from './storeMeta'
 
 export { newer } from './storeMeta'
@@ -158,7 +158,7 @@ export function listingManifest(raw: unknown): { manifest: PluginManifest | null
           ...readStoreFields(m).fields,
         }
       : null
-    const why = manifest && incompatibility(manifest, PLUGIN_API)
+    const why = manifest && (incompatibility(manifest, PLUGIN_API) || desktopOnlyReason(manifest.permissions))
     return { manifest, problem: why || (err instanceof Error ? err.message : String(err)) }
   }
 }

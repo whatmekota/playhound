@@ -61,7 +61,7 @@ const error = computed(() => (props.entry.source?.status === 'error' ? props.ent
       </div>
 
       <span v-if="entry.problem" v-tip="entry.problem" class="text-[11px] text-warn font-medium flex shrink-0 gap-1 pointer-events-auto items-center">
-        <span class="i-carbon-warning-alt text-[13px]" /> Can't install
+        <span class="i-carbon-warning-alt text-[13px]" /> {{ /needs the desktop app/.test(entry.problem) ? 'Needs the desktop app' : 'Can\'t install' }}
       </span>
       <UiButton
         v-else-if="entry.update"
