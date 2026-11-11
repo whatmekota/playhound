@@ -105,8 +105,12 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   equirectangular or fisheye.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
-  that you can save and edit. If it hears the beat wrong, tap it in with **T**,
-  even with no video at all: tap along to anything and the device follows.
+  that you can save and edit. Depth can follow how loud the music is or stay at
+  the deepest, and strokes can centre where you set or start at the bottom.
+  MP4, MOV and M4A soundtracks of any file size, up to six hours, are read in
+  pieces; other formats up to an hour and 1.5 GB. If it hears the beat wrong,
+  tap it in with **T**, even with no video at all: tap along to anything and
+  the device follows.
 - **Stays in control.** **E** edges: everything backs off for a while and eases
   back in. An intensity knob scales every source. **G** jumps to the next
   peak and **Shift+G** to the most intense part. **Esc** is panic.
@@ -230,7 +234,10 @@ pnpm dev            # http://localhost:6969
 Open the app, pick your video folder, and it pairs each video (or audio file)
 with its scripts by file name (`Video.mp4` + `Video.funscript` +
 `Video.roll.funscript` …).
-Nothing is copied or uploaded; the folder is read in place.
+Nothing is copied or uploaded; the folder is read in place. A script can also
+be loaded by hand from the **Scripts** panel; on Android the picker shows every
+file (it does not know the `.funscript` type), and anything that is not a
+`.funscript` is turned away.
 
 On Windows, `start.bat` starts everything at once: the app, the
 EroScripts proxy (`:7071`) and the remote relay (`:7072`). If you've built the
@@ -571,7 +578,7 @@ src/
   composables/  device links, engines, sync loops (useVideoSync, useMotionEngine, …)
   stores/       Pinia: playback, queue, library, device, motion, session control, …
   lib/          pure logic, unit-tested: parsing, motion maths, beat tracking, programmes
-  workers/      soundtrack analysis off the main thread
+  workers/      soundtrack decoding (MP4 in pieces) and analysis off the main thread
   pages/        / (the app) and /remote (the phone)
 desktop/        Electron main process, preload, packaging
 firmware/       ESP32 CYD face (Arduino); protocol in docs/face-protocol.md
