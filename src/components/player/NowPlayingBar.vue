@@ -223,8 +223,8 @@ function toggleBinaural() {
     audio.isPlaying.value = false
   }
   else {
-    binaural.start(audio.baseFrequency.value, audio.beatDelta.value, audio.volume.value, audio.waveType.value)
-    audio.isPlaying.value = true
+    if (binaural.start(audio.baseFrequency.value, audio.beatDelta.value, audio.volume.value, audio.waveType.value))
+      audio.isPlaying.value = true
   }
 }
 

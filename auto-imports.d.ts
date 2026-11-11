@@ -16,6 +16,7 @@ declare global {
   const MIN_W: typeof import('./src/composables/wallGeometry').MIN_W
   const MOVE_EDGES: typeof import('./src/composables/wallGeometry').MOVE_EDGES
   const PHASE_TRANSITIONS: typeof import('./src/composables/useSlideshowEngine').PHASE_TRANSITIONS
+  const PHONE_SHORT_SIDE: typeof import('./src/composables/useCompactLayout').PHONE_SHORT_SIDE
   const RC_PORT: typeof import('./src/composables/useRemoteLink').RC_PORT
   const SCREEN_PING_MS: typeof import('./src/composables/useFaceScreen').SCREEN_PING_MS
   const STREAM_PROXY: typeof import('./src/composables/useStreams').STREAM_PROXY
@@ -542,6 +543,7 @@ declare module 'vue' {
     readonly MIN_W: UnwrapRef<typeof import('./src/composables/wallGeometry')['MIN_W']>
     readonly MOVE_EDGES: UnwrapRef<typeof import('./src/composables/wallGeometry')['MOVE_EDGES']>
     readonly PHASE_TRANSITIONS: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['PHASE_TRANSITIONS']>
+    readonly PHONE_SHORT_SIDE: UnwrapRef<typeof import('./src/composables/useCompactLayout')['PHONE_SHORT_SIDE']>
     readonly RC_PORT: UnwrapRef<typeof import('./src/composables/useRemoteLink')['RC_PORT']>
     readonly SCREEN_PING_MS: UnwrapRef<typeof import('./src/composables/useFaceScreen')['SCREEN_PING_MS']>
     readonly STREAM_PROXY: UnwrapRef<typeof import('./src/composables/useStreams')['STREAM_PROXY']>

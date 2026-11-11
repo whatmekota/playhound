@@ -28,6 +28,11 @@
 .ph-rail .ph-shell {
   padding-left: var(--phone-rail-w);
 }
+/* Fullscreen on a phone: the player alone, no nav either way. */
+.ph-phone-fs {
+  --mobile-nav-h: 0px;
+  --phone-rail-w: 0px;
+}
 
 .mobile-nav {
   height: var(--mobile-nav-h);
@@ -71,17 +76,21 @@
   bottom: var(--mobile-nav-h);
   max-height: 70vh;
   border-radius: 16px 16px 0 0;
+  /* Room to scroll the last row clear of the edge and the gesture bar. */
+  padding-bottom: calc(20px + var(--safe-area-inset-bottom, 0px)) !important;
 }
-/* Sideways: in from the right, the full height, beside the video. */
+/* Sideways: in from the right, the full height, beside the video; wide
+   enough for two columns where a sheet has them. */
 .ph-rail .mobile-sheet {
   top: 0;
   bottom: 0;
   left: auto;
-  width: min(440px, 64vw);
+  width: min(760px, calc(100vw - var(--phone-rail-w) - 48px));
   max-height: none;
   border-top: none;
   border-left: 1px solid var(--border);
   border-radius: 16px 0 0 16px;
+  padding-top: 14px !important;
 }
 .ph-rail .mobile-sheet-handle {
   display: none;
@@ -124,6 +133,17 @@
  * area grows past the drawn button instead of the button itself, so layouts
  * stay as they are.
  */
+/*
+ * The ::after needs the button to be its containing block. A static button
+ * would let it cover the nearest positioned ancestor instead (a whole panel),
+ * and then every tap there lands on the last such button in it: that made
+ * the Binaural panel look frozen (each tap picked a Solfeggio carrier).
+ * :where() keeps this at no specificity, so a button placed absolute or fixed
+ * by its own classes stays so.
+ */
+:where(.ph-compact button.pressable) {
+  position: relative;
+}
 .ph-compact button.pressable::after {
   content: '';
   position: absolute;

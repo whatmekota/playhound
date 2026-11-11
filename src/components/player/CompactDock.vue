@@ -71,7 +71,7 @@ const remaining = computed(() => `-${formatTime(Math.max(0, player.videoDuration
 /** The "…" sheet: everything that is not the transport. */
 const sheet = ref(false)
 /** Sideways on the player, the bar lies over the video and fades with its controls. */
-const overlay = computed(() => rail.value && ui.onPlayer && hasTrack.value)
+const overlay = computed(() => (rail.value || player.isFullscreen) && ui.onPlayer && hasTrack.value)
 const faded = computed(() => overlay.value && !playerChrome.shown && !sheet.value)
 
 // ─── Thumbnail (over other views) ────────────────────────────────────────────
@@ -220,8 +220,8 @@ function toggleStar() {
         </div>
 
         <div class="cd-side justify-end">
-          <button type="button" class="cd-btn" aria-label="Fullscreen" @click="playback.toggleFullscreen()">
-            <span class="i-carbon-maximize" />
+          <button type="button" class="cd-btn" :aria-label="player.isFullscreen ? 'Exit fullscreen' : 'Fullscreen'" @click="playback.toggleFullscreen()">
+            <span :class="player.isFullscreen ? 'i-carbon-minimize' : 'i-carbon-maximize'" />
           </button>
           <button type="button" class="cd-btn" :class="sheet ? 'is-on' : ''" aria-label="More controls" :aria-expanded="sheet" @click="sheet = !sheet">
             <span class="i-carbon-overflow-menu-horizontal" />
@@ -232,157 +232,188 @@ function toggleStar() {
   </footer>
 
   <MobileSheet v-model:open="sheet" label="Player controls">
-    <div class="flex flex-col gap-4">
-      <!-- What is playing -->
-      <div class="flex gap-2 min-w-0 items-center">
-        <div class="flex-1 min-w-0">
-          <p class="text-[14px] text-fg font-medium truncate">
-            {{ title }}
-          </p>
-          <p class="text-[12px] text-fg-faint num">
-            {{ elapsed }} / {{ formatTime(player.videoDuration, '0:00') }}
-            <template v-if="scripts.activeScripts.length">
-              · {{ [...new Set(scripts.activeScripts.map(s => s.channel))].join(' · ') }}
-            </template>
-          </p>
+    <!-- One column upright; two side by side when the phone is held sideways. -->
+    <div class="cd-sheet">
+      <div class="cd-col">
+        <!-- What is playing -->
+        <div class="flex gap-2 min-w-0 items-center">
+          <div class="flex-1 min-w-0">
+            <p class="text-[14px] text-fg font-medium truncate">
+              {{ title }}
+            </p>
+            <p class="text-[12px] text-fg-faint num">
+              {{ elapsed }} / {{ formatTime(player.videoDuration, '0:00') }}
+              <template v-if="scripts.activeScripts.length">
+                · {{ [...new Set(scripts.activeScripts.map(s => s.channel))].join(' · ') }}
+              </template>
+            </p>
+          </div>
+          <button
+            v-if="playback.currentEntry"
+            type="button"
+            class="cd-btn"
+            :class="playback.currentEntry.starred ? '!text-warn' : ''"
+            :aria-label="playback.currentEntry.starred ? 'Unstar' : 'Star'"
+            @click="toggleStar"
+          >
+            <span :class="playback.currentEntry.starred ? 'i-carbon-star-filled' : 'i-carbon-star'" />
+          </button>
         </div>
-        <button
-          v-if="playback.currentEntry"
-          type="button"
-          class="cd-btn"
-          :class="playback.currentEntry.starred ? '!text-warn' : ''"
-          :aria-label="playback.currentEntry.starred ? 'Unstar' : 'Star'"
-          @click="toggleStar"
-        >
-          <span :class="playback.currentEntry.starred ? 'i-carbon-star-filled' : 'i-carbon-star'" />
-        </button>
+
+        <!-- Chapters -->
+        <section v-if="chapters.length > 1" class="flex flex-col gap-1.5">
+          <span class="eyebrow">Chapters</span>
+          <div class="flex gap-1 items-center">
+            <button type="button" class="cd-btn" aria-label="Previous chapter" @click="skipChapter(-1)">
+              <span class="i-carbon-skip-back-outline" />
+            </button>
+            <span class="text-[13px] text-fg text-center flex-1 min-w-0 truncate">
+              {{ currentChapter?.name ?? 'Chapters' }}
+              <span v-if="currentChapter" class="text-fg-faint num">{{ currentChapter.index + 1 }}/{{ chapters.length }}</span>
+            </span>
+            <button type="button" class="cd-btn" aria-label="Next chapter" @click="skipChapter(1)">
+              <span class="i-carbon-skip-forward-outline" />
+            </button>
+          </div>
+          <div class="cd-chapters flex flex-col gap-0.5">
+            <button
+              v-for="c in chapters"
+              :key="c.index"
+              type="button"
+              class="text-[13px] px-2 text-left rounded-[var(--radius-sm)] flex shrink-0 gap-2 h-11 items-center"
+              :class="c === currentChapter ? 'bg-accent-soft text-accent-300' : 'text-fg'"
+              @click="playback.seek(c.start / 1000)"
+            >
+              <span class="flex-1 truncate">{{ c.name }}</span>
+              <span class="text-[11.5px] text-fg-faint num">{{ formatTime(c.start / 1000) }}</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Session and panels -->
+        <section class="flex flex-col gap-2">
+          <span class="eyebrow">Session</span>
+          <div class="mobile-grid">
+            <button type="button" class="mobile-tile" @click="session.nextPeak()">
+              <span class="i-carbon-fire text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Next peak</span>
+            </button>
+            <button type="button" class="mobile-tile" @click="session.finish()">
+              <span class="i-carbon-flag-filled text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Finish</span>
+            </button>
+            <button type="button" class="mobile-tile" @click="session.came()">
+              <span class="i-carbon-rain-drop text-[22px]" />
+              <span class="text-[11.5px] leading-tight">I came</span>
+            </button>
+            <button v-if="holding" type="button" class="mobile-tile text-ok" @click="session.release()">
+              <span class="i-carbon-checkmark text-[22px]" />
+              <span class="text-[11.5px] leading-tight">I'm OK</span>
+            </button>
+          </div>
+          <UiSlider v-model="knob" label="Intensity" :min="0.1" :max="1" :step="0.05" :reset="1" :format="v => `${Math.round(v * 100)}%`" />
+        </section>
       </div>
 
-      <!-- Chapters -->
-      <section v-if="chapters.length > 1" class="flex flex-col gap-1.5">
-        <span class="eyebrow">Chapters</span>
-        <div class="flex gap-1 items-center">
-          <button type="button" class="cd-btn" aria-label="Previous chapter" @click="skipChapter(-1)">
-            <span class="i-carbon-skip-back-outline" />
-          </button>
-          <span class="text-[13px] text-fg text-center flex-1 min-w-0 truncate">
-            {{ currentChapter?.name ?? 'Chapters' }}
-            <span v-if="currentChapter" class="text-fg-faint num">{{ currentChapter.index + 1 }}/{{ chapters.length }}</span>
-          </span>
-          <button type="button" class="cd-btn" aria-label="Next chapter" @click="skipChapter(1)">
-            <span class="i-carbon-skip-forward-outline" />
-          </button>
-        </div>
-        <div class="scroll-y flex flex-col gap-0.5 max-h-[28vh]">
-          <button
-            v-for="c in chapters"
-            :key="c.index"
-            type="button"
-            class="text-[13px] px-2 text-left rounded-[var(--radius-sm)] flex shrink-0 gap-2 h-11 items-center"
-            :class="c === currentChapter ? 'bg-accent-soft text-accent-300' : 'text-fg'"
-            @click="playback.seek(c.start / 1000)"
-          >
-            <span class="flex-1 truncate">{{ c.name }}</span>
-            <span class="text-[11.5px] text-fg-faint num">{{ formatTime(c.start / 1000) }}</span>
-          </button>
-        </div>
-      </section>
+      <div class="cd-col">
+        <section class="flex flex-col gap-2">
+          <span class="eyebrow">Playback</span>
+          <div class="mobile-grid">
+            <button type="button" class="mobile-tile" :class="queue.shuffle ? 'text-accent-300 bg-accent-soft' : ''" @click="playback.toggleShuffle()">
+              <span class="i-carbon-shuffle text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Shuffle</span>
+            </button>
+            <button type="button" class="mobile-tile" :class="queue.repeatMode !== 'off' ? 'text-accent-300 bg-accent-soft' : ''" @click="playback.cycleRepeat()">
+              <span :class="queue.repeatMode === 'one' ? 'i-carbon-repeat-one' : 'i-carbon-repeat'" class="text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Repeat {{ queue.repeatMode === 'off' ? 'off' : queue.repeatMode }}</span>
+            </button>
+            <button type="button" class="mobile-tile" :class="heatmap ? 'text-accent-300 bg-accent-soft' : ''" @click="heatmap = !heatmap">
+              <span class="i-carbon-chart-histogram text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Heatmap</span>
+            </button>
+            <button type="button" class="mobile-tile" @click="openPanel('queue')">
+              <span class="i-carbon-list-boxes text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Queue{{ queue.upcoming.length ? ` · ${queue.upcoming.length}` : '' }}</span>
+            </button>
+            <button type="button" class="mobile-tile" @click="openPanel('scripts')">
+              <span class="i-carbon-chart-line-data text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Scripts</span>
+            </button>
+            <button type="button" class="mobile-tile" @click="openPanel('bookmarks')">
+              <span class="i-carbon-bookmark text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Marks</span>
+            </button>
+            <button v-if="canPopOut" type="button" class="mobile-tile" @click="sheet = false; playback.togglePopout()">
+              <span class="i-carbon-popup text-[22px]" />
+              <span class="text-[11.5px] leading-tight">Pop out</span>
+            </button>
+          </div>
+        </section>
 
-      <!-- Session and panels -->
-      <section class="flex flex-col gap-2">
-        <span class="eyebrow">Session</span>
-        <div class="mobile-grid">
-          <button type="button" class="mobile-tile" @click="session.nextPeak()">
-            <span class="i-carbon-fire text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Next peak</span>
-          </button>
-          <button type="button" class="mobile-tile" @click="session.finish()">
-            <span class="i-carbon-flag-filled text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Finish</span>
-          </button>
-          <button type="button" class="mobile-tile" @click="session.came()">
-            <span class="i-carbon-rain-drop text-[22px]" />
-            <span class="text-[11.5px] leading-tight">I came</span>
-          </button>
-          <button v-if="holding" type="button" class="mobile-tile text-ok" @click="session.release()">
-            <span class="i-carbon-checkmark text-[22px]" />
-            <span class="text-[11.5px] leading-tight">I'm OK</span>
-          </button>
-        </div>
-        <UiSlider v-model="knob" label="Intensity" :min="0.1" :max="1" :step="0.05" :reset="1" :format="v => `${Math.round(v * 100)}%`" />
-      </section>
+        <!-- Subtitles -->
+        <section class="flex flex-col gap-1.5">
+          <span class="eyebrow">Subtitles</span>
+          <p v-if="!subs.tracks.length" class="hint">
+            None for this video. A .srt or .vtt beside it, with the same name, is picked up.
+          </p>
+          <div v-else class="flex flex-wrap gap-1.5">
+            <button type="button" class="cd-chip" :class="!subs.activeId ? 'is-on' : ''" @click="subs.select(null)">
+              Off
+            </button>
+            <button v-for="t in subs.tracks" :key="t.id" type="button" class="cd-chip" :class="subs.activeId === t.id ? 'is-on' : ''" @click="subs.select(t.id)">
+              {{ t.label }}
+            </button>
+          </div>
+        </section>
 
-      <section class="flex flex-col gap-2">
-        <span class="eyebrow">Playback</span>
-        <div class="mobile-grid">
-          <button type="button" class="mobile-tile" :class="queue.shuffle ? 'text-accent-300 bg-accent-soft' : ''" @click="playback.toggleShuffle()">
-            <span class="i-carbon-shuffle text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Shuffle</span>
+        <!-- Volume: phones have buttons for it, so it lives here -->
+        <section class="flex gap-2 items-center">
+          <button type="button" class="cd-btn" :aria-label="player.isMuted ? 'Unmute' : 'Mute'" @click="playback.toggleMute()">
+            <span :class="player.isMuted || player.volume === 0 ? 'i-carbon-volume-mute' : 'i-carbon-volume-up'" />
           </button>
-          <button type="button" class="mobile-tile" :class="queue.repeatMode !== 'off' ? 'text-accent-300 bg-accent-soft' : ''" @click="playback.cycleRepeat()">
-            <span :class="queue.repeatMode === 'one' ? 'i-carbon-repeat-one' : 'i-carbon-repeat'" class="text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Repeat {{ queue.repeatMode === 'off' ? 'off' : queue.repeatMode }}</span>
-          </button>
-          <button type="button" class="mobile-tile" :class="heatmap ? 'text-accent-300 bg-accent-soft' : ''" @click="heatmap = !heatmap">
-            <span class="i-carbon-chart-histogram text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Heatmap</span>
-          </button>
-          <button type="button" class="mobile-tile" @click="openPanel('queue')">
-            <span class="i-carbon-list-boxes text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Queue{{ queue.upcoming.length ? ` · ${queue.upcoming.length}` : '' }}</span>
-          </button>
-          <button type="button" class="mobile-tile" @click="openPanel('scripts')">
-            <span class="i-carbon-chart-line-data text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Scripts</span>
-          </button>
-          <button type="button" class="mobile-tile" @click="openPanel('bookmarks')">
-            <span class="i-carbon-bookmark text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Marks</span>
-          </button>
-          <button v-if="canPopOut" type="button" class="mobile-tile" @click="sheet = false; playback.togglePopout()">
-            <span class="i-carbon-popup text-[22px]" />
-            <span class="text-[11.5px] leading-tight">Pop out</span>
-          </button>
-        </div>
-      </section>
+          <UiSlider v-model="volume" class="flex-1" label="Volume" :class="player.isMuted ? 'opacity-50' : ''" :format="v => `${Math.round(v * 100)}%`" />
+        </section>
 
-      <!-- Subtitles -->
-      <section class="flex flex-col gap-1.5">
-        <span class="eyebrow">Subtitles</span>
-        <p v-if="!subs.tracks.length" class="hint">
-          None for this video. A .srt or .vtt beside it, with the same name, is picked up.
-        </p>
-        <div v-else class="flex flex-wrap gap-1.5">
-          <button type="button" class="cd-chip" :class="!subs.activeId ? 'is-on' : ''" @click="subs.select(null)">
-            Off
-          </button>
-          <button v-for="t in subs.tracks" :key="t.id" type="button" class="cd-chip" :class="subs.activeId === t.id ? 'is-on' : ''" @click="subs.select(t.id)">
-            {{ t.label }}
-          </button>
-        </div>
-      </section>
-
-      <!-- Volume: phones have buttons for it, so it lives here -->
-      <section class="flex gap-2 items-center">
-        <button type="button" class="cd-btn" :aria-label="player.isMuted ? 'Unmute' : 'Mute'" @click="playback.toggleMute()">
-          <span :class="player.isMuted || player.volume === 0 ? 'i-carbon-volume-mute' : 'i-carbon-volume-up'" />
-        </button>
-        <UiSlider v-model="volume" class="flex-1" label="Volume" :class="player.isMuted ? 'opacity-50' : ''" :format="v => `${Math.round(v * 100)}%`" />
-      </section>
-
-      <div class="divider-y" />
-      <SpeedControl inline />
-      <div class="divider-y" />
-      <LoopControls inline />
-      <div class="divider-y" />
-      <ScriptOffsetControl inline />
-      <div class="divider-y" />
-      <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
+        <div class="divider-y" />
+        <SpeedControl inline />
+        <div class="divider-y" />
+        <LoopControls inline />
+        <div class="divider-y" />
+        <ScriptOffsetControl inline />
+        <div class="divider-y" />
+        <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
+      </div>
     </div>
   </MobileSheet>
 </template>
 
 <style scoped>
+.cd-sheet,
+.cd-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+/* Upright the chapter list scrolls on its own, so the rest stays in reach. */
+.cd-chapters {
+  max-height: 28vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Sideways the sheet is wide and short: two columns, and the sheet itself
+   scrolls, so nothing is cut off mid-item. */
+:global(.ph-rail) .cd-sheet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+:global(.ph-rail) .cd-chapters {
+  max-height: none;
+  overflow: visible;
+}
+
 .cd-dock {
   transition:
     opacity var(--dur) var(--ease-out),

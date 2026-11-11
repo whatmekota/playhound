@@ -130,7 +130,31 @@ function hide() {
     tipEls.get(shownIn)?.classList.remove('on')
 }
 
+/**
+ * In the Android app a finger has no hover: a tap would focus the button and
+ * leave its tip up until something else took the focus. Tips there come
+ * from a mouse or a keyboard only.
+ */
+let lastTouchAt = 0
+function touchOnly(e: Event): boolean {
+  const doc = (e.currentTarget as HTMLElement).ownerDocument
+  if (!doc.documentElement.classList.contains('ph-android'))
+    return false
+  if (e instanceof PointerEvent)
+    return e.pointerType === 'touch'
+  // A focus that follows a touch.
+  return Date.now() - lastTouchAt < 800
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'touch')
+      lastTouchAt = Date.now()
+  }, { capture: true, passive: true })
+}
+
 function onEnter(e: Event) {
+  if (touchOnly(e))
+    return
   const el = e.currentTarget as HTMLElement
   if (showTimer)
     clearTimeout(showTimer)

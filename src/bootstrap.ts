@@ -9,8 +9,11 @@ import { isAndroidApp } from './lib/platform'
 
 export function mount() {
   // Development: the phone layout in a desktop browser (?phone), styled the same.
-  if (devPhoneLayout)
+  // Its page errors are kept the same way too, to reproduce what a phone reports.
+  if (devPhoneLayout) {
     document.documentElement.classList.add('ph-android')
+    void import('./lib/android/crashReport').then(m => m.installErrorLog())
+  }
   if (isAndroidApp) {
     // Phone styles (styles/android.css) key off this, from the first paint.
     document.documentElement.classList.add('ph-android')

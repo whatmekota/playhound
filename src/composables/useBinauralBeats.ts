@@ -1,3 +1,5 @@
+import { toast } from './useToast'
+
 // Singleton Web Audio context
 let audioCtx: AudioContext | null = null
 let masterGain: GainNode | null = null
@@ -147,8 +149,40 @@ function createNoiseBuffer(ctx: AudioContext, type: 'white' | 'pink' | 'brown'):
   return buf
 }
 
+/** How long a new context may stay suspended before saying so. */
+const RESUME_WAIT_MS = 2500
+
 export function useBinauralBeats() {
-  function start(baseFreq: number, delta: number, vol: number, waveType: OscillatorType = 'sine') {
+  /**
+   * Start the tone. False, with a toast saying why, when the sound could not
+   * start: no Web Audio, or the context refused. Never waits: a context that
+   * stays suspended (a WebView that wants a fresh tap first) is reported
+   * after a moment instead of holding anything up.
+   */
+  function start(baseFreq: number, delta: number, vol: number, waveType: OscillatorType = 'sine'): boolean {
+    try {
+      build(baseFreq, delta, vol, waveType)
+    }
+    catch (err) {
+      try {
+        stop()
+      }
+      catch {}
+      toast.error('Could not start the tone', { detail: (err as Error)?.message || 'This device would not open an audio output', icon: 'i-carbon-headphones', key: 'binaural' })
+      return false
+    }
+    const ctx = audioCtx
+    if (ctx && ctx.state !== 'running') {
+      void ctx.resume?.().catch(() => {})
+      setTimeout(() => {
+        if (audioCtx === ctx && ctx.state === 'suspended')
+          toast.warn('The tone is not sounding yet', { detail: 'The system is holding the sound back. Tap play again.', icon: 'i-carbon-headphones', key: 'binaural' })
+      }, RESUME_WAIT_MS)
+    }
+    return true
+  }
+
+  function build(baseFreq: number, delta: number, vol: number, waveType: OscillatorType) {
     stop()
     _baseFreq = baseFreq
     _delta = delta
@@ -254,7 +288,8 @@ export function useBinauralBeats() {
       catch {}
     })
     stopNoise()
-    audioCtx?.close()
+    // close() returns a promise that can reject (already closed): never unhandled.
+    void audioCtx?.close().catch(() => {})
     audioCtx = null
     masterGain = null
     merger = null

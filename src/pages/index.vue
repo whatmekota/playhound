@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ShellAction } from '~/lib/hotkeys'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import OsrEmulator from '~/components/device/OsrEmulator.vue'
 import ScriptEditor from '~/components/editor/ScriptEditor.vue'
 import UnsavedEditsModal from '~/components/editor/UnsavedEditsModal.vue'
@@ -97,6 +97,15 @@ const rail = useRailLayout()
 /** On a phone the emulator can dock: a strip above the player bar, or a panel beside the video. */
 const emuPhone = useEmulatorPhone()
 const emuDocked = computed(() => compact.value && ui.isFloatingOpen('emulator') && emuPhone.value.mode === 'dock')
+/**
+ * Fullscreen on a phone is the whole page (VideoPlayer asks for it), laid out
+ * as the player alone: no nav, the phone's own bar over the video.
+ */
+const phoneFs = computed(() => compact.value && player.isFullscreen)
+watchEffect(() => {
+  if (compact.value)
+    document.documentElement.classList.toggle('ph-phone-fs', phoneFs.value)
+})
 startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
@@ -204,7 +213,7 @@ const miniDismissed = ref(false)
 watch(() => playback.trackSeq, () => (miniDismissed.value = false))
 watch(() => ui.onPlayer, on => on && (miniDismissed.value = false))
 
-const mini = computed(() => !ui.onPlayer)
+const mini = computed(() => !ui.onPlayer && !phoneFs.value)
 
 /** The script editor, docked under the video on the player view. */
 const editorShown = computed(() => scriptEdit.open && ui.onPlayer)
@@ -493,7 +502,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <!-- The desktop window is frameless; the page draws its title bar. -->
     <TitleBar v-if="desktop?.window" />
     <!-- The Android app, after a crash: offer the report, once. -->
-    <CrashBanner v-if="isAndroidApp" />
+    <CrashBanner v-if="isAndroidApp && !phoneFs" />
 
     <div class="flex flex-1 min-h-0">
       <AppNav v-if="!compact" @open="openSingleVideo" />
@@ -560,7 +569,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
 
     <NowPlayingBar v-if="!compact" />
     <CompactDock v-else />
-    <MobileNav v-if="compact" :rail="rail" @open="openSingleVideo" />
+    <MobileNav v-if="compact && !phoneFs" :rail="rail" @open="openSingleVideo" />
 
     <ToastHost />
     <CommandPalette @open-file="openSingleVideo" />

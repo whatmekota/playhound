@@ -353,16 +353,24 @@ function playerDoc() {
   return rootEl.value?.ownerDocument ?? document
 }
 
+/** The phone layout (Android app): touch first (onSurfaceClick, onPointerLeave), and fullscreen is the whole page. */
+const compact = useCompactLayout()
+
 function toggleFullscreen() {
   const doc = playerDoc()
   if (doc.fullscreenElement)
     void doc.exitFullscreen().catch(() => {})
+  // On a phone the whole page goes fullscreen, so the phone's own player bar,
+  // its sheets and the emulator come along (the shell lays itself out for it).
+  else if (compact.value && !popped.value)
+    void document.documentElement.requestFullscreen().catch(() => {})
   else
     void rootEl.value?.requestFullscreen().catch(() => {})
 }
 
 function onFullscreenChange() {
-  player.isFullscreen = !!rootEl.value && playerDoc().fullscreenElement === rootEl.value
+  const fs = playerDoc().fullscreenElement
+  player.isFullscreen = !!rootEl.value && (fs === rootEl.value || (compact.value && fs === document.documentElement))
   if (!player.isFullscreen)
     fsMenu.value = null
   poke()
@@ -397,9 +405,6 @@ function poke() {
   clearTimeout(idleTimer)
   idleTimer = setTimeout(() => (awake.value = false), IDLE_MS)
 }
-
-/** The phone layout (Android app): touch first, see onSurfaceClick and onPointerLeave. */
-const compact = useCompactLayout()
 
 function onPointerLeave(e: PointerEvent) {
   overChrome.value = false
@@ -671,7 +676,7 @@ const subMenu = computed(() => [{ id: null as string | null, label: 'Off' }, ...
 /** Clear of whichever control bar is drawn over the bottom of the picture. */
 const subLift = computed(() => {
   if (player.isFullscreen)
-    return chromeVisible.value ? 116 : 0
+    return chromeVisible.value ? (compact.value ? 80 : 116) : 0
   return popChrome.value && hasVideo.value ? 64 : 0
 })
 
@@ -1389,7 +1394,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         <!-- Fullscreen: control bar -->
         <Transition name="vp-bar">
           <div
-            v-if="player.isFullscreen && chromeVisible"
+            v-if="player.isFullscreen && chromeVisible && !compact"
             class="px-5 pb-4 pt-16 inset-x-0 bottom-0 absolute z-30 from-black/85 to-transparent via-black/45 bg-gradient-to-t"
             @pointerenter="overChrome = true"
             @pointerleave="overChrome = false"
@@ -1537,7 +1542,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         <!-- Fullscreen: up next sheet -->
         <Transition name="t-slide-right">
           <aside
-            v-if="player.isFullscreen && sheetOpen && chromeVisible"
+            v-if="player.isFullscreen && sheetOpen && chromeVisible && !compact"
             class="text-white rounded-[var(--radius-lg)] bg-black/65 flex flex-col w-80 ring-1 ring-white/10 shadow-[var(--shadow-lg)] bottom-[124px] right-4 top-4 absolute z-30 overflow-hidden backdrop-blur-xl"
             @pointerenter="overChrome = true"
             @pointerleave="overChrome = false"

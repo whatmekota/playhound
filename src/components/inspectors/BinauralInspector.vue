@@ -283,7 +283,9 @@ function togglePlay() {
       session.stopSession()
     return
   }
-  binaural.start(baseFrequency.value, beatDelta.value, volume.value, waveType.value)
+  // A tone that cannot start says why (a toast) and leaves the panel as it was.
+  if (!binaural.start(baseFrequency.value, beatDelta.value, volume.value, waveType.value))
+    return
   // Layers come up from useSessionAudio's isPlaying watcher.
   isPlaying.value = true
 }
@@ -296,6 +298,8 @@ function toggleSession() {
   }
   if (!isPlaying.value)
     togglePlay()
+  if (!isPlaying.value)
+    return
   session.startSession()
 }
 

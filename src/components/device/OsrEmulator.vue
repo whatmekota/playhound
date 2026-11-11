@@ -320,7 +320,10 @@ onBeforeUnmount(() => {
         :class="[
           gesture ? 'select-none' : '',
           docked ? 'is-docked bg-surface-900 h-full w-full relative'
-          : 'rounded-[var(--radius-lg)] glass ring-1 ring-edge-strong shadow-[var(--shadow-lg)] fixed z-[700]',
+          : 'rounded-[var(--radius-lg)] glass ring-1 ring-edge-strong shadow-[var(--shadow-lg)] fixed',
+          // On a phone it floats over panels (600) but under sheets (640),
+          // the bar (650) and dialogs: those always come out on top.
+          !docked && (compact ? 'z-[620]' : 'z-[700]'),
           phoneFloat ? 'is-phone' : '',
           phoneFloat && !gesture ? 'is-snapping' : '',
         ]"
