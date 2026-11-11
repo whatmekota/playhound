@@ -11,6 +11,7 @@
 import type { SoundtrackAnalysis } from './beatTrack'
 import type { SoundtrackJob, SoundtrackReply } from '~/workers/soundtrack.worker'
 import { isAndroidApp } from './android/detect'
+import { NativeFile } from './android/nativeFile'
 import { ANALYSIS_VERSION } from './beatTrack'
 import { soundtrackDb } from './idb'
 import { ANALYSIS_RATE, MAX_STREAMED_SECONDS, STREAMED_TOO_LONG } from './soundtrackLimits'
@@ -134,7 +135,10 @@ export async function analyseInWorker(
  * whole with decodeSoundtrack instead.
  */
 export async function analyseFileInWorker(file: File, onProgress?: (f: number) => void): Promise<SoundtrackAnalysis | null> {
-  if (typeof Worker === 'undefined')
+  // A library file in the Android app streams from the media server; posted
+  // to a worker it would arrive as an empty File. Decoded whole instead (up
+  // to MAX_FILE_BYTES_ANDROID) until the worker can fetch it in ranges.
+  if (typeof Worker === 'undefined' || file instanceof NativeFile)
     return null
   const m = await runJob({ id: ++jobSeq, kind: 'file', file, maxSeconds: MAX_STREAMED_SECONDS }, [], onProgress)
   switch (m.type) {

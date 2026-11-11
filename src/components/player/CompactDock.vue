@@ -403,13 +403,13 @@ function toggleStar() {
 }
 /* Sideways the sheet is wide and short: two columns, and the sheet itself
    scrolls, so nothing is cut off mid-item. */
-:global(.ph-rail) .cd-sheet {
+:global(.ph-rail .cd-sheet) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
-:global(.ph-rail) .cd-chapters {
+:global(.ph-rail .cd-chapters) {
   max-height: none;
   overflow: visible;
 }
