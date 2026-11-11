@@ -5,6 +5,7 @@ import { computed, effectScope, markRaw, reactive, ref, shallowReactive, shallow
 import { createAnalysedGrid } from '~/lib/beatTrack'
 import { musicFunscript, musicScript } from '~/lib/musicScript'
 import {
+  analyseFileInWorker,
   analyseInWorker,
   cachedAnalysis,
   decodeSoundtrack,
@@ -25,7 +26,7 @@ export type SoundtrackStatus = 'idle' | 'decoding' | 'analysing' | 'ready' | 'fa
 
 export interface SoundtrackState {
   status: SoundtrackStatus
-  /** 0–1 while analysing; decoding has no measurable progress. */
+  /** 0–1 while analysing; decoding a whole file at once has no measurable progress. */
   progress: number
   error: string | null
   reason: SoundtrackFailure | null
@@ -36,7 +37,7 @@ export interface SoundtrackState {
 
 const states = shallowReactive(new Map<string, SoundtrackState>())
 const pending = new Map<string, Promise<SoundtrackAnalysis | null>>()
-// Decoding holds a whole video in memory; never two at once.
+// Decoding can hold a whole video in memory, and is heavy either way: never two at once.
 let chain: Promise<unknown> = Promise.resolve()
 
 let grid: AnalysedGrid | null = null
@@ -89,11 +90,19 @@ export function analyseSoundtrack(file: File, opts: { durationHint?: number } = 
     st.error = null
     st.reason = null
     const run = chain.then(async () => {
-      const { samples, sampleRate } = await decodeSoundtrack(file, opts)
-      st.status = 'analysing'
-      const a = await analyseInWorker(samples, sampleRate, (p) => {
+      const onProgress = (p: number) => {
+        st.status = 'analysing'
         st.progress = p
-      })
+      }
+      // In pieces when the file allows it (MP4 / MOV / M4A), whole otherwise.
+      let a = await analyseFileInWorker(file, onProgress)
+      if (!a) {
+        st.status = 'decoding'
+        st.progress = 0
+        const { samples, sampleRate } = await decodeSoundtrack(file, opts)
+        st.status = 'analysing'
+        a = await analyseInWorker(samples, sampleRate, onProgress)
+      }
       void storeAnalysis(key, a)
       return a
     })

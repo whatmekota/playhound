@@ -1,18 +1,21 @@
 /**
  * Getting a video's soundtrack analysed: decode, analyse in a worker, cache.
  *
- * Decoding needs the whole file in memory (decodeAudioData takes one
- * ArrayBuffer), so very large files are refused up front rather than risking
- * the renderer; the live analyser still works for those.
+ * MP4, MOV and M4A files are decoded in pieces in the worker (WebCodecs), so
+ * their size does not matter and up to six hours of audio is fine. Anything
+ * else goes through decodeAudioData, which needs the whole file in memory
+ * (it takes one ArrayBuffer), so very large files are refused up front
+ * rather than risking the renderer; the live analyser still works for those.
  */
 
 import type { SoundtrackAnalysis } from './beatTrack'
 import type { SoundtrackJob, SoundtrackReply } from '~/workers/soundtrack.worker'
 import { ANALYSIS_VERSION } from './beatTrack'
 import { soundtrackDb } from './idb'
+import { ANALYSIS_RATE, MAX_STREAMED_SECONDS, STREAMED_TOO_LONG } from './soundtrackLimits'
 
-/** Plenty for beats and loudness, and a quarter of the memory of 44.1 kHz stereo. */
-export const ANALYSIS_RATE = 22050
+export { ANALYSIS_RATE, MAX_STREAMED_SECONDS }
+/** Limits of the whole-file path. */
 export const MAX_FILE_BYTES = 1.5 * 1024 ** 3
 export const MAX_AUDIO_SECONDS = 60 * 60
 
@@ -79,36 +82,67 @@ export async function decodeSoundtrack(file: File, opts: { durationHint?: number
 
 let jobSeq = 0
 
-/** Run the beat analysis in a worker. The samples are transferred, not copied. */
-export function analyseInWorker(
-  samples: Float32Array<ArrayBuffer>,
-  sampleRate: number,
+/** One job in a fresh worker; resolves with its last reply. */
+function runJob(
+  job: SoundtrackJob,
+  transfer: Transferable[],
   onProgress?: (f: number) => void,
-): Promise<SoundtrackAnalysis> {
+): Promise<Exclude<SoundtrackReply, { type: 'progress' }>> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../workers/soundtrack.worker.ts', import.meta.url), { type: 'module' })
-    const id = ++jobSeq
     worker.onmessage = (e: MessageEvent<SoundtrackReply>) => {
       const m = e.data
-      if (m.id !== id)
+      if (m.id !== job.id)
         return
       if (m.type === 'progress') {
         onProgress?.(m.value)
         return
       }
       worker.terminate()
-      if (m.type === 'done')
-        resolve(m.analysis)
-      else
-        reject(new SoundtrackError('failed', m.message))
+      resolve(m)
     }
     worker.onerror = (e) => {
       worker.terminate()
       reject(new SoundtrackError('failed', e.message || FAILURE_TEXT.failed))
     }
-    const job: SoundtrackJob = { id, samples, sampleRate }
-    worker.postMessage(job, [samples.buffer])
+    worker.postMessage(job, transfer)
   })
+}
+
+/** Run the beat analysis in a worker. The samples are transferred, not copied. */
+export async function analyseInWorker(
+  samples: Float32Array<ArrayBuffer>,
+  sampleRate: number,
+  onProgress?: (f: number) => void,
+): Promise<SoundtrackAnalysis> {
+  const m = await runJob({ id: ++jobSeq, kind: 'samples', samples, sampleRate }, [samples.buffer], onProgress)
+  if (m.type === 'done')
+    return m.analysis
+  throw new SoundtrackError('failed', m.type === 'error' ? m.message : FAILURE_TEXT.failed)
+}
+
+/**
+ * Decode and analyse a file in pieces, in a worker: never the whole file in
+ * memory. Null when the file is not one it can read that way (not MP4 /
+ * MOV / M4A, a codec or browser without WebCodecs support): decode it
+ * whole with decodeSoundtrack instead.
+ */
+export async function analyseFileInWorker(file: File, onProgress?: (f: number) => void): Promise<SoundtrackAnalysis | null> {
+  if (typeof Worker === 'undefined')
+    return null
+  const m = await runJob({ id: ++jobSeq, kind: 'file', file, maxSeconds: MAX_STREAMED_SECONDS }, [], onProgress)
+  switch (m.type) {
+    case 'done':
+      return m.analysis
+    case 'fallback':
+      return null
+    default:
+      if (m.reason === 'too-long')
+        throw new SoundtrackError('too-long', STREAMED_TOO_LONG)
+      if (m.reason === 'no-audio')
+        throw new SoundtrackError('no-audio', FAILURE_TEXT['no-audio'])
+      throw new SoundtrackError('failed', m.message || FAILURE_TEXT.failed)
+  }
 }
 
 /** A cached analysis made by the current algorithm, if there is one. */

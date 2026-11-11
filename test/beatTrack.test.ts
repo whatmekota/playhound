@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyseBeats,
+  analyseFeatures,
   beatNumbers,
   createAnalysedGrid,
+  createFeatureExtractor,
   createFFT,
+  createLevelMeter,
+  extractFeatures,
   normalisePerBeat,
 } from '../src/lib/beatTrack'
 
@@ -245,5 +249,35 @@ describe('reading an analysis', () => {
     // Seeking backwards still finds the right beat.
     expect(grid.at(10.25).beats).toBeCloseTo(3 + 18.5)
     expect(grid.at(2.25).beats).toBeCloseTo(5.5)
+  })
+})
+
+describe('features in pieces', () => {
+  const KEYS = ['env', 'envAc', 'low', 'centroid', 'weight', 'blockMs'] as const
+
+  it('are the same whole or fed in pieces of any size', () => {
+    const { samples } = track([{ bpm: 128, seconds: 12, offbeat: 0.5 }, { bpm: 120, seconds: 1, silent: true }, { bpm: 140, seconds: 7 }], 7)
+    const whole = extractFeatures(samples, SR)!
+    const meter = createLevelMeter(SR)
+    for (let i = 0; i < samples.length; i += 333)
+      meter.push(samples.subarray(i, i + 333))
+    const analysis = analyseBeats(samples, SR)
+    for (const piece of [1, 219, 220, 1024, 1245, 100003]) {
+      const ex = createFeatureExtractor(SR, meter.rms())
+      for (let i = 0; i < samples.length; i += piece)
+        ex.push(samples.subarray(i, i + piece))
+      const f = ex.finish()!
+      expect(f.t0).toBe(whole.t0)
+      for (const k of KEYS)
+        expect(f[k], `${k} in pieces of ${piece}`).toEqual(whole[k])
+      expect(analyseFeatures(f, ex.length / SR)).toEqual(analysis)
+    }
+  })
+
+  it('finds nothing in silence', () => {
+    const ex = createFeatureExtractor(SR, 1)
+    ex.push(new Float32Array(SR * 2))
+    expect(ex.finish()).toBeNull()
+    expect(analyseFeatures(null, 2).beats).toEqual([])
   })
 })
