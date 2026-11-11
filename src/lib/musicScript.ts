@@ -18,8 +18,9 @@
 
 import type { SoundtrackAnalysis } from './beatTrack'
 import type { FunscriptAction } from './funscriptParser'
+import type { StrokeAnchor } from './musicMotion'
 import { beatNumbers, beatsInGaps, normalisePerBeat } from './beatTrack'
-import { pickStrokesPerBeat } from './musicMotion'
+import { anchoredCentre, musicDepth, pickStrokesPerBeat } from './musicMotion'
 
 export interface MusicScriptOptions {
   /** The band the stroke rate should sit in, strokes/min. */
@@ -30,6 +31,14 @@ export interface MusicScriptOptions {
   /** Stroke depth for the quietest and loudest passages, 0–1 of the range. */
   minDepth: number
   maxDepth: number
+  /** Depth follows the loudness; off, every stroke is maxDepth deep. Default true. */
+  depthFollows?: boolean
+  /**
+   * `centre`: strokes centred on `centre`, lifted by brightness.
+   * `bottom`: every stroke from the bottom of the range up to its depth (no
+   * centre, no pitch). Default `centre`.
+   */
+  anchor?: StrokeAnchor
   /** Where strokes centre, 0–1. Default 0.5. */
   centre?: number
   /**
@@ -154,12 +163,13 @@ export function planStrokes(a: SoundtrackAnalysis, o: MusicScriptOptions): Plann
     }
   }
 
+  const anchor = o.anchor ?? 'centre'
   const strokes: PlannedStroke[] = []
   for (let s = 0; s + 1 < starts.length; s++) {
     const { t, beat, bar } = starts[s]
-    const depth = Math.max(0, Math.min(1, o.minDepth + (o.maxDepth - o.minDepth) * energy[beat]))
+    const depth = musicDepth(energy[beat], o.minDepth, o.maxDepth, o.depthFollows ?? true)
     const raw = centreBase + (bright[beat] - 0.5) * centreRange
-    const centre = Math.max(depth / 2, Math.min(1 - depth / 2, raw))
+    const centre = anchor === 'bottom' ? anchoredCentre(depth, anchor, centreBase) : Math.max(depth / 2, Math.min(1 - depth / 2, raw))
     strokes.push({ start: t, end: starts[s + 1].t, perBeat: bar.perBeat, depth, centre, rest: bar.rest })
   }
   return strokes
@@ -169,16 +179,19 @@ export function planStrokes(a: SoundtrackAnalysis, o: MusicScriptOptions): Plann
  * Funscript actions (pos 0–100, at in ms) for an analysis.
  *
  * Bottom on the stroke's start (the beat), top halfway to the next, rest at
- * the centre in gaps, then the hard speed limit.
+ * the centre in gaps (at the bottom, for strokes that start there), then the
+ * hard speed limit.
  */
 export function musicScript(a: SoundtrackAnalysis, o: MusicScriptOptions): FunscriptAction[] {
   const strokes = planStrokes(a, o)
   if (!strokes.length)
     return []
-  const rest = (o.centre ?? 0.5) * 100
+  const bottom = o.anchor === 'bottom'
+  const rest = bottom ? 0 : (o.centre ?? 0.5) * 100
 
   // Positions carry their stroke's centre so the limiter can shrink them
-  // toward it rather than shift the whole stroke.
+  // toward it rather than shift the whole stroke. Strokes from the bottom
+  // shrink toward the bottom, so they still start there.
   const pts: { t: number, pos: number, c: number }[] = []
   const push = (tS: number, pos: number, c: number) => {
     const t = Math.round(tS * 1000)
@@ -202,8 +215,9 @@ export function musicScript(a: SoundtrackAnalysis, o: MusicScriptOptions): Funsc
     }
     const c = s.centre * 100
     const half = (s.depth * 100) / 2
-    push(s.start, c - half, c)
-    push((s.start + s.end) / 2, c + half, c)
+    const shrinkTo = bottom ? 0 : c
+    push(s.start, c - half, shrinkTo)
+    push((s.start + s.end) / 2, c + half, shrinkTo)
   }
   push(strokes[strokes.length - 1].end, rest, rest)
 

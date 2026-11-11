@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  anchoredCentre,
   createBeatGrid,
   createEnergyFollower,
   createSubdivisionHold,
+  musicDepth,
   phaseDelta,
   pickStrokesPerBeat,
   steerPhase,
@@ -183,5 +185,24 @@ describe('beat grid confidence', () => {
     for (let t = 1500; t <= 12000; t += 500)
       g.onset(t + 130)
     expect(g.confidence()).toBeGreaterThan(0.5)
+  })
+})
+
+describe('music depth and anchor', () => {
+  it('follows loudness between the shallowest and deepest, or holds the deepest', () => {
+    expect(musicDepth(0, 0.3, 0.9)).toBeCloseTo(0.3)
+    expect(musicDepth(1, 0.3, 0.9)).toBeCloseTo(0.9)
+    expect(musicDepth(0, 0.3, 0.9, false)).toBe(0.9)
+    expect(musicDepth(0.5, 0.3, 0.9, false)).toBe(0.9)
+  })
+
+  it('centres on the setting, or rests a stroke on the bottom of the range', () => {
+    expect(anchoredCentre(0.6, 'centre', 0.7)).toBe(0.7)
+    expect(anchoredCentre(0.6, 'bottom', 0.7)).toBe(0.3)
+    // From the bottom, a stroke spans 0 to its depth.
+    const d = 0.8
+    const c = anchoredCentre(d, 'bottom', 0.5)
+    expect(c - d / 2).toBe(0)
+    expect(c + d / 2).toBeCloseTo(d)
   })
 })

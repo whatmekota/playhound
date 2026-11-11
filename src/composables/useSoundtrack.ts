@@ -222,6 +222,8 @@ function install() {
         maxSpm: motion.maxSpm,
         minDepth: motion.minDepth,
         maxDepth: motion.maxDepth,
+        depthFollows: motion.musicDepthFollows,
+        anchor: motion.musicAnchor,
         centre: motion.center,
         centreRange: scriptOptions.centreRange,
         restInGaps: scriptOptions.restInGaps,

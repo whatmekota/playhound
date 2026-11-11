@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSoundtrack } from '~/composables/useSoundtrack'
+import { useMotionStore } from '~/stores/motionStore'
 
 /**
  * The playing video's soundtrack analysis, and a funscript made from it.
@@ -30,6 +31,7 @@ const {
   scriptOptions,
 } = useSoundtrack()
 
+const motion = useMotionStore()
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
 const busy = computed(() => current.value?.status === 'decoding' || current.value?.status === 'analysing')
@@ -138,7 +140,8 @@ const TONE = { ok: 'text-ok', warn: 'text-warn', danger: 'text-danger', muted: '
         :step="0.05"
         :reset="0.5"
         :format="pct"
-        hint="How far brighter passages lift the centre of the stroke in a generated script"
+        :disabled="motion.musicAnchor === 'bottom'"
+        :hint="motion.musicAnchor === 'bottom' ? 'Strokes start at the bottom (set in Motion), so pitch does not move them' : 'How far brighter passages lift the centre of the stroke in a generated script'"
       />
       <UiSwitch v-model="scriptOptions.restInGaps" size="sm" label="Rest in breaks" hint="Hold still where the music has no beat" />
     </div>

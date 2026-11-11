@@ -310,6 +310,29 @@ export function paceStrokesPerBeat(pace: Exclude<MusicPace, 'auto'>, bpm: number
   return legal[0] ?? STROKES_PER_BEAT[STROKES_PER_BEAT.length - 1]
 }
 
+// ─── Depth and anchor ────────────────────────────────────────────────────────
+
+/** Where music strokes sit: around the centre, or rising from the bottom of the range. */
+export type StrokeAnchor = 'centre' | 'bottom'
+export const STROKE_ANCHORS: StrokeAnchor[] = ['centre', 'bottom']
+
+/**
+ * A music stroke's depth: from the shallowest to the deepest with how loud
+ * the music is (0–1), or always the deepest.
+ */
+export function musicDepth(energy: number, minDepth: number, maxDepth: number, follows = true): number {
+  const d = follows ? minDepth + (maxDepth - minDepth) * energy : maxDepth
+  return Math.max(0, Math.min(1, d))
+}
+
+/**
+ * The centre of a music stroke `depth` deep: `centre` as set, or half the
+ * depth when strokes start at the bottom, so each runs from 0 up to its depth.
+ */
+export function anchoredCentre(depth: number, anchor: StrokeAnchor, centre: number): number {
+  return anchor === 'bottom' ? Math.max(0, Math.min(1, depth)) / 2 : centre
+}
+
 /** A number in [0, 1) that is always the same for the same stroke and seed. */
 function hash01(n: number, seed: number): number {
   let h = Math.imul(n ^ 0x9E3779B9, 0x85EBCA6B) ^ Math.imul(seed + 0x27D4EB2F, 0xC2B2AE35)

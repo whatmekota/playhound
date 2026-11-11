@@ -11,7 +11,7 @@ import {
   spmFromIntensity,
   strokePosition,
 } from '~/lib/motionMath'
-import { createSubdivisionHold, paceStrokesPerBeat, pickStrokesPerBeat, steerPhase, strokeVariation } from '~/lib/musicMotion'
+import { anchoredCentre, createSubdivisionHold, musicDepth, paceStrokesPerBeat, pickStrokesPerBeat, steerPhase, strokeVariation } from '~/lib/musicMotion'
 import { createMovePlanner, createPhaseUnwrapper, oscillatorMove } from '~/lib/strokePlan'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -116,7 +116,7 @@ export function useMotionEngine() {
    * (gamepad) control, the stick's target at a steady pace.
    */
   function driveMovers(pos: number, direct: boolean, now: number) {
-    const osc = direct ? null : { phase: unwrap.next(phase), spm: effSpm, depth: effDepth, center: motion.center, shape: motion.shape }
+    const osc = direct ? null : { phase: unwrap.next(phase), spm: effSpm, depth: effDepth, center: strokeCentre(effDepth), shape: motion.shape }
     if (handy.connected.value) {
       const m = osc ? handyPlan.planned(oscillatorMove(osc, handy.leadMs.value)) : handyPlan.direct(pos, now)
       if (m) {
@@ -219,13 +219,19 @@ export function useMotionEngine() {
     if (motion.source === 'music') {
       // Loud passages stroke deeper, quiet ones shallower — relative to this
       // track. A shaky beat grid holds back a little until it settles.
+      // With "Depth follows the music" off, every stroke is at the deepest.
       const grid = getBeatGrid()
       if (!grid)
-        return motion.minDepth
-      const d = motion.minDepth + (motion.maxDepth - motion.minDepth) * grid.energy
+        return motion.musicDepthFollows ? motion.minDepth : motion.maxDepth * 0.6
+      const d = musicDepth(grid.energy, motion.minDepth, motion.maxDepth, motion.musicDepthFollows)
       return d * (0.6 + 0.4 * grid.confidence)
     }
     return depthFromIntensity(audio.intensity.value, motion.minDepth, motion.maxDepth)
+  }
+
+  /** Where a stroke `d` deep is centred: the Music source can start its strokes at the bottom instead. */
+  function strokeCentre(d: number): number {
+    return motion.source === 'music' ? anchoredCentre(d, motion.musicAnchor, motion.center) : motion.center
   }
 
   function tick(ts: number) {
@@ -318,7 +324,7 @@ export function useMotionEngine() {
     }
     else {
       const unit = strokePosition(phase, motion.shape)
-      pos = applyDepth(unit, motion.center, depth * varDepth)
+      pos = applyDepth(unit, strokeCentre(depth * varDepth), depth * varDepth)
     }
 
     // Turned down, give the device a little longer to reach each point, so

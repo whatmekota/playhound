@@ -292,6 +292,11 @@ const PACES = [
   { value: 'double' as const, label: 'Double' },
 ]
 const PACE_STROKES = { half: 0.5, beat: 1, double: 2 } as const
+const musicFromBottom = computed(() => motion.source === 'music' && motion.musicAnchor === 'bottom')
+const ANCHORS = [
+  { value: 'centre' as const, label: 'Centre' },
+  { value: 'bottom' as const, label: 'Bottom' },
+]
 /** A fixed pace the speed ceiling holds back: the tempo and what it would take. */
 const paceCapped = computed(() => {
   // A tapped tempo wins, as it does for the motion; the analyser's otherwise.
@@ -645,13 +650,26 @@ const PAD_MAP = [
             :reset="0"
             hint="Now and then two quick strokes in the time of one, the way a fill does, and some shorter ones. Never past the ceiling."
           />
+          <UiSwitch
+            v-model="motion.musicDepthFollows"
+            size="sm"
+            label="Depth follows the music"
+            :hint="motion.musicDepthFollows ? 'Quiet parts stroke at the shallowest, loud ones at the deepest' : 'Every stroke at the deepest'"
+          />
           <div class="gap-3 grid grid-cols-2">
-            <UiSlider v-model="motion.minDepth" label="Shallowest" :format="pct" :reset="0.35" />
+            <UiSlider v-model="motion.minDepth" label="Shallowest" :format="pct" :reset="0.35" :disabled="!motion.musicDepthFollows" />
             <UiSlider v-model="motion.maxDepth" label="Deepest" :format="pct" :reset="0.95" />
           </div>
           <p class="hint">
-            Quiet parts stroke at the shallowest, loud ones at the deepest. Both at 100% for full strokes all the time. A tempo tapped to something the app cannot hear uses the deepest.
+            Both at 100% for full strokes all the time. A tempo tapped to something the app cannot hear uses the deepest.
           </p>
+          <div class="flex flex-col gap-1.5">
+            <span class="label">Strokes start at</span>
+            <UiSegmented v-model="motion.musicAnchor" :options="ANCHORS" size="xs" block />
+            <p class="hint">
+              {{ motion.musicAnchor === 'bottom' ? 'Each stroke runs from the bottom of the range up to its depth.' : 'Each stroke is centred on the Centre set under Stroke.' }}
+            </p>
+          </div>
           <p v-if="!beatAnalysed && !videoBeat.hasSignal.value && (player.isMuted || player.volume === 0)" class="hint text-warn">
             The player is muted, so the analyser only hears silence. Turn the volume down rather than muting.
           </p>
@@ -661,7 +679,7 @@ const PAD_MAP = [
           <div class="pt-1 border-t border-edge flex flex-col gap-3">
             <span class="eyebrow pt-2">Script from the music</span>
             <p class="hint -mt-1">
-              Writes a real funscript from the analysed soundtrack, using the band, ceiling, depth and centre set here, and plays it like any other script.
+              Writes a real funscript from the analysed soundtrack, using the band, ceiling, depth and stroke settings here, and plays it like any other script.
             </p>
             <MusicScriptCard :status="false" />
           </div>
@@ -674,7 +692,14 @@ const PAD_MAP = [
       <UiField label="Shape" :hint="SHAPE_HINT[motion.shape]">
         <UiSegmented v-model="motion.shape" :options="SHAPES" size="xs" />
       </UiField>
-      <UiSlider v-model="motion.center" label="Centre" :format="pct" :reset="0.5" hint="Where in the range the stroke is centred" />
+      <UiSlider
+        v-model="motion.center"
+        label="Centre"
+        :format="pct"
+        :reset="0.5"
+        :disabled="musicFromBottom"
+        :hint="musicFromBottom ? 'Music strokes start at the bottom, so there is no centre' : 'Where in the range the stroke is centred'"
+      />
       <UiSwitch v-model="motion.secondaryAxes" size="sm" label="Also drive twist and roll" hint="Slower, shallower motion on R0 and R1" />
       <UiSwitch v-model="motion.vibrateFromIntensity" size="sm" label="Vibration follows intensity" hint="Maps session intensity onto V0" />
     </UiSection>
