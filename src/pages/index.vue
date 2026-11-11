@@ -180,10 +180,9 @@ watch(() => motion.serialize(), v => storage.set(KEYS.motionConfig.key, v), { de
 onMounted(() => {
   // Bring the last folder back at startup, whichever view is open.
   void library.restoreFolder()
-  // Tell the local proxy which network proxy to use (Settings → Network).
-  // The Android app has no local proxy.
-  if (!isAndroidApp)
-    startNetProxySync()
+  // Tell the local proxy which network proxy to use (Settings → Network);
+  // in the Android app, the app itself (it fetches natively).
+  startNetProxySync()
 })
 
 // ─── Stats ────────────────────────────────────────────────────────────────────

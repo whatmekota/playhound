@@ -11,6 +11,7 @@ import com.getcapacitor.WebViewListener;
 import io.github.whatmekota.playhound.crash.CrashLog;
 import io.github.whatmekota.playhound.crash.CrashPlugin;
 import io.github.whatmekota.playhound.folders.FoldersPlugin;
+import io.github.whatmekota.playhound.net.NetPlugin;
 import java.util.ArrayDeque;
 
 public class MainActivity extends BridgeActivity {
@@ -28,6 +29,7 @@ public class MainActivity extends BridgeActivity {
         // The app's own plugins, before the bridge starts.
         registerPlugin(FoldersPlugin.class);
         registerPlugin(CrashPlugin.class);
+        registerPlugin(NetPlugin.class);
         // Capacitor answers "renderer gone" with false unless a listener says
         // otherwise, and then the WebView takes the whole app down with it.
         bridgeBuilder.addWebViewListener(

@@ -321,7 +321,7 @@ function applyProxy() {
 const proxyStatus = computed(() => {
   const info = netProxyInfo.value
   if (!info)
-    return { tone: 'muted', text: 'The local proxy is not running, so there is nothing to apply this to. It runs with the desktop app, start.bat or pnpm dev:proxy.' }
+    return { tone: 'muted', text: isAndroidApp ? 'The network bridge of the app is not answering.' : 'The local proxy is not running, so there is nothing to apply this to. It runs with the desktop app, start.bat or pnpm dev:proxy.' }
   if (netProxyError.value)
     return { tone: 'danger', text: netProxyError.value }
   if (info.configured)
@@ -702,7 +702,11 @@ function openBackup() {
               <div class="p-4 card flex flex-col gap-3">
                 <div class="flex flex-col gap-1">
                   <span class="text-[13px] text-fg font-medium">Proxy</span>
-                  <span class="hint">
+                  <span v-if="isAndroidApp" class="hint">
+                    For the EroScripts browser and streaming. Some of these sites are blocked on some networks, and
+                    an HTTP proxy gets you through (no user name and password). Leave it empty to connect directly.
+                  </span>
+                  <span v-else class="hint">
                     For the EroScripts browser, streaming and yt-dlp. Some of these sites are blocked on some
                     networks, and an HTTP proxy gets you through. Leave it empty to use HTTPS_PROXY from this
                     computer, if it has one.

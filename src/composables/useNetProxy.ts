@@ -1,6 +1,7 @@
 import { useLocalStorage } from '@vueuse/core'
 import { ref, watch } from 'vue'
 import { KEYS } from '~/lib/persist'
+import { isAndroidApp } from '~/lib/platform'
 import { STREAM_PROXY } from './useStreams'
 
 /**
@@ -11,6 +12,9 @@ import { STREAM_PROXY } from './useStreams'
  * It lives in the local proxy server (es-proxy.mjs), which is what does the
  * fetching, so the app tells it on start and on every change. Empty leaves the
  * server on the environment's HTTP(S)_PROXY, if there is one.
+ *
+ * The Android app does its fetching natively (lib/android/net.ts), so there
+ * it goes to the app instead, which knows no environment proxy.
  */
 
 export interface NetProxyInfo {
@@ -28,7 +32,20 @@ export const netProxy = useLocalStorage<string>(KEYS.netProxy.key, '')
 export const netProxyInfo = ref<NetProxyInfo | null>(null)
 export const netProxyError = ref<string | null>(null)
 
+async function pushAndroid(value: string) {
+  const { setNetProxy } = await import('~/lib/android/net')
+  try {
+    netProxyInfo.value = await setNetProxy(value)
+    netProxyError.value = null
+  }
+  catch (e: any) {
+    netProxyError.value = e?.message ?? 'That is not a proxy address'
+  }
+}
+
 async function push(value: string) {
+  if (isAndroidApp)
+    return pushAndroid(value)
   const res = await fetch(`${STREAM_PROXY}/config`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -41,6 +58,12 @@ async function push(value: string) {
 
 /** Ask the server what it uses, without changing it. */
 async function read() {
+  if (isAndroidApp) {
+    const { getNetProxy } = await import('~/lib/android/net')
+    netProxyInfo.value = await getNetProxy()
+    netProxyError.value = null
+    return
+  }
   const res = await fetch(`${STREAM_PROXY}/config`)
   const body = await res.json().catch(() => ({}))
   if (!res.ok)

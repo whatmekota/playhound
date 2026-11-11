@@ -1,6 +1,6 @@
 import type { ResolvedStream, StreamSource } from '~/lib/streamHosts'
 import { ref } from 'vue'
-import { MISSING } from '~/lib/platform'
+import { isAndroidApp, MISSING } from '~/lib/platform'
 import { friendlyResolveError } from '~/lib/streamHosts'
 import { usePlaybackStore } from '~/stores/playbackStore'
 
@@ -8,7 +8,7 @@ import { usePlaybackStore } from '~/stores/playbackStore'
 export const STREAM_PROXY = 'http://localhost:7071'
 
 export class StreamError extends Error {
-  constructor(message: string, readonly code: 'needs-ytdlp' | 'no-proxy' | null = null) {
+  constructor(message: string, readonly code: 'needs-ytdlp' | 'no-proxy' | 'desktop-only' | null = null) {
     super(message)
   }
 }
@@ -31,8 +31,21 @@ async function call(path: string, init?: RequestInit): Promise<Response> {
   }
 }
 
-/** Turn a link from a post into playable streams, through the proxy. */
+/**
+ * Turn a link from a post into playable streams, through the proxy. The
+ * Android app has no proxy: it resolves in the page (lib/android/hosts.ts)
+ * and streams through its own loopback server; yt-dlp sites stay desktop-only.
+ */
 export async function resolveStream(url: string): Promise<ResolvedStream> {
+  if (isAndroidApp) {
+    const { resolveHere } = await import('~/lib/android/hosts')
+    try {
+      return await resolveHere(url)
+    }
+    catch (e: any) {
+      throw new StreamError(friendlyResolveError(e?.message ?? 'Could not resolve'), e?.code === 'desktop-only' ? 'desktop-only' : null)
+    }
+  }
   const res = await call(`/resolve?url=${encodeURIComponent(url)}`)
   const body = await res.json().catch(() => ({}))
   if (!res.ok)
@@ -41,6 +54,10 @@ export async function resolveStream(url: string): Promise<ResolvedStream> {
 }
 
 export async function refreshYtdlp() {
+  if (isAndroidApp) {
+    ytdlp.value = { installed: false, installing: false }
+    return ytdlp.value
+  }
   const res = await call('/ytdlp/status')
   ytdlp.value = await res.json()
   return ytdlp.value
@@ -48,6 +65,8 @@ export async function refreshYtdlp() {
 
 /** Fetch the official yt-dlp release into playhound's own folder. */
 export async function installYtdlp() {
+  if (isAndroidApp)
+    throw new StreamError('yt-dlp is a desktop program: the Android app cannot run it', 'desktop-only')
   ytdlp.value = { installed: false, installing: true }
   try {
     const res = await call('/ytdlp/install', { method: 'POST' })
@@ -67,6 +86,15 @@ export async function installYtdlp() {
  * the proxy fetches it with them, and this is the address to play instead.
  */
 export async function proxiedStream(url: string, headers: Record<string, string>, kind: 'file' | 'hls' = 'file'): Promise<string> {
+  if (isAndroidApp) {
+    const { registerStream } = await import('~/lib/android/net')
+    try {
+      return await registerStream(url, headers, kind)
+    }
+    catch (e: any) {
+      throw new StreamError(e?.message ?? 'The app could not play that stream')
+    }
+  }
   const res = await call('/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, headers, kind }) })
   const body = await res.json().catch(() => ({}))
   if (!res.ok || typeof body.url !== 'string')

@@ -1,8 +1,10 @@
 import type { PostScript } from '~/lib/postScripts'
 import type { StreamSource } from '~/lib/streamHosts'
 import { reactive } from 'vue'
+import { pickDirectory } from '~/lib/browserApi'
 import { metaCredits } from '~/lib/chapterIndex'
 import { handleDb, videoMetaDb } from '~/lib/idb'
+import { isAndroidApp } from '~/lib/platform'
 import { baseNameFor, downloadNames, videoExtFor, withCopyNumber } from '~/lib/postDownload'
 import { editTagList, postTags } from '~/lib/tags'
 import { useLibraryStore } from '~/stores/libraryStore'
@@ -51,9 +53,21 @@ async function targetFolder(): Promise<{ dir: FileSystemDirectoryHandle, library
   const lib = await useLibraryStore().writableFolder()
   if (lib)
     return { dir: lib, library: true }
-  const saved = await handleDb.get(DOWNLOADS_KEY).catch(() => undefined) as FileSystemDirectoryHandle | undefined
+  let saved = await handleDb.get(DOWNLOADS_KEY).catch(() => undefined) as FileSystemDirectoryHandle | undefined
+  if (saved && isAndroidApp)
+    saved = (await import('~/lib/android/folders')).reviveTree(saved) as unknown as FileSystemDirectoryHandle
   if (saved && await writable(saved))
     return { dir: saved, library: false }
+  if (isAndroidApp) {
+    // Android's folder picker, which asks for writing as well.
+    const dir = await pickDirectory()
+    if (!dir)
+      throw new DOMException('Cancelled', 'AbortError')
+    if (!await writable(dir))
+      throw new Error('Android gave playhound read-only access to that folder. Pick another one.')
+    await handleDb.set(DOWNLOADS_KEY, dir).catch(() => {})
+    return { dir, library: false }
+  }
   const pick = (window as any).showDirectoryPicker
   if (!pick)
     throw new Error('Saving to a folder needs the desktop app, Chrome or Edge')

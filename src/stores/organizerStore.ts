@@ -1,11 +1,12 @@
 import type { FsEntry } from '~/lib/fsWalk'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { desktop } from '~/lib/browserApi'
+import { desktop, pickDirectory } from '~/lib/browserApi'
 import { extOf, renameEntry, sanitizeFilename } from '~/lib/fsRename'
 import { walkDirectory } from '~/lib/fsWalk'
 import { handleDb } from '~/lib/idb'
 import { isAudioName, isMediaName } from '~/lib/mediaFiles'
+import { isAndroidApp } from '~/lib/platform'
 import { isSubtitleName, pairSubtitles } from '~/lib/subtitles'
 
 export type PairStatus = 'matched' | 'video-only' | 'script-only'
@@ -151,6 +152,15 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function openFolder(): Promise<boolean> {
+    if (isAndroidApp) {
+      // Android's folder picker (it asks for writing too).
+      const handle = await pickDirectory()
+      if (!handle)
+        return false
+      await handleDb.set(HANDLE_KEY, handle)
+      await setRoot(handle)
+      return true
+    }
     if (!('showDirectoryPicker' in window)) {
       error.value = 'File System Access API not supported in this browser'
       return false
@@ -166,8 +176,17 @@ export const useOrganizerStore = defineStore('organizer', () => {
     }
   }
 
+  /** A folder kept in IndexedDB; in the Android app, made an Android folder again. */
+  async function savedHandle(key: string): Promise<FileSystemDirectoryHandle | undefined> {
+    const h = await handleDb.get(key)
+    if (!h || !isAndroidApp)
+      return h
+    const { reviveTree } = await import('~/lib/android/folders')
+    return reviveTree(h) as unknown as FileSystemDirectoryHandle
+  }
+
   async function useLibraryFolder(): Promise<boolean> {
-    const handle = await handleDb.get(LIBRARY_HANDLE_KEY)
+    const handle = await savedHandle(LIBRARY_HANDLE_KEY)
     if (!handle)
       return false
     await handleDb.set(HANDLE_KEY, handle)
@@ -176,7 +195,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function restoreFolder(): Promise<boolean> {
-    const handle = await handleDb.get(HANDLE_KEY)
+    const handle = await savedHandle(HANDLE_KEY)
     if (!handle)
       return false
     restoring.value = true

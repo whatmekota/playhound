@@ -379,7 +379,9 @@ it, so it stays signed in and never logs your browser out. From source, paste
 your browser's `_t` cookie instead (the dialog shows where to find it): it is
 kept on this computer and only sent to the forum through the local proxy, but
 it is your browser's session, and the forum replaces it often, so expect to
-paste it again now and then.
+paste it again now and then. The Android app signs in like the Windows app:
+the forum's login page opens inside the app, and the session stays in the
+app's private storage.
 
 **A post** shows its scripts with the axis each one drives (`L0`, `R1`…).
 Save any of them, or load one onto whatever is playing.
@@ -409,7 +411,10 @@ Anywhere else, **Ctrl+K → Play a link…** takes any link you paste.
 | rule34.xxx, Bunkr                                      |         ✗         | rule34.xxx sits behind a Cloudflare check, and yt-dlp has no Bunkr support                                                                      |
 
 Everything goes through the small local proxy the Windows app runs (or
-`start.bat` / `pnpm dev:proxy` from source). If the forum or one of these sites
+`start.bat` / `pnpm dev:proxy` from source). The Android app needs no proxy:
+it makes the same requests itself, and resolves Pixeldrain, Gofile, MEGA,
+Iwara, Rule34Video and PMVHaven on the phone; yt-dlp sites need the desktop
+app. If the forum or one of these sites
 is blocked where you are, put an HTTP proxy in **Settings → Network**: the
 forum, streaming and yt-dlp all go through it. Left empty, playhound uses
 `HTTPS_PROXY` from your system if it is set. Anonymous MEGA has a transfer
@@ -588,13 +593,35 @@ test/           Vitest suites
 
 ### Android app (in progress)
 
-A Capacitor shell in `android/` around the same build, phase 1: library
-folders through Android's folder picker (`src/lib/android/`, and the Kotlin
-plugin in `android/app/src/main/java/…/folders/`, which lists them and streams
-them to the player with byte ranges), playback with scripts, the Handy over
-WiFi, TCode over WebSocket and a phone layout. Bluetooth, USB serial, the
-EroScripts browser and file-host streaming are not in it yet; Settings →
-Android app on the phone lists what is and checks its WebView.
+A Capacitor shell in `android/` around the same build: library folders
+through Android's folder picker (`src/lib/android/`, and the Kotlin plugins in
+`android/app/src/main/java/…/`), playback with scripts, the Handy over WiFi,
+TCode over WebSocket, a phone layout, the EroScripts browser and file-host
+streaming. Settings → Android app on the phone lists what is not in it yet and
+checks its WebView.
+
+There is no Node on the phone, so what `es-proxy.mjs` does on the desktop is
+native there. One loopback server on `127.0.0.1` (random port, every path
+behind a random token only the page learns) serves:
+
+- `f`: files in picked folders, with byte ranges (`folders/MediaServer.kt`);
+- `p`: a CORS-free fetch with any headers, redirects followed, optionally
+  with the app's cookie store (the forum session), through the proxy from
+  Settings → Network if one is set. The page's `nativeFetch`
+  (`src/lib/android/net.ts`) goes through it, and the resolvers of
+  `server/hosts.mjs` run in the page on top of it (`src/lib/android/hosts.ts`,
+  kept in step by hand);
+- `m`: streams registered with their headers, for `<video>` (Range passed
+  on, HLS playlists rewritten, MEGA files decrypted with AES-CTR from any
+  byte, `net/NetRoutes.kt`);
+- `w`: writes into picked folders, PUT in pieces of a few MB, so saving next
+  to a video, downloads from posts and the Organizer's renames work as they
+  do with the browser's folder handles (`AndroidTree` in
+  `src/lib/android/folders.ts`).
+
+EroScripts sign-in is the forum's login page in a WebView activity
+(`net/ForumLoginActivity.kt`); its `_t` cookie stays in the WebView's cookie
+store, in the app's private storage.
 
 It needs JDK 21 and the Android SDK (platform 36, build-tools 36). The scripts
 expect them in one folder, `F:\tools\android` (`jdk-21\`, `sdk\`), or wherever
