@@ -630,15 +630,33 @@ expect them in one folder, `F:\tools\android` (`jdk-21\`, `sdk\`), or wherever
 
 ```bash
 pnpm mobile:apk      # vite build, cap sync, debug APK → release/android/playhound-debug.apk
-pnpm mobile:install  # adb install it on the phone (USB debugging on)
+pnpm mobile:release  # signed release APK → release/android/playhound-<version>-android.apk
+pnpm mobile:install  # adb install the debug APK on the phone (USB debugging on)
 pnpm mobile:test     # the Kotlin plugin's JVM tests
 pnpm mobile:icons    # launcher icons and splash from public/favicon.svg
 pnpm mobile:dev      # dev server on :7140 for live reload, then:
 CAP_SERVER_URL=http://<this PC>:7140 pnpm mobile:sync   # and reinstall
 ```
 
-Debug builds only, signed with the toolchain folder's debug key; no signing
-key goes in the repo.
+Debug builds are signed with the toolchain folder's debug key. Release builds
+are signed with a key that never goes in the repo: `android/app/build.gradle`
+takes it from `PH_KEYSTORE`, `PH_KEYSTORE_PASSWORD`, `PH_KEY_ALIAS` and
+`PH_KEY_PASSWORD`, or from a `keystore.properties` named by
+`PH_KEYSTORE_PROPERTIES` (`storeFile`, relative to it, `storePassword`,
+`keyAlias`, `keyPassword`); `pnpm mobile:release` uses
+`<toolchain>keyskeystore.properties` when nothing else is set. versionName
+and versionCode come from package.json (2.2.0 → 2002000). Keep the key safe:
+every later release has to be signed with it, or Android refuses the update.
+A release build cannot update a debug build (another key): uninstall the debug
+one first, once.
+
+**Updates.** The app looks at this repository's GitHub Releases on launch
+and once a day for a newer release with an asset named
+`playhound-<version>-android.apk` (what `pnpm mobile:release` builds), shows
+its notes, and on **Update** downloads it into the app's cache, checks its
+SHA-256 against the one GitHub lists, and opens Android's installer (the
+first time Android asks to allow installing from playhound). A debug build is
+told to install the release by hand instead.
 
 The phone layout (`useCompactLayout`: a bottom bar upright, a rail on the left
 sideways, `CompactDock` for the player) can be styled in a desktop browser:

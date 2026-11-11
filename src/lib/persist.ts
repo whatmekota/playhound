@@ -172,6 +172,7 @@ export const KEYS = {
   directorOpenHow: def('ph:ui.director.howOpen', 'ui', 'Director sections'),
   directorOpenCoverage: def('ph:ui.director.coverageOpen', 'ui', 'Director sections'),
   androidErrors: def('ph:android.errors', 'ui', 'Android app: recent errors in the page, for a crash report'),
+  androidUpdates: def('ph:android.updates', 'setting', 'Android app: check for updates on its own, and when it last did'),
   emulatorPhone: def('ph:ui.emulator.phone', 'ui', 'Emulator on a phone: docked or floating, and where'),
 } as const satisfies Record<string, KeyDef>
 

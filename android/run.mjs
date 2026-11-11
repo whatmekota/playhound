@@ -5,6 +5,8 @@
  *
  *   node android/run.mjs sync      vite build, then cap sync android
  *   node android/run.mjs apk       sync, then a debug APK (release/android/playhound-debug.apk)
+ *   node android/run.mjs release   sync, then a signed release APK
+ *                                  (release/android/playhound-<version>-android.apk)
  *   node android/run.mjs install   adb install -r that APK on the connected phone
  *   node android/run.mjs test      the plugins' JVM unit tests
  *
@@ -15,6 +17,12 @@
  *
  * CAP_SERVER_URL=http://<this PC's LAN address>:7140 with sync points the
  * app at a dev server (pnpm mobile:dev) for live reload instead.
+ *
+ * A release is signed with the key in <toolchain>keyskeystore.properties
+ * (or PH_KEYSTORE_PROPERTIES, or the PH_KEYSTORE* variables; see
+ * android/app/build.gradle). Neither ever goes in the repo. Its name,
+ * playhound-<version>-android.apk, is what the in-app updater looks for on
+ * a GitHub release (src/lib/android/updater.ts).
  */
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -65,6 +73,9 @@ function run(cmd, args, opts) {
 }
 
 const apkOut = path.join(root, 'release', 'android', 'playhound-debug.apk')
+const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version
+/** The release APK's name: the in-app updater looks for this asset (androidApkName in src/lib/android/updater.ts). */
+const releaseOut = path.join(root, 'release', 'android', `playhound-${version}-android.apk`)
 
 /** A package's CLI, run with this Node: no pnpm (or anything else) needed on the PATH. */
 function node(env, script, args) {
@@ -103,6 +114,28 @@ else if (step === 'apk') {
   fs.copyFileSync(built, apkOut)
   console.log(`\nDebug APK: ${apkOut} (${(fs.statSync(apkOut).size / 1e6).toFixed(1)} MB)`)
 }
+else if (step === 'release') {
+  const keyProps = path.join(tools, 'keys', 'keystore.properties')
+  if (!process.env.PH_KEYSTORE_PROPERTIES && fs.existsSync(keyProps))
+    env.PH_KEYSTORE_PROPERTIES = keyProps
+  if (!env.PH_KEYSTORE_PROPERTIES && !env.PH_KEYSTORE) {
+    console.error(`No release key: put keystore.properties in ${path.dirname(keyProps)}, or set PH_KEYSTORE_PROPERTIES or PH_KEYSTORE (see android/app/build.gradle).`)
+    process.exit(1)
+  }
+  sync(env)
+  const outDir = path.join(root, 'android', 'app', 'build', 'outputs', 'apk', 'release')
+  fs.rmSync(outDir, { recursive: true, force: true })
+  gradle(env, ['assembleRelease'])
+  const built = path.join(outDir, 'app-release.apk')
+  if (!fs.existsSync(built)) {
+    console.error('Gradle made no signed release APK (only an unsigned one?): check the key settings.')
+    process.exit(1)
+  }
+  fs.mkdirSync(path.dirname(releaseOut), { recursive: true })
+  fs.copyFileSync(built, releaseOut)
+  console.log(`
+Release APK: ${releaseOut} (${(fs.statSync(releaseOut).size / 1e6).toFixed(1)} MB)`)
+}
 else if (step === 'install') {
   run(path.join(env.ANDROID_HOME, 'platform-tools', win ? 'adb.exe' : 'adb'), ['install', '-r', apkOut], { env, shell: false })
 }
@@ -110,6 +143,6 @@ else if (step === 'test') {
   gradle(env, ['testDebugUnitTest'])
 }
 else {
-  console.error('Usage: node android/run.mjs sync | apk | install | test')
+  console.error('Usage: node android/run.mjs sync | apk | release | install | test')
   process.exit(1)
 }

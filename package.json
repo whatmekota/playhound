@@ -15,6 +15,7 @@
     "mobile:dev": "vite --host --port 7140 --strictPort",
     "mobile:sync": "node android/run.mjs sync",
     "mobile:apk": "node android/run.mjs apk",
+    "mobile:release": "node android/run.mjs release",
     "mobile:install": "node android/run.mjs install",
     "mobile:test": "node android/run.mjs test",
     "mobile:icons": "node android/icons.mjs",

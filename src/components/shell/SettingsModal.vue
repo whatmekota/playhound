@@ -134,8 +134,11 @@ const updateLine = computed(() => {
     case 'checking': return 'Asking GitHub…'
     case 'none': return 'Up to date.'
     case 'downloading': return `Downloading ${s.version ?? 'the update'}… ${s.percent}%`
-    case 'ready': return `${s.version} is downloaded. It installs when you quit, or restart now.`
-    case 'available': return `${s.version} is out. ${s.portable ? 'The portable version' : 'This copy'} updates by hand.`
+    case 'ready': return isAndroidApp ? `${s.version} is downloaded. Install opens Android's installer.` : `${s.version} is downloaded. It installs when you quit, or restart now.`
+    case 'available':
+      if (isAndroidApp)
+        return s.manual ? `${s.version} is out. This debug build cannot be updated by a release: uninstall it, then install the release by hand.` : `${s.version} is out.`
+      return `${s.version} is out. ${s.portable ? 'The portable version' : 'This copy'} updates by hand.`
     case 'error': return s.error ?? 'The last check failed.'
   }
   return ''
@@ -543,13 +546,16 @@ function openBackup() {
                 <UiProgress v-if="upd.status === 'downloading'" :value="upd.percent / 100" />
                 <div class="flex flex-wrap gap-2">
                   <UiButton v-if="upd.status === 'ready'" variant="primary" icon="i-carbon-renew" @click="updates.install()">
-                    Restart and update
+                    {{ isAndroidApp ? 'Install' : 'Restart and update' }}
+                  </UiButton>
+                  <UiButton v-else-if="upd.status === 'available' && isAndroidApp && !upd.manual" variant="primary" icon="i-carbon-download" @click="updates.install()">
+                    Update to {{ upd.version }}
                   </UiButton>
                   <UiButton v-else-if="upd.status === 'available'" variant="primary" icon="i-carbon-download" @click="updates.download()">
                     Download {{ upd.version }}
                   </UiButton>
                   <UiButton
-                    v-if="upd.status !== 'ready' && upd.status !== 'off'"
+                    v-if="(upd.status !== 'ready' || isAndroidApp) && upd.status !== 'off'"
                     icon="i-carbon-search"
                     :loading="upd.status === 'checking'"
                     :disabled="upd.status === 'downloading'"
@@ -563,9 +569,11 @@ function openBackup() {
                 <UiSwitch
                   :model-value="upd.auto"
                   label="Check for updates on my own"
-                  :hint="upd.manual ?? upd.portable
-                    ? `At startup and every few hours. ${upd.portable ? 'The portable version' : 'This copy'} only says when one is out; download it by hand.`
-                    : 'At startup and every few hours. A new version downloads in the background and installs when you quit, or when you restart from the title bar.'"
+                  :hint="isAndroidApp
+                    ? 'When the app starts, and once a day. It says when one is out; Update downloads it and opens the installer.'
+                    : upd.manual ?? upd.portable
+                      ? `At startup and every few hours. ${upd.portable ? 'The portable version' : 'This copy'} only says when one is out; download it by hand.`
+                      : 'At startup and every few hours. A new version downloads in the background and installs when you quit, or when you restart from the title bar.'"
                   :disabled="upd.status === 'off'"
                   @update:model-value="updates.setAuto($event)"
                 />

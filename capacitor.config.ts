@@ -20,10 +20,8 @@ const config: CapacitorConfig = {
     androidScheme: 'http',
     ...(devServer ? { url: devServer, cleartext: true } : {}),
   },
-  android: {
-    // Debug builds only for now; WebView debugging through chrome://inspect.
-    webContentsDebuggingEnabled: true,
-  },
+  // WebView debugging (chrome://inspect) is left to Capacitor's default: on
+  // in debug builds, off in release builds (pnpm mobile:release).
 }
 
 export default config

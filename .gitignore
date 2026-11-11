@@ -47,3 +47,7 @@ android/local.properties
 # Signing keys never go in the repo (debug builds sign with the toolchain's own key).
 *.keystore
 *.jks
+
+# Android release signing: the key and its passwords live outside the repo
+# (<toolchain>/keys by default; see android/app/build.gradle).
+keystore.properties
