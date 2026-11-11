@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB serial chips found on OSR2 / SR6 / SSR1 boards. Plugging one in
+     offers to open playhound, and saying yes there grants it access. -->
+<resources>
+    <!-- WCH CH340 / CH341 / CH9102 (Arduino Nano clones, many ESP32 boards) -->
+    <usb-device vendor-id="6790" />
+    <!-- Silicon Labs CP210x (ESP32 DevKit) -->
+    <usb-device vendor-id="4292" />
+    <!-- FTDI -->
+    <usb-device vendor-id="1027" />
+    <!-- Espressif native USB (ESP32-S2 / S3) -->
+    <usb-device vendor-id="12346" />
+    <!-- Arduino -->
+    <usb-device vendor-id="9025" />
+    <!-- Prolific PL2303 -->
+    <usb-device vendor-id="1659" />
+</resources>

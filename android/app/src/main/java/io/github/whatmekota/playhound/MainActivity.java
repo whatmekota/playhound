@@ -11,6 +11,9 @@ import com.getcapacitor.WebViewListener;
 import io.github.whatmekota.playhound.crash.CrashLog;
 import io.github.whatmekota.playhound.crash.CrashPlugin;
 import io.github.whatmekota.playhound.folders.FoldersPlugin;
+import io.github.whatmekota.playhound.session.SessionBus;
+import io.github.whatmekota.playhound.session.SessionPlugin;
+import io.github.whatmekota.playhound.usb.UsbSerialPlugin;
 import java.util.ArrayDeque;
 
 public class MainActivity extends BridgeActivity {
@@ -28,6 +31,8 @@ public class MainActivity extends BridgeActivity {
         // The app's own plugins, before the bridge starts.
         registerPlugin(FoldersPlugin.class);
         registerPlugin(CrashPlugin.class);
+        registerPlugin(UsbSerialPlugin.class);
+        registerPlugin(SessionPlugin.class);
         // Capacitor answers "renderer gone" with false unless a listener says
         // otherwise, and then the WebView takes the whole app down with it.
         bridgeBuilder.addWebViewListener(
@@ -62,6 +67,19 @@ public class MainActivity extends BridgeActivity {
         if (retry) recreate();
         else finish();
         return true;
+    }
+
+    /**
+     * Closing for good (swiped away, or the last screen finished) while a
+     * device is connected or something plays: stop every output first, as
+     * panic does, while the page is still there to do it.
+     */
+    @Override
+    public void onDestroy() {
+        if (isFinishing() && bridge != null) {
+            SessionBus.INSTANCE.panicBeforeClose(bridge.getWebView());
+        }
+        super.onDestroy();
     }
 
     @Override

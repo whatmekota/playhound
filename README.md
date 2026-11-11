@@ -592,9 +592,9 @@ A Capacitor shell in `android/` around the same build, phase 1: library
 folders through Android's folder picker (`src/lib/android/`, and the Kotlin
 plugin in `android/app/src/main/java/…/folders/`, which lists them and streams
 them to the player with byte ranges), playback with scripts, the Handy over
-WiFi, TCode over WebSocket and a phone layout. Bluetooth, USB serial, the
-EroScripts browser and file-host streaming are not in it yet; Settings →
-Android app on the phone lists what is and checks its WebView.
+WiFi, TCode over WebSocket and a phone layout; phase 2 adds the devices
+(below). The EroScripts browser and file-host streaming are not in it yet;
+Settings → Android app on the phone lists what is and checks its WebView.
 
 It needs JDK 21 and the Android SDK (platform 36, build-tools 36). The scripts
 expect them in one folder, `F:\tools\android` (`jdk-21\`, `sdk\`), or wherever
@@ -625,6 +625,21 @@ app recovers from by starting the page again, what Android says ended the last
 run) and the page's last errors. After a bad end it shows "playhound closed
 unexpectedly last time" with **Copy report**; Settings → Android app → Copy
 report has the same. With the phone on USB, `adb logcat -d > log.txt` has the rest.
+
+Devices: the WebView has neither Web Bluetooth nor Web Serial, so the app puts
+its own on `navigator` before the page loads (`src/lib/android/shims.ts`), and
+`handyBle`, `useHeartRate` and `useSerialPort` run unchanged. Bluetooth goes
+through `@capacitor-community/bluetooth-le` (`android/ble.ts`), USB OTG serial
+through usb-serial-for-android (MIT) in `…/usb/UsbSerialPlugin.kt`
+(`android/serial.ts`); both choosers are the app's own sheet
+(`AndroidDevices.vue`), which asks for "Nearby devices" in plain words first.
+Intiface Central stays on the PC, reached over Wi-Fi at `ws://<PC>:12345`.
+While anything is connected or plays, a `mediaPlayback` foreground service
+(`…/session/`) keeps the page running with the screen off (its WebView,
+`PhWebView`, does not tell the page it went out of sight), holds a wake lock
+while playing and a Wi-Fi lock for network devices, and its notification has
+Panic (as Esc) and Open; closing the app from the recent apps panics first, and
+the USB port is sent home from the native side too.
 
 Conventions that keep it in one piece:
 

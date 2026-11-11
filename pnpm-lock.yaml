@@ -122,6 +122,9 @@ catalogs:
       specifier: ^5.0.3
       version: 5.0.3
   mobile:
+    '@capacitor-community/bluetooth-le':
+      specifier: ^8.3.0
+      version: 8.3.0
     '@capacitor/android':
       specifier: ^8.6.0
       version: 8.6.0
@@ -140,6 +143,9 @@ importers:
 
   .:
     dependencies:
+      '@capacitor-community/bluetooth-le':
+        specifier: catalog:mobile
+        version: 8.3.0(@capacitor/core@8.6.0)
       '@capacitor/core':
         specifier: catalog:mobile
         version: 8.6.0
@@ -410,6 +416,11 @@ packages:
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@capacitor-community/bluetooth-le@8.3.0':
+    resolution: {integrity: sha512-bjI+m8mZ2AB9xIgwPu9T40QoAC7NErYt6q13zMHBzW3hIAITqQKFiElKOUsX813ItXzb81GoRqjlbSeHlKEzQg==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@capacitor/android@8.6.0':
     resolution: {integrity: sha512-6IJS0TCfV/F/8+324CCwYd3xL6r+TH0W7zzaxYzPz9IV3YWCNvsZDuCCPHUIBC5iASb9od827ddSJ6rz+9Pu1Q==}
@@ -1495,6 +1506,9 @@ packages:
 
   '@types/w3c-web-serial@1.0.8':
     resolution: {integrity: sha512-QQOT+bxQJhRGXoZDZGLs3ksLud1dMNnMiSQtBA0w8KXvLpXX4oM4TZb6J0GgJ8UbCaHo5s9/4VQT8uXy9JER2A==}
+
+  '@types/web-bluetooth@0.0.20':
+    resolution: {integrity: sha512-g9gZnnXVq7gM7v3tJCWV/qw7w+KeOlSHAhgF9RytFyifW6AF61hdT2ucrYhPq9hLs5JIryeupHV3qGk95dH9ow==}
 
   '@types/web-bluetooth@0.0.21':
     resolution: {integrity: sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA==}
@@ -4616,6 +4630,11 @@ snapshots:
     dependencies:
       css-tree: 3.1.0
 
+  '@capacitor-community/bluetooth-le@8.3.0(@capacitor/core@8.6.0)':
+    dependencies:
+      '@capacitor/core': 8.6.0
+      '@types/web-bluetooth': 0.0.20
+
   '@capacitor/android@8.6.0(@capacitor/core@8.6.0)':
     dependencies:
       '@capacitor/core': 8.6.0
@@ -5510,6 +5529,8 @@ snapshots:
   '@types/unist@3.0.3': {}
 
   '@types/w3c-web-serial@1.0.8': {}
+
+  '@types/web-bluetooth@0.0.20': {}
 
   '@types/web-bluetooth@0.0.21': {}
 

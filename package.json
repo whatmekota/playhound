@@ -27,6 +27,7 @@
     "postinstall": "npx simple-git-hooks"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "catalog:mobile",
     "@capacitor/core": "catalog:mobile",
     "@vueuse/core": "catalog:frontend",
     "buttplug": "catalog:frontend",

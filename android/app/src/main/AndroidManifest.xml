@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -23,7 +24,23 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- An OSR's USB chip plugged in: offer to open playhound, which
+                 also gives it access (usb/UsbSerialPlugin.kt). -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/usb_device_filter" />
+
         </activity>
+
+        <!-- Keeps playing and driving devices with the screen off
+             (session/SessionService.kt). -->
+        <service
+            android:name=".session.SessionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -43,4 +60,36 @@
          a dev server for live reload. Library folders need no storage
          permission: the folder picker grants each one. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Bluetooth LE (the Handy, heart-rate monitors), through
+         @capacitor-community/bluetooth-le. Android 12 and later ask for
+         "Nearby devices" only: scans are never used to find where the phone
+         is. Android 11 and older need Location for any Bluetooth scan. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+
+    <!-- The session service: a mediaPlayback foreground service with its
+         notification (asked for on Android 13+), a partial wake lock while
+         playing and a Wi-Fi lock while a network device is in use. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- USB OTG serial; not required, so phones without it can still install. -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
 </manifest>

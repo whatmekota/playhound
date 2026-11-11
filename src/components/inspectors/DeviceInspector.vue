@@ -18,10 +18,11 @@ import { axisOutput, useTCode } from '~/composables/useTCode'
 import { useTCodeNet } from '~/composables/useTCodeNet'
 import { toast } from '~/composables/useToast'
 import { useDeviceLatency } from '~/composables/useVideoSync'
+import { intifaceUrl, phoneIntifaceField } from '~/lib/android/intiface'
 import { webSerial } from '~/lib/browserApi'
 import { HANDY_OTA_URL } from '~/lib/handy'
 import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
-import { MISSING } from '~/lib/platform'
+import { isAndroidApp, MISSING } from '~/lib/platform'
 import { serialLog } from '~/lib/serialLog'
 import { VIBE_SOURCES } from '~/lib/vibeMap'
 import { useDeviceStore } from '~/stores/deviceStore'
@@ -167,7 +168,8 @@ watch(() => device.serialUp, (now, was) => {
 const serialSummary = computed(() => `${device.baudRate} baud · TCode ${device.tcodeVersion}`)
 
 // ─── Buttplug ─────────────────────────────────────────────────────────────────
-const bpUrl = ref(bp.serverUrl.value)
+// On the phone, Intiface runs on the PC: the desktop's localhost default means nothing there.
+const bpUrl = ref(isAndroidApp ? phoneIntifaceField(bp.serverUrl.value) : bp.serverUrl.value)
 const bpConnecting = ref(false)
 const bpEnabled = computed({
   get: () => bp.enabled.value,
@@ -175,9 +177,18 @@ const bpEnabled = computed({
 })
 
 async function connectBp() {
+  let url = bpUrl.value.trim() || 'ws://localhost:12345'
+  if (isAndroidApp) {
+    const r = intifaceUrl(bpUrl.value)
+    if (r.url === null) {
+      toast.error('Where is Intiface?', { detail: r.problem, key: 'bp' })
+      return
+    }
+    url = bpUrl.value = r.url
+  }
   bpConnecting.value = true
   try {
-    await bp.connect(bpUrl.value.trim() || 'ws://localhost:12345')
+    await bp.connect(url)
   }
   finally {
     bpConnecting.value = false
@@ -188,7 +199,12 @@ async function connectBp() {
       void bp.startScan()
   }
   else {
-    toast.error('Could not reach Intiface', { detail: `Is Intiface Central running with its server started at ${bpUrl.value}?`, key: 'bp' })
+    toast.error('Could not reach Intiface', {
+      detail: isAndroidApp
+        ? `Nothing answered at ${bpUrl.value}. Is Intiface Central's server started on the PC, set to listen on all network interfaces, and is the phone on the same Wi-Fi? A firewall on the PC may also be blocking port ${new URL(bpUrl.value).port || 12345}.`
+        : `Is Intiface Central running with its server started at ${bpUrl.value}?`,
+      key: 'bp',
+    })
   }
 }
 
@@ -399,7 +415,7 @@ const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
   }
   if (transport.value === 'serial') {
     if (connecting.value)
-      return { tone: 'info', label: 'Connecting…', detail: 'Pick the port in the browser dialog' }
+      return { tone: 'info', label: 'Connecting…', detail: isAndroidApp ? 'Pick the device in the list' : 'Pick the port in the browser dialog' }
     if (device.serialUp) {
       return device.deviceEnabled
         ? { tone: 'ok', label: 'Connected', detail: `${device.portPath || 'Serial port'} · ${serialSummary.value}` }
@@ -793,8 +809,8 @@ const logOpen = ref(false)
           <UiInput
             v-model="bpUrl"
             icon="i-carbon-network-3"
-            label="Intiface server"
-            placeholder="ws://localhost:12345"
+            :label="isAndroidApp ? 'Intiface on your PC' : 'Intiface server'"
+            :placeholder="isAndroidApp ? '192.168.1.20, your PC on the Wi-Fi' : 'ws://localhost:12345'"
             mono
             size="md"
             :disabled="bp.connected.value || bpConnecting"
@@ -824,6 +840,11 @@ const logOpen = ref(false)
             <span class="min-w-0 break-words">{{ bp.error.value }}</span>
           </div>
 
+          <p v-if="!bp.connected.value && isAndroidApp" class="hint">
+            Intiface Central runs on your PC and the phone reaches it over Wi-Fi. On the PC, in Intiface Central's
+            settings, turn on "Listen on all network interfaces" and start the server; then enter the PC's address
+            here (ipconfig on the PC shows it). Both must be on the same Wi-Fi. The toys stay connected to the PC.
+          </p>
           <p v-if="!bp.connected.value" class="hint">
             Open Intiface Central and press Start Server first. Linear strokers follow the stroke axis with its range;
             vibrators follow the script's speed by default — pick another source per toy once connected.

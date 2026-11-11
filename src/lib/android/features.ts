@@ -14,8 +14,6 @@ export const ANDROID_LATER: readonly { id: AnyViewId | null, label: string, why:
   { id: 'remote', label: 'Phone remote', why: 'the phone is the player now; hosting a remote needs the LAN server' },
   { id: 'face', label: 'CYD face', why: 'talks through the desktop app\'s relay' },
   { id: null, label: 'Streaming from file hosts and yt-dlp sites', why: 'needs the local proxy and yt-dlp' },
-  { id: null, label: 'Bluetooth: the Handy over Bluetooth, heart-rate monitors', why: 'the WebView has no Web Bluetooth; a native BLE plugin is next' },
-  { id: null, label: 'USB serial (OSR over USB OTG)', why: 'the WebView has no Web Serial; a native USB plugin is next' },
   { id: null, label: 'Plugins with web views, the LAN server for plugins', why: 'desktop app only' },
   { id: null, label: 'Saving scripts and downloads into library folders', why: 'read-only for now; "Save as" still works' },
 ]

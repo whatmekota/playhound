@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AddYoutubeModal: typeof import('./src/components/views/AddYoutubeModal.vue')['default']
+    AndroidDevices: typeof import('./src/components/shell/AndroidDevices.vue')['default']
     AndroidStatus: typeof import('./src/components/shell/AndroidStatus.vue')['default']
     AppNav: typeof import('./src/components/shell/AppNav.vue')['default']
     AudioSlideshow: typeof import('./src/components/player/AudioSlideshow.vue')['default']

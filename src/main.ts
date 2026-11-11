@@ -1,3 +1,4 @@
+import { isAndroidApp } from './lib/android/detect'
 import { runMigrations } from './lib/persist'
 
 import './styles/main.css'
@@ -9,4 +10,15 @@ import 'uno.css'
 // several read their keys at import time — so the app itself is imported only
 // once migrations have run.
 runMigrations()
-void import('./bootstrap').then(m => m.mount())
+if (isAndroidApp) {
+  // Bluetooth and USB serial through native plugins, on navigator before
+  // anything that looks for them there is imported.
+  void import('./lib/android/shims')
+    .then(m => m.installNativeShims())
+    .catch(err => console.error('[android] device shims', err))
+    .then(() => import('./bootstrap'))
+    .then(m => m.mount())
+}
+else {
+  void import('./bootstrap').then(m => m.mount())
+}

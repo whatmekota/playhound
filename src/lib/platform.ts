@@ -23,15 +23,16 @@ export { isAndroidApp }
 /**
  * Where a browser feature is missing, what to say about it, worded for where
  * playhound runs. The Android WebView has neither Web Bluetooth nor Web
- * Serial; the app will reach both through native plugins later.
+ * Serial; the app puts its own on navigator (android/shims.ts), so there
+ * these only show if that failed.
  */
 export const MISSING = isAndroidApp
   ? {
-      bluetooth: 'Bluetooth is coming to the Android app. Until then the Handy works over WiFi.',
-      bluetoothShort: 'Coming to the Android app',
-      heartRate: 'Heart-rate monitors (Bluetooth) are coming to the Android app.',
-      serial: 'USB devices (OSR over USB OTG) are coming to the Android app. Use TCode over the network, or the Handy over WiFi.',
-      serialShort: 'USB is coming to the Android app',
+      bluetooth: 'Bluetooth did not start in the app. Close playhound and open it again; the Handy also works over WiFi.',
+      bluetoothShort: 'Bluetooth did not start: reopen the app',
+      heartRate: 'Bluetooth did not start in the app. Close playhound and open it again.',
+      serial: 'USB did not start in the app. Close playhound and open it again, or use TCode over the network.',
+      serialShort: 'USB did not start: reopen the app',
       streaming: 'Streaming from file hosts is coming to the Android app.',
     }
   : {

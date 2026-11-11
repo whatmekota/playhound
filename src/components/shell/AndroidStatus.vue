@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
+import { refreshSessionStatus, sessionStatus } from '~/composables/useAndroidSession'
 import { toast } from '~/composables/useToast'
 import { buildCrashReport, clearCrashReports, pageErrors } from '~/lib/android/crashReport'
 import { ANDROID_LATER } from '~/lib/android/features'
 import { getMediaBase } from '~/lib/android/nativeFile'
+import { PhSession } from '~/lib/android/session'
 
 /**
  * Settings → Android app: what this phone's WebView can do, checked live,
@@ -61,6 +63,71 @@ async function folders(): Promise<Check> {
   }
 }
 
+async function bluetooth(): Promise<Check[]> {
+  if (!(navigator as any).bluetooth)
+    return [{ label: 'Bluetooth', value: 'did not start', ok: false }]
+  try {
+    const { blePermitted, bleEnabled } = await import('~/lib/android/ble')
+    if (!(await blePermitted()))
+      return [{ label: 'Bluetooth', value: 'not allowed yet: asked the first time you connect a Bluetooth device', ok: null }]
+    const on = await bleEnabled()
+    return [{ label: 'Bluetooth', value: on === false ? 'allowed, but Bluetooth is off' : 'allowed, on', ok: on !== false }]
+  }
+  catch (err) {
+    return [{ label: 'Bluetooth', value: `not answering: ${(err as Error).message}`, ok: false }]
+  }
+}
+
+async function usb(): Promise<Check[]> {
+  try {
+    const { usbLabel, usbStatus } = await import('~/lib/android/serial')
+    const { host, devices, others } = await usbStatus()
+    const names = devices.map(d => `${usbLabel(d).name}${d.permitted ? '' : ' (not allowed yet)'}`)
+    return [
+      { label: 'USB OTG (host)', value: host ? 'yes' : 'this phone says no', ok: host },
+      { label: 'USB serial devices', value: names.length ? names.join(', ') : others ? `none (${others} other USB device${others === 1 ? '' : 's'})` : 'none plugged in', ok: null },
+    ]
+  }
+  catch (err) {
+    return [{ label: 'USB serial', value: `not answering: ${(err as Error).message}`, ok: false }]
+  }
+}
+
+async function session(): Promise<Check[]> {
+  const st = await refreshSessionStatus()
+  if (!st)
+    return [{ label: 'Background service', value: 'not answering', ok: false }]
+  return [
+    { label: 'Background service', value: st.error ? `could not start: ${st.error}` : st.running ? 'running' : 'idle (starts when a device connects or something plays)', ok: st.error ? false : null },
+    { label: 'Keeps running with the screen off', value: st.webViewKept ? 'yes' : 'no: the app WebView is not in place', ok: st.webViewKept },
+    { label: 'Notifications (Panic button)', value: st.notifications ? 'allowed' : 'off: the Panic button will not show', ok: st.notifications },
+    { label: 'Battery', value: st.batteryUnrestricted ? 'unrestricted' : 'optimised: some phones stop apps in the background anyway', ok: st.batteryUnrestricted ? true : null },
+  ]
+}
+
+async function allowNotifications() {
+  const st = sessionStatus.value
+  try {
+    if (st && st.sdk >= 33 && !st.notifications)
+      await PhSession.requestNotifications()
+    await refreshSessionStatus()
+    if (!sessionStatus.value?.notifications)
+      await PhSession.openNotificationSettings()
+  }
+  catch {
+    toast.error('Could not open the notification settings')
+  }
+}
+
+async function batterySettings() {
+  try {
+    await PhSession.openBatterySettings()
+  }
+  catch {
+    toast.error('Could not open the battery settings')
+  }
+}
+
 function webgl(): boolean {
   try {
     return !!document.createElement('canvas').getContext('webgl2')
@@ -89,8 +156,9 @@ async function run() {
     { label: 'HEVC', value: yes(canPlay('video/mp4; codecs="hvc1.1.6.L120.90"')), ok: null },
     { label: 'VP9', value: yes(canPlay('video/webm; codecs="vp9"')), ok: null },
     { label: 'AV1', value: yes(canPlay('video/mp4; codecs="av01.0.08M.08"')), ok: null },
-    { label: 'Web Bluetooth', value: yes(!!(navigator as any).bluetooth), ok: null },
-    { label: 'Web Serial', value: yes('serial' in navigator), ok: null },
+    ...await bluetooth(),
+    ...await usb(),
+    ...await session(),
   ]
   checks.value = list
   running.value = false
@@ -121,7 +189,8 @@ async function copy() {
 <template>
   <div class="flex flex-col gap-5">
     <p class="hint">
-      The Android app is new: phase 1. Library folders, playback with scripts and the Handy over WiFi are in; the rest
+      The Android app is new. Library folders, playback with scripts, the Handy over WiFi or Bluetooth, an OSR on a USB
+      OTG cable, heart-rate monitors, Intiface on your PC over Wi-Fi and playing with the screen off are in; the rest
       follows as native pieces arrive.
     </p>
 
@@ -146,6 +215,25 @@ async function copy() {
           <span class="text-fg-muted flex-1">{{ c.label }}</span>
           <span class="text-fg text-right max-w-[60%] break-words">{{ c.value }}</span>
         </div>
+      </div>
+    </section>
+
+    <section class="flex flex-col gap-2">
+      <span class="eyebrow">Screen off</span>
+      <p class="hint">
+        While a device is connected or something plays, playhound keeps running behind its notification, which has a
+        Panic button (the same as Esc). Closing the app from the recent apps panics too. If the phone stops it anyway
+        (some brands do, to save battery), set playhound's battery use to Unrestricted. The Handy over WiFi plays the
+        script on its own clock and keeps time even then; USB, Bluetooth, Intiface and TCode over the network need the
+        app awake.
+      </p>
+      <div class="flex flex-wrap gap-1">
+        <UiButton v-if="sessionStatus && !sessionStatus.notifications" size="xs" icon="i-carbon-notification" @click="allowNotifications">
+          Allow notifications
+        </UiButton>
+        <UiButton size="xs" icon="i-carbon-battery-charging" @click="batterySettings">
+          Battery settings
+        </UiButton>
       </div>
     </section>
 

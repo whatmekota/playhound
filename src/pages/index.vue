@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ShellAction } from '~/lib/hotkeys'
-import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import OsrEmulator from '~/components/device/OsrEmulator.vue'
 import ScriptEditor from '~/components/editor/ScriptEditor.vue'
 import UnsavedEditsModal from '~/components/editor/UnsavedEditsModal.vue'
@@ -72,6 +72,9 @@ import { useSubtitleStore } from '~/stores/subtitleStore'
 import { useUiStore } from '~/stores/uiStore'
 
 defineOptions({ name: 'IndexPage' })
+
+// The Android app's device picker and session service: its own chunk, never loaded elsewhere.
+const AndroidDevices = isAndroidApp ? defineAsyncComponent(() => import('~/components/shell/AndroidDevices.vue')) : null
 
 const ui = useUiStore()
 const player = usePlayerStore()
@@ -604,6 +607,9 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     </Transition>
 
     <PanicCover v-if="safety.panicked" @resume="resumePanic" />
+
+    <!-- Android: the Bluetooth / USB device picker and the session service -->
+    <component :is="AndroidDevices" v-if="AndroidDevices" />
   </div>
 </template>
 

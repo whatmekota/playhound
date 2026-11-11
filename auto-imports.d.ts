@@ -159,6 +159,7 @@ declare global {
   const refWithControl: typeof import('@vueuse/core').refWithControl
   const refreshNetProxy: typeof import('./src/composables/useNetProxy').refreshNetProxy
   const refreshSaved: typeof import('./src/composables/useSavedPosts').refreshSaved
+  const refreshSessionStatus: typeof import('./src/composables/useAndroidSession').refreshSessionStatus
   const refreshYtdlp: typeof import('./src/composables/useStreams').refreshYtdlp
   const releaseToast: typeof import('./src/composables/useToast').releaseToast
   const remoteRoom: typeof import('./src/composables/useRemoteLink').remoteRoom
@@ -173,6 +174,7 @@ declare global {
   const scaleTapTempo: typeof import('./src/composables/useVideoBeat').scaleTapTempo
   const scriptAnalysisKey: typeof import('./src/composables/useScriptAnalysis').scriptAnalysisKey
   const sessionNotice: typeof import('./src/composables/useSessionActions').sessionNotice
+  const sessionStatus: typeof import('./src/composables/useAndroidSession').sessionStatus
   const setAxisTap: typeof import('./src/composables/useTCode').setAxisTap
   const setEmuInstance: typeof import('./src/composables/useTCode').setEmuInstance
   const setEmuRef: typeof import('./src/composables/useTCode').setEmuRef
@@ -213,6 +215,7 @@ declare global {
   const unrefElement: typeof import('@vueuse/core').unrefElement
   const until: typeof import('@vueuse/core').until
   const useActiveElement: typeof import('@vueuse/core').useActiveElement
+  const useAndroidSession: typeof import('./src/composables/useAndroidSession').useAndroidSession
   const useAnimate: typeof import('@vueuse/core').useAnimate
   const useAnyDevice: typeof import('./src/composables/useAnyDevice').useAnyDevice
   const useArrayDifference: typeof import('@vueuse/core').useArrayDifference
@@ -686,6 +689,7 @@ declare module 'vue' {
     readonly refWithControl: UnwrapRef<typeof import('@vueuse/core')['refWithControl']>
     readonly refreshNetProxy: UnwrapRef<typeof import('./src/composables/useNetProxy')['refreshNetProxy']>
     readonly refreshSaved: UnwrapRef<typeof import('./src/composables/useSavedPosts')['refreshSaved']>
+    readonly refreshSessionStatus: UnwrapRef<typeof import('./src/composables/useAndroidSession')['refreshSessionStatus']>
     readonly refreshYtdlp: UnwrapRef<typeof import('./src/composables/useStreams')['refreshYtdlp']>
     readonly releaseToast: UnwrapRef<typeof import('./src/composables/useToast')['releaseToast']>
     readonly remoteRoom: UnwrapRef<typeof import('./src/composables/useRemoteLink')['remoteRoom']>
@@ -700,6 +704,7 @@ declare module 'vue' {
     readonly scaleTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['scaleTapTempo']>
     readonly scriptAnalysisKey: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['scriptAnalysisKey']>
     readonly sessionNotice: UnwrapRef<typeof import('./src/composables/useSessionActions')['sessionNotice']>
+    readonly sessionStatus: UnwrapRef<typeof import('./src/composables/useAndroidSession')['sessionStatus']>
     readonly setAxisTap: UnwrapRef<typeof import('./src/composables/useTCode')['setAxisTap']>
     readonly setEmuInstance: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuInstance']>
     readonly setEmuRef: UnwrapRef<typeof import('./src/composables/useTCode')['setEmuRef']>
@@ -740,6 +745,7 @@ declare module 'vue' {
     readonly unrefElement: UnwrapRef<typeof import('@vueuse/core')['unrefElement']>
     readonly until: UnwrapRef<typeof import('@vueuse/core')['until']>
     readonly useActiveElement: UnwrapRef<typeof import('@vueuse/core')['useActiveElement']>
+    readonly useAndroidSession: UnwrapRef<typeof import('./src/composables/useAndroidSession')['useAndroidSession']>
     readonly useAnimate: UnwrapRef<typeof import('@vueuse/core')['useAnimate']>
     readonly useAnyDevice: UnwrapRef<typeof import('./src/composables/useAnyDevice')['useAnyDevice']>
     readonly useArrayDifference: UnwrapRef<typeof import('@vueuse/core')['useArrayDifference']>
