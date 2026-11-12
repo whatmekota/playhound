@@ -121,7 +121,7 @@ const eroscriptsApi = winState
 const popoutListeners = new Set()
 if (winState) {
   ipcRenderer.on('ph:popout:state', (_event, s) => {
-    const state = { clickThrough: !!s?.clickThrough, shortcut: typeof s?.shortcut === 'string' ? s.shortcut : null }
+    const state = { clickThrough: !!s?.clickThrough, shortcut: typeof s?.shortcut === 'string' ? s.shortcut : null, fullScreen: !!s?.fullScreen }
     for (const cb of popoutListeners) {
       try {
         cb(state)
@@ -134,7 +134,7 @@ if (winState) {
 }
 const popoutApi = winState
   ? Object.freeze({
-      /** { opacity, clickThrough, hidden, aspect }, any subset. */
+      /** { opacity, clickThrough, hidden, aspect, fullScreen, display }, any subset; `display` goes with fullScreen. */
       set: (opts) => {
         const o = {}
         if (typeof opts?.opacity === 'number')
@@ -145,9 +145,15 @@ const popoutApi = winState
           o.hidden = opts.hidden
         if (typeof opts?.aspect === 'number')
           o.aspect = opts.aspect
+        if (typeof opts?.fullScreen === 'boolean')
+          o.fullScreen = opts.fullScreen
+        if (typeof opts?.display === 'number')
+          o.display = opts.display
         ipcRenderer.send('ph:popout', o)
       },
-      /** Calls `cb({ clickThrough, shortcut })` when the global key flips it; returns an unsubscribe. */
+      /** The screens: [{ id, label, size, primary, current }] (current: the one the pop-out is on). */
+      displays: () => ipcRenderer.invoke('ph:popout:displays'),
+      /** Calls `cb({ clickThrough, shortcut, fullScreen })` when one changes; returns an unsubscribe. */
       onState: (cb) => {
         if (typeof cb !== 'function')
           return () => {}

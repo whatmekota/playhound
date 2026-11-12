@@ -467,6 +467,20 @@ export interface DesktopPopoutState {
   clickThrough: boolean
   /** The global key that toggles click-through, as the cheat sheet writes it; null if taken. */
   shortcut: string | null
+  /** The window fills its screen. Absent before 2.2.2. */
+  fullScreen?: boolean
+}
+
+/** A screen the pop-out can fill. */
+export interface DesktopDisplay {
+  id: number
+  /** The monitor's name, when the system gives one; "Screen 2" otherwise. */
+  label: string
+  /** "2560 × 1440". */
+  size: string
+  primary: boolean
+  /** The pop-out is on it. */
+  current: boolean
 }
 
 /**
@@ -483,8 +497,14 @@ export interface DesktopPopout {
     hidden?: boolean
     /** The video's width / height, to keep the window that shape. */
     aspect?: number
+    /** Fill the screen (ignored before 2.2.2). */
+    fullScreen?: boolean
+    /** With fullScreen: which screen, by DesktopDisplay.id; the one it is on otherwise. */
+    display?: number
   }) => void
-  /** Click-through changed from the global key; returns an unsubscribe. */
+  /** The screens there are. Absent before 2.2.2. */
+  displays?: () => Promise<DesktopDisplay[]>
+  /** Click-through or full screen changed; returns an unsubscribe. */
   onState: (cb: (s: DesktopPopoutState) => void) => () => void
 }
 

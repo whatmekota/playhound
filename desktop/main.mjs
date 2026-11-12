@@ -421,6 +421,22 @@ async function boot() {
       popout.showInactive()
     if (typeof o?.aspect === 'number' && Number.isFinite(o.aspect) && o.aspect > 0.2 && o.aspect < 5)
       fitPopout(o.aspect)
+    if (typeof o?.fullScreen === 'boolean')
+      setPopoutFullScreen(o.fullScreen, typeof o.display === 'number' ? o.display : null)
+  })
+  // The screens the pop-out can fill, for "Full screen on …" when there are several.
+  ipcMain.handle('ph:popout:displays', (event) => {
+    if (!fromMainWindow(event))
+      return []
+    const here = popout && !popout.isDestroyed() ? screen.getDisplayMatching(popout.getBounds()).id : null
+    const primary = screen.getPrimaryDisplay().id
+    return screen.getAllDisplays().map((d, i) => ({
+      id: d.id,
+      label: d.label || `Screen ${i + 1}`,
+      size: `${d.size.width} × ${d.size.height}`,
+      primary: d.id === primary,
+      current: d.id === here,
+    }))
   })
   // Plugins' fetch(), so local servers without CORS headers answer.
   setupNetBridge(ipcMain, fromMainWindow)
@@ -618,8 +634,37 @@ function popoutWindowOptions() {
 }
 
 function pushPopoutState() {
+  const fullScreen = !!popout && !popout.isDestroyed() && popout.isFullScreen()
   if (win && !win.isDestroyed())
-    win.webContents.send('ph:popout:state', { clickThrough: popoutClickThrough, shortcut: popoutShortcut })
+    win.webContents.send('ph:popout:state', { clickThrough: popoutClickThrough, shortcut: popoutShortcut, fullScreen })
+}
+
+/** The video's shape, kept while full screen (which has the screen's) to put back after. */
+let popoutAspect = 0
+
+/**
+ * Full screen on a screen of its own, while the main window stays usable on
+ * another. `displayId`: move to that screen first; otherwise the screen the
+ * pop-out is on (where the user dragged it).
+ */
+function setPopoutFullScreen(on, displayId) {
+  if (!popout || popout.isDestroyed() || on === popout.isFullScreen())
+    return
+  if (!on) {
+    popout.setFullScreen(false)
+    return
+  }
+  const target = displayId === null ? null : screen.getAllDisplays().find(d => d.id === displayId)
+  if (target && screen.getDisplayMatching(popout.getBounds()).id !== target.id) {
+    const b = popout.getBounds()
+    const a = target.workArea
+    const width = Math.min(b.width, a.width)
+    const height = Math.min(b.height, a.height)
+    popout.setBounds({ x: Math.round(a.x + (a.width - width) / 2), y: Math.round(a.y + (a.height - height) / 2), width, height })
+  }
+  // A window held to the video's shape cannot take the screen's.
+  popout.setAspectRatio(0)
+  popout.setFullScreen(true)
 }
 
 function setPopoutClickThrough(on) {
@@ -632,6 +677,9 @@ function setPopoutClickThrough(on) {
 
 /** Keep the window the video's shape, growing or shrinking its height. */
 function fitPopout(ratio) {
+  popoutAspect = ratio
+  if (popout.isFullScreen())
+    return
   popout.setAspectRatio(ratio)
   const b = popout.getBounds()
   const height = Math.round(b.width / ratio)
@@ -650,6 +698,12 @@ function adoptPopout(child) {
   if (!popoutShortcut && globalShortcut.register(POPOUT_KEY, () => setPopoutClickThrough(!popoutClickThrough)))
     popoutShortcut = POPOUT_KEY_LABEL
   pushPopoutState()
+  child.on('enter-full-screen', pushPopoutState)
+  child.on('leave-full-screen', () => {
+    if (popout === child && popoutAspect)
+      fitPopout(popoutAspect)
+    pushPopoutState()
+  })
   child.on('close', () => {
     if (!child.isFullScreen()) {
       state.popoutBounds = child.getBounds()
