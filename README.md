@@ -100,7 +100,9 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
 - **Pop-out player.** **O** puts the video in a small window that stays on
   top of other apps, with the device still in sync. In the desktop app it can
   be made see-through and let clicks pass to the window underneath, so it can
-  sit over a game.
+  sit over a game. It can also fill a screen of its own (its full screen
+  button, **F**, **F11** or a double-click; **Esc** leaves) while the main
+  window shows the library or playlists on another.
 - **VR too.** Side-by-side VR plays in a look-around view: 180°, 190° and 200°,
   equirectangular or fisheye.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
@@ -258,6 +260,8 @@ remote relay in-process and serves the app on your LAN so the phone can reach
 it. It also:
 
 - remembers the library folder without the browser's "reconnect" click
+- sees new and removed videos in the library as they happen (a browser checks
+  once a minute while nothing plays), and has **Show in folder** on each video
 - skips the serial-port chooser when there's only one port
 - keeps running at full speed while hidden
 
@@ -462,7 +466,9 @@ it full screen on your second display, and it needs no relay or setup.
   inside playhound, so install only ones you trust.
 - **Library:** one folder or several (a collection split across drives),
   search (`tag:name` and `type:audio` too), filter chips and tags, sort by folder, script intensity and speed sparklines,
-  hover-scrub previews, and an **auto-director** that picks the next video
+  hover-scrub previews, watching for new videos (a switch in the library's
+  menu, remembered), **+** over the playing video to put it in a playlist, and
+  an **auto-director** that picks the next video
   to suit the moment (and, if you switch it on, leans towards videos you
   finish to). Audio files with a script are listed with an **Audio**
   badge and chip, and their embedded cover (or a picture of the script) as the
