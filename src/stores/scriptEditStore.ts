@@ -9,6 +9,7 @@ import { fileHandleOf } from '~/lib/browserApi'
 import { stringifyFunscript, writeAxes } from '~/lib/funscriptWrite'
 import { setLeaveGuard } from '~/lib/leaveGuard'
 import { KEYS } from '~/lib/persist'
+import { isAndroidApp } from '~/lib/platform'
 import {
   cleanSelection,
   deletePoints,
@@ -186,6 +187,9 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
 
   // ─── Opening ────────────────────────────────────────────────────────────
   function openEditor(ch?: string) {
+    // Not in the Android app: a point editor wants a mouse and a big screen.
+    if (isAndroidApp)
+      return
     const pick = (ch && editable.value.find(s => s.channel === ch)) || target.value || editable.value[0]
     if (!pick) {
       toast('Load a script to edit it', { icon: 'i-carbon-chart-line', key: 'edit' })

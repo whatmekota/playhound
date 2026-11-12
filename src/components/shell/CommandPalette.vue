@@ -11,6 +11,7 @@ import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
 import { offeredHere } from '~/lib/android/features'
 import { plural } from '~/lib/entryInfo'
+import { isAndroidApp } from '~/lib/platform'
 import { formatTime } from '~/lib/time'
 import { ALL_VIEWS } from '~/lib/views'
 import { kbdKeys } from '~/plugins/shortcuts'
@@ -160,7 +161,7 @@ const commands = computed<Item[]>(() => {
     { id: 'cmd:open-file', kind: 'command', label: 'Open video or audio file…', icon: 'i-carbon-document-video', keywords: 'file open single audio mp3', run: () => emit('openFile') },
     library.needsReconnect && !!library.savedFolderName && { id: 'cmd:reconnect', kind: 'command', label: `Reconnect “${library.savedFolderName}”`, icon: 'i-carbon-connect', keywords: 'folder permission restore library', run: () => void library.reconnect() },
     library.isWatching && { id: 'cmd:rescan', kind: 'command', label: 'Rescan library folder', icon: 'i-carbon-renew', keywords: 'refresh reload scan', run: () => void library.rescan() },
-    scripts.hasScripts && { id: 'cmd:edit-script', kind: 'command', label: scriptEdit.open ? 'Close the script editor' : 'Edit script', hint: 'Move, add and delete points', icon: 'i-carbon-edit', keywords: 'editor points funscript change fix', run: () => {
+    !isAndroidApp && scripts.hasScripts && { id: 'cmd:edit-script', kind: 'command', label: scriptEdit.open ? 'Close the script editor' : 'Edit script', hint: 'Move, add and delete points', icon: 'i-carbon-edit', keywords: 'editor points funscript change fix', run: () => {
       if (scriptEdit.open)
         return void scriptEdit.closeEditor()
       ui.openView('player')

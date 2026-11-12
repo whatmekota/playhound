@@ -8,6 +8,7 @@ import { useSoundtrack } from '~/composables/useSoundtrack'
 import { toast } from '~/composables/useToast'
 import { AXIS_PRIORITY } from '~/lib/axisMap'
 import { openScriptFiles, splitPickedScripts } from '~/lib/browserApi'
+import { isAndroidApp } from '~/lib/platform'
 import { meanSpeedToIntensity } from '~/lib/scriptIntensity'
 import { describeTweaks } from '~/lib/scriptTweaks'
 import { formatTime } from '~/lib/time'
@@ -317,7 +318,7 @@ const tuning = ref<string | null>(null)
           </UiBadge>
           <div class="ml-auto flex gap-0.5 items-center">
             <UiIconButton
-              v-if="g.active"
+              v-if="g.active && !isAndroidApp"
               icon="i-carbon-edit"
               label="Edit points"
               size="xs"
