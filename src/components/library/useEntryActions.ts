@@ -12,6 +12,19 @@ import { useUiStore } from '~/stores/uiStore'
 
 export interface CtxMenu { x: number, y: number, items: MenuItem[] }
 
+/** Show a video's file in Explorer / Finder (the desktop app; see libraryStore.canReveal). */
+export async function showInFolder(entry: VideoEntry) {
+  if (!await useLibraryStore().reveal(entry))
+    toast.error('Could not find the file', { detail: entry.name })
+}
+
+/** The "Show in folder" menu item, for a video it can find. */
+export function showInFolderItem(entry: VideoEntry | null | undefined): MenuItem[] {
+  return entry && useLibraryStore().canReveal(entry)
+    ? [{ label: 'Show in folder', icon: 'i-carbon-folder-move-to', run: () => void showInFolder(entry) }]
+    : []
+}
+
 /**
  * What can be done to one or more library videos: star, queue, add to a
  * playlist, tag, edit info. Each list owns one of these, and renders its
@@ -158,6 +171,7 @@ export function useEntryActions(opts: {
         { separator: true },
         { label: 'Info & tags…', icon: 'i-carbon-tag-edit', run: () => (infoEntry.value = one) },
         { label: 'Copy file name', icon: 'i-carbon-copy', run: () => void copyName(one) },
+        ...showInFolderItem(one),
       )
       if (one.hasScript)
         items.push({ label: 'Share card…', icon: 'i-carbon-image', run: () => (ui.shareCard = { kind: 'entry', entry: one }) })

@@ -37,6 +37,7 @@ import { useUiStore } from '~/stores/uiStore'
 import EdgeBadge from './EdgeBadge.vue'
 import ExternalPlaybackCard from './ExternalPlaybackCard.vue'
 import FunscriptTimeline from './FunscriptTimeline.vue'
+import NowPlayingActions from './NowPlayingActions.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import SbsViewer from './SbsViewer.vue'
 import SubtitleText from './SubtitleText.vue'
@@ -404,9 +405,12 @@ function onPointerLeave() {
   awake.value = false
 }
 
+/** A menu over the title (add to playlist, more) or a dialog from one is open. */
+const menusBusy = ref(false)
+
 const chromeVisible = computed(() =>
   hasVideo.value && !isMini.value
-  && (awake.value || overChrome.value || !player.isPlaying || fsMenu.value !== null || !!upNext.value))
+  && (awake.value || overChrome.value || !player.isPlaying || fsMenu.value !== null || !!upNext.value || menusBusy.value))
 /** The pop-out's own bars, outside fullscreen. They show with no video too, to close it by. */
 const popChrome = computed(() => popped.value && !player.isFullscreen
   && (awake.value || overChrome.value || !player.isPlaying || !hasVideo.value))
@@ -1292,6 +1296,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                 :class="playback.currentEntry.starred ? '!text-warn' : ''"
                 @click="toggleStar"
               />
+              <!-- Menus open over <body>, which fullscreen does not show. -->
+              <NowPlayingActions v-if="playback.currentEntry && !player.isFullscreen" v-model:busy="menusBusy" :entry="playback.currentEntry" />
               <UiIconButton
                 icon="i-carbon-popup"
                 label="Pop out — a small window that stays on top"

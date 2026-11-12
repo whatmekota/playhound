@@ -3,6 +3,7 @@ import type { TagCount } from '~/lib/tags'
 import type { AnyViewId } from '~/lib/views'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, nextTick, ref, watch } from 'vue'
+import { showInFolder } from '~/components/library/useEntryActions'
 import { filterLibraryByTag, useLibraryTags } from '~/components/library/useLibraryTags'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import { AUDIO_VISUALS, useAudioVisual } from '~/composables/useAudioVisual'
@@ -158,7 +159,8 @@ const commands = computed<Item[]>(() => {
     { id: 'cmd:open-folder', kind: 'command', label: has ? 'Switch folder…' : 'Open folder…', icon: 'i-carbon-folder-add', keywords: 'library directory open browse', run: () => void openFolder() },
     { id: 'cmd:open-file', kind: 'command', label: 'Open video or audio file…', icon: 'i-carbon-document-video', keywords: 'file open single audio mp3', run: () => emit('openFile') },
     library.needsReconnect && !!library.savedFolderName && { id: 'cmd:reconnect', kind: 'command', label: `Reconnect “${library.savedFolderName}”`, icon: 'i-carbon-connect', keywords: 'folder permission restore library', run: () => void library.reconnect() },
-    library.isWatching && { id: 'cmd:rescan', kind: 'command', label: 'Rescan library folder', icon: 'i-carbon-renew', keywords: 'refresh reload scan', run: () => void library.rescan() },
+    library.hasVideos && library.folders.length > 0 && { id: 'cmd:rescan', kind: 'command', label: 'Rescan library folder', icon: 'i-carbon-renew', keywords: 'refresh reload scan', run: () => void library.rescan() },
+    !!current && library.canReveal(current) && { id: 'cmd:show-in-folder', kind: 'command', label: 'Show the playing video in its folder', icon: 'i-carbon-folder-move-to', keywords: 'explorer finder open location file reveal', run: () => void showInFolder(current) },
     scripts.hasScripts && { id: 'cmd:edit-script', kind: 'command', label: scriptEdit.open ? 'Close the script editor' : 'Edit script', hint: 'Move, add and delete points', icon: 'i-carbon-edit', keywords: 'editor points funscript change fix', run: () => {
       if (scriptEdit.open)
         return void scriptEdit.closeEditor()
