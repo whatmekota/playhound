@@ -45,17 +45,29 @@ function originOf(url) {
  * @param {string} opts.origin  The app's origin, e.g. http://localhost:6969
  * @param {() => string | undefined} opts.lastPort  portName picked last time
  * @param {(portName: string) => void} opts.rememberPort
+ * @param {(path: string) => void} [opts.onFolder]  A folder the page was given (picked, or restored).
  */
-export function setupDevices(ses, { origin, lastPort, rememberPort }) {
+export function setupDevices(ses, { origin, lastPort, rememberPort, onFolder }) {
   const ours = url => originOf(url) === origin
 
   // Every permission check goes through here once a handler is set — including
   // the File System Access grant on a handle restored from IndexedDB. Saying
   // yes for our origin is what lets the remembered library folder come back at
   // startup without the "reconnect" click the browser needs.
-  ses.setPermissionCheckHandler((_wc, _permission, requestingOrigin) => ours(requestingOrigin))
+  //
+  // A folder's check also says where it is on disk, which the page itself
+  // cannot learn from a handle: that is how the library's folders get found
+  // for watching and Show in folder (desktop/libfiles.mjs).
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin, details) => {
+    const yes = ours(requestingOrigin)
+    if (yes && permission === 'fileSystem' && details?.isDirectory && details.filePath)
+      onFolder?.(details.filePath)
+    return yes
+  })
 
-  ses.setPermissionRequestHandler((wc, _permission, callback, details) => {
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+    if (permission === 'fileSystem' && details?.isDirectory && details.filePath && ours(details.requestingUrl || wc?.getURL() || ''))
+      onFolder?.(details.filePath)
     callback(ours(details.requestingUrl || wc?.getURL() || ''))
   })
 

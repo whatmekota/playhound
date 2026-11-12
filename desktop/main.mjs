@@ -7,6 +7,7 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, sess
 import { startProxy } from '../es-proxy.mjs'
 import { setupBluetooth, setupDevices } from './devices.mjs'
 import { setupDevPlugins } from './devplugins.mjs'
+import { setupLibraryFiles } from './libfiles.mjs'
 import { setupNetBridge } from './netbridge.mjs'
 import { setupNetSockets } from './netsocket.mjs'
 import { createPluginHttp } from './pluginhttp.mjs'
@@ -133,6 +134,8 @@ let webviews = null
 let sockets = null
 /** Plugins' addresses on the LAN server (desktop/pluginhttp.mjs); made at boot. */
 let pluginHttp = null
+/** The library's folders on disk, watched (desktop/libfiles.mjs); made at boot. */
+let libFiles = null
 
 /** The pop-out player's window (see popout below), while it is open. */
 let popout = null
@@ -315,6 +318,7 @@ async function boot() {
       state.serialPort = name
       saveState()
     },
+    onFolder: p => libFiles?.folder(p),
   })
 
   ipcMain.on('ph:info', (event) => {
@@ -381,6 +385,8 @@ async function boot() {
     }
     return { failed }
   })
+  // The library's folders: watched for new and removed videos, and Show in folder.
+  libFiles = setupLibraryFiles({ ipcMain, allowed: fromMainWindow, window: () => win, shell })
   ipcMain.handle('ph:es:status', async event => (fromMainWindow(event) ? { signedIn: await esSignedIn() } : null))
   ipcMain.handle('ph:es:login', (event) => {
     if (fromMainWindow(event))
@@ -719,6 +725,7 @@ function createWindow(url) {
   win.on('closed', () => {
     webviews?.destroyAll()
     sockets?.closeAll()
+    libFiles?.reset()
     win = null
   })
 
@@ -816,6 +823,7 @@ function createWindow(url) {
     webviews?.destroyAll()
     sockets?.closeAll()
     pluginHttp?.reset()
+    libFiles?.reset()
   })
 
   win.loadURL(url).catch((err) => {

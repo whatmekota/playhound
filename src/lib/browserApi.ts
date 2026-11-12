@@ -170,6 +170,40 @@ export async function collectHandleFiles(dirHandle: any, prefix: string = dirHan
   return files
 }
 
+/**
+ * What is at one path under a folder now (`rel`, '/'-separated): the file,
+ * every file in it when it is a folder, or nothing when it is gone. Paths are
+ * recorded under `label`, as collectHandleFiles does.
+ */
+export async function readPath(root: FileSystemDirectoryHandle, label: string, rel: string): Promise<File[]> {
+  const parts = rel.split('/')
+  const name = parts.pop()!
+  let dir = root
+  try {
+    for (const p of parts)
+      dir = await dir.getDirectoryHandle(p)
+  }
+  catch {
+    return []
+  }
+  const path = `${label}/${rel}`
+  try {
+    const f = await (await dir.getFileHandle(name)).getFile()
+    filePaths.set(f, path)
+    return [f]
+  }
+  catch (err) {
+    if ((err as DOMException | null)?.name !== 'TypeMismatchError')
+      return []
+  }
+  try {
+    return await collectHandleFiles(await dir.getDirectoryHandle(name), path)
+  }
+  catch {
+    return []
+  }
+}
+
 /** The browser's folder picker alone. Null when cancelled or unavailable. */
 export async function pickDirectory(): Promise<FileSystemDirectoryHandle | null> {
   if (!('showDirectoryPicker' in window))
@@ -306,6 +340,16 @@ export interface DesktopTcode {
 export interface DesktopFiles {
   pathOf: (file: File) => string
   trash: (paths: string[]) => Promise<{ failed: { path: string, error: string }[], error?: undefined } | { error: string, failed?: undefined }>
+  /**
+   * The library's folders (each handle's name and a file in it, relative to
+   * it), and whether to watch them: where each is on disk ('' when not found)
+   * and whether it is watched. Absent before 2.2.2.
+   */
+  roots?: (folders: { name: string, probe: string }[], watch: boolean) => Promise<{ paths: string[], watched: boolean[] }>
+  /** Show a file in Explorer / Finder (inside a library folder only). Absent before 2.2.2. */
+  reveal?: (path: string) => Promise<boolean>
+  /** Files changed under a watched folder: paths relative to it, or null for "read it all again". Absent before 2.2.2. */
+  onChange?: (cb: (root: string, paths: string[] | null) => void) => () => void
 }
 
 export interface DesktopWebRect { x: number, y: number, width: number, height: number, radius?: number }

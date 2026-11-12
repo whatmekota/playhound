@@ -57,9 +57,10 @@ export function pairingBase(name: string): string {
 export function matchScripts(name: string, scripts: ReadonlyMap<string, File>): ScriptMatch[] {
   const base = pairingBase(name)
   const matches: ScriptMatch[] = []
-  for (const [key, file] of scripts) {
-    if (!key.startsWith(base) || !key.endsWith(SCRIPT_SUFFIX))
+  for (const key of keysStartingWith(scripts, base)) {
+    if (!key.endsWith(SCRIPT_SUFFIX))
       continue
+    const file = scripts.get(key)!
     // "video (bounce)" or "video.twist" → " (bounce)" / ".twist" / ""
     const suffix = key.slice(base.length, -SCRIPT_SUFFIX.length).trim()
     // Strip the parens, dots, spaces and dashes around it: "bounce", "twist", "r0".
@@ -94,12 +95,43 @@ export function isListed(name: string, scripts: ReadonlyMap<string, File>): bool
     return true
   if (kind !== 'audio')
     return false
-  const base = pairingBase(name)
-  for (const key of scripts.keys()) {
-    if (key.startsWith(base) && key.endsWith(SCRIPT_SUFFIX))
-      return true
+  return keysStartingWith(scripts, pairingBase(name)).some(key => key.endsWith(SCRIPT_SUFFIX))
+}
+
+/** A script map's keys, sorted, and where each stood in the map, worked out once per map. */
+const sortedKeys = new WeakMap<ReadonlyMap<string, File>, { size: number, keys: string[], order: Map<string, number> }>()
+
+/**
+ * The keys of `scripts` that start with `prefix`, in the map's own order.
+ *
+ * Looking at every script for every video made a scan quadratic: a library
+ * of 10,000 videos and as many scripts compared names 100 million times.
+ * Sorted, the keys sharing a prefix sit together, and a binary search finds
+ * where they start.
+ */
+export function keysStartingWith(scripts: ReadonlyMap<string, File>, prefix: string): string[] {
+  let index = sortedKeys.get(scripts)
+  if (!index || index.size !== scripts.size) {
+    const order = new Map<string, number>()
+    for (const k of scripts.keys())
+      order.set(k, order.size)
+    index = { size: scripts.size, keys: [...order.keys()].sort(), order }
+    sortedKeys.set(scripts, index)
   }
-  return false
+  const { keys, order } = index
+  let lo = 0
+  let hi = keys.length
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (keys[mid] < prefix)
+      lo = mid + 1
+    else
+      hi = mid
+  }
+  const out: string[] = []
+  for (let i = lo; i < keys.length && keys[i].startsWith(prefix); i++)
+    out.push(keys[i])
+  return out.length > 1 ? out.sort((a, b) => order.get(a)! - order.get(b)!) : out
 }
 
 /**

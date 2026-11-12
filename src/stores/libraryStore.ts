@@ -1,15 +1,20 @@
 import type { SubtitleMatch } from './subtitleStore'
 import type { VideoMeta } from '~/lib/idb'
 import type { ScriptInfo } from '~/lib/scriptSniff'
+import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
-import { collectHandleFiles, filePath, handlePathOf, openFolderWithHandle, pickDirectory, rememberPath } from '~/lib/browserApi'
+import { computed, ref, toRaw, watch } from 'vue'
+import { collectHandleFiles, desktop, filePath, handlePathOf, openFolderWithHandle, pickDirectory, readPath, rememberPath } from '~/lib/browserApi'
 import { canWrite } from '~/lib/funscriptSave'
 import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
+import { applyChanges, baseName, diffPaths, diskPathOf, isLibraryName, keepUnchanged, listPaths, MAX_CHANGES, normaliseChanges, POLL_MS } from '~/lib/libraryWatch'
 import { isAudioName, isListed, matchScripts, scriptMapOf } from '~/lib/mediaFiles'
+import { KEYS } from '~/lib/persist'
 import { sniffScript } from '~/lib/scriptSniff'
 import { isSubtitleName, pairSubtitles, subtitleLabel } from '~/lib/subtitles'
 import { editTagList, normalizeTags } from '~/lib/tags'
+import { whenIdle } from '~/lib/thumbs'
+import { usePlayerStore } from './playerStore'
 
 export interface ScriptMatch {
   file: File
@@ -250,6 +255,16 @@ export const useLibraryStore = defineStore('library', () => {
     // Every video, and audio files that have a script (see mediaFiles.ts).
     const videoFiles = files.filter(f => isListed(f.name, scriptMap))
 
+    // What the library already knew of each file, so reading a folder again
+    // keeps it (length, picture size, saved info, the merged-script check)
+    // instead of looking it all up again for every video.
+    const known = new Map<File, VideoEntry>()
+    for (const e of toRaw(local.value)) {
+      const raw = toRaw(e)
+      if (!raw.remote)
+        known.set(raw.file, raw)
+    }
+
     // Build entries in chunks of 200 to yield to the event loop between chunks
     const CHUNK = 200
     const entries: VideoEntry[] = []
@@ -258,6 +273,12 @@ export const useLibraryStore = defineStore('library', () => {
       const chunk = videoFiles.slice(i, i + CHUNK)
       for (const f of chunk) {
         const matches = matchScripts(f.name, scriptMap)
+        const was = known.get(f)
+        if (was && was.scriptMatches.length === matches.length && was.scriptMatches.every((m, k) => m.file === matches[k].file)) {
+          was.subtitles = undefined
+          entries.push(was)
+          continue
+        }
 
         // Alternate takes are the same axis done differently; they must not
         // inflate the axis count or push an entry into the multi-axis filter.
@@ -298,7 +319,7 @@ export const useLibraryStore = defineStore('library', () => {
     // One file can hold every axis, which filename matching cannot see. Only
     // entries that resolve to a single axis file are worth checking.
     const candidates = entries.filter(
-      e => e.scriptType === 'single' && e.scriptMatches.some(m => !m.isAlt),
+      e => e.scriptType === 'single' && !e.channels && e.scriptMatches.some(m => !m.isAlt),
     )
 
     const SNIFF_BATCH = 24
@@ -384,13 +405,24 @@ export const useLibraryStore = defineStore('library', () => {
   const folders = ref<string[]>([])
   /** Per folder in `folders`: read this session (false: waiting on a reconnect). */
   const folderLoaded = ref<boolean[]>([])
+  /** Watching the folders for new videos: the switch, remembered. */
+  const watchOn = useLocalStorage<boolean>(KEYS.libraryWatch.key, true)
+  /** Watching right now (the switch is on and there is a folder to watch). */
   const isWatching = ref(false)
+  /** The desktop app hears about changes from the system rather than looking. */
+  const watchNative = ref(false)
   const watchNewCount = ref(0)
-  let watchTimer: ReturnType<typeof setInterval> | null = null
+  let pollTimer: ReturnType<typeof setInterval> | null = null
   /** One per folder; null for one opened without a handle (a browser without the folder API). */
   let roots: (FileSystemDirectoryHandle | null)[] = []
   let rootFiles: (File[] | null)[] = []
-  const WATCH_INTERVAL_MS = 30_000
+  /** Per folder, where it is on disk (desktop app only); null when not known. */
+  const rootPaths = ref<(string | null)[]>([])
+  /** Per folder, whether the desktop app watches it. */
+  let nativeWatched: boolean[] = []
+  /** What the desktop app was last told, so it is not told twice. */
+  let syncedRoots: typeof roots | null = null
+  let syncedWatching = false
 
   /** "Videos", "Videos (2)": the label each folder's paths start with. */
   function labelsFor(names: string[]) {
@@ -442,7 +474,7 @@ export const useLibraryStore = defineStore('library', () => {
     folderName.value = describe(folders.value)
     needsReconnect.value = rootFiles.some(f => !f)
     loadedAt.value = Date.now()
-    if (roots.some(Boolean))
+    if (roots.some(Boolean) && watchOn.value)
       startWatching()
     else
       stopWatching()
@@ -454,7 +486,11 @@ export const useLibraryStore = defineStore('library', () => {
     const files: (File[] | null)[] = []
     for (let i = 0; i < handles.length; i++) {
       const h = handles[i]
-      files.push(h ? await readHandle(h, prompt, labels[i]) : rootFiles[i] ?? null)
+      const read = h ? await readHandle(h, prompt, labels[i]) : rootFiles[i] ?? null
+      // Reading the same folders again (Rescan): files that did not change
+      // stay the very same File, so their entries are kept as they are.
+      const had = handles === roots && labels[i] === folders.value[i] ? rootFiles[i] : null
+      files.push(read && had && read !== had ? keepUnchanged(had, read, filePath) : read)
     }
     roots = handles
     rootFiles = files
@@ -616,9 +652,9 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   async function forgetFolder() {
-    stopWatching()
     roots = []
     rootFiles = []
+    stopWatching()
     folders.value = []
     folderLoaded.value = []
     await saveRoots()
@@ -715,12 +751,7 @@ export const useLibraryStore = defineStore('library', () => {
     if (path)
       rememberPath(fresh, path)
     rootFiles = rootFiles.map(list => (list?.includes(old) ? list.map(f => (f === old ? fresh : f)) : list))
-    for (const v of videos.value) {
-      if (!v.scriptFiles.includes(old))
-        continue
-      v.scriptFiles = v.scriptFiles.map(f => (f === old ? fresh : f))
-      v.scriptMatches = v.scriptMatches.map(m => (m.file === old ? { ...m, file: fresh } : m))
-    }
+    swapMany(new Map([[old, fresh]]))
   }
 
   async function rescan() {
@@ -729,46 +760,262 @@ export const useLibraryStore = defineStore('library', () => {
     await loadRoots(roots, false)
   }
 
-  /** Look for new videos in every folder now and then. */
-  function startWatching() {
-    stopWatching()
-    isWatching.value = true
-    watchNewCount.value = 0
-    watchTimer = setInterval(async () => {
-      const prevNames = new Set(videos.value.map(v => v.name))
-      let fresh = 0
-      const next = [...rootFiles]
+  // ── Watching ──────────────────────────────────────────────────────────────
+  // See lib/libraryWatch.ts. The desktop app is told by the system which
+  // paths changed and looks only at those; a browser lists names now and
+  // then while nothing plays. Either way, a video playing never waits on it.
+  const player = usePlayerStore()
+  /** Changes are taken one batch at a time, in order. */
+  let chain: Promise<void> = Promise.resolve()
+  /** Folders to read whole again once nothing is playing. */
+  const fullPending = new Set<number>()
+  let polling = false
+
+  function queueRefresh(i: number, rels: string[] | null, polled = false): Promise<void> {
+    chain = chain.then(() => refresh(i, rels, polled)).catch(err => console.warn('[library] watching:', err))
+    return chain
+  }
+
+  /**
+   * Tell the desktop app which folders the library is made of, and whether
+   * to watch them; it says where each is on disk (for Show in folder). It is
+   * only told again when the folders change or watching is switched.
+   */
+  async function syncDesktop() {
+    const api = desktop?.files
+    if (!api?.roots) {
+      nativeWatched = []
+      rootPaths.value = []
+    }
+    else if (syncedRoots !== roots || syncedWatching !== isWatching.value) {
+      syncedRoots = roots
+      syncedWatching = isWatching.value
+      // Each folder by its name and a file in it, which tells two folders of the same name apart.
+      const named = roots.map((h, i) => {
+        const f = rootFiles[i]?.[0]
+        return { name: h?.name ?? '', probe: f ? filePath(f).split('/').slice(1).join('/') : '' }
+      })
+      try {
+        const res = await api.roots(named, isWatching.value)
+        rootPaths.value = res.paths.map(p => p || null)
+        nativeWatched = res.watched
+      }
+      catch {
+        rootPaths.value = []
+        nativeWatched = []
+      }
+    }
+    watchNative.value = isWatching.value && roots.some((r, i) => !!r && !!nativeWatched[i])
+    schedulePoll()
+  }
+
+  /** Look now and then at the folders nobody tells us about. */
+  function schedulePoll() {
+    const needed = isWatching.value && roots.some((r, i) => !!r && !nativeWatched[i])
+    if (needed && !pollTimer) {
+      pollTimer = setInterval(() => void poll(), POLL_MS)
+    }
+    else if (!needed && pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  /** The folders nobody tells us about: what came and went. Never while playing. */
+  async function poll() {
+    if (polling || player.isPlaying)
+      return
+    polling = true
+    try {
       for (let i = 0; i < roots.length; i++) {
-        const h = roots[i]
-        if (!h)
-          continue
-        const files = await readHandle(h, false, folders.value[i])
-        if (!files)
-          continue
-        // An audio file counts once it has a script: a stray song is not new to the library.
-        const scripts = scriptMapOf(files)
-        const added = files.filter(f => !prevNames.has(f.name) && isListed(f.name, scripts)).length
-        if (added) {
-          fresh += added
-          next[i] = files
+        if (roots[i] && !nativeWatched[i] && !player.isPlaying)
+          await queueRefresh(i, null, true)
+      }
+    }
+    finally {
+      polling = false
+    }
+  }
+
+  /**
+   * What came and went in folder `i`, by listing its names (no file is read)
+   * and comparing them with what it had. `polled`: give up when a video
+   * starts; otherwise (the desktop app missed some changes) just go gently.
+   */
+  async function namesChanged(i: number, polled: boolean): Promise<string[] | null> {
+    const root = roots[i]!
+    const label = folders.value[i]
+    const listed = await listPaths(root, label, async () => {
+      await whenIdle(250)
+      return isWatching.value && roots[i] === root && !(polled && player.isPlaying)
+    })
+    if (!listed)
+      return null
+    const { added, removed } = diffPaths((rootFiles[i] ?? []).map(filePath), listed)
+    return [...added, ...removed].filter(p => isLibraryName(baseName(p))).map(p => p.slice(label.length + 1))
+  }
+
+  /**
+   * Look again at what is at these paths in folder `i`. Null: no list (the
+   * browser's poll, or more changes than the system could report), so find
+   * what came and went first.
+   */
+  async function refresh(i: number, rels: string[] | null, polled = false) {
+    const root = roots[i]
+    const old = rootFiles[i]
+    const label = folders.value[i]
+    if (!root || !old || !isWatching.value)
+      return
+    rels ??= await namesChanged(i, polled)
+    if (!rels?.length || roots[i] !== root || rootFiles[i] !== old)
+      return
+    let next: File[]
+    if (rels.length > MAX_CHANGES) {
+      // Too many to go through one at a time: read the folder whole, which
+      // is heavy, so not while a video plays.
+      if (player.isPlaying) {
+        fullPending.add(i)
+        return
+      }
+      fullPending.delete(i)
+      const files = await readHandle(root, false, label)
+      if (!files || roots[i] !== root)
+        return
+      next = files
+    }
+    else {
+      const changes: { path: string, files: File[] }[] = []
+      for (const rel of normaliseChanges(rels))
+        changes.push({ path: `${label}/${rel}`, files: await readPath(root, label, rel) })
+      if (roots[i] !== root)
+        return
+      next = applyChanges(old, filePath, changes)
+    }
+    await adoptFiles(i, old, next)
+  }
+
+  /**
+   * Folder `i` now holds `next`. When the same files are there and only some
+   * were rewritten (a download still arriving, a script saved elsewhere),
+   * each entry takes its new File where it stands; when files came or went,
+   * the library is built again (which keeps what it knew of the rest).
+   */
+  async function adoptFiles(i: number, old: File[], next: File[]) {
+    // A file reported changed that is not (a create comes with a write or two).
+    next = keepUnchanged(old, next, filePath)
+    const byPath = (list: File[]) => new Map(list.filter(f => isLibraryName(f.name)).map(f => [filePath(f), f]))
+    const a = byPath(old)
+    const b = byPath(next)
+    rootFiles = rootFiles.map((list, k) => (k === i ? next : list))
+    const rewritten = new Map<File, File>()
+    let same = a.size === b.size
+    if (same) {
+      for (const [p, f] of b) {
+        const was = a.get(p)
+        if (!was) {
+          same = false
+          break
         }
+        if (was !== f)
+          rewritten.set(was, f)
       }
-      if (fresh) {
-        watchNewCount.value += fresh
-        rootFiles = next
-        await setFiles(rootFiles.flatMap(f => f ?? []))
-        folderName.value = describe(folders.value)
-        loadedAt.value = Date.now()
+    }
+    if (same) {
+      swapMany(rewritten)
+      return
+    }
+    const before = new Set(local.value.map(v => v.name))
+    await setFiles(rootFiles.flatMap(f => f ?? []))
+    folderName.value = describe(folders.value)
+    watchNewCount.value += local.value.filter(v => !before.has(v.name)).length
+    loadedAt.value = Date.now()
+  }
+
+  /**
+   * Library files were rewritten on disk (old → new File): every entry
+   * holding an old one gets the new one. One pass over the plain entries;
+   * only the entries that change are touched through Vue.
+   */
+  function swapMany(swaps: Map<File, File>) {
+    if (!swaps.size)
+      return
+    const live = local.value
+    const raw = toRaw(live)
+    for (let k = 0; k < raw.length; k++) {
+      const e = toRaw(raw[k])
+      const fileHit = swaps.get(e.file)
+      const scriptHit = e.scriptFiles.some(f => swaps.has(f))
+      const subHit = !!e.subtitles?.some(s => swaps.has(s.file))
+      if (!fileHit && !scriptHit && !subHit)
+        continue
+      const v = live[k]
+      if (fileHit)
+        v.file = fileHit
+      if (scriptHit) {
+        v.scriptFiles = e.scriptFiles.map(f => swaps.get(f) ?? f)
+        v.scriptMatches = e.scriptMatches.map(m => (swaps.has(m.file) ? { ...m, file: swaps.get(m.file)! } : m))
       }
-    }, WATCH_INTERVAL_MS)
+      if (subHit)
+        v.subtitles = e.subtitles!.map(s => (swaps.has(s.file) ? { ...s, file: swaps.get(s.file)! } : s))
+    }
+  }
+
+  // The desktop app's word that something changed in a folder.
+  desktop?.files?.onChange?.((root, paths) => {
+    const i = rootPaths.value.findIndex(p => !!p && p.toLowerCase() === root.toLowerCase())
+    if (i >= 0 && isWatching.value)
+      void queueRefresh(i, paths)
+  })
+
+  // A whole folder waits for the video to stop.
+  watch(() => player.isPlaying, (playing) => {
+    if (!playing) {
+      for (const i of [...fullPending])
+        void queueRefresh(i, null)
+    }
+  })
+
+  /** Start watching the folders (the switch decides whether rebuild() does). */
+  function startWatching() {
+    if (!isWatching.value)
+      watchNewCount.value = 0
+    isWatching.value = true
+    void syncDesktop()
   }
 
   function stopWatching() {
     isWatching.value = false
     watchNewCount.value = 0
-    if (watchTimer) {
-      clearInterval(watchTimer)
-      watchTimer = null
+    fullPending.clear()
+    void syncDesktop()
+  }
+
+  /** The switch: on or off, and remembered for next time. */
+  function setWatching(on: boolean) {
+    watchOn.value = on
+    if (on && roots.some(Boolean))
+      startWatching()
+    else
+      stopWatching()
+  }
+
+  /** Whether Show in folder can find this video: one from a library folder, in the desktop app. */
+  function canReveal(entry: VideoEntry | null | undefined): boolean {
+    if (!entry || entry.remote || !entry.folder || !desktop?.files?.reveal)
+      return false
+    return !!rootPaths.value[folders.value.indexOf(entry.folder)]
+  }
+
+  /** Show the video's file in Explorer / Finder. Resolves whether it could. */
+  async function reveal(entry: VideoEntry): Promise<boolean> {
+    const root = rootPaths.value[folders.value.indexOf(entry.folder)]
+    if (!root || !canReveal(entry))
+      return false
+    try {
+      return await desktop!.files!.reveal!(diskPathOf(root, entry.path))
+    }
+    catch {
+      return false
     }
   }
 
@@ -788,6 +1035,8 @@ export const useLibraryStore = defineStore('library', () => {
     folders,
     folderLoaded,
     isWatching,
+    watchOn,
+    watchNative,
     watchNewCount,
     loadedAt,
     setFiles,
@@ -809,5 +1058,8 @@ export const useLibraryStore = defineStore('library', () => {
     swapFile,
     startWatching,
     stopWatching,
+    setWatching,
+    canReveal,
+    reveal,
   }
 })
