@@ -3,7 +3,7 @@ import type { SendGate, VibeSource } from '~/lib/vibeMap'
 import { computed, effectScope, ref, watch } from 'vue'
 import { interpolatePosition } from '~/lib/funscriptParser'
 import { clampLatency } from '~/lib/latency'
-import { localSpeed, mapVibe, musicLevel, quantize, shouldSend, smoothLevel, speedToLevel } from '~/lib/vibeMap'
+import { localSpeed, mapVibe, musicLevel, quantize, scriptFastSpeed, scriptSpeedLevel, shouldSend, smoothLevel } from '~/lib/vibeMap'
 import { motionFilters } from '~/plugins/filters'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
@@ -68,6 +68,11 @@ function setup() {
   /** The stroke script: L0 when there is one, else whatever is primary. */
   const stroke = computed(() =>
     scripts.activeScripts.find(s => s.channel === 'L0') ?? scripts.primaryScript ?? null)
+  /** That script's own "fast" (scriptFastSpeed), measured once per script. */
+  const fastSpeed = computed(() => {
+    const actions = stroke.value?.parsed.actions
+    return actions ? scriptFastSpeed(actions) : null
+  })
 
   let video: HTMLVideoElement | null = null
   function playheadMs(): number {
@@ -103,7 +108,7 @@ function setup() {
         // Plugins' motion filters reshape positions, so a toy following the
         // script's position follows the filtered one; its speed is the script's own.
         return source === 'script-speed'
-          ? speedToLevel(localSpeed(actions, t))
+          ? scriptSpeedLevel(localSpeed(actions, t), fastSpeed.value)
           : motionFilters.apply(interpolatePosition(actions, t), 'L0', t)
       }
       case 'music': {
