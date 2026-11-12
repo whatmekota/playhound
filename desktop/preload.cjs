@@ -539,6 +539,8 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
          * folder is on disk ('' when not found) and whether it is watched.
          */
         roots: (list, watch) => ipcRenderer.invoke('ph:files:roots', Array.isArray(list) ? list.map(r => ({ name: String(r?.name ?? ''), probe: String(r?.probe ?? '') })) : [], !!watch),
+        /** Where folders are on disk, as [{ name, probe }] like roots, without watching them: paths ('' when not found). */
+        locate: list => ipcRenderer.invoke('ph:files:locate', Array.isArray(list) ? list.map(r => ({ name: String(r?.name ?? ''), probe: String(r?.probe ?? '') })) : []),
         /** Show a file in Explorer / Finder; only inside a library folder. Resolves whether it could. */
         reveal: p => ipcRenderer.invoke('ph:files:reveal', String(p)),
         /** Calls `cb(root, paths)` when files under a watched folder change (paths null: too many to list); returns an unsubscribe. */

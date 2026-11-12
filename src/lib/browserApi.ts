@@ -348,6 +348,7 @@ export interface DesktopFiles {
   roots?: (folders: { name: string, probe: string }[], watch: boolean) => Promise<{ paths: string[], watched: boolean[] }>
   /** Show a file in Explorer / Finder (inside a library folder only). Absent before 2.2.2. */
   reveal?: (path: string) => Promise<boolean>
+  locate?: (folders: { name: string, probe: string }[]) => Promise<string[]>
   /** Files changed under a watched folder: paths relative to it, or null for "read it all again". Absent before 2.2.2. */
   onChange?: (cb: (root: string, paths: string[] | null) => void) => () => void
 }

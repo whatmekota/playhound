@@ -137,6 +137,13 @@ export function setupLibraryFiles({ ipcMain, allowed, window, shell, watch = fs.
     return { paths: roots, watched: roots.map(r => !!r && !!on && (watchers.has(r) || watchRoot(r))) }
   })
 
+  /** Where folders are on disk, by name and a file in them, without watching or remembering them (the Organizer's folder). */
+  ipcMain.handle('ph:files:locate', (event, list) => {
+    if (!allowed(event) || !Array.isArray(list))
+      return []
+    return list.slice(0, 64).map(r => findFolder(known, r?.name, r?.probe) || '')
+  })
+
   /** Show a file in Explorer / Finder, if it is in a library folder and still there. */
   ipcMain.handle('ph:files:reveal', (event, target) => {
     if (!allowed(event) || typeof target !== 'string' || !path.isAbsolute(target))
