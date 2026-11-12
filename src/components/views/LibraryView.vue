@@ -188,8 +188,9 @@ const folderMenu = computed<MenuItem[]>(() => [
     : { label: unanalysed.value ? `Analyse all scripts (${unanalysed.value.toLocaleString()})` : 'All scripts analysed', icon: 'i-carbon-chart-average', run: () => void scripts.analyseAll(), disabled: !unanalysed.value },
   { separator: true },
   library.isWatching
-    ? { label: 'Stop watching folder', icon: 'i-carbon-view-off', run: library.stopWatching }
-    : { label: 'Rescan folder', icon: 'i-carbon-renew', run: () => void rescan(), disabled: !library.hasVideos },
+    ? { label: 'Stop watching for new videos', icon: 'i-carbon-view-off', run: () => library.setWatching(false) }
+    : { label: 'Watch for new videos', icon: 'i-carbon-view', run: () => library.setWatching(true), disabled: !library.folders.length },
+  { label: 'Rescan folder', icon: 'i-carbon-renew', run: () => void rescan(), disabled: !library.hasVideos },
   ...(library.folders.length > 1
     ? [
         { separator: true } as MenuItem,
@@ -307,7 +308,7 @@ function onBackgroundClick(e: MouseEvent) {
             <span v-if="lq.filtering" class="text-accent-300 num">· {{ lq.results.length.toLocaleString() }} shown</span>
             <UiBadge
               v-if="library.isWatching"
-              v-tip="'Checking the folder for new videos every 30 seconds'"
+              v-tip="library.watchNative ? 'New videos show up as they arrive' : 'Checking for new videos every minute, while nothing plays'"
               tone="ok" size="xs" dot pulse class="ml-1"
             >
               Watching

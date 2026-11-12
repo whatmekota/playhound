@@ -679,7 +679,7 @@ function openBackup() {
                   <UiButton v-else icon="i-carbon-folder-add" @click="addFolder">
                     Add folder
                   </UiButton>
-                  <UiButton v-if="library.isWatching" icon="i-carbon-renew" :loading="rescanning" @click="rescan">
+                  <UiButton v-if="library.hasVideos" icon="i-carbon-renew" :loading="rescanning" @click="rescan">
                     Rescan
                   </UiButton>
                   <UiButton v-if="folder" variant="danger" icon="i-carbon-trash-can" class="ml-auto" @click="forget">
@@ -687,7 +687,13 @@ function openBackup() {
                   </UiButton>
                 </div>
               </div>
-              <div class="px-4 py-3 card">
+              <div class="px-4 py-3 card flex flex-col gap-3">
+                <UiSwitch
+                  :model-value="library.watchOn"
+                  label="Watch for new videos"
+                  :hint="desktop?.files?.roots ? 'New and removed videos show up as they happen.' : 'The folders are checked every minute while nothing plays.'"
+                  @update:model-value="library.setWatching($event)"
+                />
                 <UiSwitch
                   v-model="showAutoTags"
                   label="Show automatic tags"

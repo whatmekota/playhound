@@ -5,6 +5,7 @@ import { desktop, pickDirectory } from '~/lib/browserApi'
 import { extOf, renameEntry, sanitizeFilename } from '~/lib/fsRename'
 import { walkDirectory } from '~/lib/fsWalk'
 import { handleDb } from '~/lib/idb'
+import { diskPathOf } from '~/lib/libraryWatch'
 import { isAudioName, isMediaName } from '~/lib/mediaFiles'
 import { isAndroidApp } from '~/lib/platform'
 import { isSubtitleName, pairSubtitles } from '~/lib/subtitles'
@@ -119,6 +120,8 @@ export function buildPairs(entries: FsEntry[]): OrgPair[] {
 
 export const useOrganizerStore = defineStore('organizer', () => {
   const rootHandle = ref<FileSystemDirectoryHandle | null>(null)
+  /** Where the folder is on disk (desktop app), for the Recycle Bin; null when unknown. */
+  let rootDisk: string | null = null
   const rootName = ref('')
   const scanning = ref(false)
   const restoring = ref(false)
@@ -222,6 +225,13 @@ export const useOrganizerStore = defineStore('organizer', () => {
     try {
       const entries = await walkDirectory(rootHandle.value)
       pairs.value = buildPairs(entries)
+      rootDisk = null
+      const locate = desktop?.files?.locate
+      if (locate && entries.length) {
+        // The folder by its name and a file in it, as the library finds its own.
+        const found = await locate([{ name: rootHandle.value.name, probe: entries[0].relPath }]).catch(() => [''])
+        rootDisk = found[0] || null
+      }
     }
     catch (e: any) {
       error.value = e?.message ?? 'Scan failed'
@@ -312,7 +322,9 @@ export const useOrganizerStore = defineStore('organizer', () => {
     const files = desktop?.files
     if (!files)
       return null
-    const paths = entries.map(e => files.pathOf(e.file))
+    // A File read through a folder handle has no path in Electron 44, so build
+    // it from where the folder is on disk.
+    const paths = entries.map(e => files.pathOf(e.file) || (rootDisk && rootHandle.value ? diskPathOf(rootDisk, `${rootHandle.value.name}/${e.relPath}`) : ''))
     return paths.every(Boolean) ? paths : null
   }
 

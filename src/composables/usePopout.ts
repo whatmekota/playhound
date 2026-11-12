@@ -1,3 +1,4 @@
+import type { DesktopDisplay } from '~/lib/browserApi'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, effectScope, nextTick, ref, shallowRef, watch } from 'vue'
 import { desktop } from '~/lib/browserApi'
@@ -39,6 +40,8 @@ const target = shallowRef<HTMLElement | null>(null)
 const clickThrough = ref(false)
 /** The desktop app's global key for click-through, or null when another app holds it. */
 const shortcut = ref<string | null>(null)
+/** The pop-out fills its screen. */
+const fullScreen = ref(false)
 
 let opacity: ReturnType<typeof useLocalStorage<number>> | null = null
 let teardown: (() => void) | null = null
@@ -140,8 +143,23 @@ function adopt(w: Window) {
   rootObs.observe(document.documentElement, { attributes: true })
   rootObs.observe(document.body, { attributes: true, attributeFilter: ['class'] })
 
+  // Full screen is the pop-out's own business: F11 toggles it, and Esc
+  // leaves it here rather than reaching the main window as panic. (F, and a
+  // double-click on the video, go through the player like any other key.)
+  const ownKeys = new Set<string>()
   const onKey = (e: KeyboardEvent) => {
     if (isTyping(e.target))
+      return
+    if (e.type === 'keydown' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+      const own = (e.key === 'F11' && kindNow() === 'desktop') || (e.key === 'Escape' && fullScreen.value)
+      if (own) {
+        e.preventDefault()
+        ownKeys.add(e.code)
+        void setFullScreen(e.key === 'F11' ? !fullScreen.value : false)
+        return
+      }
+    }
+    if (e.type === 'keyup' && ownKeys.delete(e.code))
       return
     const copy = new KeyboardEvent(e.type, {
       key: e.key,
@@ -170,6 +188,12 @@ function adopt(w: Window) {
   w.addEventListener('wheel', onActivity, { passive: true })
   w.addEventListener('blur', onBlur)
   w.addEventListener('pagehide', () => gone(w))
+  // A browser's pop-out goes full screen through its own document.
+  const onFullscreen = () => {
+    if (kindNow() !== 'desktop')
+      fullScreen.value = !!doc.fullscreenElement
+  }
+  doc.addEventListener('fullscreenchange', onFullscreen)
   // Belt and braces: not every way a window closes fires pagehide in time.
   const poll = setInterval(() => w.closed && gone(w), 1000)
 
@@ -178,6 +202,7 @@ function adopt(w: Window) {
     clearTimeout(restyle)
     headObs.disconnect()
     rootObs.disconnect()
+    doc.removeEventListener('fullscreenchange', onFullscreen)
   }
 
   win.value = w
@@ -198,6 +223,7 @@ function detach() {
   win.value = null
   target.value = null
   clickThrough.value = false
+  fullScreen.value = false
   setFrameSource(null)
 }
 
@@ -215,13 +241,59 @@ function start() {
       api.onState((s) => {
         clickThrough.value = s.clickThrough
         shortcut.value = s.shortcut
+        fullScreen.value = !!s.fullScreen && !!win.value
       })
       watch([win, () => opacity!.value, clickThrough, () => safety.panicked], ([w, o, through, panicked]) => {
         if (w)
           api.set({ opacity: Math.max(MIN_OPACITY, Math.min(1, o)), clickThrough: through, hidden: panicked })
       }, { flush: 'post' })
     }
+    // Panic covers the main window and hides the pop-out: out of full screen first.
+    watch(() => safety.panicked, (p) => {
+      if (p && fullScreen.value)
+        void setFullScreen(false)
+    })
   })
+}
+
+/** Whether this kind of pop-out can fill the screen (Picture-in-Picture cannot). */
+function canFullScreen() {
+  return kindNow() === 'desktop' ? !!desktop?.popout?.displays : kindNow() === 'window'
+}
+
+/**
+ * Fill the screen with the pop-out, or stop. The desktop app fills the
+ * screen the window is on, or `display` (DesktopDisplay.id); a browser's
+ * pop-out asks its own document (from a click or key in it).
+ */
+async function setFullScreen(on: boolean, display?: number) {
+  const w = win.value
+  if (!w || w.closed || !canFullScreen())
+    return
+  if (kindNow() === 'desktop') {
+    desktop!.popout!.set(display === undefined ? { fullScreen: on } : { fullScreen: on, display })
+    return
+  }
+  const doc = w.document
+  try {
+    if (on && !doc.fullscreenElement)
+      await doc.documentElement.requestFullscreen()
+    else if (!on && doc.fullscreenElement)
+      await doc.exitFullscreen()
+  }
+  catch {
+    // Refused (no click to go on): nothing to undo.
+  }
+}
+
+/** The screens, for "Full screen on …" (desktop app; empty elsewhere). */
+async function displays(): Promise<DesktopDisplay[]> {
+  try {
+    return await desktop?.popout?.displays?.() ?? []
+  }
+  catch {
+    return []
+  }
 }
 
 // ── Public ───────────────────────────────────────────────────────────────────
@@ -298,6 +370,10 @@ export function usePopout() {
     opacity: opacity!,
     clickThrough,
     shortcut,
+    fullScreen,
+    canFullScreen: canFullScreen(),
+    setFullScreen,
+    displays,
     open,
     close,
     fit,

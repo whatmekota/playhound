@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AudioVisual } from '~/composables/useAudioVisual'
+import type { DesktopDisplay } from '~/lib/browserApi'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { useElementSize, useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch, watchEffect } from 'vue'
@@ -41,6 +42,7 @@ import { useUiStore } from '~/stores/uiStore'
 import EdgeBadge from './EdgeBadge.vue'
 import ExternalPlaybackCard from './ExternalPlaybackCard.vue'
 import FunscriptTimeline from './FunscriptTimeline.vue'
+import NowPlayingActions from './NowPlayingActions.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import SbsViewer from './SbsViewer.vue'
 import SubtitleText from './SubtitleText.vue'
@@ -137,8 +139,31 @@ function setAudioVisual(v: AudioVisual) {
 }
 /** The end-of-video card, while it counts down. */
 const upNext = ref<{ entry: VideoEntry, directed: boolean, key: number } | null>(null)
-/** In-player menu open in fullscreen (popovers cannot show there). */
-const fsMenu = ref<'speed' | 'subs' | null>(null)
+/** In-player menu open in fullscreen or the pop-out (popovers cannot show there). */
+const fsMenu = ref<'speed' | 'subs' | 'screens' | null>(null)
+/** The screens the pop-out can fill, while its "Full screen on …" menu is open. */
+const screens = shallowRef<DesktopDisplay[]>([])
+
+/** The pop-out's full screen button: straight in with one screen, a choice with several. */
+async function onPopFullScreen() {
+  if (fsMenu.value === 'screens') {
+    fsMenu.value = null
+    return
+  }
+  const list = await popout.displays()
+  if (list.length < 2) {
+    void popout.setFullScreen(true)
+    return
+  }
+  // The one it is on first: dragging it there and clicking is the usual way.
+  screens.value = [...list].sort((a, b) => Number(b.current) - Number(a.current))
+  fsMenu.value = 'screens'
+}
+
+function fullScreenOn(d: DesktopDisplay) {
+  fsMenu.value = null
+  void popout.setFullScreen(true, d.current ? undefined : d.id)
+}
 
 const title = computed(() => {
   if (playback.currentEntry)
@@ -356,7 +381,15 @@ function playerDoc() {
 /** The phone layout (Android app): touch first (onSurfaceClick, onPointerLeave), and fullscreen is the whole page. */
 const compact = useCompactLayout()
 
+/**
+ * Popped out, full screen is the pop-out window's (usePopout): it fills its
+ * own screen while the main window stays usable on another.
+ */
 function toggleFullscreen() {
+  if (popped.value) {
+    void popout.setFullScreen(!popout.fullScreen.value)
+    return
+  }
   const doc = playerDoc()
   if (doc.fullscreenElement)
     void doc.exitFullscreen().catch(() => {})
@@ -369,6 +402,8 @@ function toggleFullscreen() {
 }
 
 function onFullscreenChange() {
+  if (popped.value)
+    return
   const fs = playerDoc().fullscreenElement
   player.isFullscreen = !!rootEl.value && (fs === rootEl.value || (compact.value && fs === document.documentElement))
   if (!player.isFullscreen)
@@ -377,20 +412,19 @@ function onFullscreenChange() {
 }
 
 // The panic cover is outside this element, so it would be invisible over a
-// fullscreen video. Leave fullscreen first.
+// fullscreen video. Leave fullscreen first. (The pop-out sees to its own.)
 watch(() => safety.panicked, (p) => {
-  const doc = playerDoc()
-  if (p && doc.fullscreenElement)
-    void doc.exitFullscreen().catch(() => {})
+  if (p && document.fullscreenElement)
+    void document.exitFullscreen().catch(() => {})
 })
 
-// The pop-out's document reports its own fullscreen changes. A window that
-// closes takes its fullscreen with it.
-watch(popout.target, (el, prev) => {
-  prev?.ownerDocument.removeEventListener('fullscreenchange', onFullscreenChange)
-  el?.ownerDocument.addEventListener('fullscreenchange', onFullscreenChange)
-  if (!el && player.isFullscreen && !document.fullscreenElement)
-    player.isFullscreen = false
+// Popped out, the pop-out window's full screen is the player's. A window
+// that closes takes its full screen with it.
+watch([popped, popout.fullScreen], ([on, fs]) => {
+  const was = player.isFullscreen
+  player.isFullscreen = on ? fs : !!rootEl.value && document.fullscreenElement === rootEl.value
+  if (was !== player.isFullscreen)
+    fsMenu.value = null
   poke()
 })
 
@@ -419,12 +453,15 @@ function onPointerLeave(e: PointerEvent) {
   awake.value = false
 }
 
+/** A menu over the title (add to playlist, more) or a dialog from one is open. */
+const menusBusy = ref(false)
+
 const chromeVisible = computed(() =>
   hasVideo.value && !isMini.value
-  && (awake.value || overChrome.value || !player.isPlaying || fsMenu.value !== null || !!upNext.value))
+  && (awake.value || overChrome.value || !player.isPlaying || fsMenu.value !== null || !!upNext.value || menusBusy.value))
 /** The pop-out's own bars, outside fullscreen. They show with no video too, to close it by. */
 const popChrome = computed(() => popped.value && !player.isFullscreen
-  && (awake.value || overChrome.value || !player.isPlaying || !hasVideo.value))
+  && (awake.value || overChrome.value || !player.isPlaying || !hasVideo.value || fsMenu.value !== null))
 const hideCursor = computed(() => hasVideo.value && !isMini.value && player.isPlaying && !chromeVisible.value)
 // Shared with the phone layout's player bar, which fades with these bars when held sideways.
 watchEffect(() => (playerChrome.shown = chromeVisible.value))
@@ -1319,6 +1356,8 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                 :class="playback.currentEntry.starred ? '!text-warn' : ''"
                 @click="toggleStar"
               />
+              <!-- Menus open over <body>, which fullscreen does not show. -->
+              <NowPlayingActions v-if="playback.currentEntry && !player.isFullscreen" v-model:busy="menusBusy" :entry="playback.currentEntry" />
               <!-- The Android WebView has no window to pop out into. -->
               <UiIconButton
                 v-if="!isAndroidApp"
@@ -1685,6 +1724,38 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                 :active="control.phase !== 'idle'"
                 @click="sessionActions.edge('ui')"
               />
+              <!-- Full screen: here, or on another screen when there are several.
+                 The menu lives in the player: popovers open in the main window. -->
+              <div v-if="popout.canFullScreen" class="relative">
+                <UiIconButton
+                  icon="i-carbon-maximize"
+                  :label="popout.kind === 'desktop' ? 'Full screen' : 'Full screen (Esc leaves it)'"
+                  kbd="F"
+                  variant="glass"
+                  size="sm"
+                  tip="top"
+                  :active="fsMenu === 'screens'"
+                  @click="onPopFullScreen"
+                />
+                <Transition name="t-pop">
+                  <div
+                    v-if="fsMenu === 'screens'"
+                    class="mb-2 p-1 rounded-[var(--radius-md)] bg-black/75 flex flex-col min-w-44 ring-1 ring-white/12 bottom-full right-0 absolute z-40 backdrop-blur-xl"
+                  >
+                    <span class="text-[10.5px] text-white/50 tracking-[0.08em] font-semibold px-3 pb-1 pt-1.5 uppercase">Full screen on</span>
+                    <button
+                      v-for="d in screens"
+                      :key="d.id"
+                      type="button"
+                      class="text-[12.5px] text-white/85 px-3 text-left rounded-[var(--radius-sm)] flex gap-3 h-7 items-center justify-between hover:bg-white/12"
+                      @click="fullScreenOn(d)"
+                    >
+                      <span class="max-w-48 truncate">{{ d.label }}</span>
+                      <span v-if="d.current" class="text-[11px] text-white/45 shrink-0">this screen</span>
+                    </button>
+                  </div>
+                </Transition>
+              </div>
             </div>
           </div>
         </Transition>

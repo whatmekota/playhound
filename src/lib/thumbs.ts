@@ -19,7 +19,7 @@ import type { Directive } from 'vue'
  */
 import type { TileAction } from '~/lib/audioTile'
 import type { VideoEntry } from '~/stores/libraryStore'
-import { reactive, shallowReactive } from 'vue'
+import { reactive, shallowReactive, toRaw } from 'vue'
 import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { fileSource, findCover } from '~/lib/audioCover'
@@ -556,32 +556,51 @@ export async function ensureDurations(entries: VideoEntry[]) {
 }
 
 let durationRun = 0
+/**
+ * Entries whose file gave no length when tried in the background. The
+ * library keeps its entries when a folder changes, and each change starts
+ * this again: a file that cannot be read should not be tried every time.
+ */
+const noDuration = new WeakSet<VideoEntry>()
 
 /** Fill in every missing duration in the background. A newer call supersedes an older one. */
 export async function loadDurations(entries: VideoEntry[]) {
   const run = ++durationRun
   const BATCH = DURATION_BATCH
-  const todo = entries.filter(e => e.duration === null)
+  const todo = entries.filter(e => e.duration === null && !noDuration.has(toRaw(e)))
   for (let i = 0; i < todo.length; i += BATCH) {
     if (run !== durationRun)
       return
     await whenIdle(200)
-    await Promise.all(todo.slice(i, i + BATCH).map(ensureDuration))
+    await Promise.all(todo.slice(i, i + BATCH).map(async (e) => {
+      await ensureDuration(e)
+      if (e.duration === null)
+        noDuration.add(toRaw(e))
+    }))
   }
 }
 
 // ─── Saved metadata ───────────────────────────────────────────────────────────
 
+/**
+ * Entries already looked up and found to have no saved info. The library
+ * keeps its entries when it reads a folder again, so without this every new
+ * file would look up the thousands of others once more.
+ */
+const noUserMeta = new WeakSet<VideoEntry>()
+
 /** Load each entry's user-edited info (tags, rating…) from IndexedDB. */
 export async function loadUserMeta(entries: VideoEntry[]) {
   const BATCH = 64
-  const todo = entries.filter(e => !e.userMeta)
+  const todo = entries.filter(e => !e.userMeta && !noUserMeta.has(toRaw(e)))
   for (let i = 0; i < todo.length; i += BATCH) {
     await Promise.all(todo.slice(i, i + BATCH).map(async (e) => {
       try {
         const stored = await videoMetaDb.get(e.name)
         if (stored)
           e.userMeta = stored
+        else
+          noUserMeta.add(toRaw(e))
       }
       catch {}
     }))

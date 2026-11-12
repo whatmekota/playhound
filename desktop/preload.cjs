@@ -121,7 +121,7 @@ const eroscriptsApi = winState
 const popoutListeners = new Set()
 if (winState) {
   ipcRenderer.on('ph:popout:state', (_event, s) => {
-    const state = { clickThrough: !!s?.clickThrough, shortcut: typeof s?.shortcut === 'string' ? s.shortcut : null }
+    const state = { clickThrough: !!s?.clickThrough, shortcut: typeof s?.shortcut === 'string' ? s.shortcut : null, fullScreen: !!s?.fullScreen }
     for (const cb of popoutListeners) {
       try {
         cb(state)
@@ -134,7 +134,7 @@ if (winState) {
 }
 const popoutApi = winState
   ? Object.freeze({
-      /** { opacity, clickThrough, hidden, aspect }, any subset. */
+      /** { opacity, clickThrough, hidden, aspect, fullScreen, display }, any subset; `display` goes with fullScreen. */
       set: (opts) => {
         const o = {}
         if (typeof opts?.opacity === 'number')
@@ -145,9 +145,15 @@ const popoutApi = winState
           o.hidden = opts.hidden
         if (typeof opts?.aspect === 'number')
           o.aspect = opts.aspect
+        if (typeof opts?.fullScreen === 'boolean')
+          o.fullScreen = opts.fullScreen
+        if (typeof opts?.display === 'number')
+          o.display = opts.display
         ipcRenderer.send('ph:popout', o)
       },
-      /** Calls `cb({ clickThrough, shortcut })` when the global key flips it; returns an unsubscribe. */
+      /** The screens: [{ id, label, size, primary, current }] (current: the one the pop-out is on). */
+      displays: () => ipcRenderer.invoke('ph:popout:displays'),
+      /** Calls `cb({ clickThrough, shortcut, fullScreen })` when one changes; returns an unsubscribe. */
       onState: (cb) => {
         if (typeof cb !== 'function')
           return () => {}
@@ -455,6 +461,13 @@ function listen(set) {
     return () => void set.delete(cb)
   }
 }
+// ── Library folders on disk (main window only) ─────────────────────────────
+// The main process watches them (desktop/libfiles.mjs) and says what changed.
+const fileChangeListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:files:changed', (_event, root, paths) => fanOut(fileChangeListeners, 'library change', String(root), Array.isArray(paths) ? paths.map(String) : null))
+}
+
 const webApi = winState
   ? Object.freeze({
       /** A new view, hidden until laid out: { id } or { error }. */
@@ -520,6 +533,18 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
         },
         /** Move files (absolute paths) to the Recycle Bin / Trash: { failed: [{ path, error }] }. */
         trash: paths => ipcRenderer.invoke('ph:trash', Array.isArray(paths) ? paths.map(String) : []),
+        /**
+         * The library's folders, as [{ name, probe }]: each handle's name and a
+         * file in it, relative to it. Resolves { paths, watched }: where each
+         * folder is on disk ('' when not found) and whether it is watched.
+         */
+        roots: (list, watch) => ipcRenderer.invoke('ph:files:roots', Array.isArray(list) ? list.map(r => ({ name: String(r?.name ?? ''), probe: String(r?.probe ?? '') })) : [], !!watch),
+        /** Where folders are on disk, as [{ name, probe }] like roots, without watching them: paths ('' when not found). */
+        locate: list => ipcRenderer.invoke('ph:files:locate', Array.isArray(list) ? list.map(r => ({ name: String(r?.name ?? ''), probe: String(r?.probe ?? '') })) : []),
+        /** Show a file in Explorer / Finder; only inside a library folder. Resolves whether it could. */
+        reveal: p => ipcRenderer.invoke('ph:files:reveal', String(p)),
+        /** Calls `cb(root, paths)` when files under a watched folder change (paths null: too many to list); returns an unsubscribe. */
+        onChange: listen(fileChangeListeners),
       })
     : undefined,
 }))

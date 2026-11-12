@@ -184,6 +184,40 @@ export function canPickDirectory(): boolean {
   return isAndroidApp || (typeof window !== 'undefined' && 'showDirectoryPicker' in window)
 }
 
+/**
+ * What is at one path under a folder now (`rel`, '/'-separated): the file,
+ * every file in it when it is a folder, or nothing when it is gone. Paths are
+ * recorded under `label`, as collectHandleFiles does.
+ */
+export async function readPath(root: FileSystemDirectoryHandle, label: string, rel: string): Promise<File[]> {
+  const parts = rel.split('/')
+  const name = parts.pop()!
+  let dir = root
+  try {
+    for (const p of parts)
+      dir = await dir.getDirectoryHandle(p)
+  }
+  catch {
+    return []
+  }
+  const path = `${label}/${rel}`
+  try {
+    const f = await (await dir.getFileHandle(name)).getFile()
+    filePaths.set(f, path)
+    return [f]
+  }
+  catch (err) {
+    if ((err as DOMException | null)?.name !== 'TypeMismatchError')
+      return []
+  }
+  try {
+    return await collectHandleFiles(await dir.getDirectoryHandle(name), path)
+  }
+  catch {
+    return []
+  }
+}
+
 /** The browser's folder picker alone. Null when cancelled or unavailable. */
 export async function pickDirectory(): Promise<FileSystemDirectoryHandle | null> {
   if (isAndroidApp) {
@@ -324,6 +358,17 @@ export interface DesktopTcode {
 export interface DesktopFiles {
   pathOf: (file: File) => string
   trash: (paths: string[]) => Promise<{ failed: { path: string, error: string }[], error?: undefined } | { error: string, failed?: undefined }>
+  /**
+   * The library's folders (each handle's name and a file in it, relative to
+   * it), and whether to watch them: where each is on disk ('' when not found)
+   * and whether it is watched. Absent before 2.2.2.
+   */
+  roots?: (folders: { name: string, probe: string }[], watch: boolean) => Promise<{ paths: string[], watched: boolean[] }>
+  /** Show a file in Explorer / Finder (inside a library folder only). Absent before 2.2.2. */
+  reveal?: (path: string) => Promise<boolean>
+  locate?: (folders: { name: string, probe: string }[]) => Promise<string[]>
+  /** Files changed under a watched folder: paths relative to it, or null for "read it all again". Absent before 2.2.2. */
+  onChange?: (cb: (root: string, paths: string[] | null) => void) => () => void
 }
 
 export interface DesktopWebRect { x: number, y: number, width: number, height: number, radius?: number }
@@ -443,6 +488,20 @@ export interface DesktopPopoutState {
   clickThrough: boolean
   /** The global key that toggles click-through, as the cheat sheet writes it; null if taken. */
   shortcut: string | null
+  /** The window fills its screen. Absent before 2.2.2. */
+  fullScreen?: boolean
+}
+
+/** A screen the pop-out can fill. */
+export interface DesktopDisplay {
+  id: number
+  /** The monitor's name, when the system gives one; "Screen 2" otherwise. */
+  label: string
+  /** "2560 × 1440". */
+  size: string
+  primary: boolean
+  /** The pop-out is on it. */
+  current: boolean
 }
 
 /**
@@ -459,8 +518,14 @@ export interface DesktopPopout {
     hidden?: boolean
     /** The video's width / height, to keep the window that shape. */
     aspect?: number
+    /** Fill the screen (ignored before 2.2.2). */
+    fullScreen?: boolean
+    /** With fullScreen: which screen, by DesktopDisplay.id; the one it is on otherwise. */
+    display?: number
   }) => void
-  /** Click-through changed from the global key; returns an unsubscribe. */
+  /** The screens there are. Absent before 2.2.2. */
+  displays?: () => Promise<DesktopDisplay[]>
+  /** Click-through or full screen changed; returns an unsubscribe. */
   onState: (cb: (s: DesktopPopoutState) => void) => () => void
 }
 
