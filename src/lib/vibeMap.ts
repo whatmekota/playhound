@@ -83,6 +83,38 @@ export function speedToLevel(speed: number, ref = 1.2): number {
 
 interface Act { at: number, pos: number }
 
+/**
+ * A script's own "fast": its 90th-percentile speed, sampled every half second
+ * over the script, or null when it is too short to say. With it, speed maps to
+ * strength in proportion (scriptSpeedLevel), so a brisk script's calm parts
+ * sit well below its peaks instead of every stroke pinning the toy at full.
+ * Clamped below, so a script of tiny twitches is not blown up to full.
+ */
+export function scriptFastSpeed(actions: Act[], stepMs = 500): number | null {
+  if (actions.length < 4)
+    return null
+  const end = actions[actions.length - 1].at
+  const speeds: number[] = []
+  for (let t = actions[0].at; t <= end; t += stepMs) {
+    const v = localSpeed(actions, t)
+    if (v > 0.05)
+      speeds.push(v)
+  }
+  if (speeds.length < 8)
+    return null
+  speeds.sort((a, b) => a - b)
+  return Math.max(0.8, speeds[Math.min(speeds.length - 1, Math.floor(speeds.length * 0.9))])
+}
+
+/** Speed → 0–1 against the script's own fast speed: that lands at 90%, half of it at 45%, never past 1. */
+export function scriptSpeedLevel(speed: number, fast: number | null): number {
+  if (fast === null)
+    return speedToLevel(speed)
+  if (!(speed > 0))
+    return 0
+  return Math.min(1, 0.9 * speed / fast)
+}
+
 /** First index whose `at` is greater than `t`. */
 function upperBound(actions: Act[], t: number): number {
   let lo = 0

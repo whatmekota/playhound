@@ -115,3 +115,35 @@ describe('smoothing and sending', () => {
     expect(quantize(2)).toBe(1)
   })
 })
+
+describe('script speed scaled to the script itself', () => {
+  /** Strokes between 0 and `depth` at `perSec` half-strokes a second, from `from` ms for `ms`. */
+  function strokes(from: number, ms: number, perSec: number, depth = 0.9) {
+    const out: { at: number, pos: number }[] = []
+    const step = 1000 / perSec
+    for (let t = 0, i = 0; t <= ms; t += step, i++)
+      out.push({ at: from + t, pos: i % 2 ? depth : 0 })
+    return out
+  }
+
+  it('keeps a brisk script from pinning the toy: calm parts sit well below the peaks', async () => {
+    const { scriptFastSpeed, scriptSpeedLevel } = await import('~/lib/vibeMap')
+    // 30 s at ~140 strokes a minute, then 30 s at ~70.
+    const actions = [...strokes(0, 30000, 4.7), ...strokes(30200, 30000, 2.35)]
+    const fast = scriptFastSpeed(actions)
+    const hi = scriptSpeedLevel(localSpeed(actions, 15000), fast)
+    const calm = scriptSpeedLevel(localSpeed(actions, 45000), fast)
+    expect(hi).toBeGreaterThan(0.8)
+    expect(hi).toBeLessThanOrEqual(1)
+    expect(calm).toBeLessThan(0.55)
+    expect(calm).toBeGreaterThan(0.3)
+    // The fixed scale pins the calm part near the top too.
+    expect(speedToLevel(localSpeed(actions, 45000))).toBeGreaterThan(0.8)
+  })
+
+  it('falls back to the fixed scale for scripts too short to measure', async () => {
+    const { scriptFastSpeed, scriptSpeedLevel } = await import('~/lib/vibeMap')
+    expect(scriptFastSpeed([{ at: 0, pos: 0 }, { at: 500, pos: 1 }])).toBeNull()
+    expect(scriptSpeedLevel(1.2, null)).toBeCloseTo(speedToLevel(1.2))
+  })
+})
