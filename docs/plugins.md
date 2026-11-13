@@ -52,12 +52,13 @@ A single folder wrapping all of this is fine; it's taken off.
   `blob:` URL, so relative imports don't resolve. Bundle everything into it
   (esbuild, rollup, vite in library mode).
 - `api`: the plugin API the plugin is written for, a whole number. Without it,
-  1. This playhound speaks 3; a plugin that needs a newer one is refused, with
-     a message saying to update playhound. Plugins written for 1 and 2 run
+  1. This playhound speaks 4; a plugin that needs a newer one is refused, with
+     a message saying to update playhound. Plugins written for older ones run
      as they did. API 3 added [playing in another app](#playing-in-another-app),
      [sockets](#sockets), [serving on the network](#serving-on-the-network),
      [library sources](#library-sources) and [session control](#session-control),
-     plus a few smaller things marked _(3)_ below.
+     plus a few smaller things marked _(3)_ below. API 4 added
+     [the picture, media and music](#the-picture-media-and-music), marked _(4)_.
 - `permissions`: what the plugin needs (below). Unknown names are refused.
 - The store's own fields (an icon, screenshots, a category and so on) are
   optional; see [The store listing](#the-store-listing).
@@ -454,7 +455,11 @@ off. For what CSS can't do, draw in an [overlay](#the-module) from
 `player.video()`: the player's own `<video>` element (permission `player`),
 as a canvas `drawImage` source or a WebGL texture. It is a new element for
 every video, so ask again after `player.onChange`, and never play, pause or
-seek it yourself: that goes through `playback` and `player.seek`.
+seek it yourself: that goes through `playback` and `player.seek`. A
+stream from a server that sends no CORS headers can be shown but not read:
+drawing it taints a canvas, so catch that and skip the effect for that video.
+Effects apply wherever the picture shows, the corner player and the pop-out
+included; an overlay is mounted on the full-size player only.
 
 ```js
 // A zoom punch on every stroke, easing out over 150 ms
