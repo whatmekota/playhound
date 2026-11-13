@@ -90,6 +90,17 @@ export const usePlayerStore = defineStore('player', () => {
   watch(vrEye, eye => rememberVr({ eye }), { flush: 'sync' })
   watch(vrFormat, format => rememberVr({ format }), { flush: 'sync' })
 
+  /** A video's file was renamed: what was set for its VR view goes with it. */
+  function renameVrChoice(oldName: string, newName: string) {
+    const c = vrChoices.get(oldName)
+    if (!c || oldName === newName)
+      return
+    vrChoices.delete(oldName)
+    vrChoices.set(newName, c)
+    try { localStorage.setItem(VR_CHOICES_KEY, JSON.stringify([...vrChoices])) }
+    catch {}
+  }
+
   /**
    * A video was loaded: put the VR view back as the user left it for this
    * video, or, with vrAuto, on for a VR video and off for a flat one.
@@ -232,6 +243,7 @@ export const usePlayerStore = defineStore('player', () => {
     vrEye,
     vrAuto,
     applyVr,
+    renameVrChoice,
     controlsVisible,
     controlsTimeout,
     loopEnabled,

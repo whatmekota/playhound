@@ -9,6 +9,7 @@ import { diskPathOf } from '~/lib/libraryWatch'
 import { isAudioName, isMediaName } from '~/lib/mediaFiles'
 import { isAndroidApp } from '~/lib/platform'
 import { isSubtitleName, pairSubtitles } from '~/lib/subtitles'
+import { carryVideoData } from './videoRename'
 
 export type PairStatus = 'matched' | 'video-only' | 'script-only'
 
@@ -264,7 +265,10 @@ export const useOrganizerStore = defineStore('organizer', () => {
     try {
       if (pair.video) {
         const ext = extOf(pair.video.name)
+        const was = pair.video.name
         pair.video = await renameEntry(pair.video, newBasename + ext)
+        // Its tags, source link, star, stats… are kept by file name.
+        await carryVideoData(was, pair.video.name)
       }
       for (let i = 0; i < pair.scripts.length; i++) {
         const s = pair.scripts[i]
@@ -302,8 +306,10 @@ export const useOrganizerStore = defineStore('organizer', () => {
     error.value = null
     try {
       const updated = await renameEntry(entry, newName)
-      if (pair.video === entry)
+      if (pair.video === entry) {
         pair.video = updated
+        await carryVideoData(entry.name, updated.name)
+      }
       const idx = pair.scripts.indexOf(entry)
       if (idx !== -1)
         pair.scripts[idx] = updated

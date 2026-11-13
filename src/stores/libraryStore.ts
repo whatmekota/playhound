@@ -196,6 +196,28 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   /**
+   * A video's file was renamed (the Organizer): its saved info (tags, source
+   * link, script tweaks) and its star are kept by file name, so they move to
+   * the new one. Saved info already under the new name is left as it is.
+   */
+  async function renameVideoData(oldName: string, newName: string) {
+    if (!oldName || !newName || oldName === newName)
+      return
+    try {
+      const meta = await videoMetaDb.get(oldName)
+      if (meta && !(await videoMetaDb.get(newName))) {
+        await videoMetaDb.set(newName, meta)
+        await videoMetaDb.del(oldName)
+      }
+    }
+    catch {}
+    if (starredNames.delete(oldName)) {
+      starredNames.add(newName)
+      localStorage.setItem(STARS_KEY, JSON.stringify([...starredNames]))
+    }
+  }
+
+  /**
    * Add and remove tags on any number of videos. Tags go into each video's
    * saved info (the `vidmeta` store, keyed by file name like stars and stats),
    * which every scan reads back, so they outlive rescans the way stars do.
@@ -1085,6 +1107,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   return {
     videos,
+    renameVideoData,
     provided,
     sources,
     provide,

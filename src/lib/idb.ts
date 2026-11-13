@@ -79,6 +79,15 @@ export async function idbGet<T>(store: string, key: string): Promise<T | undefin
   })
 }
 
+export async function idbDel(store: string, key: string): Promise<void> {
+  await openDB()
+  return new Promise((resolve, reject) => {
+    const req = tx(store, 'readwrite').delete(key)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
 export async function idbSet(store: string, key: string, value: unknown): Promise<void> {
   await openDB()
   return new Promise((resolve, reject) => {
@@ -236,6 +245,7 @@ export const summaryDb = {
 export const videoMetaDb = {
   get: (filename: string) => idbGet<VideoMeta>('vidmeta', filename),
   set: (filename: string, value: VideoMeta) => idbSet('vidmeta', filename, value),
+  del: (filename: string) => idbDel('vidmeta', filename),
 }
 
 /** A scrub preview strip: frames packed into one JPEG sprite sheet. */
