@@ -1,5 +1,5 @@
 import type { Pic } from './drawCard'
-import { looksSbs } from '~/lib/previews'
+import { looksSbs } from '~/lib/vrFormat'
 
 /**
  * Frames for a share card, from the video's own source in a hidden <video>

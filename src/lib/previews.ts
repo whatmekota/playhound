@@ -20,6 +20,7 @@ import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { previewDb } from '~/lib/idb'
 import { isAudioName } from '~/lib/mediaFiles'
 import { whenIdle } from '~/lib/thumbs'
+import { looksSbs } from '~/lib/vrFormat'
 
 export interface PreviewStrip {
   /** Object URL of the sprite sheet. */
@@ -292,16 +293,6 @@ async function pump() {
 }
 
 // ─── Decoding ────────────────────────────────────────────────────────────────
-
-/**
- * Side-by-side VR is two eyes in one frame; a crop of the middle is the seam
- * between them. Take the left eye instead.
- */
-export function looksSbs(name: string, w: number, h: number) {
-  const aspect = w / h
-  return (aspect > 1.95 && aspect < 2.05)
-    || (aspect > 1.6 && /(?:^|[^a-z0-9])(?:180|vr|sbs|lr|3dh)(?:[^a-z0-9]|$)/i.test(name))
-}
 
 /** Source rect that fills a 16:9 frame without stretching. */
 function cropRect(name: string, vw: number, vh: number) {

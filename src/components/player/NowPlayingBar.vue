@@ -6,7 +6,6 @@ import UiBadge from '~/components/ui/UiBadge.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
-import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
@@ -24,7 +23,7 @@ import { KEYS } from '~/lib/persist'
 import { getStrip } from '~/lib/previews'
 import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
-import { VR_FORMATS, vrFormat } from '~/lib/vrFormat'
+import { vrFormat } from '~/lib/vrFormat'
 import { useAudioStore } from '~/stores/audio'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
@@ -43,6 +42,7 @@ import ScriptOffsetControl from './ScriptOffsetControl.vue'
 import ScrubPreview from './ScrubPreview.vue'
 import SpeedControl from './SpeedControl.vue'
 import SubtitleControl from './SubtitleControl.vue'
+import VrControls from './VrControls.vue'
 
 /**
  * The dock: what is playing, the transport, and the session's vital signs.
@@ -54,7 +54,6 @@ import SubtitleControl from './SubtitleControl.vue'
  * menu first, then the status readouts, then the volume slider.
  */
 const ui = useUiStore()
-const vrOptions = VR_FORMATS.map(f => ({ value: f.id, label: f.label }))
 const popout = usePopout()
 const player = usePlayerStore()
 const playback = usePlaybackStore()
@@ -693,8 +692,7 @@ const needsOverflow = computed(() => level.value > 0)
               </button>
             </template>
             <div class="p-1 flex flex-col gap-3">
-              <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
-              <UiSelect v-model="player.vrFormat" label="Format" :options="vrOptions" />
+              <VrControls always />
             </div>
           </UiPopover>
           <div class="mx-1.5 divider-x" />
@@ -800,8 +798,7 @@ const needsOverflow = computed(() => level.value > 0)
               <div class="divider-y" />
               <ScriptOffsetControl inline />
               <div class="divider-y" />
-              <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
-              <UiSelect v-if="player.sbs180" v-model="player.vrFormat" label="VR format" :options="vrOptions" />
+              <VrControls />
             </template>
           </div>
         </UiPopover>

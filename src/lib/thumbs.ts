@@ -25,9 +25,13 @@ import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { fileSource, findCover } from '~/lib/audioCover'
 import { tileActions, tileColumns, tileHeat, tileHue } from '~/lib/audioTile'
 import { metaDb, thumbDb, videoMetaDb } from '~/lib/idb'
+import { isVrVideo } from '~/lib/tags'
+import { looksSbs } from '~/lib/vrFormat'
 
 const THUMB_W = 320
 const THUMB_H = 180
+/** Marks a VR video's thumbnail as one eye: those cached before both halves showed are made again. */
+const oneEyeKey = (e: VideoEntry) => `eye1:${e.name}`
 /**
  * Concurrent frame decodes. More than this starves playback of the decoder.
  * On a phone, one: every decode is a <video> with its own buffers, and
@@ -84,8 +88,11 @@ function pump() {
   }
 }
 
-function coverRect(sw: number, sh: number) {
-  // Crop to 16:9 instead of stretching, so portrait and SBS clips stay in proportion.
+function coverRect(sw: number, sh: number, oneEye = false) {
+  // Crop to 16:9 instead of stretching, so portrait clips stay in proportion.
+  // Side-by-side VR shows its left eye, not both halves and the seam.
+  if (oneEye)
+    sw /= 2
   const target = THUMB_W / THUMB_H
   if (!sw || !sh)
     return { sx: 0, sy: 0, sw, sh }
@@ -162,11 +169,14 @@ function decodeFrame(entry: VideoEntry): Promise<void> {
         const c = document.createElement('canvas')
         c.width = THUMB_W
         c.height = THUMB_H
-        const r = coverRect(video.videoWidth, video.videoHeight)
+        const oneEye = isVrVideo(entry) || looksSbs(entry.name, video.videoWidth, video.videoHeight)
+        const r = coverRect(video.videoWidth, video.videoHeight, oneEye)
         c.getContext('2d')!.drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, THUMB_W, THUMB_H)
         const dataUrl = c.toDataURL('image/jpeg', 0.72)
         entry.thumbnailUrl = dataUrl
         void thumbDb.set(entry.name, dataUrl).catch(() => {})
+        if (oneEye)
+          void metaDb.set(oneEyeKey(entry), 1).catch(() => {})
         done()
       }
       catch (err) {
@@ -278,6 +288,8 @@ async function audioThumb(entry: VideoEntry): Promise<void> {
 async function fromCache(entry: VideoEntry): Promise<boolean> {
   try {
     const cached = await thumbDb.get(entry.name)
+    if (cached && isVrVideo(entry) && !await metaDb.get(oneEyeKey(entry)))
+      return false
     if (cached) {
       entry.thumbnailUrl = cached
       return true

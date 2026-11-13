@@ -3,7 +3,6 @@ import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import MobileSheet from '~/components/shell/MobileSheet.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
-import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { playerChrome } from '~/composables/playerChrome'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { useRailLayout } from '~/composables/useCompactLayout'
@@ -28,6 +27,7 @@ import LoopControls from './LoopControls.vue'
 import PlayPauseIcon from './PlayPauseIcon.vue'
 import ScriptOffsetControl from './ScriptOffsetControl.vue'
 import SpeedControl from './SpeedControl.vue'
+import VrControls from './VrControls.vue'
 
 /**
  * The player bar in the phone layout (useCompactLayout), in place of the
@@ -381,7 +381,7 @@ function toggleStar() {
         <div class="divider-y" />
         <ScriptOffsetControl inline />
         <div class="divider-y" />
-        <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
+        <VrControls />
       </div>
     </div>
   </MobileSheet>

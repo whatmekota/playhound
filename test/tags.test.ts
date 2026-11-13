@@ -8,6 +8,7 @@ import {
   AUTO_TAGS,
   autoTags,
   editTagList,
+  isVrVideo,
   looksVr,
   manualTags,
   needsSummary,
@@ -124,6 +125,16 @@ describe('autoTags', () => {
     expect(looksVr({ name: 'clip_MKX200.mp4', path: 'clip_MKX200.mp4' })).toBe(true)
     expect(looksVr({ name: 'overdrive.mp4', path: 'overdrive.mp4' })).toBe(false)
     expect(looksVr({ name: 'vrchat dance.mp4', path: 'vrchat dance.mp4' })).toBe(false)
+  })
+
+  it('a VR video by name, a "vr" tag, or a side-by-side picture', () => {
+    const v = (name: string, extra: Partial<VideoEntry> = {}) => ({ name, path: name, ...extra }) as VideoEntry
+    expect(isVrVideo(v('scene_180_LR.mp4'))).toBe(true)
+    expect(isVrVideo(v('plain.mp4'))).toBe(false)
+    expect(isVrVideo(v('plain.mp4', { userMeta: { tags: ['VR'] } }))).toBe(true)
+    expect(isVrVideo(v('plain.mp4', { width: 5760, height: 2880 }))).toBe(true)
+    expect(isVrVideo(v('plain.mp4', { width: 1920, height: 1080 }))).toBe(false)
+    expect(isVrVideo(v('My VR talk.mp3', { kind: 'audio' }))).toBe(false)
   })
 
   it('every automatic tag is defined once, and only analysis-based ones need a summary', () => {

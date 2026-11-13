@@ -1207,6 +1207,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         v-if="vrView && hasMedia"
         :video-el="videoEl"
         :format="vrFormat(player.vrFormat)"
+        :eye="player.vrEye"
         class="inset-0 absolute z-[1]"
         @click="onSbsClick"
         @dblclick="onSbsDblClick"

@@ -16,7 +16,7 @@
 import type { ScriptSummary } from './idb'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { BANDS, intensityBand, speedUnits } from './scriptIntensity'
-import { guessVrFormat } from './vrFormat'
+import { guessVrFormat, looksSbs } from './vrFormat'
 
 export const MAX_TAG_LENGTH = 40
 
@@ -127,6 +127,19 @@ export function looksVr(entry: Pick<VideoEntry, 'name' | 'path'>): boolean {
   if (guessVrFormat(entry.name))
     return true
   return /(?:^|[^a-z0-9])vr(?:[^a-z0-9]|$)/i.test(entry.path || entry.name)
+}
+
+/**
+ * A VR video: its name says so (looksVr), someone tagged it "vr" (a whole
+ * folder at once from the library's selection), or its picture is side by
+ * side once its size is known.
+ */
+export function isVrVideo(entry: Pick<VideoEntry, 'name' | 'path' | 'kind' | 'width' | 'height' | 'scriptMeta' | 'userMeta'>): boolean {
+  if (entry.kind === 'audio')
+    return false
+  if (looksVr(entry) || manualTags(entry).includes('vr'))
+    return true
+  return !!(entry.width && entry.height && looksSbs(entry.name, entry.width, entry.height))
 }
 
 type AutoSource = Pick<VideoEntry, 'name' | 'path' | 'hasScript' | 'scriptCount' | 'scriptType' | 'duration' | 'kind'>

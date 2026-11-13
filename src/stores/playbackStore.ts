@@ -24,7 +24,7 @@ import { createExternalClock } from '~/lib/externalClock'
 import { mayLeave } from '~/lib/leaveGuard'
 import { sameKindAs } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
-import { guessVrFormat } from '~/lib/vrFormat'
+import { isVrVideo } from '~/lib/tags'
 import { remoteScriptMatches } from '~/plugins/remoteScripts'
 import { useDeviceStore } from './deviceStore'
 import { useLibraryStore } from './libraryStore'
@@ -176,6 +176,8 @@ export const usePlaybackStore = defineStore('playback', () => {
       player.clearLoop()
       currentFile.value = file
       const libEntry = library.videos.find(v => v.file === file) ?? null
+      if (libEntry)
+        player.applyVr(isVrVideo(libEntry))
       currentEntry.value = libEntry
       trackSeq.value++
       // Alongside the scripts, not after: a slow script parse should not hold them up.
@@ -280,7 +282,7 @@ export const usePlaybackStore = defineStore('playback', () => {
       player.setVideo('', '')
       await nextTick()
       player.setVideo(entry.name, url, r.kind)
-      player.vrFormat = guessVrFormat(entry.basename) ?? player.vrFormat
+      player.applyVr(isVrVideo(entry), entry.basename)
       player.clearLoop()
       currentEntry.value = entry
       currentFile.value = null

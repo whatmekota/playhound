@@ -9,6 +9,9 @@
 
 export type VrProjection = 'equirect' | 'fisheye'
 
+/** Which half of a side-by-side frame the VR view shows. Some videos are sharper, or better framed, in one eye. */
+export type VrEye = 'left' | 'right'
+
 export interface VrFormat {
   id: string
   label: string
@@ -55,4 +58,24 @@ export function guessVrFormat(name: string): string | null {
   if (/(?:^|\D)180[\s_-]?(?:x180[\s_-]?)?(?:sbs|lr|3dh)(?![a-z])/.test(n) || /(?:sbs|lr|3dh)[\s_-]?180(?!\d)/.test(n))
     return 'eq180'
   return null
+}
+
+/**
+ * Side-by-side VR is two eyes in one frame; a crop of the middle is the seam
+ * between them, so pictures take one eye instead. By shape (2:1), or a wide
+ * frame whose name says VR.
+ */
+export function looksSbs(name: string, w: number, h: number) {
+  const aspect = w / h
+  return (aspect > 1.95 && aspect < 2.05)
+    || (aspect > 1.6 && /(?:^|[^a-z0-9])(?:180|vr|sbs|lr|3dh)(?:[^a-z0-9]|$)/i.test(name))
+}
+
+/**
+ * Shape alone is enough to open the VR view only for a big 2:1 frame: VR is
+ * 4K wide and up, while a phone's 18:9 screen recording is 2:1 too.
+ */
+export function looksSbsBySize(w: number, h: number) {
+  const aspect = w / h
+  return aspect > 1.95 && aspect < 2.05 && w >= 3800
 }

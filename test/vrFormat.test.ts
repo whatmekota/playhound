@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { guessVrFormat, vrFormat } from '~/lib/vrFormat'
+import { guessVrFormat, looksSbsBySize, vrFormat } from '~/lib/vrFormat'
 
 describe('guessVrFormat', () => {
   it.each([
@@ -32,5 +32,14 @@ describe('vrFormat', () => {
     expect(vrFormat('nope').id).toBe('eq180')
     expect(vrFormat(null).fov).toBe(180)
     expect(vrFormat('fe200')).toMatchObject({ projection: 'fisheye', fov: 200 })
+  })
+})
+
+describe('looksSbsBySize', () => {
+  it('only a big 2:1 frame, not an 18:9 phone recording', () => {
+    expect(looksSbsBySize(5760, 2880)).toBe(true)
+    expect(looksSbsBySize(3840, 1920)).toBe(true)
+    expect(looksSbsBySize(2160, 1080)).toBe(false)
+    expect(looksSbsBySize(3840, 2160)).toBe(false)
   })
 })

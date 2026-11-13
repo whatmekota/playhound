@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { VrFormat } from '~/lib/vrFormat'
+import type { VrEye, VrFormat } from '~/lib/vrFormat'
 import * as THREE from 'three'
 /**
  * SbsViewer — side-by-side VR viewer using Three.js
  *
- * Takes a <video> element as prop, shows its LEFT half on the inside of a
+ * Takes a <video> element as prop, shows one eye's half on the inside of a
  * sphere, and lets the user pan with mouse drag and zoom with scroll wheel —
  * like desktop YouTube 360. The half is unwrapped by a shader, as
  * equirectangular or fisheye at any field of view (see lib/vrFormat).
@@ -16,7 +16,7 @@ import * as THREE from 'three'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 
-const props = defineProps<{ videoEl: HTMLVideoElement | null, format: VrFormat }>()
+const props = defineProps<{ videoEl: HTMLVideoElement | null, format: VrFormat, eye?: VrEye }>()
 
 const emit = defineEmits<{ click: [], dblclick: [] }>()
 
@@ -118,7 +118,7 @@ void main() {
 }`
 
 /**
- * Where a direction lands in the left eye's half of the frame.
+ * Where a direction lands in one eye's half of the frame (eyeX: 0 left, 0.5 right).
  *   equirect: longitude across the field of view, latitude over 180°
  *   fisheye:  equidistant, the angle off centre grows evenly to the rim
  */
@@ -126,6 +126,7 @@ const FRAG = /* glsl */`
 uniform sampler2D map;
 uniform float halfFov;
 uniform bool fisheye;
+uniform float eyeX;
 varying vec3 vDir;
 const float PI = 3.14159265358979;
 void main() {
@@ -144,7 +145,7 @@ void main() {
     if (abs(lon) > halfFov) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
     uv = vec2(0.5 + 0.5 * lon / halfFov, 0.5 + lat / PI);
   }
-  gl_FragColor = texture2D(map, vec2(uv.x * 0.5, uv.y));
+  gl_FragColor = texture2D(map, vec2(eyeX + uv.x * 0.5, uv.y));
 }`
 
 function buildSphere() {
@@ -172,6 +173,7 @@ function buildSphere() {
       map: { value: texture },
       halfFov: { value: 0 },
       fisheye: { value: false },
+      eyeX: { value: 0 },
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -189,6 +191,7 @@ function applyFormat() {
     return
   mat.uniforms.halfFov.value = THREE.MathUtils.degToRad(props.format.fov / 2)
   mat.uniforms.fisheye.value = props.format.projection === 'fisheye'
+  mat.uniforms.eyeX.value = props.eye === 'right' ? 0.5 : 0
 }
 
 function startLoop() {
@@ -258,7 +261,7 @@ watch(() => props.videoEl, (el) => {
   if (el)
     buildSphere()
 })
-watch(() => props.format, applyFormat)
+watch(() => [props.format, props.eye], applyFormat)
 </script>
 
 <template>

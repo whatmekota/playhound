@@ -218,7 +218,11 @@ export const useLibraryStore = defineStore('library', () => {
         continue
       meta.tags = after
       await videoMetaDb.set(e.name, meta)
+      const becameVr = !before.includes('vr') && after.includes('vr')
       e.userMeta = meta
+      // Tagged VR: its thumbnail is made again from one eye when next shown.
+      if (becameVr && !e.remote)
+        e.thumbnailUrl = null
       changed++
     }
     return changed
