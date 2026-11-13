@@ -30,6 +30,7 @@ import { cueHtml, isSubtitleName } from '~/lib/subtitles'
 import { ensureThumb, prefetchThumbs } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { vrFormat } from '~/lib/vrFormat'
+import { vPictureFx } from '~/plugins/pictureFx'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -1057,7 +1058,7 @@ function closeMini() {
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 onMounted(() => {
-  playback.bindPlayer({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume, toggleMute, toggleFullscreen, togglePopout, frame })
+  playback.bindPlayer({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume, toggleMute, toggleFullscreen, togglePopout, frame, video: () => videoEl.value })
   window.addEventListener('keydown', onKeyDown)
   document.addEventListener('fullscreenchange', onFullscreenChange)
   poke()
@@ -1159,6 +1160,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         <video
           v-if="hasMedia"
           ref="videoEl"
+          v-picture-fx
           class="h-full w-full inset-0 absolute object-contain"
           :class="vrView ? 'invisible' : ''"
           :src="player.videoKind === 'hls' ? undefined : player.videoUrl ?? undefined"
@@ -1195,6 +1197,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       <canvas
         v-if="popped && hasMedia"
         ref="mirrorEl"
+        v-picture-fx
         class="h-full w-full inset-0 absolute object-contain"
         :class="vrView ? 'invisible' : ''"
       />
@@ -1205,6 +1208,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
       <!-- 180° viewer over the (hidden but live) video -->
       <SbsViewer
         v-if="vrView && hasMedia"
+        v-picture-fx
         :video-el="videoEl"
         :format="vrFormat(player.vrFormat)"
         :eye="player.vrEye"

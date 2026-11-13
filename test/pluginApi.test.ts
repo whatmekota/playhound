@@ -53,7 +53,7 @@ describe('manifest v2', () => {
   })
 
   it('speaks API 3, and keeps full access to what there was before', () => {
-    expect(PLUGIN_API).toBe(3)
+    expect(PLUGIN_API).toBe(4)
     expect(readManifest({ ...base, api: 3, permissions: ['serve', 'socket', 'session', 'external', 'library-source'] }).permissions)
       .toEqual(['external', 'session', 'library-source', 'socket', 'serve'])
     const old = accessOf(readManifest(base))

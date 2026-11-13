@@ -48,6 +48,8 @@ export interface PlayerControls {
   togglePopout: () => void
   /** The picture showing now as a JPEG data URL, at most `maxWidth` wide; null without one. */
   frame?: (maxWidth: number, quality: number) => string | null
+  /** The <video> element itself, for plugins that draw from it. */
+  video?: () => HTMLVideoElement | null
 }
 
 /** "Previous" restarts the current video when you are this far into it. */
@@ -724,6 +726,8 @@ export const usePlaybackStore = defineStore('playback', () => {
   const pause = () => ctl()?.pause()
   /** The current picture of the video, small, for whoever wants a look (plugins). */
   const grabFrame = (maxWidth = 512, quality = 0.72) => ctl()?.frame?.(maxWidth, quality) ?? null
+  /** The player's own <video>, for plugins to draw from; null without one. */
+  const videoElement = () => ctl()?.video?.() ?? null
   const resume = () => ctl()?.play()
   const seek = (t: number) => ctl()?.seek(t)
   const seekRelative = (d: number) => ctl()?.seekRelative(d)
@@ -774,6 +778,7 @@ export const usePlaybackStore = defineStore('playback', () => {
     togglePlay,
     pause,
     grabFrame,
+    videoElement,
     resume,
     seek,
     seekRelative,

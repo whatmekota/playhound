@@ -2,7 +2,7 @@ import type { VideoEntry } from './libraryStore'
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MotionControl, MotionFilter, MotionReadout, OverlayDef, PageDef, PanelDef, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
+import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibraryScript, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MediaHandle, MotionControl, MotionFilter, MotionReadout, MusicAnalysis, MusicScriptOptions, OverlayDef, PageDef, PanelDef, PictureEffects, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
@@ -11,26 +11,33 @@ import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useAutoDirector } from '~/composables/useAutoDirector'
 import { generatorStroke } from '~/composables/useMotionEngine'
 import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
+import { analyseSoundtrack, soundtrackProgress } from '~/composables/useSoundtrack'
+import { proxiedStream } from '~/composables/useStreams'
 import { axisOutput } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
+import { isAndroidApp } from '~/lib/android/detect'
 import { AXIS_MAP, extractSuffix } from '~/lib/axisMap'
+import { ANALYSIS_VERSION } from '~/lib/beatTrack'
 import { desktop } from '~/lib/browserApi'
 import { metaCredits } from '~/lib/chapterIndex'
 import { effectiveMeta } from '~/lib/entryInfo'
 import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { handleDb, pluginDb, summaryDb, videoMetaDb } from '~/lib/idb'
+import { musicScript } from '~/lib/musicScript'
 import { KEYS } from '~/lib/persist'
 import { intensityBand } from '~/lib/scriptIntensity'
 import { createSteadyClock } from '~/lib/steadyClock'
 import { manualTags, normalizeTags } from '~/lib/tags'
 import { ensureMediaInfo, ensureThumb, loadUserMeta } from '~/lib/thumbs'
+import { analysisForPlugin, analysisFromPlugin, blobOf, readLibraryScripts, safeFileName, saveWithDialog } from '~/plugins/api4'
 import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
 import { aliasesOf, baseUrl, baseUrls, serve as serveHttp, servingAvailable, shareFile, unserve, unshareAll } from '~/plugins/http'
 import { accessOf, addedPermissions, allows, permissionError, readManifest } from '~/plugins/manifest'
 import { pluginFetch } from '~/plugins/net'
+import { clearPictureFx, setPictureFx } from '~/plugins/pictureFx'
 import { cleanProvidedList, entryOf } from '~/plugins/provider'
 import { remoteScriptMatches } from '~/plugins/remoteScripts'
 import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
@@ -1525,6 +1532,130 @@ export const usePluginStore = defineStore('plugins', () => {
       }, name)
     }
 
+    // ─── API 4: scripts, media and music for the plugin's own use ──────────
+    async function libraryScripts(videoId: string): Promise<LibraryScript[] | null> {
+      const entry = entryNamed(videoId)
+      if (!entry)
+        return null
+      const matches = entry.remote ? await remoteScriptMatches(entry) : entry.scriptMatches
+      return readLibraryScripts(entry.name, matches)
+    }
+
+    later(() => clearPictureFx(id))
+    const opened = new Set<string>()
+    later(() => {
+      for (const url of opened) {
+        if (url.startsWith('blob:'))
+          URL.revokeObjectURL(url)
+      }
+      opened.clear()
+    })
+    async function openMedia(videoId: string): Promise<MediaHandle | null> {
+      const entry = entryNamed(videoId)
+      if (!entry)
+        return null
+      let url: string
+      let kind: 'file' | 'hls' = 'file'
+      if (entry.remote) {
+        const r = entry.remote
+        url = r.headers ? await proxiedStream(r.url, r.headers, r.kind) : r.url
+        kind = r.kind
+      }
+      else {
+        url = URL.createObjectURL(entry.file)
+        opened.add(url)
+      }
+      let closed = false
+      return {
+        url,
+        kind,
+        close: () => {
+          if (closed)
+            return
+          closed = true
+          if (opened.delete(url))
+            URL.revokeObjectURL(url)
+        },
+      }
+    }
+
+    /** A Blob a plugin hands in, as a File the soundtrack cache can know again: named by its size and a hash of its ends. */
+    async function musicFile(blob: Blob): Promise<File> {
+      if (blob instanceof File)
+        return blob
+      const ends = await new Blob([blob.slice(0, 65536), blob.slice(Math.max(0, blob.size - 65536))]).arrayBuffer()
+      const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-1', ends))].slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('')
+      return new File([blob], `plugin-music-${blob.size}-${hash}`, { type: blob.type, lastModified: 0 })
+    }
+
+    async function analyseMusic(source: Blob | { video: string }, opts: { onProgress?: (f: number) => void } = {}): Promise<MusicAnalysis | null> {
+      let file: File
+      let durationHint: number | undefined
+      if (source instanceof Blob) {
+        file = await musicFile(source)
+      }
+      else if (source && typeof source === 'object' && typeof source.video === 'string') {
+        if (!allows(access, 'library'))
+          throw permissionError(manifestName, 'library', 'music.analyse({ video })')
+        const entry = entryNamed(source.video)
+        // A provided video streams: there is no file to read the sound from.
+        if (!entry || entry.remote)
+          return null
+        file = entry.file
+        durationHint = entry.duration ?? undefined
+      }
+      else {
+        throw new TypeError('music.analyse takes a Blob (a File) or { video: id }')
+      }
+      const onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : null
+      const timer = onProgress
+        ? setInterval(() => {
+            try {
+              onProgress(soundtrackProgress(file))
+            }
+            catch {}
+          }, 250)
+        : null
+      try {
+        const a = await analyseSoundtrack(file, { durationHint })
+        if (a)
+          onProgress?.(1)
+        return a ? analysisForPlugin(a) : null
+      }
+      finally {
+        if (timer)
+          clearInterval(timer)
+      }
+    }
+
+    function scriptForMusic(analysis: MusicAnalysis, o: MusicScriptOptions = {}): { at: number, pos: number }[] {
+      const a = analysisFromPlugin(analysis, ANALYSIS_VERSION)
+      const num = (v: unknown, lo: number, hi: number, fallback: number) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback
+      const bandLo = num(o.bandLo, 20, 600, motion.beatBandLo)
+      const actions = musicScript(a, {
+        bandLo,
+        bandHi: Math.max(bandLo, num(o.bandHi, 20, 600, motion.beatBandHi)),
+        maxSpm: motion.maxSpm,
+        minDepth: num(o.minDepth, 0, 1, motion.minDepth),
+        maxDepth: num(o.maxDepth, 0, 1, motion.maxDepth),
+        depthFollows: typeof o.depthFollows === 'boolean' ? o.depthFollows : motion.musicDepthFollows,
+        anchor: o.anchor === 'bottom' || o.anchor === 'centre' ? o.anchor : motion.musicAnchor,
+        centre: motion.center,
+      })
+      return actions.map(x => ({ at: Math.round(x.at), pos: Math.round(x.pos) }))
+    }
+
+    async function saveFile(name: string, data: Blob | string | Uint8Array, opts: { mime?: string } = {}): Promise<boolean> {
+      const fileName = safeFileName(name)
+      const blob = blobOf(data, typeof opts?.mime === 'string' ? opts.mime : undefined)
+      if (isAndroidApp) {
+        const { shareFile: shareOnAndroid } = await import('~/lib/android/app')
+        await shareOnAndroid(blob, fileName, fileName)
+        return true
+      }
+      return saveWithDialog(blob, fileName)
+    }
+
     // ─── Session ───────────────────────────────────────────────────────────
     const control = useSessionControlStore()
 
@@ -1726,6 +1857,15 @@ export const usePluginStore = defineStore('plugins', () => {
         provide: gate('library-source', 'library.provide', provide),
         mediaUrl: gate('serve', 'library.mediaUrl', gate('library', 'library.mediaUrl', mediaUrl)),
         scriptUrl: gate('serve', 'library.scriptUrl', gate('library', 'library.scriptUrl', scriptUrl)),
+        scripts: gate('library', 'library.scripts', libraryScripts),
+        open: gate('library', 'library.open', openMedia),
+      },
+      music: {
+        analyse: analyseMusic,
+        script: scriptForMusic,
+      },
+      files: {
+        save: saveFile,
       },
       playback: {
         play: gate('playback', 'playback.play', async (videoId: string) => {
@@ -1787,6 +1927,10 @@ export const usePluginStore = defineStore('plugins', () => {
         setRate: gate('playback', 'player.setRate', (rate: number) => {
           if (typeof rate === 'number' && Number.isFinite(rate))
             playback.setSpeed(rate)
+        }),
+        video: gate('player', 'player.video', () => (player.videoKind === 'external' || player.audioOnly ? null : playback.videoElement())),
+        effects: gate('stage', 'player.effects', (fx: PictureEffects | null) => {
+          setPictureFx(id, fx)
         }),
       },
       scripts: {

@@ -71,27 +71,28 @@ Plugins labels it **Full access (older plugin)**. With a list (or with
 what it lists; asking for nothing is fine. The API 3 permissions always have
 to be listed, by older plugins too.
 
-| Permission       | Shown to the user as                                                                      | Opens                                                                                                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `device`         | Move your device, and reshape scripts on their way to it                                  | `motion.take`, `motion.filter`                                                                                                                                                  |
-| `scripts`        | Read the loaded scripts and load its own                                                  | `scripts.*`                                                                                                                                                                     |
-| `player`         | See what is playing, where, the picture, and your edges and intensity                     | `player.state / onChange / script / frame / clock / picture / onPicture`, `playback.onEnded`, `session.edgeState / onEdge / onFinish`, `session.intensity.get / max / onChange` |
-| `playback`       | Play, pause, seek and change the speed of videos                                          | `playback.play / pause / resume / playFingerprint / next / previous`, `player.seek / setRate`                                                                                   |
-| `library`        | Read your library: video names, stats and playlists                                       | `library.list / analyse / onChange / fingerprint / info`                                                                                                                        |
-| `library-edit`   | Change your videos' tags and source links                                                 | `library.tag`, `library.setSource`                                                                                                                                              |
-| `network`        | Connect to servers through playhound                                                      | `net.fetch`                                                                                                                                                                     |
-| `stage`          | Show its own page and draw over the video                                                 | `ui.page / openPage / showStage / overlay`                                                                                                                                      |
-| `web`            | Open web pages inside playhound                                                           | `webview.create`                                                                                                                                                                |
-| `external`       | Follow a video playing in another app, such as a VR headset, and move your device with it | `playback.external`                                                                                                                                                             |
-| `session`        | Call edges, change the intensity and know when you finish                                 | `session.edge / endEdge / intensity.set / restore`, and what `player` reads of the session                                                                                      |
-| `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                                                               |
-| `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                                                    |
-| `serve`          | Share your library with devices on your network                                           | `http.serve / url / urls / rootAliases / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                               |
+| Permission       | Shown to the user as                                                                      | Opens                                                                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `device`         | Move your device, and reshape scripts on their way to it                                  | `motion.take`, `motion.filter`                                                                                                                                                          |
+| `scripts`        | Read the loaded scripts and load its own                                                  | `scripts.*`                                                                                                                                                                             |
+| `player`         | See what is playing, where, the picture, and your edges and intensity                     | `player.state / onChange / script / frame / clock / picture / onPicture / video`, `playback.onEnded`, `session.edgeState / onEdge / onFinish`, `session.intensity.get / max / onChange` |
+| `playback`       | Play, pause, seek and change the speed of videos                                          | `playback.play / pause / resume / playFingerprint / next / previous`, `player.seek / setRate`                                                                                           |
+| `library`        | Read your library: videos, their scripts, stats and playlists                             | `library.list / analyse / onChange / fingerprint / info / media / thumbnail / scripts / open`, `music.analyse({ video })`                                                               |
+| `library-edit`   | Change your videos' tags and source links                                                 | `library.tag`, `library.setSource`                                                                                                                                                      |
+| `network`        | Connect to servers through playhound                                                      | `net.fetch`                                                                                                                                                                             |
+| `stage`          | Show its own page, draw over the video and change how the picture looks                   | `ui.page / openPage / showStage / overlay`, `player.effects`                                                                                                                            |
+| `web`            | Open web pages inside playhound                                                           | `webview.create`                                                                                                                                                                        |
+| `external`       | Follow a video playing in another app, such as a VR headset, and move your device with it | `playback.external`                                                                                                                                                                     |
+| `session`        | Call edges, change the intensity and know when you finish                                 | `session.edge / endEdge / intensity.set / restore`, and what `player` reads of the session                                                                                              |
+| `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                                                                       |
+| `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                                                            |
+| `serve`          | Share your library with devices on your network                                           | `http.serve / url / urls / rootAliases / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                                       |
 
 Everything else needs none: settings, storage, the panel, commands, styles,
 toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
 `safety.*`, `webview.available`, `net.socketAvailable`, `http.available /
-url`, `asset`, `log`. A call outside the list throws an `Error` naming the
+url`, _(4)_ `music.analyse` of a file the plugin has, `music.script`,
+`files.save`, `asset`, `log`. A call outside the list throws an `Error` naming the
 permission to add.
 
 A first install always shows the list and waits for the user to agree. An
@@ -168,6 +169,11 @@ The full contract, with comments, is in
 | `session.*` _(3)_                                                         | edges, the intensity knob, finishes; see [Session control](#session-control)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ui.theme / onThemeChange` _(3)_                                          | the theme's id (also `data-theme` on `<html>`), and a call when it changes, after its CSS variables have the new colours: read them with `getComputedStyle(document.documentElement)` to repaint a canvas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `commands.keyFree(kbd)` _(3)_                                             | whether a shortcut could be had. `kbd` in `register` may also be a list (`['Shift+B', 'Alt+B']`): the first free one is taken, and only when none is free is that logged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `player.video()` _(4)_                                                    | the player's own `<video>` element, to draw from (a canvas, a WebGL texture); see [The picture, media and music](#the-picture-media-and-music)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `player.effects({ transform, filter, opacity })` _(4)_                    | change the picture itself: scale, shake, tilt, colour, blur. Needs `stage`; see [The picture, media and music](#the-picture-media-and-music)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `library.scripts(id) / open(id)` _(4)_                                    | a library video's scripts, every axis, as data; a link that plays it in the plugin's own `<video>` or `<audio>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `music.analyse / script` _(4)_                                            | the beats of a song or a video's soundtrack, and a script that follows them, as playhound's own "Make a script from the music"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `files.save(name, data, { mime })` _(4)_                                  | save a file where the user picks: the save dialog, the share sheet on Android                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `asset(path)`                                                             | a `blob:` URL for a file from the plugin's zip                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `log(...)`                                                                | `console.log` with the plugin's name in front                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -432,6 +438,60 @@ effective }`, `effective` being what actually comes through, the knob
 Panic always wins and stays on this computer: no plugin can lift it.
 `safety.onResume(fn)` says when the user lifted it; nothing restarts by
 itself, so take control again if you need it.
+
+## The picture, media and music
+
+API 4 (playhound 2.2.3) lets a plugin work with the picture and with media
+of its own. Write `"api": 4` and `"minPlayhound": "2.2.3"` in the manifest.
+
+**Effects on the picture.** `player.effects({ transform, filter, opacity })`
+(permission `stage`) puts CSS on whatever shows the picture: the video, the
+pop-out's mirror and the VR view, around the picture's centre. It is cheap
+enough to call every animation frame; `null` clears it. Each plugin has one
+set; several plugins' effects stack (transforms and filters one after
+another, opacities multiplied). They are cleared when the plugin is switched
+off. For what CSS can't do, draw in an [overlay](#the-module) from
+`player.video()`: the player's own `<video>` element (permission `player`),
+as a canvas `drawImage` source or a WebGL texture. It is a new element for
+every video, so ask again after `player.onChange`, and never play, pause or
+seek it yourself: that goes through `playback` and `player.seek`.
+
+```js
+// A zoom punch on every stroke, easing out over 150 ms
+const hitAt = -1
+function frame(now) {
+  const k = Math.max(0, 1 - (now - hitAt) / 150)
+  ctx.player.effects(k > 0 ? { transform: `scale(${1 + 0.04 * k})` } : null)
+  requestAnimationFrame(frame)
+}
+```
+
+**A library video in your own player.** `library.open(id)` (permission
+`library`) gives `{ url, kind, close }`: set `url` as the `src` of your own
+`<video>` or `<audio>`, on any platform. `kind` is `'hls'` for a provided
+video that streams as a playlist (play it with hls.js, or skip it). Close
+what you no longer need; whatever is still open is closed when the plugin is
+switched off. `library.scripts(id)` reads every script paired with the video,
+every axis and alternate take, as `{ axis, label, name, actions, alt }` with
+positions 0–100. To move the device while your own player plays, follow it
+with [`playback.external`](#playing-in-another-app), handing over the
+scripts and feeding it your player's clock.
+
+**Music.** `music.analyse(file)` finds the beats in a song (a `File` or
+`Blob`, say from an `<input type="file">`), and `music.analyse({ video: id })`
+in a library video's soundtrack (permission `library`). It returns the tempo
+(`bpm`), the beat times, and per beat its loudness (`energy`, dBFS),
+brightness (`centroid`), onset `strength` and place in the bar (`barPos`, 0 is
+the downbeat), with the stretches that have no rhythm (`gaps`). The first
+time is slow, a few seconds a minute of music (`onProgress` gets 0–1); it is
+kept after. `music.script(analysis, opts)` turns it into a script as
+playhound's own **Make a script from the music** does, within the user's
+speed ceiling; any option left out is the user's own music motion setting.
+
+**Saving.** `files.save(name, data, { mime })` saves a `Blob`, a string or
+bytes where the user picks: the save dialog in the desktop app, a download in
+a browser without one, the share sheet in the Android app. Call it from a
+click, since the dialog needs one; it resolves `false` if the user cancelled.
 
 ## An example
 

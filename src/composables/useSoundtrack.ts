@@ -139,6 +139,11 @@ export function analyseSoundtrack(file: File, opts: { durationHint?: number } = 
   return job
 }
 
+/** How far an analysis of `file` has got, 0–1 (1 once done, 0 before it starts). */
+export function soundtrackProgress(file: File): number {
+  return stateOf(soundtrackKey(file)).progress
+}
+
 /** The analysed beat grid for the playing video, or null. Cheap: call it every frame. */
 export function getAnalysedGrid(): AnalysedGrid | null {
   return grid

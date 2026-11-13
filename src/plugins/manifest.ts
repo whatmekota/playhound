@@ -21,9 +21,11 @@ import { APP_VERSION, meetsMin, readStoreFields, shortVersion } from './storeMet
 /**
  * The newest plugin API this playhound speaks. 3 added external playback,
  * network sockets, serving on the LAN, library sources and session control;
- * plugins written for 1 and 2 run as before.
+ * 4 the player's video and effects on the picture, a library video's
+ * scripts and media for the plugin's own player, music analysis and saving
+ * files. Plugins written for older ones run as before.
  */
-export const PLUGIN_API = 3
+export const PLUGIN_API = 4
 
 export interface PermissionInfo {
   id: PluginPermission
@@ -37,12 +39,12 @@ export interface PermissionInfo {
 export const PERMISSIONS: PermissionInfo[] = [
   { id: 'device', label: 'Move your device, and reshape scripts on their way to it', api: 'motion.take, motion.filter' },
   { id: 'scripts', label: 'Read the loaded scripts and load its own', api: 'scripts.*' },
-  { id: 'player', label: 'See what is playing, where, the picture, and your edges and intensity', api: 'player.state, player.onChange, player.script, player.frame, player.clock, playback.onEnded, session.edgeState, session.onEdge, session.intensity.get / max / onChange' },
+  { id: 'player', label: 'See what is playing, where, the picture, and your edges and intensity', api: 'player.state, player.onChange, player.script, player.frame, player.video, player.clock, playback.onEnded, session.edgeState, session.onEdge, session.intensity.get / max / onChange' },
   { id: 'playback', label: 'Play, pause, seek and change the speed of videos', api: 'playback.play, pause, resume, playFingerprint, player.seek, player.setRate' },
-  { id: 'library', label: 'Read your library: video names, stats and playlists', api: 'library.list, analyse, onChange, fingerprint, info' },
+  { id: 'library', label: 'Read your library: videos, their scripts, stats and playlists', api: 'library.list, analyse, onChange, fingerprint, info, media, thumbnail, scripts, open; music.analyse of a library video' },
   { id: 'library-edit', label: 'Change your videos\' tags and source links', api: 'library.tag, library.setSource' },
   { id: 'network', label: 'Connect to servers through playhound', api: 'net.fetch' },
-  { id: 'stage', label: 'Show its own page and draw over the video', api: 'ui.page, ui.openPage, ui.showStage, ui.overlay' },
+  { id: 'stage', label: 'Show its own page, draw over the video and change how the picture looks', api: 'ui.page, ui.openPage, ui.showStage, ui.overlay, player.effects' },
   // Any site, including one made to look like something else: the pages
   // themselves can't reach playhound, but what they show is the plugin's pick.
   { id: 'web', label: 'Open web pages inside playhound', api: 'webview.create' },
