@@ -140,6 +140,7 @@ declare module 'vue' {
     UnsavedEditsModal: typeof import('./src/components/editor/UnsavedEditsModal.vue')['default']
     UpdateBanner: typeof import('./src/components/shell/UpdateBanner.vue')['default']
     VideoPlayer: typeof import('./src/components/player/VideoPlayer.vue')['default']
+    VrControls: typeof import('./src/components/player/VrControls.vue')['default']
     WallStage: typeof import('./src/components/views/WallStage.vue')['default']
     WelcomeScreen: typeof import('./src/components/shell/WelcomeScreen.vue')['default']
   }

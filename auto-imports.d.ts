@@ -183,6 +183,7 @@ declare global {
   const shallowRef: typeof import('vue').shallowRef
   const sinkSupported: typeof import('./src/composables/useEstim').sinkSupported
   const snapRect: typeof import('./src/composables/wallGeometry').snapRect
+  const soundtrackProgress: typeof import('./src/composables/useSoundtrack').soundtrackProgress
   const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
   const startUiScale: typeof import('./src/composables/useUiScale').startUiScale
   const startUpdates: typeof import('./src/composables/useUpdates').startUpdates
@@ -713,6 +714,7 @@ declare module 'vue' {
     readonly shallowRef: UnwrapRef<typeof import('vue')['shallowRef']>
     readonly sinkSupported: UnwrapRef<typeof import('./src/composables/useEstim')['sinkSupported']>
     readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
+    readonly soundtrackProgress: UnwrapRef<typeof import('./src/composables/useSoundtrack')['soundtrackProgress']>
     readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
     readonly startUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['startUiScale']>
     readonly startUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['startUpdates']>
