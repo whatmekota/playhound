@@ -2,6 +2,7 @@ import type { VrEye } from '~/lib/vrFormat'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { isAudioName } from '~/lib/mediaFiles'
+import { KEYS } from '~/lib/persist'
 import { looksVr } from '~/lib/tags'
 import { DEFAULT_VR_FORMAT, guessVrFormat, looksSbsBySize, VR_FORMATS } from '~/lib/vrFormat'
 
@@ -18,7 +19,7 @@ const saved = load()
  * format), by file name, so it comes back the next time it plays.
  */
 interface VrChoice { on?: boolean, eye?: VrEye, format?: string }
-const VR_CHOICES_KEY = 'ph:player.vrByVideo'
+const VR_CHOICES_KEY = KEYS.vrByVideo.key
 const VR_CHOICES_MAX = 2000
 function loadVrChoices(): Map<string, VrChoice> {
   try {
