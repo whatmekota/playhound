@@ -182,8 +182,7 @@ export function planStrokes(a: SoundtrackAnalysis, o: MusicScriptOptions): Plann
  * the centre in gaps (at the bottom, for strokes that start there), then the
  * hard speed limit.
  */
-export function musicScript(a: SoundtrackAnalysis, o: MusicScriptOptions): FunscriptAction[] {
-  const strokes = planStrokes(a, o)
+export function musicScript(a: SoundtrackAnalysis, o: MusicScriptOptions, strokes = planStrokes(a, o)): FunscriptAction[] {
   if (!strokes.length)
     return []
   const bottom = o.anchor === 'bottom'

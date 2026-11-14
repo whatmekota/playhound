@@ -48,6 +48,12 @@ export interface SoundtrackAnalysis {
   strength: number[]
   /** Where each beat sits in its bar, 0–3; 0 is the downbeat. */
   barPos: number[]
+  /**
+   * How sure the bar placement is at each beat, 0–1: how clearly the kick
+   * marks one beat of four in its stretch. Absent in analyses cached before
+   * it was kept (barConfidenceOf works it out for those).
+   */
+  barConfidence?: number[]
   /** How clearly the beats stand out from what is between them, 0–1. */
   confidence: number
   /** Stretches with no rhythmic content worth following. */
@@ -963,6 +969,7 @@ export function analyseFeatures(feat: Features | null, duration: number, opts: B
   // average, with overall attack strength as a tie-break. A break often
   // re-enters on a different footing, which is why it is per stretch.
   const barPos = Array.from<number>({ length: n }).fill(0)
+  const barConfidence = Array.from<number>({ length: n }).fill(0)
   let prevPos = -1
   for (let i = 0; i < n;) {
     if (inGap[i]) {
@@ -990,6 +997,9 @@ export function analyseFeatures(feat: Features | null, duration: number, opts: B
       for (let k = i; k < j; k++)
         barPos[k] = (((k - i - phase) % 4) + 4) % 4
       prevPos = barPos[j - 1]
+      const sure = phaseMargin(sums.map((v, p) => v / counts[p]), phase) * Math.min(1, (j - i) / 32)
+      for (let k = i; k < j; k++)
+        barConfidence[k] = sure
     }
     else {
       for (let k = i; k < j; k++) {
@@ -1039,9 +1049,26 @@ export function analyseFeatures(feat: Features | null, duration: number, opts: B
     centroid,
     strength,
     barPos,
+    barConfidence,
     confidence,
     gaps,
   }
+}
+
+/**
+ * How far the chosen phase of the bar stands above the runner-up, 0–1: a
+ * downbeat 35% stronger on average than any other beat of the bar is sure.
+ */
+export function phaseMargin(means: number[], phase: number): number {
+  const best = means[phase]
+  if (!(best > 0))
+    return 0
+  let second = 0
+  for (let p = 0; p < means.length; p++) {
+    if (p !== phase)
+      second = Math.max(second, means[p])
+  }
+  return Math.max(0, Math.min(1, (best - second) / best / 0.35))
 }
 
 // ─── Reading an analysis back ────────────────────────────────────────────────

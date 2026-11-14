@@ -23,9 +23,11 @@ import { APP_VERSION, meetsMin, readStoreFields, shortVersion } from './storeMet
  * network sockets, serving on the LAN, library sources and session control;
  * 4 the player's video and effects on the picture, a library video's
  * scripts and media for the plugin's own player, music analysis and saving
- * files. Plugins written for older ones run as before.
+ * files; 5 a song's sections and bar confidence, music.plan's strokes and
+ * library videos' stroke profiles. Plugins written for older ones run as
+ * before.
  */
-export const PLUGIN_API = 4
+export const PLUGIN_API = 5
 
 export interface PermissionInfo {
   id: PluginPermission

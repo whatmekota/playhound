@@ -52,13 +52,15 @@ A single folder wrapping all of this is fine; it's taken off.
   `blob:` URL, so relative imports don't resolve. Bundle everything into it
   (esbuild, rollup, vite in library mode).
 - `api`: the plugin API the plugin is written for, a whole number. Without it,
-  1. This playhound speaks 4; a plugin that needs a newer one is refused, with
+  1. This playhound speaks 5; a plugin that needs a newer one is refused, with
      a message saying to update playhound. Plugins written for older ones run
      as they did. API 3 added [playing in another app](#playing-in-another-app),
      [sockets](#sockets), [serving on the network](#serving-on-the-network),
      [library sources](#library-sources) and [session control](#session-control),
      plus a few smaller things marked _(3)_ below. API 4 added
-     [the picture, media and music](#the-picture-media-and-music), marked _(4)_.
+     [the picture, media and music](#the-picture-media-and-music), marked _(4)_,
+     and API 5 [a song's shape and a video's strokes](#a-songs-shape-and-a-videos-strokes),
+     marked _(5)_.
 - `permissions`: what the plugin needs (below). Unknown names are refused.
 - The store's own fields (an icon, screenshots, a category and so on) are
   optional; see [The store listing](#the-store-listing).
@@ -78,7 +80,7 @@ to be listed, by older plugins too.
 | `scripts`        | Read the loaded scripts and load its own                                                  | `scripts.*`                                                                                                                                                                             |
 | `player`         | See what is playing, where, the picture, and your edges and intensity                     | `player.state / onChange / script / frame / clock / picture / onPicture / video`, `playback.onEnded`, `session.edgeState / onEdge / onFinish`, `session.intensity.get / max / onChange` |
 | `playback`       | Play, pause, seek and change the speed of videos                                          | `playback.play / pause / resume / playFingerprint / next / previous`, `player.seek / setRate`                                                                                           |
-| `library`        | Read your library: videos, their scripts, stats and playlists                             | `library.list / analyse / onChange / fingerprint / info / media / thumbnail / scripts / open`, `music.analyse({ video })`                                                               |
+| `library`        | Read your library: videos, their scripts, stats and playlists                             | `library.list / analyse / onChange / fingerprint / info / media / thumbnail / scripts / open / strokes`, `music.analyse({ video })`                                                     |
 | `library-edit`   | Change your videos' tags and source links                                                 | `library.tag`, `library.setSource`                                                                                                                                                      |
 | `network`        | Connect to servers through playhound                                                      | `net.fetch`                                                                                                                                                                             |
 | `stage`          | Show its own page, draw over the video and change how the picture looks                   | `ui.page / openPage / showStage / overlay`, `player.effects`                                                                                                                            |
@@ -92,7 +94,7 @@ to be listed, by older plugins too.
 Everything else needs none: settings, storage, the panel, commands, styles,
 toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
 `safety.*`, `webview.available`, `net.socketAvailable`, `http.available /
-url`, _(4)_ `music.analyse` of a file the plugin has, `music.script`,
+url`, _(4)_ `music.analyse` of a file the plugin has, `music.script`, _(5)_ `music.plan`,
 `files.save`, `asset`, `log`. A call outside the list throws an `Error` naming the
 permission to add.
 
@@ -174,6 +176,8 @@ The full contract, with comments, is in
 | `player.effects({ transform, filter, opacity })` _(4)_                    | change the picture itself: scale, shake, tilt, colour, blur. Needs `stage`; see [The picture, media and music](#the-picture-media-and-music)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `library.scripts(id) / open(id)` _(4)_                                    | a library video's scripts, every axis, as data; a link that plays it in the plugin's own `<video>` or `<audio>`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `music.analyse / script` _(4)_                                            | the beats of a song or a video's soundtrack, and a script that follows them, as playhound's own "Make a script from the music"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `music.plan` _(5)_                                                        | music.script's script with the strokes it is made of: each bottom, top, and the beat it's on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `library.strokes(id)` _(5)_                                               | a library video's strokes and stroke rate through it, kept until its script changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `files.save(name, data, { mime })` _(4)_                                  | save a file where the user picks: the save dialog, the share sheet on Android                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `asset(path)`                                                             | a `blob:` URL for a file from the plugin's zip                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `log(...)`                                                                | `console.log` with the plugin's name in front                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -497,6 +501,50 @@ speed ceiling; any option left out is the user's own music motion setting.
 bytes where the user picks: the save dialog in the desktop app, a download in
 a browser without one, the share sheet in the Android app. Call it from a
 click, since the dialog needs one; it resolves `false` if the user cancelled.
+
+## A song's shape and a video's strokes
+
+API 5 (playhound 2.2.4) tells a plugin more about the music and about
+library videos' motion, for plugins that cut or change things with them.
+Write `"api": 5` and `"minPlayhound": "2.2.4"`.
+
+**Sections.** `music.analyse` also returns `sections`: the song as
+`{ start, end, kind, level, beat }` in order, covering all of it. `kind` is
+`intro`, `build`, `drop`, `breakdown`, `verse` or `outro`; `level` is how
+loud it is against the rest of the song (0–1), and `beat` the index of its
+first beat. Sections are made of four-bar phrases, so a drop starts on the
+downbeat where it lands. A song too even to tell apart is one `verse`.
+`barConfidence` says per beat how sure `barPos` is (0–1): where it is low,
+don't lean on downbeats, cut on beats instead.
+
+**The strokes behind a music script.** `music.plan(analysis, opts)` takes
+the same options as `music.script` and returns `{ actions, strokes }`:
+`actions` is the same script, and each stroke is `{ at, top, end, beat,
+depth }`, its bottom, its top and the next stroke's start in ms, with the
+index of the beat its bottom is on (`-1` for strokes between beats, when it
+strokes faster than the beat). Line cuts up with `at` and they land exactly
+where the device turns.
+
+**A library video's strokes.** `library.strokes(id)` (permission `library`)
+returns `{ duration, spm, strokes, tempo, tempoStep }` from the video's
+stroke script: every stroke as `{ at, top, end, depth }` (bottom to top to
+the next bottom, ms; wobble under 8 positions isn't a stroke, nor is a pause
+over 4 s), the typical rate (`spm`, the median) and the rate through the
+video, one value per `tempoStep` ms (0 where it holds still). It is worked
+out once and kept until the script file changes, so going over a whole
+library is quick after the first time. Null without a stroke script.
+
+```js
+// The drops of a song, and library videos that stroke at its tempo
+const song = await ctx.music.analyse(file)
+const drops = song.sections.filter(s => s.kind === 'drop')
+const near = []
+for (const v of await ctx.library.list()) {
+  const p = await ctx.library.strokes(v.id)
+  if (p && Math.abs(p.spm - song.bpm) < song.bpm * 0.08)
+    near.push(v.id)
+}
+```
 
 ## An example
 

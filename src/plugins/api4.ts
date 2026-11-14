@@ -8,6 +8,7 @@ import type { SoundtrackAnalysis } from '~/lib/beatTrack'
 import type { ScriptMatch } from '~/stores/libraryStore'
 import { extractSuffix } from '~/lib/axisMap'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
+import { barConfidenceOf, musicSections } from '~/lib/musicSections'
 
 /** Every axis of every script file paired with a video, positions 0–100. Files that don't parse are left out. */
 export async function readLibraryScripts(videoName: string, matches: ScriptMatch[]): Promise<LibraryScript[]> {
@@ -45,6 +46,8 @@ export function analysisForPlugin(a: SoundtrackAnalysis): MusicAnalysis {
     barPos: [...a.barPos],
     confidence: a.confidence,
     gaps: a.gaps.map(g => ({ start: g.start, end: g.end })),
+    barConfidence: [...barConfidenceOf(a)],
+    sections: musicSections(a),
   }
 }
 
@@ -73,6 +76,7 @@ export function analysisFromPlugin(a: unknown, version: number): SoundtrackAnaly
     centroid: fit(x.centroid, 10),
     strength: fit(x.strength, 1),
     barPos: fit(x.barPos, 0).map(p => Math.max(0, Math.min(3, Math.round(p)))),
+    ...(Array.isArray(x.barConfidence) ? { barConfidence: fit(x.barConfidence, 0) } : {}),
     confidence: Number.isFinite(x.confidence) ? Number(x.confidence) : 1,
     gaps: gaps.map(g => ({ start: g.start, end: g.end })),
   }

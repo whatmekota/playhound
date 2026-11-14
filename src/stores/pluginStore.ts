@@ -2,7 +2,7 @@ import type { VideoEntry } from './libraryStore'
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibraryScript, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MediaHandle, MotionControl, MotionFilter, MotionReadout, MusicAnalysis, MusicScriptOptions, OverlayDef, PageDef, PanelDef, PictureEffects, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, WebViewOptions } from '~/plugins/types'
+import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibraryScript, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MediaHandle, MotionControl, MotionFilter, MotionReadout, MusicAnalysis, MusicScriptOptions, MusicStroke, OverlayDef, PageDef, PanelDef, PictureEffects, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, StrokeProfile, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
@@ -31,6 +31,7 @@ import { createSteadyClock } from '~/lib/steadyClock'
 import { manualTags, normalizeTags } from '~/lib/tags'
 import { ensureMediaInfo, ensureThumb, loadUserMeta } from '~/lib/thumbs'
 import { analysisForPlugin, analysisFromPlugin, blobOf, readLibraryScripts, safeFileName, saveWithDialog } from '~/plugins/api4'
+import { libraryStrokeProfile, musicPlan } from '~/plugins/api5'
 import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
@@ -1628,11 +1629,11 @@ export const usePluginStore = defineStore('plugins', () => {
       }
     }
 
-    function scriptForMusic(analysis: MusicAnalysis, o: MusicScriptOptions = {}): { at: number, pos: number }[] {
-      const a = analysisFromPlugin(analysis, ANALYSIS_VERSION)
+    /** music.script's options, filled in from the user's own music motion settings. */
+    function musicOptions(o: MusicScriptOptions = {}) {
       const num = (v: unknown, lo: number, hi: number, fallback: number) => typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : fallback
       const bandLo = num(o.bandLo, 20, 600, motion.beatBandLo)
-      const actions = musicScript(a, {
+      return {
         bandLo,
         bandHi: Math.max(bandLo, num(o.bandHi, 20, 600, motion.beatBandHi)),
         maxSpm: motion.maxSpm,
@@ -1641,8 +1642,25 @@ export const usePluginStore = defineStore('plugins', () => {
         depthFollows: typeof o.depthFollows === 'boolean' ? o.depthFollows : motion.musicDepthFollows,
         anchor: o.anchor === 'bottom' || o.anchor === 'centre' ? o.anchor : motion.musicAnchor,
         centre: motion.center,
-      })
+      }
+    }
+
+    function scriptForMusic(analysis: MusicAnalysis, o: MusicScriptOptions = {}): { at: number, pos: number }[] {
+      const actions = musicScript(analysisFromPlugin(analysis, ANALYSIS_VERSION), musicOptions(o))
       return actions.map(x => ({ at: Math.round(x.at), pos: Math.round(x.pos) }))
+    }
+
+    // ─── API 5 ─────────────────────────────────────────────────────────────
+    function planForMusic(analysis: MusicAnalysis, o: MusicScriptOptions = {}): { actions: { at: number, pos: number }[], strokes: MusicStroke[] } {
+      return musicPlan(analysisFromPlugin(analysis, ANALYSIS_VERSION), musicOptions(o))
+    }
+
+    async function libraryStrokes(videoId: string): Promise<StrokeProfile | null> {
+      const entry = entryNamed(videoId)
+      if (!entry)
+        return null
+      const matches = entry.remote ? await remoteScriptMatches(entry) : entry.scriptMatches
+      return libraryStrokeProfile(entry.name, matches)
     }
 
     async function saveFile(name: string, data: Blob | string | Uint8Array, opts: { mime?: string } = {}): Promise<boolean> {
@@ -1859,10 +1877,12 @@ export const usePluginStore = defineStore('plugins', () => {
         scriptUrl: gate('serve', 'library.scriptUrl', gate('library', 'library.scriptUrl', scriptUrl)),
         scripts: gate('library', 'library.scripts', libraryScripts),
         open: gate('library', 'library.open', openMedia),
+        strokes: gate('library', 'library.strokes', libraryStrokes),
       },
       music: {
         analyse: analyseMusic,
         script: scriptForMusic,
+        plan: planForMusic,
       },
       files: {
         save: saveFile,

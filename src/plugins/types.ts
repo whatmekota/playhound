@@ -11,7 +11,8 @@
  * lists the permissions it needs, and ctx refuses the rest (see
  * src/plugins/manifest.ts). API 3 added playback.external, net.socket,
  * http, library.provide / mediaUrl / scriptUrl and session; API 4 added
- * player.video / effects, library.scripts / open, music and files.
+ * player.video / effects, library.scripts / open, music and files; API 5
+ * the song's sections, music.plan and library.strokes.
  * docs/plugins.md has the guide.
  */
 
@@ -564,6 +565,54 @@ export interface MusicAnalysis {
   confidence: number
   /** Stretches with no rhythm worth following, seconds. */
   gaps: { start: number, end: number }[]
+  /** How sure `barPos` is at each beat, 0–1: how clearly the kick marks the downbeat there (API 5). */
+  barConfidence: number[]
+  /** The song's shape: intro, builds, drops, breakdowns, outro, in order, covering all of it (API 5). */
+  sections: MusicSection[]
+}
+
+/** A stretch of a song (API 5). Made of four-bar phrases rated by loudness against the rest of the song. */
+export interface MusicSection {
+  /** Seconds. A section starts on its first beat; the first starts at 0, the last ends at `duration`. */
+  start: number
+  end: number
+  /**
+   * `drop`: the loud part. `build`: rising into a drop. `breakdown`: quiet,
+   * or no beat (a gap). `intro` / `outro`: before the first drop and after
+   * the last. `verse`: in between, or everything in a song too even to tell.
+   */
+  kind: 'intro' | 'verse' | 'build' | 'drop' | 'breakdown' | 'outro'
+  /** How loud it is against the rest of the song, 0–1. */
+  level: number
+  /** Index of its first beat in `beats`; -1 when it has none. */
+  beat: number
+}
+
+/** The strokes behind music.plan's script (API 5). Rests (gaps) are left out. */
+export interface MusicStroke {
+  /** ms: the bottom it starts from. */
+  at: number
+  /** ms: its top. */
+  top: number
+  /** ms: where the next stroke (or rest) starts. */
+  end: number
+  /** Index in `beats` of the beat its bottom is on; -1 for one between beats (strokes faster than the beat). */
+  beat: number
+  /** How deep it was planned, 0–1, before the speed ceiling. */
+  depth: number
+}
+
+/** A library video's strokes (library.strokes, API 5), from its stroke script. */
+export interface StrokeProfile {
+  /** ms: the script's last action. */
+  duration: number
+  /** The typical stroke rate, strokes/min (the median over strokes); 0 with none. */
+  spm: number
+  /** Every stroke, bottom → top → next bottom. Wobble under 8 positions isn't a stroke; nor is a "stroke" over 4 s. */
+  strokes: { at: number, top: number, end: number, depth: number }[]
+  /** Stroke rate through the video, one value per `tempoStep` ms: strokes/min, 0 where it holds still. */
+  tempo: number[]
+  tempoStep: number
 }
 
 /** How music.script strokes; anything left out is the user's own music motion setting. */
@@ -743,6 +792,13 @@ export interface PluginContext {
      * Null if it isn't in the library.
      */
     open: (videoId: string) => Promise<MediaHandle | null>
+    /**
+     * Its stroke script's strokes and stroke rate (API 5), worked out once
+     * and kept until the script changes, so going over a whole library is
+     * quick after the first time. Null if it isn't in the library or has no
+     * stroke script.
+     */
+    strokes: (videoId: string) => Promise<StrokeProfile | null>
   }
   /** What plays. */
   playback: {
@@ -911,6 +967,11 @@ export interface PluginContext {
      * music" makes it: `at` ms, `pos` 0–100, within the user's speed ceiling.
      */
     script: (analysis: MusicAnalysis, opts?: MusicScriptOptions) => { at: number, pos: number }[]
+    /**
+     * The same script, with the strokes it is made of: each bottom, top and
+     * the beat it is on (API 5), so cuts can land exactly on them.
+     */
+    plan: (analysis: MusicAnalysis, opts?: MusicScriptOptions) => { actions: { at: number, pos: number }[], strokes: MusicStroke[] }
   }
   /** Getting files out (API 4). */
   files: {
