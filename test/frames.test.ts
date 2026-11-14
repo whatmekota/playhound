@@ -45,6 +45,24 @@ describe('requestFrame', () => {
     expect(cb).toHaveBeenCalledTimes(1)
   })
 
+  it('a device loop’s frame runs on its backstop when no paint comes, once', () => {
+    vi.useFakeTimers()
+    try {
+      const main = mainWindow()
+      const cb = vi.fn()
+      requestFrame(cb, 24)
+      vi.advanceTimersByTime(23)
+      expect(cb).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+      expect(cb).toHaveBeenCalledTimes(1)
+      main.paint()
+      expect(cb).toHaveBeenCalledTimes(1)
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('runs once, on whichever window paints first', () => {
     const main = mainWindow()
     const pop = fakeWindow()

@@ -36,7 +36,18 @@ export function setFrameSource(w: Window | null) {
   extra = w
 }
 
-export function requestFrame(cb: (now: number) => void): number {
+/**
+ * A device loop's frames wait for no paint longer than this: the page can
+ * miss a frame or three while a video starts decoding (a plugin's own
+ * players), and a stroke would stall and jump on each.
+ */
+export const DEVICE_BACKSTOP_MS = 24
+
+/**
+ * The next frame. `backstopMs`: run on a timer if no frame has come by then
+ * (device loops, see DEVICE_BACKSTOP_MS).
+ */
+export function requestFrame(cb: (now: number) => void, backstopMs?: number): number {
   const id = ++seq
   const fire = () => {
     const reqs = pending.get(id)
@@ -60,8 +71,9 @@ export function requestFrame(cb: (now: number) => void): number {
     catch {}
   }
   pending.set(id, reqs)
-  if (timerMs !== null)
-    timers.set(id, setTimeout(fire, timerMs))
+  const wait = timerMs === null ? backstopMs ?? null : Math.min(timerMs, backstopMs ?? timerMs)
+  if (wait !== null)
+    timers.set(id, setTimeout(fire, wait))
   return id
 }
 
