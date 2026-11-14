@@ -169,6 +169,10 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   - [phvr](https://github.com/whatmekota/phvr): follow a video playing in
     HereSphere or DeoVR and drive your devices from playhound, and browse your
     library from the headset (desktop app; new, reports welcome).
+  - [phpmv](https://github.com/whatmekota/phpmv): a PMV maker. Pick a song and
+    which clips may appear; every cut lands on the beat, each clip stroking at
+    the song's tempo, with your device following. Works best with steady
+    scripts.
 
   Writing one is described in [docs/plugins.md](docs/plugins.md), including a
   dev mode that reloads your plugin as you save.

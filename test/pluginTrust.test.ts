@@ -41,7 +41,7 @@ describe('official plugins joining the store list', () => {
   })
   it('keeps what the user added, and never adds a default twice', () => {
     const r = addNewDefaults(['whatmekota/playmate', 'someone/thing', 'WhatMeKota/ph2gether'], null)
-    expect(r.list).toEqual(['whatmekota/playmate', 'someone/thing', 'WhatMeKota/ph2gether', 'whatmekota/phbrowser', 'whatmekota/phthreads', 'whatmekota/phbeatbar', 'whatmekota/phstash', 'whatmekota/phvr'])
+    expect(r.list).toEqual(['whatmekota/playmate', 'someone/thing', 'WhatMeKota/ph2gether', 'whatmekota/phbrowser', 'whatmekota/phthreads', 'whatmekota/phbeatbar', 'whatmekota/phstash', 'whatmekota/phvr', 'whatmekota/phpmv'])
   })
   it('doesn\'t bring back one the user removed after it was offered', () => {
     const r = addNewDefaults(['whatmekota/playmate'], [...DEFAULT_SOURCES])
