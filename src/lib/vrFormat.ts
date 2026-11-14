@@ -1,16 +1,27 @@
 /**
- * How a side-by-side VR video is laid out, for the VR view (SbsViewer).
+ * How a VR video is laid out, for the VR view (SbsViewer).
  *
- * Each eye's half of the frame is either equirectangular (longitude across,
+ * The frame holds the two eyes side by side (most VR), one above the other
+ * (top-bottom, common for 360° and some JAV), or one picture for both
+ * (mono). Each eye's part is either equirectangular (longitude across,
  * latitude up, the usual 180°) or a fisheye circle, which is what most
  * 190°–220° studio footage is (SLR's MKX200, RF52 and the like). The field of
- * view is how much of the sphere the half covers.
+ * view is how much of the sphere it covers.
  */
 
 export type VrProjection = 'equirect' | 'fisheye'
 
 /** Which half of a side-by-side frame the VR view shows. Some videos are sharper, or better framed, in one eye. */
 export type VrEye = 'left' | 'right'
+
+/** Where the eyes are in the frame: left | right, top (left eye) over bottom, or one picture. */
+export type VrLayout = 'sbs' | 'tb' | 'mono'
+
+export const VR_LAYOUTS: { value: VrLayout, label: string }[] = [
+  { value: 'sbs', label: 'Side by side' },
+  { value: 'tb', label: 'Top-bottom' },
+  { value: 'mono', label: 'Mono' },
+]
 
 export interface VrFormat {
   id: string
@@ -26,6 +37,7 @@ export const VR_FORMATS: VrFormat[] = [
   { id: 'eq180', label: '180° equirectangular', short: '180°', projection: 'equirect', fov: 180 },
   { id: 'eq190', label: '190° equirectangular', short: '190°', projection: 'equirect', fov: 190 },
   { id: 'eq200', label: '200° equirectangular', short: '200°', projection: 'equirect', fov: 200 },
+  { id: 'eq360', label: '360° equirectangular', short: '360°', projection: 'equirect', fov: 360 },
   { id: 'fe180', label: '180° fisheye', short: 'F180', projection: 'fisheye', fov: 180 },
   { id: 'fe190', label: '190° fisheye', short: 'F190', projection: 'fisheye', fov: 190 },
   { id: 'fe200', label: '200° fisheye', short: 'F200', projection: 'fisheye', fov: 200 },
@@ -55,8 +67,26 @@ export function guessVrFormat(name: string): string | null {
     return 'fe180'
   if (/fisheye/.test(n))
     return 'fe190'
+  if (/(?:^|[^a-z0-9])360(?![0-9p])/.test(n))
+    return 'eq360'
   if (/(?:^|\D)180[\s_-]?(?:x180[\s_-]?)?(?:sbs|lr|3dh)(?![a-z])/.test(n) || /(?:sbs|lr|3dh)[\s_-]?180(?!\d)/.test(n))
     return 'eq180'
+  return null
+}
+
+/**
+ * The layout a file name gives away: `_TB`, `_OU`, `3dv`, `over-under` are
+ * top-bottom; `_LR`, `_SBS`, `3dh` side by side; `_mono` one picture. Null
+ * when it says nothing.
+ */
+export function guessVrLayout(name: string): VrLayout | null {
+  const n = name.split(/[\\/]/).pop()?.toLowerCase() ?? ''
+  if (/(?:^|[^a-z0-9])(?:tb|ou|3dv|over[\s_-]?under|top[\s_-]?bottom)(?:[^a-z0-9]|$)/.test(n))
+    return 'tb'
+  if (/(?:^|[^a-z0-9])(?:lr|rl|sbs|3dh|side[\s_-]?by[\s_-]?side)(?:[^a-z0-9]|$)/.test(n))
+    return 'sbs'
+  if (/(?:^|[^a-z0-9])mono(?:[^a-z0-9]|$)/.test(n) && /(?:^|[^a-z0-9])(?:vr|180|360)(?:[^a-z0-9]|$)/.test(n))
+    return 'mono'
   return null
 }
 
@@ -78,4 +108,18 @@ export function looksSbs(name: string, w: number, h: number) {
 export function looksSbsBySize(w: number, h: number) {
   const aspect = w / h
   return aspect > 1.95 && aspect < 2.05 && w >= 3800
+}
+
+/**
+ * Top-bottom VR by its shape: two 360° eyes (2:1 each) stack into a square,
+ * two 180° ones (1:1) into a 1:2 frame. Only big ones: a flat video is never
+ * 3K wide and square. The format it suggests, or null.
+ */
+export function looksTbBySize(w: number, h: number): 'eq360' | 'eq180' | null {
+  const aspect = w / h
+  if (w >= 3000 && aspect > 0.95 && aspect < 1.05)
+    return 'eq360'
+  if (w >= 1900 && aspect > 0.48 && aspect < 0.52)
+    return 'eq180'
+  return null
 }

@@ -3,11 +3,12 @@ import type { VrEye } from '~/lib/vrFormat'
 import UiSegmented from '~/components/ui/UiSegmented.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
-import { VR_FORMATS } from '~/lib/vrFormat'
+import { VR_FORMATS, VR_LAYOUTS } from '~/lib/vrFormat'
 import { usePlayerStore } from '~/stores/playerStore'
 
 /**
- * The VR view's settings: on or off, the layout, which eye, and whether VR
+ * The VR view's settings: on or off, where the eyes are and how each is
+ * projected, which eye, and whether VR
  * videos open in it by themselves. The player bar's VR menu and the compact
  * player's sheet both show it; `always` keeps format and eye in view while
  * the VR view is off (the menu that exists only for them).
@@ -23,10 +24,11 @@ const eyeOptions: { value: VrEye, label: string }[] = [
 </script>
 
 <template>
-  <UiSwitch v-model="player.sbs180" label="VR view" hint="Side-by-side video, drag to look around" />
+  <UiSwitch v-model="player.sbs180" label="VR view" hint="180° and 360° video, drag to look around" />
   <template v-if="always || player.sbs180">
+    <UiSelect v-model="player.vrLayout" label="Layout" :options="VR_LAYOUTS" />
     <UiSelect v-model="player.vrFormat" label="Format" :options="formatOptions" />
-    <div class="flex gap-3 items-center justify-between">
+    <div v-if="player.vrLayout !== 'mono'" class="flex gap-3 items-center justify-between">
       <span v-tip="'Some videos are sharper or better framed in one eye. Remembered for each video.'" class="text-[12.5px] text-fg-muted">Eye</span>
       <UiSegmented v-model="player.vrEye" :options="eyeOptions" size="xs" />
     </div>

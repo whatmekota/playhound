@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { guessVrFormat, looksSbsBySize, vrFormat } from '~/lib/vrFormat'
+import { guessVrFormat, guessVrLayout, looksSbsBySize, looksTbBySize, vrFormat } from '~/lib/vrFormat'
 
 describe('guessVrFormat', () => {
   it.each([
@@ -41,5 +41,27 @@ describe('looksSbsBySize', () => {
     expect(looksSbsBySize(3840, 1920)).toBe(true)
     expect(looksSbsBySize(2160, 1080)).toBe(false)
     expect(looksSbsBySize(3840, 2160)).toBe(false)
+  })
+})
+
+describe('top-bottom and 360°', () => {
+  it.each([
+    ['scene_360_TB.mp4', 'tb', 'eq360'],
+    ['JAV_VR_OU_180.mp4', 'tb', null],
+    ['scene_180_3dv.mp4', 'tb', null],
+    ['scene_180_LR.mp4', 'sbs', 'eq180'],
+    ['tour_360_mono_vr.mp4', 'mono', 'eq360'],
+    ['clip_360p.mp4', null, null],
+    ['D:\TB\scene.mp4', null, null],
+  ])('%s → %s, %s', (name, layout, format) => {
+    expect(guessVrLayout(name)).toBe(layout)
+    expect(guessVrFormat(name)).toBe(format)
+  })
+
+  it('knows top-bottom by shape', () => {
+    expect(looksTbBySize(4096, 4096)).toBe('eq360')
+    expect(looksTbBySize(2880, 5760)).toBe('eq180')
+    expect(looksTbBySize(1080, 1080)).toBeNull()
+    expect(looksTbBySize(1080, 1920)).toBeNull()
   })
 })

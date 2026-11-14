@@ -103,8 +103,8 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   sit over a game. It can also fill a screen of its own (its full screen
   button, **F**, **F11** or a double-click; **Esc** leaves) while the main
   window shows the library or playlists on another.
-- **VR too.** Side-by-side VR plays in a look-around view: 180°, 190° and 200°,
-  equirectangular or fisheye.
+- **VR too.** VR plays in a look-around view: side by side, top-bottom or mono;
+  180° to 220° equirectangular or fisheye, and 360°.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
   that you can save and edit. Depth can follow how loud the music is or stay at

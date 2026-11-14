@@ -1,10 +1,10 @@
-import type { VrEye } from '~/lib/vrFormat'
+import type { VrEye, VrLayout } from '~/lib/vrFormat'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { isAudioName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { looksVr } from '~/lib/tags'
-import { DEFAULT_VR_FORMAT, guessVrFormat, looksSbsBySize, VR_FORMATS } from '~/lib/vrFormat'
+import { DEFAULT_VR_FORMAT, guessVrFormat, guessVrLayout, looksSbsBySize, looksTbBySize, VR_FORMATS, VR_LAYOUTS } from '~/lib/vrFormat'
 
 // Legacy storage key kept so existing data survives the rename.
 const LS_KEY = 'ph:player.prefs'
@@ -18,7 +18,8 @@ const saved = load()
  * What the user set the VR view to for a video (on or off, the eye, the
  * format), by file name, so it comes back the next time it plays.
  */
-interface VrChoice { on?: boolean, eye?: VrEye, format?: string }
+interface VrChoice { on?: boolean, eye?: VrEye, format?: string, layout?: VrLayout }
+const isLayout = (x: unknown): x is VrLayout => VR_LAYOUTS.some(l => l.value === x)
 const VR_CHOICES_KEY = KEYS.vrByVideo.key
 const VR_CHOICES_MAX = 2000
 function loadVrChoices(): Map<string, VrChoice> {
@@ -66,6 +67,8 @@ export const usePlayerStore = defineStore('player', () => {
   const vrFormat = ref<string>(VR_FORMATS.some(f => f.id === saved.vrFormat) ? saved.vrFormat : DEFAULT_VR_FORMAT)
   /** Which eye's half the VR view shows; the last one chosen, unless a video has its own. */
   const vrEye = ref<VrEye>(saved.vrEye === 'right' ? 'right' : 'left')
+  /** Where the eyes are in the frame. Side by side unless the name or the user says otherwise. */
+  const vrLayout = ref<VrLayout>('sbs')
   /** Open VR videos in the VR view by themselves (and flat ones out of it). */
   const vrAuto = ref<boolean>(saved.vrAuto ?? true)
 
@@ -89,6 +92,7 @@ export const usePlayerStore = defineStore('player', () => {
   watch(sbs180, on => rememberVr({ on }), { flush: 'sync' })
   watch(vrEye, eye => rememberVr({ eye }), { flush: 'sync' })
   watch(vrFormat, format => rememberVr({ format }), { flush: 'sync' })
+  watch(vrLayout, layout => rememberVr({ layout }), { flush: 'sync' })
 
   /** A video's file was renamed: what was set for its VR view goes with it. */
   function renameVrChoice(oldName: string, newName: string) {
@@ -114,8 +118,10 @@ export const usePlayerStore = defineStore('player', () => {
     applyingVr = true
     try {
       // A title that says how it is laid out (a provided video's name is its id).
-      if (title)
+      if (title) {
         vrFormat.value = guessVrFormat(title) ?? vrFormat.value
+        vrLayout.value = guessVrLayout(title) ?? vrLayout.value
+      }
       if (c?.on !== undefined)
         sbs180.value = c.on
       else if (vrAuto.value)
@@ -124,6 +130,8 @@ export const usePlayerStore = defineStore('player', () => {
         vrEye.value = c.eye
       if (c?.format && VR_FORMATS.some(f => f.id === c.format))
         vrFormat.value = c.format
+      if (isLayout(c?.layout))
+        vrLayout.value = c.layout
     }
     finally {
       applyingVr = false
@@ -167,12 +175,24 @@ export const usePlayerStore = defineStore('player', () => {
     }))
   })
 
-  // A video whose name says nothing but whose picture is big and 2:1 is VR.
+  // A video whose name says nothing but whose picture is big and 2:1 (side
+  // by side) or square (top-bottom) is VR.
   watch([videoWidth, videoHeight], ([w, h]) => {
     const name = videoPath.value
-    if (!name || !vrAuto.value || sbs180.value || audioOnly.value || vrChoices.get(name)?.on !== undefined)
+    if (!name || !w || !h || audioOnly.value)
       return
-    if (w && h && looksSbsBySize(w, h)) {
+    const tb = looksTbBySize(w, h)
+    const chosen = vrChoices.get(name)
+    if (tb && !chosen?.layout && !guessVrLayout(name)) {
+      applyingVr = true
+      vrLayout.value = 'tb'
+      if (!chosen?.format && !guessVrFormat(name))
+        vrFormat.value = tb
+      applyingVr = false
+    }
+    if (!vrAuto.value || sbs180.value || chosen?.on !== undefined)
+      return
+    if (looksSbsBySize(w, h) || tb) {
       applyingVr = true
       sbs180.value = true
       applyingVr = false
@@ -186,6 +206,8 @@ export const usePlayerStore = defineStore('player', () => {
     // the last choice; one that says nothing keeps it.
     applyingVr = true
     vrFormat.value = guessVrFormat(path) ?? vrFormat.value
+    // Layout is the video's own: a new one starts side by side unless its name says.
+    vrLayout.value = guessVrLayout(path) ?? 'sbs'
     applyingVr = false
     videoUrl.value = url
     videoKind.value = kind
@@ -241,6 +263,7 @@ export const usePlayerStore = defineStore('player', () => {
     sbs180,
     vrFormat,
     vrEye,
+    vrLayout,
     vrAuto,
     applyVr,
     renameVrChoice,

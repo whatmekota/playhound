@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { VrEye, VrFormat } from '~/lib/vrFormat'
+import type { VrEye, VrFormat, VrLayout } from '~/lib/vrFormat'
 import * as THREE from 'three'
 /**
- * SbsViewer — side-by-side VR viewer using Three.js
+ * SbsViewer — VR viewer using Three.js
  *
- * Takes a <video> element as prop, shows one eye's half on the inside of a
+ * Takes a <video> element as prop, shows one eye's part (the left or right
+ * half, the top or bottom, or the whole frame for mono) on the inside of a
  * sphere, and lets the user pan with mouse drag and zoom with scroll wheel —
  * like desktop YouTube 360. The half is unwrapped by a shader, as
  * equirectangular or fisheye at any field of view (see lib/vrFormat).
@@ -16,7 +17,7 @@ import * as THREE from 'three'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 
-const props = defineProps<{ videoEl: HTMLVideoElement | null, format: VrFormat, eye?: VrEye }>()
+const props = defineProps<{ videoEl: HTMLVideoElement | null, format: VrFormat, eye?: VrEye, layout?: VrLayout }>()
 
 const emit = defineEmits<{ click: [], dblclick: [] }>()
 
@@ -30,6 +31,27 @@ let texture: THREE.VideoTexture | null = null
 let rafId: number | null = null
 /** Video time of the last frame uploaded; -1 forces the next one. */
 let uploadedAt = -1
+/** What the last render showed, so an unchanged view isn't drawn again. */
+let drawn = ''
+/** When the video last handed over a new frame (performance.now()). */
+let frameSeenAt = 0
+let frameCb = 0
+let frameCbVideo: HTMLVideoElement | null = null
+/** No new-frame callback for this long while playing: the main window isn't painting (minimised, popped out), so upload by the clock. */
+const FRAME_CB_STALE_MS = 150
+
+function watchFrames(v: HTMLVideoElement | null) {
+  if (frameCbVideo && frameCb)
+    frameCbVideo.cancelVideoFrameCallback(frameCb)
+  frameCb = 0
+  frameCbVideo = v && 'requestVideoFrameCallback' in v ? v : null
+  const onFrame = () => {
+    frameSeenAt = performance.now()
+    frameCb = frameCbVideo?.requestVideoFrameCallback(onFrame) ?? 0
+  }
+  if (frameCbVideo)
+    frameCb = frameCbVideo.requestVideoFrameCallback(onFrame)
+}
 
 // ─── View state ───────────────────────────────────────────────────────────────
 // Yaw = horizontal pan (left/right), Pitch = vertical tilt (up/down).
@@ -43,25 +65,37 @@ const MAX_FOV = 110
 const PITCH_LIMIT = 85 // degrees
 
 // ─── Mouse drag ──────────────────────────────────────────────────────────────
-let dragging = false
+// A click plays or pauses; a drag looks around. Anything that moved more than
+// a few pixels from where it was pressed, or was held down, is a drag: a slow
+// drag moves only a pixel or two between events, and counting those one by
+// one made looking around pause the video.
+const CLICK_SLOP_PX = 6
+const CLICK_MAX_MS = 350
+const dragging = ref(false)
 let lastX = 0
 let lastY = 0
-let didDrag = false // true if mouse moved significantly during press
+let downX = 0
+let downY = 0
+let downAt = 0
+let didDrag = false
 
 function onPointerDown(e: PointerEvent) {
-  dragging = true
+  if (e.button !== 0)
+    return
+  dragging.value = true
   didDrag = false
-  lastX = e.clientX
-  lastY = e.clientY
+  lastX = downX = e.clientX
+  lastY = downY = e.clientY
+  downAt = performance.now()
   canvasRef.value?.setPointerCapture(e.pointerId)
 }
 
 function onPointerMove(e: PointerEvent) {
-  if (!dragging)
+  if (!dragging.value)
     return
   const dx = e.clientX - lastX
   const dy = e.clientY - lastY
-  if (Math.abs(dx) > 3 || Math.abs(dy) > 3)
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > CLICK_SLOP_PX)
     didDrag = true
   const sensitivity = fov / 500 // slower when zoomed in
   yaw -= dx * sensitivity
@@ -72,10 +106,11 @@ function onPointerMove(e: PointerEvent) {
 }
 
 function onPointerUp(e: PointerEvent) {
-  dragging = false
+  if (!dragging.value)
+    return
+  dragging.value = false
   canvasRef.value?.releasePointerCapture(e.pointerId)
-  // Only toggle play if user didn't drag
-  if (!didDrag)
+  if (e.type === 'pointerup' && !didDrag && performance.now() - downAt < CLICK_MAX_MS)
     emit('click')
 }
 
@@ -126,7 +161,7 @@ const FRAG = /* glsl */`
 uniform sampler2D map;
 uniform float halfFov;
 uniform bool fisheye;
-uniform float eyeX;
+uniform vec4 eyeRect;
 varying vec3 vDir;
 const float PI = 3.14159265358979;
 void main() {
@@ -145,7 +180,7 @@ void main() {
     if (abs(lon) > halfFov) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
     uv = vec2(0.5 + 0.5 * lon / halfFov, 0.5 + lat / PI);
   }
-  gl_FragColor = texture2D(map, vec2(eyeX + uv.x * 0.5, uv.y));
+  gl_FragColor = texture2D(map, eyeRect.xy + uv * eyeRect.zw);
 }`
 
 function buildSphere() {
@@ -161,6 +196,7 @@ function buildSphere() {
   // VideoTexture — Three.js will call texImage2D every frame automatically.
   // No colour space: the samples go straight through (see the note above).
   texture = new THREE.VideoTexture(props.videoEl)
+  watchFrames(props.videoEl)
   texture.minFilter = THREE.LinearFilter
   texture.magFilter = THREE.LinearFilter
   texture.generateMipmaps = false
@@ -173,7 +209,7 @@ function buildSphere() {
       map: { value: texture },
       halfFov: { value: 0 },
       fisheye: { value: false },
-      eyeX: { value: 0 },
+      eyeRect: { value: new THREE.Vector4(0, 0, 0.5, 1) },
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -191,7 +227,16 @@ function applyFormat() {
     return
   mat.uniforms.halfFov.value = THREE.MathUtils.degToRad(props.format.fov / 2)
   mat.uniforms.fisheye.value = props.format.projection === 'fisheye'
-  mat.uniforms.eyeX.value = props.eye === 'right' ? 0.5 : 0
+  // Texture v runs bottom to top (flipY), so the top half is 0.5–1.
+  const right = props.eye === 'right'
+  const rect = mat.uniforms.eyeRect.value as THREE.Vector4
+  if (props.layout === 'tb')
+    rect.set(0, right ? 0 : 0.5, 1, 0.5)
+  else if (props.layout === 'mono')
+    rect.set(0, 0, 1, 1)
+  else
+    rect.set(right ? 0.5 : 0, 0, 0.5, 1)
+  drawn = ''
 }
 
 function startLoop() {
@@ -200,12 +245,19 @@ function startLoop() {
     if (!renderer || !scene || !camera)
       return
 
-    // Upload the video's frame: every frame while it plays, and once after
-    // a seek or a fresh start while paused, or a paused video shows black.
+    // The texture uploads each new video frame by itself (it listens for
+    // them). Forcing it every screen frame too re-sent an 8K frame two or
+    // three times over on a fast screen, which is what made big VR files
+    // stutter. Forced only when those callbacks aren't coming (no support,
+    // or the main window isn't painting while popped out), and once after a
+    // fresh start or a seek while paused, or a paused video shows black.
     const v = props.videoEl
-    if (texture && v && v.readyState >= 2 && (!v.paused || v.currentTime !== uploadedAt)) {
-      texture.needsUpdate = true
-      uploadedAt = v.currentTime
+    if (texture && v && v.readyState >= 2 && v.currentTime !== uploadedAt) {
+      const callbacks = frameCbVideo === v && performance.now() - frameSeenAt < FRAME_CB_STALE_MS
+      if (v.paused || !callbacks) {
+        texture.needsUpdate = true
+        uploadedAt = v.currentTime
+      }
     }
 
     // Apply yaw/pitch to camera
@@ -217,6 +269,11 @@ function startLoop() {
     const z = -Math.cos(yawRad) * Math.cos(pitchRad) // negative Z = forward
     camera.lookAt(x, y, z)
 
+    // Nothing new to show (paused, not looking around): skip the draw.
+    const state = `${texture?.version}|${yaw}|${pitch}|${fov}|${camera.aspect}`
+    if (state === drawn)
+      return
+    drawn = state
     renderer.render(scene, camera)
   }
   loop()
@@ -233,6 +290,7 @@ function onResize() {
   renderer.setSize(w, h, false)
   camera.aspect = w / h
   camera.updateProjectionMatrix()
+  drawn = ''
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -249,6 +307,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (rafId !== null)
     cancelFrame(rafId)
+  watchFrames(null)
   ro?.disconnect()
   texture?.dispose()
   sphere?.geometry.dispose()
@@ -261,15 +320,15 @@ watch(() => props.videoEl, (el) => {
   if (el)
     buildSphere()
 })
-watch(() => [props.format, props.eye], applyFormat)
+watch(() => [props.format, props.eye, props.layout], applyFormat)
 </script>
 
 <template>
   <canvas
     ref="canvasRef"
     class="h-full w-full block"
-    style="cursor: grab; touch-action: none;"
-    :style="dragging ? 'cursor:grabbing' : 'cursor:grab'"
+    style="touch-action: none;"
+    :style="{ cursor: dragging ? 'grabbing' : 'grab' }"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"

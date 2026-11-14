@@ -1100,9 +1100,15 @@ function drawMirror() {
   const v = videoEl.value
   if (!c || !mirrorCtx || !v || v.readyState < 2 || !v.videoWidth)
     return
-  if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
-    c.width = v.videoWidth
-    c.height = v.videoHeight
+  // No bigger than the window shows it: copying a whole 8K frame into a
+  // 480-pixel pop-out is most of the cost for nothing.
+  const dpr = c.ownerDocument.defaultView?.devicePixelRatio ?? 1
+  const scale = Math.min(1, Math.min(c.clientWidth * dpr / v.videoWidth, c.clientHeight * dpr / v.videoHeight) || 1)
+  const w = Math.max(1, Math.round(v.videoWidth * scale))
+  const h = Math.max(1, Math.round(v.videoHeight * scale))
+  if (c.width !== w || c.height !== h) {
+    c.width = w
+    c.height = h
     mirrorAt = -1
   }
   if (v.currentTime === mirrorAt && !v.seeking)
@@ -1193,13 +1199,14 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
           >
         </video>
       </Teleport>
-      <!-- Popped out, the picture: the video itself stays in the main window. -->
+      <!-- Popped out, the picture: the video itself stays in the main window.
+         Not in the VR view, which draws from the video itself: a hidden copy
+         of every 8K frame on top of it was what made VR stutter popped out. -->
       <canvas
-        v-if="popped && hasMedia"
+        v-if="popped && hasMedia && !vrView"
         ref="mirrorEl"
         v-picture-fx
         class="h-full w-full inset-0 absolute object-contain"
-        :class="vrView ? 'invisible' : ''"
       />
 
       <!-- Playing in another app: what and where, instead of a picture. -->
@@ -1212,6 +1219,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
         :video-el="videoEl"
         :format="vrFormat(player.vrFormat)"
         :eye="player.vrEye"
+        :layout="player.vrLayout"
         class="inset-0 absolute z-[1]"
         @click="onSbsClick"
         @dblclick="onSbsDblClick"
