@@ -4,6 +4,7 @@ import type { FunscriptAction } from '~/lib/funscriptParser'
 import type { ScaledScript } from '~/lib/scriptScale'
 import { useLocalStorage } from '@vueuse/core'
 import { onUnmounted, ref } from 'vue'
+import { activeLinks, linkedActions } from '~/lib/axisLink'
 import { advanceTwistPhase, estimateVelocity, synthAxes, synthTargets } from '~/lib/axisSynth'
 import { cancelFrame, DEVICE_BACKSTOP_MS, requestFrame } from '~/lib/frames'
 import { nextActionAt } from '~/lib/funscriptParser'
@@ -129,7 +130,10 @@ export function useVideoSync() {
       return
 
     const cfg = synthConfig()
-    const targets = synthTargets(scriptStore.activeScripts.map(s => s.channel), cfg)
+    // Linked axes count as driven: a link the user set up wins over a made-up fill.
+    const scripted = scriptStore.activeScripts.map(s => s.channel)
+    const linked = activeLinks(motion.axisLinks, scripted).map(l => l.channel)
+    const targets = synthTargets([...scripted, ...linked], cfg)
     if (!targets.length)
       return
 
@@ -284,6 +288,7 @@ export function useVideoSync() {
     const dtSec = prevTs ? Math.min(0.1, (now - prevTs) / 1000) : 0
     prevTs = now
     let strokePos: number | null = null
+    let stroke: { actions: FunscriptAction[], ms: number } | null = null
 
     const lead = leadMs(speed)
     for (const script of scriptStore.activeScripts) {
@@ -298,6 +303,7 @@ export function useVideoSync() {
 
       if (channel === 'L0') {
         strokePos = pos
+        stroke = { actions, ms: adjustedMs }
         // The Handy plays the script itself: it is only told where the video
         // is and how deep an edge is. Buffering stops it, and its own offset
         // stands in for the device latency.
@@ -317,6 +323,15 @@ export function useVideoSync() {
           bpSegmentAt = nextAt
           void bp.sendLinear(cappedTarget(channel, actions, adjustedMs, nextAt, pos, speed), Math.max(0, (nextAt - adjustedMs) / speed))
         }
+      }
+    }
+
+    // Linked axes play the stroke script, shifted and mapped, through the
+    // same path as a script of their own: knob, edges and filters included.
+    if (stroke) {
+      for (const link of activeLinks(motion.axisLinks, scriptStore.activeScripts.map(s => s.channel))) {
+        const linked = linkedActions(stroke.actions, link)
+        sendAxis(link.channel, linked, stroke.ms, speed, nextActionAt(linked, stroke.ms), hold)
       }
     }
 

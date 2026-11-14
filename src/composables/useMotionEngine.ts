@@ -1,4 +1,5 @@
 import { computed, watch } from 'vue'
+import { activeLinks, createStrokeHistory, linkedPosition } from '~/lib/axisLink'
 import { cancelFrame, DEVICE_BACKSTOP_MS, requestFrame } from '~/lib/frames'
 import { clampLatency } from '~/lib/latency'
 import {
@@ -64,6 +65,8 @@ let varSeed = 0
 let effSpm = 0
 let effDepth = 0
 const subdivision = createSubdivisionHold()
+/** Where the stroke has been, for linked axes that trail it. */
+const strokeHistory = createStrokeHistory()
 // Devices that take moves rather than positions (the Handy, Intiface
 // strokers) get one move per half-stroke, planned ahead by their delay.
 const unwrap = createPhaseUnwrapper()
@@ -343,6 +346,16 @@ export function useMotionEngine() {
     lastPhase = phase
     slowPhase = (slowPhase + step + 4 * TAU) % (4 * TAU)
 
+    // Linked axes follow the stroke as it was their delay ago (a lead can't
+    // be known ahead here, so it plays as none).
+    strokeHistory.push(ts, pos)
+    const links = activeLinks(motion.axisLinks, [])
+    for (const link of links) {
+      const at = strokeHistory.at(ts, link.delayMs)
+      if (at !== null)
+        sendPosition(link.channel, linkedPosition(at, link), interval)
+    }
+
     if (motion.secondaryAxes) {
       // Offset rotations so they read as a related motion, not a copy of L0.
       const twist = applyDepth(
@@ -355,8 +368,10 @@ export function useMotionEngine() {
         0.5,
         depth * motion.secondaryDepth,
       )
-      sendPosition('R0', twist, interval)
-      sendPosition('R1', roll, interval)
+      if (!links.some(l => l.channel === 'R0'))
+        sendPosition('R0', twist, interval)
+      if (!links.some(l => l.channel === 'R1'))
+        sendPosition('R1', roll, interval)
     }
 
     if (motion.vibrateFromIntensity)
@@ -374,6 +389,7 @@ export function useMotionEngine() {
       return
     running = true
     lastTs = null
+    strokeHistory.clear()
     rafId = requestFrame(tick, DEVICE_BACKSTOP_MS)
   }
 

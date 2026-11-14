@@ -8,6 +8,7 @@ import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput, axisOutputAt } from '~/composables/useTCode'
 import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
+import { activeLinks, LINK_DELAY_MAX, LINKABLE_AXES } from '~/lib/axisLink'
 import { synthTargets } from '~/lib/axisSynth'
 import { paceStrokesPerBeat } from '~/lib/musicMotion'
 import { formatTime } from '~/lib/time'
@@ -280,6 +281,19 @@ const SYNTH_AXES = [
   { key: 'synthRoll', label: 'Roll', channel: 'R1', hint: 'Leans into the direction of travel' },
   { key: 'synthSurge', label: 'Surge', channel: 'L1', hint: 'Trails the stroke at reduced depth' },
 ] as const
+
+// ─── Linked axes ──────────────────────────────────────────────────────────────
+const linkLabel = Object.fromEntries(LINKABLE_AXES.map(a => [a.channel, a.label])) as Record<string, string>
+const linksOn = computed(() => motion.axisLinks.filter(l => l.on))
+/** Linked axes the loaded script drives itself: the script wins there. */
+const linksScripted = computed(() => {
+  const scripted = new Set(scripts.activeScripts.map(s => s.channel))
+  return linksOn.value.filter(l => scripted.has(l.channel)).map(l => l.channel)
+})
+/** Linked axes switched off in the Device panel: nothing will move. */
+const linksOff = computed(() => activeLinks(motion.axisLinks, []).filter(l => !device.axisConfigs[l.channel]?.enabled).map(l => l.channel))
+const linksSummary = computed(() => linksOn.value.length ? linksOn.value.map(l => linkLabel[l.channel]).join(', ') : 'Off')
+const delayLabel = (v: number) => (v === 0 ? 'With the stroke' : v > 0 ? `${v} ms behind` : `${-v} ms ahead`)
 
 /** Derived channels that are both selected and switched on in the Device panel. */
 const derivedReady = computed(() => {
@@ -713,6 +727,56 @@ const PAD_MAP = [
       />
       <UiSwitch v-model="motion.secondaryAxes" size="sm" label="Also drive twist and roll" hint="Slower, shallower motion on R0 and R1" />
       <UiSwitch v-model="motion.vibrateFromIntensity" size="sm" label="Vibration follows intensity" hint="Maps session intensity onto V0" />
+    </UiSection>
+
+    <!-- ─── Linked axes ───────────────────────────────────────────────────── -->
+    <UiSection title="Linked axes" icon="i-carbon-link" :summary="linksSummary">
+      <p class="hint -mt-1">
+        An axis that follows the stroke itself: a little behind or ahead of it, inverted, or with less travel. Works with
+        scripts and generated motion; never overrides an axis the script drives.
+      </p>
+      <div v-for="link in motion.axisLinks" :key="link.channel" class="flex flex-col gap-2">
+        <div class="flex gap-2 items-center">
+          <UiSwitch v-model="link.on" size="sm" :aria-label="`Link ${linkLabel[link.channel]} to the stroke`" />
+          <span class="text-[12.5px] text-fg font-medium">{{ linkLabel[link.channel] }}</span>
+          <span class="text-[10px] text-fg-faint font-mono">{{ link.channel }}</span>
+          <button
+            v-if="link.on"
+            v-tip="'Moves the opposite way to the stroke'"
+            type="button"
+            class="text-[11.5px] font-medium ml-auto px-2 focusable rounded-[var(--radius-sm)] flex gap-1 h-6 pressable items-center"
+            :class="link.invert ? 'bg-accent-soft text-accent-300 ring-1 ring-accent/30' : 'bg-fg/5 text-fg-muted hover:bg-fg/8 hover:text-fg'"
+            :aria-pressed="link.invert"
+            @click="link.invert = !link.invert"
+          >
+            <span class="i-carbon-arrows-vertical text-[13px]" />
+            Invert
+          </button>
+        </div>
+        <template v-if="link.on">
+          <UiSlider
+            v-model="link.delayMs"
+            label="Delay"
+            :min="-LINK_DELAY_MAX"
+            :max="LINK_DELAY_MAX"
+            :step="5"
+            :reset="0"
+            :format="delayLabel"
+            :hint="motion.isGenerated && link.delayMs < 0 ? 'Generated motion can only trail: this plays with the stroke' : undefined"
+          />
+          <UiSlider v-model="link.amount" label="Amount" :format="pct" :reset="1" />
+        </template>
+      </div>
+      <p v-if="linksScripted.length" class="hint">
+        The script drives <span class="text-fg-muted font-mono">{{ linksScripted.join(' ') }}</span> itself, so those follow the script.
+      </p>
+      <div v-if="linksOff.length" class="text-[12px] text-warn flex gap-2 items-start">
+        <span class="i-carbon-warning-alt text-[14px] mt-px shrink-0" />
+        <span class="flex-1"><span class="font-mono">{{ linksOff.join(' ') }}</span> {{ linksOff.length > 1 ? 'are' : 'is' }} switched off in the Device panel, so nothing will move there.</span>
+        <UiButton size="xs" variant="ghost" @click="ui.openInspector('device')">
+          Axes
+        </UiButton>
+      </div>
     </UiSection>
 
     <!-- ─── Fill idle axes ────────────────────────────────────────────────── -->

@@ -1,6 +1,8 @@
+import type { AxisLink } from '~/lib/axisLink'
 import type { MusicPace, StrokeAnchor } from '~/lib/musicMotion'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
+import { defaultLinks, sanitizeLinks } from '~/lib/axisLink'
 import { MUSIC_PACES, STROKE_ANCHORS } from '~/lib/musicMotion'
 
 /**
@@ -95,6 +97,13 @@ export const useMotionStore = defineStore('motion', () => {
   const synthRoll = ref(true)
   const synthSurge = ref(false)
 
+  /**
+   * Axes that follow the stroke itself, delayed, inverted or turned down
+   * (lib/axisLink). They win over the generated fill and the secondary axes
+   * on their channel, and never over an axis the script drives.
+   */
+  const axisLinks = ref<AxisLink[]>(defaultLinks())
+
   // ─── Gamepad ──────────────────────────────────────────────────────────────
   const gamepadEnabled = ref(false)
   /** Axis position requested by the stick, 0-1, used in direct mode. */
@@ -148,6 +157,7 @@ export const useMotionStore = defineStore('motion', () => {
       synthTwist: synthTwist.value,
       synthRoll: synthRoll.value,
       synthSurge: synthSurge.value,
+      axisLinks: axisLinks.value,
       gamepadEnabled: gamepadEnabled.value,
       secondaryAxes: secondaryAxes.value,
       secondaryDepth: secondaryDepth.value,
@@ -205,6 +215,8 @@ export const useMotionStore = defineStore('motion', () => {
       if (typeof data[k] === 'boolean')
         target.value = data[k]
     }
+    if (data.axisLinks)
+      axisLinks.value = sanitizeLinks(data.axisLinks)
     if (typeof data.secondaryAxes === 'boolean')
       secondaryAxes.value = data.secondaryAxes
     if (typeof data.vibrateFromIntensity === 'boolean')
@@ -240,6 +252,7 @@ export const useMotionStore = defineStore('motion', () => {
     synthTwist,
     synthRoll,
     synthSurge,
+    axisLinks,
     gamepadEnabled,
     gamepadPosition,
     gamepadRateHeld,
