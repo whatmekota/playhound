@@ -6,11 +6,12 @@ import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useGamepadStatus } from '~/composables/useGamepadStatus'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSoundtrack } from '~/composables/useSoundtrack'
-import { axisOutput } from '~/composables/useTCode'
+import { axisOutput, axisOutputAt } from '~/composables/useTCode'
 import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
 import { synthTargets } from '~/lib/axisSynth'
 import { paceStrokesPerBeat } from '~/lib/musicMotion'
 import { formatTime } from '~/lib/time'
+import { traceSampleTime } from '~/lib/traceSample'
 import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { CEILING_MAX, CEILING_MAX_UNLOCKED, MOTION_SOURCES, useMotionStore } from '~/stores/motionStore'
@@ -83,6 +84,8 @@ const status = computed<{ tone: 'ok' | 'warn' | 'neutral', text: string, pulse?:
 // ─── Live trace ───────────────────────────────────────────────────────────────
 // Drawn on a canvas at frame rate from what was last sent to L0, so the same
 // picture serves the script and every generator, device or no device.
+// Each output is plotted at the time it was worked out, not at the frame that
+// read it: see lib/traceSample.
 const WINDOW_MS = 4000
 const canvas = ref<HTMLCanvasElement | null>(null)
 const samples: { t: number, p: number }[] = []
@@ -90,6 +93,8 @@ const scriptSpm = ref(0)
 const travel = ref(0)
 let raf: number | null = null
 let frameNo = 0
+/** When the last output plotted was worked out. */
+let plottedAt: number | undefined
 let colors = { accent: '#888', faint: '#444', grid: '#222' }
 
 function readColors(el: HTMLElement) {
@@ -201,7 +206,13 @@ function draw(now: number) {
 }
 
 function frame(now: number) {
-  samples.push({ t: now, p: currentL0() })
+  const at = axisOutput.L0 === undefined ? undefined : axisOutputAt.L0
+  const t = traceSampleTime(at, plottedAt, now)
+  if (t !== null) {
+    plottedAt = at
+    // Never back along the time axis: a frame's own time is a little before the clock's.
+    samples.push({ t: Math.max(t, samples.at(-1)?.t ?? t), p: currentL0() })
+  }
   while (samples.length && now - samples[0].t > WINDOW_MS)
     samples.shift()
   // Theme switches change the tokens; re-reading twice a second is plenty.

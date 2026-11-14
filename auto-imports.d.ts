@@ -31,6 +31,7 @@ declare global {
   const asyncComputed: typeof import('@vueuse/core').asyncComputed
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const axisOutput: typeof import('./src/composables/useTCode').axisOutput
+  const axisOutputAt: typeof import('./src/composables/useTCode').axisOutputAt
   const clearTapTempo: typeof import('./src/composables/useVideoBeat').clearTapTempo
   const closeFaceWindow: typeof import('./src/composables/useFaceScreen').closeFaceWindow
   const computed: typeof import('vue').computed
@@ -562,6 +563,7 @@ declare module 'vue' {
     readonly asyncComputed: UnwrapRef<typeof import('@vueuse/core')['asyncComputed']>
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly axisOutput: UnwrapRef<typeof import('./src/composables/useTCode')['axisOutput']>
+    readonly axisOutputAt: UnwrapRef<typeof import('./src/composables/useTCode')['axisOutputAt']>
     readonly clearTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['clearTapTempo']>
     readonly closeFaceWindow: UnwrapRef<typeof import('./src/composables/useFaceScreen')['closeFaceWindow']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>

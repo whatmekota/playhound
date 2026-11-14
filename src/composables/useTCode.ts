@@ -19,6 +19,13 @@ export const setEmuRef = setEmuInstance
 export const axisOutput: Record<string, number> = {}
 
 /**
+ * When each axis's output was worked out (performance.now()). A live trace
+ * plots the output there rather than at the frame it read it on, which can
+ * be a frame or three later (lib/traceSample).
+ */
+export const axisOutputAt: Record<string, number> = {}
+
+/**
  * Every position any part of the app sends, before range and inversion:
  * script, generators, plugins, derived axes, homing. The session recorder
  * listens here; null when nothing does, so it costs nothing then.
@@ -47,6 +54,7 @@ function track(channel: string, position: number, limits: AxisLimits, intervalMs
   let p = limits.invert ? 1 - position : position
   p = limits.min + p * (limits.max - limits.min)
   axisOutput[channel] = Math.max(0, Math.min(1, p))
+  axisOutputAt[channel] = performance.now()
 }
 
 /** How far ahead each move to restim aims: two updates. */
