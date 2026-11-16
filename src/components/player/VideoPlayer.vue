@@ -17,6 +17,7 @@ import { MIN_OPACITY, usePopout } from '~/composables/usePopout'
 import { useScriptAnalysis } from '~/composables/useScriptAnalysis'
 import { sessionNotice, useSessionActions } from '~/composables/useSessionActions'
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
+import { routesAudio } from '~/composables/useVideoBeat'
 import { useVideoSync } from '~/composables/useVideoSync'
 import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
@@ -85,30 +86,103 @@ const videoEl = ref<HTMLVideoElement | null>(null)
 
 const popout = usePopout()
 /**
- * Popping out moves this element into the pop-out window, but never the
- * <video>: Chromium reloads a media element that changes document. The video
- * is first parked in the main window (a move within one document, which
- * playback does not notice), and only then does the rest go; coming back,
- * the rest returns first and the video after. The pop-out shows the video's
- * frames on a canvas (see "Pop-out picture").
+ * Popping out moves this element into the pop-out window, <video> and all.
+ * Chromium reloads a media element that changes document, so the move is
+ * carried: the device sync stops, and once the reloaded video knows its
+ * length it is put back where it was, playing or not, and the sync starts
+ * again. A moment's hitch, once, each way.
+ *
+ * The video used to stay in the main window and the pop-out painted its
+ * frames, but a hardware-decoded video shown in another window starves its
+ * decoder: frames dropped by the dozen and, with the windows on different
+ * screens, playback stalled outright.
+ *
+ * Two kinds stay behind, parked in the main window (a move within one
+ * document, which playback does not notice), with their frames painted in
+ * the pop-out (see "Pop-out picture"): an HLS stream, which hls.js feeds
+ * through a MediaSource a reload would lose, and a video the Music source
+ * listens to, whose sound runs through this window's audio graph.
  */
 const rootTo = shallowRef<HTMLElement | null>(null)
 const parked = ref(false)
 const popped = computed(() => !!rootTo.value)
+/** The video is between windows: its reload is not a real stop or restart. */
+let carrying = false
+
 watch(popout.target, async (el) => {
-  if (el) {
-    parked.value = true
-    await nextTick()
-    if (popout.target.value === el)
-      rootTo.value = el
+  if (player.videoKind === 'hls' || routesAudio(videoEl.value) || parked.value) {
+    if (el) {
+      parked.value = true
+      await nextTick()
+      if (popout.target.value === el)
+        rootTo.value = el
+    }
+    else {
+      rootTo.value = null
+      await nextTick()
+      if (!popout.target.value)
+        parked.value = false
+    }
+    return
   }
-  else {
-    rootTo.value = null
-    await nextTick()
-    if (!popout.target.value)
-      parked.value = false
-  }
+  await carryVideo(() => (rootTo.value = el))
 })
+
+function once(el: EventTarget, type: string, ms: number) {
+  return new Promise<boolean>((resolve) => {
+    const ac = new AbortController()
+    const timer = setTimeout(() => {
+      ac.abort()
+      resolve(false)
+    }, ms)
+    el.addEventListener(type, () => {
+      clearTimeout(timer)
+      ac.abort()
+      resolve(true)
+    }, { signal: ac.signal })
+  })
+}
+
+/** Move the player (by `move`), then put the reloaded video back where it was. */
+async function carryVideo(move: () => void) {
+  const v = videoEl.value
+  if (!v || v.readyState === 0) {
+    move()
+    return
+  }
+  const at = v.currentTime
+  const playing = !v.paused
+  const rate = v.playbackRate
+  const since = performance.now()
+  carrying = true
+  if (playing)
+    stop()
+  move()
+  await nextTick()
+  try {
+    // Not reloaded (a browser that keeps media across documents): nothing to do.
+    if (videoEl.value !== v || (v.readyState > 0 && Math.abs(v.currentTime - at) < 0.5))
+      return
+    if (v.readyState === 0 && !(await once(v, 'loadedmetadata', 10000)))
+      return
+    v.playbackRate = rate
+    v.currentTime = Math.min(at + (playing ? (performance.now() - since) / 1000 * rate : 0), v.duration || at)
+    if (playing)
+      void v.play().catch(() => {})
+    else
+      v.pause()
+    await once(v, 'seeked', 5000)
+  }
+  finally {
+    carrying = false
+    if (videoEl.value === v) {
+      player.currentTime = v.currentTime
+      player.isPlaying = !v.paused
+      if (!v.paused)
+        start()
+    }
+  }
+}
 const popOpacity = computed({
   get: () => popout.opacity.value,
   set: (v: number) => (popout.opacity.value = Math.max(MIN_OPACITY, Math.min(1, v))),
@@ -210,7 +284,7 @@ function onLoadedMetadata() {
 
 function onTimeUpdate() {
   const v = videoEl.value
-  if (!v)
+  if (!v || carrying)
     return
   player.currentTime = v.currentTime
   const seekTo = checkLoop(v.currentTime)
@@ -219,6 +293,8 @@ function onTimeUpdate() {
 }
 
 function onPlay() {
+  if (carrying)
+    return
   player.isPlaying = true
   // Playing again (a replay, a seek back) overrides the countdown.
   clearUpNextTimers()
@@ -228,6 +304,8 @@ function onPlay() {
 }
 
 function onPause() {
+  if (carrying)
+    return
   player.isPlaying = false
   stop()
 }
@@ -1199,11 +1277,10 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
           >
         </video>
       </Teleport>
-      <!-- Popped out, the picture: the video itself stays in the main window.
-         Not in the VR view, which draws from the video itself: a hidden copy
-         of every 8K frame on top of it was what made VR stutter popped out. -->
+      <!-- Popped out with the video parked behind (an HLS stream), the picture.
+         Not in the VR view, which draws from the video itself. -->
       <canvas
-        v-if="popped && hasMedia && !vrView"
+        v-if="parked && popped && hasMedia && !vrView"
         ref="mirrorEl"
         v-picture-fx
         class="h-full w-full inset-0 absolute object-contain"

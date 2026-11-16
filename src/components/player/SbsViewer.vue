@@ -41,16 +41,31 @@ let frameCbVideo: HTMLVideoElement | null = null
 const FRAME_CB_STALE_MS = 150
 
 function watchFrames(v: HTMLVideoElement | null) {
-  if (frameCbVideo && frameCb)
-    frameCbVideo.cancelVideoFrameCallback(frameCb)
+  if (frameCbVideo) {
+    if (frameCb)
+      frameCbVideo.cancelVideoFrameCallback(frameCb)
+    frameCbVideo.removeEventListener('loadeddata', rearmFrames)
+  }
   frameCb = 0
   frameCbVideo = v && 'requestVideoFrameCallback' in v ? v : null
-  const onFrame = () => {
-    frameSeenAt = performance.now()
-    frameCb = frameCbVideo?.requestVideoFrameCallback(onFrame) ?? 0
+  if (frameCbVideo) {
+    frameCb = frameCbVideo.requestVideoFrameCallback(onVideoFrame)
+    // A reload (the pop-out carrying the video to its window) drops the callback.
+    frameCbVideo.addEventListener('loadeddata', rearmFrames)
   }
-  if (frameCbVideo)
-    frameCb = frameCbVideo.requestVideoFrameCallback(onFrame)
+}
+
+function onVideoFrame() {
+  frameSeenAt = performance.now()
+  frameCb = frameCbVideo?.requestVideoFrameCallback(onVideoFrame) ?? 0
+}
+
+function rearmFrames() {
+  if (!frameCbVideo)
+    return
+  if (frameCb)
+    frameCbVideo.cancelVideoFrameCallback(frameCb)
+  frameCb = frameCbVideo.requestVideoFrameCallback(onVideoFrame)
 }
 
 // ─── View state ───────────────────────────────────────────────────────────────

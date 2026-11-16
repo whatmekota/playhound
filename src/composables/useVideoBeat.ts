@@ -51,6 +51,15 @@ const listeningTo = ref<'video' | 'page' | null>(null)
 /** The Music source is following a web page's sound. Reactive. */
 export const listeningToPage = computed(() => listeningTo.value === 'page')
 
+/**
+ * The video's sound goes through this window's audio graph. Moved into the
+ * pop-out window it would fall silent (and its clock all but stop), so the
+ * pop-out leaves such a video where it is.
+ */
+export function routesAudio(el: HTMLVideoElement | null): boolean {
+  return !!el && sourceEl === el
+}
+
 // Loop state lives here, not per call: the shell and the Motion panel both
 // construct this, and a second copy of the detector would silently observe
 // nothing while the first one ran.
@@ -306,6 +315,9 @@ export function useVideoBeat() {
   function ensureGraph(el: HTMLVideoElement): boolean {
     if (analyser && sourceEl === el)
       return true
+    // In the pop-out's window: this window's audio graph cannot take its sound.
+    if (el.ownerDocument !== document)
+      return false
     if (sourceEl && sourceEl !== el) {
       // A different element would need its own source node; the app only ever
       // has one video element, so this should not happen.

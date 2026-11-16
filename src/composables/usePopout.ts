@@ -11,14 +11,13 @@ import { useSafetyStore } from '~/stores/safetyStore'
  * top of other apps.
  *
  * The player's own element moves into the new window (VideoPlayer teleports
- * itself there): its bars, overlays and the 180° viewer. The <video> does
- * not. Chromium reloads a media element that changes document, so the video
- * would start again from the top; instead it stays in the main window,
- * parked out of sight but playing, and the pop-out paints its frames onto a
- * canvas. Script sync and the devices keep following the very element they
- * always did, and audio carries on from the main window. The window is an
- * empty same-origin document the main window writes into; it runs no code
- * of its own.
+ * itself there): its bars, overlays, the VR viewer and the <video> itself,
+ * which VideoPlayer puts back where it was after Chromium reloads it in the
+ * new document. Script sync and the devices keep following the very element
+ * they always did. (An HLS stream stays parked in the main window instead,
+ * out of sight but playing, and the pop-out paints its frames.) The window
+ * is an empty same-origin document the main window writes into; it runs no
+ * code of its own.
  *
  *   - desktop app: a frameless always-on-top window, with an opacity slider
  *     and click-through, so it can sit over a game or another video
