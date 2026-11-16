@@ -64,7 +64,10 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   `.surge`, `.sway`, …) are matched to videos automatically. You get latency
   calibration, a per-video script offset, A–B loops and speed control, and a
   timeline that shows the script's intensity, chapters, bookmarks and your past
-  edges and finishes.
+  edges and finishes. A one-axis script can still fill a multi-axis device:
+  linked axes follow the stroke with their own delay, invert and travel (a few
+  setups built in, and your own saved), and the Motion panel draws every axis
+  live, device or not.
 - **The Handy, built in.** Connect over WiFi with the key from the Handy app, or
   straight over Bluetooth with no internet at all. The script is streamed a few
   seconds ahead and the Handy plays it on its own clock, kept in step with the
@@ -102,7 +105,9 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   be made see-through and let clicks pass to the window underneath, so it can
   sit over a game. It can also fill a screen of its own (its full screen
   button, **F**, **F11** or a double-click; **Esc** leaves) while the main
-  window shows the library or playlists on another.
+  window shows the library or playlists on another. The video itself moves
+  into the pop-out, so big VR files play as smoothly there as in the main
+  window, wherever the two windows are.
 - **VR too.** VR plays in a look-around view: side by side, top-bottom or mono;
   180° to 220° equirectangular or fisheye, and 360°.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
