@@ -18,6 +18,8 @@ const audio = useAudioStore()
 const queue = useQueueStore()
 const programme = useProgrammeStore()
 const pluginStore = usePluginStore()
+/** A plugin's own status (ui.status), as a dot on its button. */
+const NOTE_DOT = { ok: 'bg-ok', warn: 'bg-warn', error: 'bg-danger', busy: 'bg-accent', neutral: 'bg-fg-faint' } as const
 
 /** The built-in panels; plugins get a button each, below them (see the template). */
 const groups = computed(() => INSPECTOR_GROUPS
@@ -113,7 +115,7 @@ const upcomingCount = computed(() => queue.upcoming.length)
       <button
         v-for="p in pluginStore.panels"
         :key="p.manifest.id"
-        v-tip="{ text: p.panel?.title || p.manifest.name, placement: 'left' }"
+        v-tip="{ text: p.note ? `${p.panel?.title || p.manifest.name}: ${p.note.text}` : p.panel?.title || p.manifest.name, placement: 'left' }"
         type="button"
         class="group focusable rounded-[var(--radius-md)] flex shrink-0 h-9 w-9 transition-colors items-center justify-center relative"
         :class="showsPlugin(p.manifest.id) ? 'text-accent-300 bg-accent-soft' : 'text-fg-muted hover:text-fg hover:bg-fg/6'"
@@ -123,6 +125,12 @@ const upcomingCount = computed(() => queue.upcoming.length)
       >
         <span v-if="p.panel?.icon" class="plugin-icon text-[17px] transition-transform duration-200 group-active:scale-90" v-html="p.panel.icon" />
         <span v-else class="i-carbon-application text-[17px] transition-transform duration-200 group-active:scale-90" />
+        <!-- What the plugin says about itself (ui.status) -->
+        <span
+          v-if="p.note && (p.note.tone ?? 'neutral') !== 'neutral'"
+          class="rounded-full h-2 w-2 ring-2 ring-surface-900 bottom-1 right-1 absolute"
+          :class="[NOTE_DOT[p.note.tone ?? 'neutral'], p.note.tone === 'busy' && 'animate-pulse']"
+        />
         <span
           class="rounded-full bg-accent w-[3px] transition-all duration-300 ease-[var(--ease-out)] right-[-7px] absolute"
           :class="ui.inspector === 'plugins' && showsPlugin(p.manifest.id) ? 'h-4 opacity-100' : 'h-0 opacity-0'"

@@ -53,13 +53,13 @@ describe('manifest v2', () => {
   })
 
   it('speaks API 3, and keeps full access to what there was before', () => {
-    expect(PLUGIN_API).toBe(5)
+    expect(PLUGIN_API).toBe(6)
     expect(readManifest({ ...base, api: 3, permissions: ['serve', 'socket', 'session', 'external', 'library-source'] }).permissions)
       .toEqual(['external', 'session', 'library-source', 'socket', 'serve'])
     const old = accessOf(readManifest(base))
     expect(allows(old, 'web')).toBe(true)
     // Calls that came later have to be asked for, even by an older plugin.
-    for (const p of ['external', 'session', 'library-source', 'socket', 'serve'] as const)
+    for (const p of ['external', 'session', 'library-source', 'socket', 'serve', 'heart'] as const)
       expect(allows(old, p)).toBe(false)
     // So an older plugin updated to use them shows them as new.
     expect(addedPermissions(old, accessOf(readManifest({ ...base, api: 3, permissions: ['device', 'serve'] })))).toEqual(['serve'])

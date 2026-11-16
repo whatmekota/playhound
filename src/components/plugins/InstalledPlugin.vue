@@ -100,6 +100,9 @@ const STATUS: Record<PluginInfo['status'], { label: string, tone: 'ok' | 'info' 
   error: { label: 'Failed', tone: 'danger' },
   off: { label: 'Off', tone: 'neutral' },
 }
+/** The plugin's own status line (ui.status). */
+const NOTE_DOT = { ok: 'bg-ok', warn: 'bg-warn', error: 'bg-danger', busy: 'bg-accent', neutral: 'bg-fg-faint' } as const
+const NOTE_TEXT = { ok: 'text-fg-muted', warn: 'text-warn', error: 'text-danger', busy: 'text-fg-muted', neutral: 'text-fg-faint' } as const
 const kb = (n: number) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`
 </script>
 
@@ -126,7 +129,16 @@ const kb = (n: number) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))
               {{ STATUS[plugin.status].label }}
             </UiBadge>
           </span>
-          <span v-if="plugin.manifest.description && !expanded" class="hint truncate">{{ plugin.manifest.description }}</span>
+          <span
+            v-if="plugin.status === 'on' && plugin.note"
+            v-tip="plugin.note.detail"
+            class="text-[11.5px] flex gap-1.5 min-w-0 items-center"
+            :class="NOTE_TEXT[plugin.note.tone ?? 'neutral']"
+          >
+            <span class="rounded-full shrink-0 h-1.5 w-1.5" :class="[NOTE_DOT[plugin.note.tone ?? 'neutral'], plugin.note.tone === 'busy' && 'animate-pulse']" />
+            <span class="truncate">{{ plugin.note.text }}</span>
+          </span>
+          <span v-else-if="plugin.manifest.description && !expanded" class="hint truncate">{{ plugin.manifest.description }}</span>
         </span>
         <span class="i-carbon-chevron-down text-[14px] text-fg-faint shrink-0 transition-transform duration-150" :class="expanded && 'rotate-180'" />
       </button>

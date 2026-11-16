@@ -21,6 +21,8 @@ export type PluginPermission
   = | 'device' | 'scripts' | 'player' | 'playback' | 'library' | 'library-edit' | 'network' | 'stage' | 'web'
   // API 3
     | 'external' | 'session' | 'library-source' | 'socket' | 'serve'
+  // API 6
+    | 'heart'
 
 export interface PluginManifest {
   /** Lower-case letters, digits and dashes; the plugin's identity. */
@@ -67,6 +69,20 @@ export type SettingField
       free?: boolean
     })
     | { type: 'heading', label: string, hint?: string, key?: undefined, when?: FieldBase['when'] }
+    /**
+     * A button (API 6): "Test connection", "Sign in", "Clear the cache".
+     * `run` gets the current values; what it returns (or resolves to) is
+     * shown under the button, and what it throws is shown as an error. The
+     * button waits while a promise runs. `key` only names it; nothing is saved.
+     */
+    | (FieldBase & {
+      type: 'button'
+      /** The button's own text; `label` when absent. */
+      text?: string
+      tone?: 'primary' | 'secondary' | 'danger'
+      run: (values: Record<string, unknown>) => void | string | Promise<void | string>
+      default?: undefined
+    })
 
 interface FieldBase {
   key: string
@@ -77,6 +93,45 @@ interface FieldBase {
 }
 
 export interface SelectOption { value: string, label: string }
+
+/**
+ * What a plugin says about itself (API 6), shown on its rail button and in
+ * Settings → Plugins: "Connected", "Signed out", "Syncing 40 videos".
+ */
+export interface PluginStatus {
+  /** A few words. */
+  text: string
+  /** ok green, warn amber, error red, busy pulsing; neutral (the default) is grey. */
+  tone?: 'ok' | 'warn' | 'error' | 'busy' | 'neutral'
+  /** A line more, for the tooltip and Settings. */
+  detail?: string
+}
+
+/** A heart-rate reading (API 6). */
+export interface HeartReading {
+  /** Smoothed beats a minute. */
+  bpm: number
+  /** Resting rate, learned over the session; null until there is enough to tell. */
+  baseline: number | null
+  /** 0–1, how far above resting. */
+  arousal: number
+  /** Beats gained over the last 15 s or so. */
+  rise: number
+  /** Where it comes from: the monitor's name, or the plugin that supplies it. */
+  source: string | null
+}
+
+/** Heart rate a plugin supplies (API 6), from another app or device. */
+export interface HeartSource {
+  /**
+   * A reading, in beats a minute; send one a second or so. False (and
+   * ignored) while a Bluetooth monitor is connected in playhound, which
+   * always wins.
+   */
+  push: (bpm: number) => boolean
+  /** Stop supplying it; done for you when the plugin is switched off. */
+  close: () => void
+}
 
 export interface PanelDef {
   /** Shown as the drawer's title and the rail button's tooltip; the plugin's name if absent. */
@@ -681,6 +736,12 @@ export interface PluginContext {
     /** The theme changed (its CSS variables already have the new colours): repaint. Returns an unsubscribe. */
     onThemeChange: (fn: (theme: string) => void) => () => void
     toast: (text: string, opts?: { tone?: 'info' | 'success' | 'error', detail?: string }) => void
+    /**
+     * Say how the plugin is doing (API 6): a dot on its rail button and a
+     * line in Settings → Plugins. Null clears it; cleared when the plugin is
+     * switched off.
+     */
+    status: (s: PluginStatus | null) => void
   }
   player: {
     state: () => PlayerSnapshot
@@ -855,6 +916,30 @@ export interface PluginContext {
      * when it is set: set it again to apply a change there.
      */
     filter: (fn: MotionFilter) => () => void
+    /**
+     * Where every axis was last sent (API 6, permission `player` or
+     * `device`), 0–1 by TCode channel ("L0" the stroke, "R2" pitch…),
+     * before the user's range: what the Motion panel's traces draw. Read
+     * it each frame to draw your own.
+     */
+    axes: () => Record<string, number>
+  }
+  /**
+   * Heart rate (API 6, permission `heart`): playhound's own Bluetooth
+   * monitor, or one a plugin supplies.
+   */
+  heart: {
+    /** The latest reading; null with no heart rate coming in. */
+    reading: () => HeartReading | null
+    /** Each new reading, about once a second. Returns an unsubscribe. */
+    onReading: (fn: (r: HeartReading) => void) => () => void
+    /**
+     * Supply the heart rate from somewhere else: a watch app, a web service.
+     * It then works like a Bluetooth monitor (the Device panel, stats, the
+     * heart-rate guard). One source at a time: a second call, from any
+     * plugin, takes over.
+     */
+    provide: (name: string) => HeartSource
   }
   safety: {
     panicked: () => boolean

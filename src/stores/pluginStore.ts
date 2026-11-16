@@ -2,13 +2,14 @@ import type { VideoEntry } from './libraryStore'
 import type { Access } from '~/plugins/manifest'
 import type { Chord } from '~/plugins/shortcuts'
 import type { SourceRelease } from '~/plugins/sources'
-import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibraryScript, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MediaHandle, MotionControl, MotionFilter, MotionReadout, MusicAnalysis, MusicScriptOptions, MusicStroke, OverlayDef, PageDef, PanelDef, PictureEffects, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, ScriptNow, SettingField, StrokeProfile, WebViewOptions } from '~/plugins/types'
+import type { ExternalPlayback, ExternalPlaybackOptions, HttpHandler, LibraryScript, LibrarySourceDef, LibrarySourceHandle, LibraryVideo, LibraryVideoInfo, MediaHandle, MotionControl, MotionFilter, MotionReadout, MusicAnalysis, MusicScriptOptions, MusicStroke, OverlayDef, PageDef, PanelDef, PictureEffects, PictureRect, PlayerSnapshot, PluginContext, PluginManifest, PluginPermission, PluginStatus, ScriptNow, SettingField, StrokeProfile, WebViewOptions } from '~/plugins/types'
 import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, watch } from 'vue'
 import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useAutoDirector } from '~/composables/useAutoDirector'
+import { heartReading, onHeartReading, supplyHeartRate } from '~/composables/useHeartRate'
 import { generatorStroke } from '~/composables/useMotionEngine'
 import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
 import { analyseSoundtrack, soundtrackProgress } from '~/composables/useSoundtrack'
@@ -117,6 +118,8 @@ export interface PluginInfo {
   overlay: OverlayDef | null
   /** Its commands in the palette. */
   commands: PluginCommand[]
+  /** What it says about itself (ui.status, API 6). */
+  note?: PluginStatus | null
   values: Record<string, unknown>
   /**
    * Loaded from a folder (dev mode): where from, and why the last reload
@@ -619,6 +622,7 @@ export const usePluginStore = defineStore('plugins', () => {
       p.page = null
       p.overlay = null
       p.commands = []
+      p.note = null
     }
     // Its page can't stay on the stage without it.
     const ui = useUiStore()
@@ -1832,6 +1836,20 @@ export const usePluginStore = defineStore('plugins', () => {
           else
             toast(String(text), o)
         },
+        status(st) {
+          if (st === null || st === undefined) {
+            self().note = null
+            return
+          }
+          if (typeof st !== 'object' || typeof st.text !== 'string')
+            throw new TypeError('ui.status takes { text, tone?, detail? } or null')
+          const tones = ['ok', 'warn', 'error', 'busy', 'neutral'] as const
+          self().note = markRaw({
+            text: st.text.slice(0, 80),
+            tone: tones.includes(st.tone as any) ? st.tone : 'neutral',
+            detail: typeof st.detail === 'string' ? st.detail.slice(0, 300) : undefined,
+          })
+        },
       },
       commands: {
         register: registerCommand,
@@ -1972,6 +1990,30 @@ export const usePluginStore = defineStore('plugins', () => {
         take: gate('device', 'motion.take', takeMotion),
         readout,
         filter: gate('device', 'motion.filter', setFilter),
+        axes: () => {
+          if (!allows(access, 'player') && !allows(access, 'device'))
+            throw new Error(`${manifestName} can't use motion.axes: its manifest doesn't ask for the "player" or the "device" permission`)
+          return { ...axisOutput }
+        },
+      },
+      heart: {
+        reading: gate('heart', 'heart.reading', heartReading),
+        onReading: gate('heart', 'heart.onReading', (fn: Parameters<PluginContext['heart']['onReading']>[0]) => {
+          const stop = onHeartReading((r) => {
+            try {
+              fn(r)
+            }
+            catch (err) {
+              console.error(`[plugin ${id}] heart.onReading failed`, err)
+            }
+          })
+          return later(stop)
+        }),
+        provide: gate('heart', 'heart.provide', (name: string) => {
+          const source = supplyHeartRate(String(name ?? manifestName))
+          const drop = later(() => source.close())
+          return { push: (bpm: number) => source.push(Number(bpm)), close: drop }
+        }),
       },
       safety: {
         panicked: () => safety.panicked,

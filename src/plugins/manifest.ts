@@ -24,10 +24,11 @@ import { APP_VERSION, meetsMin, readStoreFields, shortVersion } from './storeMet
  * 4 the player's video and effects on the picture, a library video's
  * scripts and media for the plugin's own player, music analysis and saving
  * files; 5 a song's sections and bar confidence, music.plan's strokes and
- * library videos' stroke profiles. Plugins written for older ones run as
- * before.
+ * library videos' stroke profiles; 6 a status line of its own, heart rate
+ * (read and supplied), button fields in its settings and every axis's
+ * position. Plugins written for older ones run as before.
  */
-export const PLUGIN_API = 5
+export const PLUGIN_API = 6
 
 export interface PermissionInfo {
   id: PluginPermission
@@ -56,6 +57,8 @@ export const PERMISSIONS: PermissionInfo[] = [
   { id: 'library-source', label: 'Add videos to your library from another app', api: 'library.provide' },
   { id: 'socket', label: 'Connect to apps and devices on your network', api: 'net.socket' },
   { id: 'serve', label: 'Share your library with devices on your network', api: 'http.serve, library.mediaUrl, library.scriptUrl' },
+  // API 6.
+  { id: 'heart', label: 'Read your heart rate, and supply it from another app or device', api: 'heart.reading, heart.onReading, heart.provide' },
 ]
 
 const KNOWN = new Set<string>(PERMISSIONS.map(p => p.id))

@@ -2,6 +2,7 @@
 import type { SelectOption, SettingField } from '~/plugins/types'
 import type { PluginInfo } from '~/stores/pluginStore'
 import { computed, onMounted, reactive, ref } from 'vue'
+import UiButton from '~/components/ui/UiButton.vue'
 import UiField from '~/components/ui/UiField.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
@@ -75,6 +76,29 @@ function selectOptions(f: Extract<SettingField, { type: 'select' }>) {
 }
 
 const shown = ref<Record<string, boolean>>({})
+
+// ─── Buttons ────────────────────────────────────────────────────────────────
+// What a button's run gave back, or threw, shown under it.
+type ButtonField = Extract<SettingField, { type: 'button' }>
+const running = reactive<Record<string, boolean>>({})
+const result = reactive<Record<string, { text: string, error: boolean } | null>>({})
+async function press(f: ButtonField) {
+  if (running[f.key])
+    return
+  running[f.key] = true
+  result[f.key] = null
+  try {
+    const out = await f.run({ ...values.value })
+    result[f.key] = typeof out === 'string' && out.trim() ? { text: out.trim(), error: false } : null
+  }
+  catch (err) {
+    result[f.key] = { text: err instanceof Error ? err.message : String(err), error: true }
+  }
+  finally {
+    running[f.key] = false
+  }
+}
+const BUTTON_VARIANT = { primary: 'primary', secondary: 'secondary', danger: 'danger' } as const
 
 // ─── Sections ───────────────────────────────────────────────────────────────
 // Each heading starts a section that folds away, so a plugin with a lot of
@@ -199,6 +223,23 @@ const typing = reactive<Record<string, boolean>>({})
               />
             </div>
           </UiField>
+
+          <div v-else-if="f.type === 'button'" class="flex flex-col gap-1.5">
+            <div class="flex gap-3 items-center">
+              <UiButton
+                size="sm"
+                :variant="BUTTON_VARIANT[f.tone ?? 'secondary']"
+                :loading="running[f.key]"
+                :disabled="running[f.key]"
+                @click="press(f)"
+              >
+                {{ f.text || f.label }}
+              </UiButton>
+              <span v-if="f.text && f.label !== f.text" class="text-[12.5px] text-fg-muted">{{ f.label }}</span>
+            </div>
+            <span v-if="result[f.key]" class="text-[12px] leading-snug" :class="result[f.key]!.error ? 'text-danger' : 'text-fg-muted'">{{ result[f.key]!.text }}</span>
+            <span v-else-if="f.hint" class="hint">{{ f.hint }}</span>
+          </div>
 
           <UiField v-else-if="f.type === 'number'" :label="f.label" :hint="f.hint">
             <input

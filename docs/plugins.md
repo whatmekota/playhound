@@ -72,7 +72,7 @@ there was before permissions existed (the first nine below), and Settings →
 Plugins labels it **Full access (older plugin)**. With a list (or with
 `"api": 2` or more, which means "I list what I need"), the plugin gets only
 what it lists; asking for nothing is fine. The API 3 permissions always have
-to be listed, by older plugins too.
+to be listed, by older plugins too, and so do the later ones (`heart`).
 
 | Permission       | Shown to the user as                                                                      | Opens                                                                                                                                                                                   |
 | ---------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -90,12 +90,13 @@ to be listed, by older plugins too.
 | `library-source` | Add videos to your library from another app                                               | `library.provide`                                                                                                                                                                       |
 | `socket`         | Connect to apps and devices on your network                                               | `net.socket`                                                                                                                                                                            |
 | `serve`          | Share your library with devices on your network                                           | `http.serve / url / urls / rootAliases / stop`, `library.mediaUrl / scriptUrl` (these two need `library` as well)                                                                       |
+| `heart`          | Read your heart rate, and supply it from another app or device                            | _(6)_ `heart.reading / onReading / provide`                                                                                                                                             |
 
 Everything else needs none: settings, storage, the panel, commands, styles,
 toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
 `safety.*`, `webview.available`, `net.socketAvailable`, `http.available /
 url`, _(4)_ `music.analyse` of a file the plugin has, `music.script`, _(5)_ `music.plan`,
-`files.save`, `asset`, `log`. A call outside the list throws an `Error` naming the
+`files.save`, `asset`, `log`, _(6)_ `ui.status`, and `motion.axes` with `player` or `device`. A call outside the list throws an `Error` naming the
 permission to add.
 
 A first install always shows the list and waits for the user to agree. An
@@ -142,7 +143,7 @@ The full contract, with comments, is in
 | `manifest`                                                                | the plugin's own manifest                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `settings.get / all / set / onChange`                                     | its settings, as the user set them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `storage.get / set / del`                                                 | a small persistent key/value store for its own data                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `ui.settings(fields)`                                                     | the form shown under the plugin in Settings → Plugins. Field types: `text`, `password`, `textarea`, `number`, `slider`, `switch`, `select` (fixed or fetched options, optionally free text) and `heading`, which starts a section that folds away. Any field can have `when(values)` to show it only sometimes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `ui.settings(fields)`                                                     | the form shown under the plugin in Settings → Plugins. Field types: `text`, `password`, `textarea`, `number`, `slider`, `switch`, `select` (fixed or fetched options, optionally free text), _(6)_ `button` and `heading`, which starts a section that folds away. Any field can have `when(values)` to show it only sometimes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `ui.panel({ title, icon, mount })`                                        | its panel: its own button on the right-hand rail and a drawer titled with its name. `icon` is an inline SVG in `currentColor` (about 16×16); without one a generic icon is used. `mount` gets a plain element; you build its DOM yourself.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `ui.page({ title, icon, mount })`                                         | its page on the main stage, where the player, the library and the media wall show, with its own button in the left nav. Same shape as a panel; `mount` gets an element filling the stage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ui.openPage / stage / showStage`                                         | put its page on the stage; what the stage shows (`'player'`, `'library'`, `'wall'`, `'eroscripts'`…, or `'plugin:<id>'`); switch the stage to any of those                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -544,6 +545,61 @@ for (const v of await ctx.library.list()) {
   if (p && Math.abs(p.spm - song.bpm) < song.bpm * 0.08)
     near.push(v.id)
 }
+```
+
+## Status, heart rate, buttons and axes
+
+API 6 (playhound 2.2.6) is about plugins that talk to something else: a
+server, a watch, a device. Write `"api": 6` and `"minPlayhound": "2.2.6"`.
+
+**A status line.** `ui.status({ text, tone, detail })` says how the plugin is
+doing: "Connected", "Signed out", "Syncing 40 videos". `tone` is `ok`,
+`warn`, `error`, `busy` (pulses) or `neutral`. It shows as a dot on the
+plugin's rail button (not for `neutral`), above its panel, and under its
+name in Settings → Plugins, with `detail` as a second line or a tooltip.
+`ui.status(null)` clears it, and it goes when the plugin is switched off. No
+permission needed.
+
+**Buttons in the settings.** A field `{ type: 'button', key, label, text?,
+tone?, hint?, run(values) }` is a button: "Test connection", "Sign in",
+"Clear the cache". `run` gets the current settings; a string it returns (or
+resolves to) shows under the button, and what it throws shows as an error.
+The button waits while a promise runs. Nothing is saved under `key`.
+
+**Heart rate** (permission `heart`). `heart.reading()` is the latest
+`{ bpm, baseline, arousal, rise, source }` (null when none comes in), and
+`heart.onReading(fn)` calls you with each one, about once a second.
+`heart.provide(name)` makes the plugin the heart-rate source, for a watch app
+or a web service playhound can't reach on its own: `push(bpm)` about once a
+second, and it works like a Bluetooth monitor everywhere (the Device panel,
+stats, the heart-rate guard that calls an edge). A monitor connected in
+playhound wins (`push` then returns `false`), the newest source replaces the
+one before, and ten seconds without a reading counts as lost.
+
+**Every axis.** `motion.axes()` (permission `player` or `device`) is where
+each axis was last sent, 0–1 by TCode channel (`L0` the stroke, `R2` pitch…),
+before the user's range: what the Motion panel's traces draw. Read it each
+frame to draw your own.
+
+```js
+ctx.ui.settings([
+  { key: 'host', type: 'text', label: 'Server' },
+  {
+    key: 'test',
+    type: 'button',
+    label: 'Test connection',
+    async run(v) {
+      const r = await ctx.net.fetch(`http://${v.host}/status`)
+      if (!r.ok)
+        throw new Error(`It answered ${r.status}`)
+      return 'Connected'
+    },
+  },
+])
+ctx.ui.status({ text: 'Connecting', tone: 'busy' })
+const hr = ctx.heart.provide('My watch')
+myWatch.onBeat(bpm => hr.push(bpm)) // your own connection to the watch
+ctx.ui.status({ text: 'Connected', tone: 'ok', detail: 'Heart rate from My watch' })
 ```
 
 ## An example

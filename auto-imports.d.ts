@@ -78,6 +78,7 @@ declare global {
   const h: typeof import('vue').h
   const hasFreeTapTempo: typeof import('./src/composables/useVideoBeat').hasFreeTapTempo
   const heartRate: typeof import('./src/composables/useHeartRate').heartRate
+  const heartReading: typeof import('./src/composables/useHeartRate').heartReading
   const heartSparkline: typeof import('./src/composables/useHeartRate').heartSparkline
   const heartTimeline: typeof import('./src/composables/useHeartRate').heartTimeline
   const holdToast: typeof import('./src/composables/useToast').holdToast
@@ -121,6 +122,7 @@ declare global {
   const onDeactivated: typeof import('vue').onDeactivated
   const onElementRemoval: typeof import('@vueuse/core').onElementRemoval
   const onErrorCaptured: typeof import('vue').onErrorCaptured
+  const onHeartReading: typeof import('./src/composables/useHeartRate').onHeartReading
   const onKeyStroke: typeof import('@vueuse/core').onKeyStroke
   const onLongPress: typeof import('@vueuse/core').onLongPress
   const onMounted: typeof import('vue').onMounted
@@ -169,6 +171,7 @@ declare global {
   const resolveComponent: typeof import('vue').resolveComponent
   const resolveRef: typeof import('@vueuse/core').resolveRef
   const resolveStream: typeof import('./src/composables/useStreams').resolveStream
+  const routesAudio: typeof import('./src/composables/useVideoBeat').routesAudio
   const saveScriptBeside: typeof import('./src/composables/useScriptSave').saveScriptBeside
   const savedPosts: typeof import('./src/composables/useSavedPosts').savedPosts
   const sayOnFaceScreen: typeof import('./src/composables/useFaceScreen').sayOnFaceScreen
@@ -190,6 +193,7 @@ declare global {
   const startUpdates: typeof import('./src/composables/useUpdates').startUpdates
   const stepUiScale: typeof import('./src/composables/useUiScale').stepUiScale
   const storeToRefs: typeof import('pinia').storeToRefs
+  const supplyHeartRate: typeof import('./src/composables/useHeartRate').supplyHeartRate
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
   const syncedVideo: typeof import('./src/composables/useVideoSync').syncedVideo
@@ -481,7 +485,7 @@ declare global {
   export type { HandyProtocol, HandyLink } from './src/composables/useHandy'
   import('./src/composables/useHandy')
   // @ts-ignore
-  export type { HeartStatus, HeartTimelinePoint } from './src/composables/useHeartRate'
+  export type { HeartStatus, HeartTimelinePoint, HeartReadingOut } from './src/composables/useHeartRate'
   import('./src/composables/useHeartRate')
   // @ts-ignore
   export type { MediaKind } from './src/composables/useMediaDrop'
@@ -610,6 +614,7 @@ declare module 'vue' {
     readonly h: UnwrapRef<typeof import('vue')['h']>
     readonly hasFreeTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['hasFreeTapTempo']>
     readonly heartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartRate']>
+    readonly heartReading: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartReading']>
     readonly heartSparkline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartSparkline']>
     readonly heartTimeline: UnwrapRef<typeof import('./src/composables/useHeartRate')['heartTimeline']>
     readonly holdToast: UnwrapRef<typeof import('./src/composables/useToast')['holdToast']>
@@ -653,6 +658,7 @@ declare module 'vue' {
     readonly onDeactivated: UnwrapRef<typeof import('vue')['onDeactivated']>
     readonly onElementRemoval: UnwrapRef<typeof import('@vueuse/core')['onElementRemoval']>
     readonly onErrorCaptured: UnwrapRef<typeof import('vue')['onErrorCaptured']>
+    readonly onHeartReading: UnwrapRef<typeof import('./src/composables/useHeartRate')['onHeartReading']>
     readonly onKeyStroke: UnwrapRef<typeof import('@vueuse/core')['onKeyStroke']>
     readonly onLongPress: UnwrapRef<typeof import('@vueuse/core')['onLongPress']>
     readonly onMounted: UnwrapRef<typeof import('vue')['onMounted']>
@@ -701,6 +707,7 @@ declare module 'vue' {
     readonly resolveComponent: UnwrapRef<typeof import('vue')['resolveComponent']>
     readonly resolveRef: UnwrapRef<typeof import('@vueuse/core')['resolveRef']>
     readonly resolveStream: UnwrapRef<typeof import('./src/composables/useStreams')['resolveStream']>
+    readonly routesAudio: UnwrapRef<typeof import('./src/composables/useVideoBeat')['routesAudio']>
     readonly saveScriptBeside: UnwrapRef<typeof import('./src/composables/useScriptSave')['saveScriptBeside']>
     readonly savedPosts: UnwrapRef<typeof import('./src/composables/useSavedPosts')['savedPosts']>
     readonly sayOnFaceScreen: UnwrapRef<typeof import('./src/composables/useFaceScreen')['sayOnFaceScreen']>
@@ -722,6 +729,7 @@ declare module 'vue' {
     readonly startUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['startUpdates']>
     readonly stepUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['stepUiScale']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
+    readonly supplyHeartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['supplyHeartRate']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
     readonly syncedVideo: UnwrapRef<typeof import('./src/composables/useVideoSync')['syncedVideo']>

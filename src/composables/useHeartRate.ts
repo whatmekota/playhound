@@ -103,6 +103,91 @@ interface SavedDevice { id: string, name: string }
 let guardSettings: Ref<HeartGuardSettings> = ref({ ...DEFAULT_GUARD })
 let savedDevice: Ref<SavedDevice | null> = ref(null)
 
+// ─── Readings for plugins, and heart rate a plugin supplies ─────────────────
+
+export interface HeartReadingOut { bpm: number, baseline: number | null, arousal: number, rise: number, source: string | null }
+const readingListeners = new Set<(r: HeartReadingOut) => void>()
+
+/** The latest reading, or null with no heart rate coming in. */
+export function heartReading(): HeartReadingOut | null {
+  if (state.bpm === null || state.status !== 'connected')
+    return null
+  return { bpm: state.bpm, baseline: state.baseline, arousal: state.arousal, rise: state.rise, source: state.deviceName }
+}
+
+/** Each new reading. Returns an unsubscribe. */
+export function onHeartReading(fn: (r: HeartReadingOut) => void): () => void {
+  readingListeners.add(fn)
+  return () => readingListeners.delete(fn)
+}
+
+/** No reading from a supplied source for this long: it is lost until the next. */
+const SUPPLIED_STALE_MS = 10_000
+let supplied: { token: number, name: string } | null = null
+let suppliedSeq = 0
+let suppliedWatch: ReturnType<typeof setTimeout> | null = null
+
+function endSupplied() {
+  if (suppliedWatch !== null)
+    clearTimeout(suppliedWatch)
+  suppliedWatch = null
+  // A Bluetooth monitor owns the reading: leave it be.
+  if (device)
+    return
+  clearReading()
+  processor.reset()
+  guardState = createGuardState()
+}
+
+/**
+ * Heart rate from somewhere other than a Bluetooth monitor (a plugin: a watch
+ * app, a web service). It goes through the same smoothing, guard, sparkline
+ * and stats. A monitor connected here always wins; the newest source replaces
+ * the one before.
+ */
+export function supplyHeartRate(name: string): { push: (bpm: number) => boolean, close: () => void } {
+  useHeartRate()
+  const token = ++suppliedSeq
+  endSupplied()
+  supplied = { token, name: name.trim().slice(0, 60) || 'Plugin' }
+  const mine = () => supplied?.token === token
+  return {
+    push(bpm: number) {
+      if (!mine() || device || !Number.isFinite(bpm) || bpm < 25 || bpm > 250)
+        return false
+      state.status = 'connected'
+      state.deviceName = supplied!.name
+      state.error = null
+      state.raw = Math.round(bpm)
+      state.contact = null
+      state.at = performance.now()
+      if (suppliedWatch !== null)
+        clearTimeout(suppliedWatch)
+      suppliedWatch = setTimeout(() => {
+        suppliedWatch = null
+        if (mine() && !device) {
+          endSupplied()
+          state.status = 'lost'
+        }
+      }, SUPPLIED_STALE_MS)
+      const r = processor.push(bpm, Date.now())
+      if (r)
+        onReading(r)
+      return true
+    },
+    close() {
+      if (!mine())
+        return
+      supplied = null
+      endSupplied()
+      if (!device) {
+        state.status = supported ? 'idle' : 'unsupported'
+        state.deviceName = null
+      }
+    },
+  }
+}
+
 function clearReading() {
   state.bpm = null
   state.raw = null
@@ -354,6 +439,18 @@ function setup() {
       if (tl.length > TIMELINE_MAX)
         tl.splice(0, tl.length - TIMELINE_MAX)
       triggerRef(heartTimeline)
+    }
+
+    const out = heartReading()
+    if (out) {
+      for (const fn of readingListeners) {
+        try {
+          fn(out)
+        }
+        catch (err) {
+          console.error('[heart] a reading listener failed', err)
+        }
+      }
     }
 
     const step = stepGuard(guardState, r, guardSettings.value)
