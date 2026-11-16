@@ -52,6 +52,45 @@ export function sanitizeLinks(raw: unknown): AxisLink[] {
   })
 }
 
+/** A saved set of links: every linkable axis, on or off. */
+export interface LinkPreset {
+  id: string
+  name: string
+  links: AxisLink[]
+  builtin?: boolean
+}
+
+function builtin(id: string, name: string, set: Record<string, Partial<AxisLink>>): LinkPreset {
+  return { id, name, builtin: true, links: defaultLinks().map(d => (set[d.channel] ? { ...d, on: true, ...set[d.channel] } : d)) }
+}
+
+/** Starting points: the usual ways to fill a multi-axis device from a one-axis script. */
+export const BUILTIN_LINK_PRESETS: LinkPreset[] = [
+  builtin('builtin-sr6', 'SR6 fill', { L1: { delayMs: 60, amount: 0.6 }, R2: { invert: true, amount: 0.6 } }),
+  builtin('builtin-rock', 'Rocking', { R2: { delayMs: 40, amount: 0.7 }, L1: { delayMs: 120, invert: true, amount: 0.5 } }),
+  builtin('builtin-twist', 'Twist along', { R0: { delayMs: 30, amount: 0.5 } }),
+]
+
+/** Whether two sets of links do the same: the settings of an axis that's off don't count. */
+export function sameLinks(a: readonly AxisLink[], b: readonly AxisLink[]): boolean {
+  return LINKABLE_AXES.every(({ channel }) => {
+    const x = a.find(l => l.channel === channel)
+    const y = b.find(l => l.channel === channel)
+    if (!x?.on || !y?.on)
+      return !x?.on && !y?.on
+    return x.delayMs === y.delayMs && x.invert === y.invert && Math.abs(x.amount - y.amount) < 0.005
+  })
+}
+
+/** Saved presets, made safe. */
+export function sanitizeLinkPresets(raw: unknown): LinkPreset[] {
+  if (!Array.isArray(raw))
+    return []
+  return raw
+    .filter((p: any) => p && typeof p.id === 'string' && typeof p.name === 'string' && p.name.trim())
+    .map((p: any) => ({ id: p.id, name: p.name.trim().slice(0, 40), links: sanitizeLinks(p.links) }))
+}
+
 /** The linked axis's position, 0–1, for a stroke position 0–1. */
 export function linkedPosition(strokePos: number, link: Pick<AxisLink, 'invert' | 'amount'>): number {
   const p = link.invert ? 1 - strokePos : strokePos

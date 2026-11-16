@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { LinkPreset } from '~/lib/axisLink'
 import type { MotionSourceId, StrokeShape } from '~/stores/motionStore'
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
+import AxisTraces from '~/components/inspectors/AxisTraces.vue'
 import MusicScriptCard from '~/components/player/MusicScriptCard.vue'
 import { useAnyDevice } from '~/composables/useAnyDevice'
 import { useGamepadStatus } from '~/composables/useGamepadStatus'
@@ -8,7 +10,7 @@ import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput, axisOutputAt } from '~/composables/useTCode'
 import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
-import { activeLinks, LINK_DELAY_MAX, LINKABLE_AXES } from '~/lib/axisLink'
+import { activeLinks, BUILTIN_LINK_PRESETS, LINK_DELAY_MAX, LINKABLE_AXES, sameLinks } from '~/lib/axisLink'
 import { synthTargets } from '~/lib/axisSynth'
 import { paceStrokesPerBeat } from '~/lib/musicMotion'
 import { formatTime } from '~/lib/time'
@@ -295,6 +297,49 @@ const linksOff = computed(() => activeLinks(motion.axisLinks, []).filter(l => !d
 const linksSummary = computed(() => linksOn.value.length ? linksOn.value.map(l => linkLabel[l.channel]).join(', ') : 'Off')
 const delayLabel = (v: number) => (v === 0 ? 'With the stroke' : v > 0 ? `${v} ms behind` : `${-v} ms ahead`)
 
+// Presets: the built-in starting points and the user's own.
+const linkPresetList = computed<LinkPreset[]>(() => [...BUILTIN_LINK_PRESETS, ...motion.linkPresets])
+const activeLinkPreset = computed(() => linksOn.value.length ? linkPresetList.value.find(p => sameLinks(p.links, motion.axisLinks))?.id ?? null : null)
+function applyLinkPreset(p: LinkPreset) {
+  motion.axisLinks = structuredClone(p.links.map(l => ({ ...l })))
+}
+const savingLinks = ref(false)
+const linkPresetName = ref('')
+const linkPresetInput = ref<{ focus: () => void } | null>(null)
+async function startSavingLinks() {
+  savingLinks.value = true
+  linkPresetName.value = ''
+  await nextTick()
+  linkPresetInput.value?.focus()
+}
+function saveLinkPreset() {
+  // Enter saves, then the input goes and its focusout calls again.
+  if (!savingLinks.value)
+    return
+  const name = linkPresetName.value.trim().slice(0, 40)
+  savingLinks.value = false
+  if (!name)
+    return
+  const links = motion.axisLinks.map(l => ({ ...l }))
+  const same = motion.linkPresets.find(p => p.name.toLowerCase() === name.toLowerCase())
+  if (same)
+    same.links = links
+  else
+    motion.linkPresets.push({ id: `links-${Date.now().toString(36)}`, name, links })
+  toast.success(`Saved "${name}"`, { key: 'link-preset' })
+}
+function deleteLinkPreset(p: LinkPreset) {
+  const idx = motion.linkPresets.findIndex(x => x.id === p.id)
+  if (idx < 0)
+    return
+  motion.linkPresets.splice(idx, 1)
+  toast(`Deleted "${p.name}"`, {
+    icon: 'i-carbon-trash-can',
+    key: 'link-preset',
+    action: { label: 'Undo', run: () => motion.linkPresets.splice(Math.max(0, idx), 0, p) },
+  })
+}
+
 /** Derived channels that are both selected and switched on in the Device panel. */
 const derivedReady = computed(() => {
   const wanted = synthTargets(
@@ -442,6 +487,7 @@ const PAD_MAP = [
             At ceiling
           </span>
         </div>
+        <AxisTraces />
       </div>
 
       <div class="flex gap-2.5 items-center">
@@ -735,6 +781,54 @@ const PAD_MAP = [
         An axis that follows the stroke itself: a little behind or ahead of it, inverted, or with less travel. Works with
         scripts and generated motion; never overrides an axis the script drives.
       </p>
+      <div class="flex flex-wrap gap-1.5 items-center">
+        <div
+          v-for="p in linkPresetList"
+          :key="p.id"
+          class="group rounded-full flex h-6 transition-colors items-center"
+          :class="activeLinkPreset === p.id ? 'bg-accent-soft text-accent-300 ring-1 ring-accent/30' : 'bg-fg/5 text-fg-muted hover:bg-fg/8 hover:text-fg'"
+        >
+          <button
+            v-tip="p.links.filter(l => l.on).map(l => `${linkLabel[l.channel]}${l.invert ? ' inverted' : ''}${l.delayMs ? `, ${delayLabel(l.delayMs)}` : ''}, ${pct(l.amount)}`).join(' · ')"
+            type="button"
+            class="text-[11.5px] font-medium px-2.5 focusable rounded-full h-full pressable"
+            :class="!p.builtin ? 'pr-1' : ''"
+            :aria-pressed="activeLinkPreset === p.id"
+            @click="applyLinkPreset(p)"
+          >
+            {{ p.name }}
+          </button>
+          <button
+            v-if="!p.builtin"
+            type="button"
+            class="mr-1 focusable rounded-full opacity-60 center h-4 w-4 hover:bg-fg/10 hover:opacity-100"
+            :aria-label="`Delete ${p.name}`"
+            @click="deleteLinkPreset(p)"
+          >
+            <span class="i-carbon-close text-[11px]" />
+          </button>
+        </div>
+        <UiInput
+          v-if="savingLinks"
+          ref="linkPresetInput"
+          v-model="linkPresetName"
+          size="sm"
+          class="w-32"
+          placeholder="Name"
+          @enter="saveLinkPreset"
+          @escape="savingLinks = false"
+          @focusout="saveLinkPreset"
+        />
+        <button
+          v-else-if="linksOn.length && !activeLinkPreset"
+          type="button"
+          class="text-[11.5px] text-fg-faint font-medium px-2 focusable rounded-full flex gap-1 h-6 pressable items-center hover:text-fg hover:bg-fg/5"
+          @click="startSavingLinks"
+        >
+          <span class="i-carbon-add text-[13px]" />
+          Save
+        </button>
+      </div>
       <div v-for="link in motion.axisLinks" :key="link.channel" class="flex flex-col gap-2">
         <div class="flex gap-2 items-center">
           <UiSwitch v-model="link.on" size="sm" :aria-label="`Link ${linkLabel[link.channel]} to the stroke`" />

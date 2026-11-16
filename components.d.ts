@@ -17,6 +17,7 @@ declare module 'vue' {
     AppNav: typeof import('./src/components/shell/AppNav.vue')['default']
     AudioSlideshow: typeof import('./src/components/player/AudioSlideshow.vue')['default']
     AudioStage: typeof import('./src/components/player/AudioStage.vue')['default']
+    AxisTraces: typeof import('./src/components/inspectors/AxisTraces.vue')['default']
     BackupInspector: typeof import('./src/components/inspectors/BackupInspector.vue')['default']
     BinauralInspector: typeof import('./src/components/inspectors/BinauralInspector.vue')['default']
     BookmarksInspector: typeof import('./src/components/inspectors/BookmarksInspector.vue')['default']

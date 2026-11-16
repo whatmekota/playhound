@@ -1,8 +1,8 @@
-import type { AxisLink } from '~/lib/axisLink'
+import type { AxisLink, LinkPreset } from '~/lib/axisLink'
 import type { MusicPace, StrokeAnchor } from '~/lib/musicMotion'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { defaultLinks, sanitizeLinks } from '~/lib/axisLink'
+import { defaultLinks, sanitizeLinkPresets, sanitizeLinks } from '~/lib/axisLink'
 import { MUSIC_PACES, STROKE_ANCHORS } from '~/lib/musicMotion'
 
 /**
@@ -103,6 +103,8 @@ export const useMotionStore = defineStore('motion', () => {
    * on their channel, and never over an axis the script drives.
    */
   const axisLinks = ref<AxisLink[]>(defaultLinks())
+  /** Link setups the user saved; the built-in ones live in lib/axisLink. */
+  const linkPresets = ref<LinkPreset[]>([])
 
   // ─── Gamepad ──────────────────────────────────────────────────────────────
   const gamepadEnabled = ref(false)
@@ -158,6 +160,7 @@ export const useMotionStore = defineStore('motion', () => {
       synthRoll: synthRoll.value,
       synthSurge: synthSurge.value,
       axisLinks: axisLinks.value,
+      linkPresets: linkPresets.value,
       gamepadEnabled: gamepadEnabled.value,
       secondaryAxes: secondaryAxes.value,
       secondaryDepth: secondaryDepth.value,
@@ -217,6 +220,8 @@ export const useMotionStore = defineStore('motion', () => {
     }
     if (data.axisLinks)
       axisLinks.value = sanitizeLinks(data.axisLinks)
+    if (data.linkPresets)
+      linkPresets.value = sanitizeLinkPresets(data.linkPresets)
     if (typeof data.secondaryAxes === 'boolean')
       secondaryAxes.value = data.secondaryAxes
     if (typeof data.vibrateFromIntensity === 'boolean')
@@ -253,6 +258,7 @@ export const useMotionStore = defineStore('motion', () => {
     synthRoll,
     synthSurge,
     axisLinks,
+    linkPresets,
     gamepadEnabled,
     gamepadPosition,
     gamepadRateHeld,

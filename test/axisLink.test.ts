@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeLinks, createStrokeHistory, defaultLinks, linkedActions, linkedPosition, sanitizeLinks } from '~/lib/axisLink'
+import { activeLinks, BUILTIN_LINK_PRESETS, createStrokeHistory, defaultLinks, linkedActions, linkedPosition, sameLinks, sanitizeLinkPresets, sanitizeLinks } from '~/lib/axisLink'
 
 describe('axis links', () => {
   it('maps the stroke: inverted, turned down around the middle', () => {
@@ -30,5 +30,13 @@ describe('axis links', () => {
       h.push(t, t / 1000)
     expect(h.at(1000, 100)).toBeCloseTo(0.9)
     expect(h.at(1000, -50)).toBeCloseTo(1)
+  })
+
+  it('knows a preset when the links match it, whatever an off axis is set to', () => {
+    const sr6 = BUILTIN_LINK_PRESETS[0].links
+    const mine = sr6.map(l => (l.on ? { ...l } : { ...l, delayMs: 300, invert: true }))
+    expect(sameLinks(mine, sr6)).toBe(true)
+    expect(sameLinks(mine.map(l => (l.channel === 'L1' ? { ...l, delayMs: 65 } : l)), sr6)).toBe(false)
+    expect(sanitizeLinkPresets([{ id: 'a', name: '  Mine ', links: mine }, { id: 'b', name: '' }, null])).toEqual([{ id: 'a', name: 'Mine', links: sanitizeLinks(mine) }])
   })
 })
