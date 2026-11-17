@@ -17,6 +17,8 @@ import { FILTER_CHIPS } from './useLibraryQuery'
 const props = defineProps<{
   lq: LibraryQueryState
   compact?: boolean
+  /** One row (the phone's, in a strip that scrolls sideways) instead of wrapping. */
+  nowrap?: boolean
 }>()
 
 /** The Audio chip only in a library that has audio files, or while it is on. */
@@ -34,7 +36,7 @@ function tagTip(tag: string) {
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center" :class="compact ? 'gap-1' : 'gap-1.5'">
+  <div class="flex items-center" :class="[compact ? 'gap-1' : 'gap-1.5', nowrap ? 'flex-nowrap w-max' : 'flex-wrap']">
     <button
       v-for="f in chips"
       :key="f.key"

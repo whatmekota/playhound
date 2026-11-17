@@ -29,6 +29,7 @@ import UiSegmented from '~/components/ui/UiSegmented.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { toast } from '~/composables/useToast'
 import { effectiveMeta, formatDate, formatSize, plural, scriptBadge } from '~/lib/entryInfo'
 import { KEYS } from '~/lib/persist'
@@ -54,6 +55,14 @@ const scroller = ref<HTMLElement | null>(null)
 const viewMode = useLocalStorage<'grid' | 'list'>(KEYS.libraryView.key, 'grid')
 /** Minimum card width in px; the grid fits as many columns as that allows. */
 const cardSize = useLocalStorage(KEYS.libraryCard.key, 220)
+/**
+ * The phone layout (Android app): the header and toolbar fold up, and the
+ * grid keeps two cards a row upright, more held sideways. The size slider's
+ * sizes are a desktop's, so it isn't offered there.
+ */
+const compact = useCompactLayout()
+const PHONE_CARD = 140
+const cardMin = computed(() => compact.value ? PHONE_CARD : cardSize.value)
 
 // ─── Search, filters, sort (the same machinery as the drawer panel) ───────────
 const lq = useLibraryQueryState(() => library.videos)
@@ -201,16 +210,16 @@ const folderMenu = computed<MenuItem[]>(() => [
 ])
 
 // ─── Windowed grid / list ─────────────────────────────────────────────────────
-const GAP = 16
-const ROW_GAP = 22
+const gap = computed(() => compact.value ? 10 : 16)
+const rowGap = computed(() => compact.value ? 12 : 22)
 const INFO_H = 46
 const LIST_ROW_H = 48
 
 const win = useWindowedRows({
   scroller,
   items: () => lq.results,
-  cols: w => viewMode.value === 'list' ? 1 : Math.floor((w + GAP) / (cardSize.value + GAP)),
-  rowH: (w, n) => viewMode.value === 'list' ? LIST_ROW_H : Math.round(((w - GAP * (n - 1)) / n) * 9 / 16 + INFO_H + ROW_GAP),
+  cols: w => viewMode.value === 'list' ? 1 : Math.max(1, Math.floor((w + gap.value) / (cardMin.value + gap.value))),
+  rowH: (w, n) => viewMode.value === 'list' ? LIST_ROW_H : Math.round(((w - gap.value * (n - 1)) / n) * 9 / 16 + INFO_H + rowGap.value),
 })
 const { rows, totalH, cols, onScroll } = win
 
@@ -286,12 +295,12 @@ function onBackgroundClick(e: MouseEvent) {
 <template>
   <div class="bg-surface-950 flex flex-col h-full min-h-0 relative">
     <!-- ══ Header ═════════════════════════════════════════════════════════════ -->
-    <header class="px-6 pb-3 pt-5 flex shrink-0 gap-4 items-end">
-      <div class="flex-1 min-w-0">
-        <h1 class="h-view">
+    <header class="shrink-0" :class="compact ? 'px-4 pb-2 pt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 items-center' : 'px-6 pb-3 pt-5 flex gap-4 items-end'">
+      <div :class="compact ? 'contents' : 'flex-1 min-w-0'">
+        <h1 class="h-view" :class="compact && 'row-start-1 col-start-1'">
           Library
         </h1>
-        <div class="text-[12.5px] text-fg-muted mt-1 flex flex-wrap gap-x-2 gap-y-1 min-h-5 items-center">
+        <div class="text-[12.5px] text-fg-muted mt-1 flex flex-wrap gap-x-2 gap-y-1 min-h-5 items-center" :class="compact && 'row-start-2 col-span-2 min-w-0'">
           <template v-if="library.hasVideos">
             <span v-if="manyPlaces" class="flex gap-1.5 min-w-0 items-center">
               <span class="i-carbon-folders text-fg-faint shrink-0" />
@@ -334,7 +343,7 @@ function onBackgroundClick(e: MouseEvent) {
         </div>
       </div>
 
-      <div class="flex shrink-0 gap-1.5 items-center">
+      <div class="flex shrink-0 gap-1.5 items-center" :class="compact && 'row-start-1 col-start-2 gap-0.5'">
         <UiIconButton
           v-if="library.isWatching"
           icon="i-carbon-renew"
@@ -343,15 +352,19 @@ function onBackgroundClick(e: MouseEvent) {
           :disabled="rescanning"
           @click="rescan"
         />
+        <template v-if="compact && library.hasVideos">
+          <UiIconButton icon="i-carbon-folder-add" label="Add folder" @click="library.addFolder()" />
+          <UiIconButton icon="i-carbon-folder-open" label="Change folder" :disabled="library.scanning" @click="library.pickFolder()" />
+        </template>
         <UiButton
-          v-if="library.hasVideos"
+          v-else-if="library.hasVideos"
           v-tip="'Another folder in the same library: one on another drive, say'"
           icon="i-carbon-folder-add"
           @click="library.addFolder()"
         >
           Add folder
         </UiButton>
-        <UiButton icon="i-carbon-folder-open" :loading="library.scanning && library.hasVideos" @click="library.pickFolder()">
+        <UiButton v-if="!compact || !library.hasVideos" icon="i-carbon-folder-open" :loading="library.scanning && library.hasVideos" @click="library.pickFolder()">
           {{ library.hasVideos ? 'Change folder' : 'Open folder' }}
         </UiButton>
         <UiPopover placement="bottom" align="end" flush>
@@ -368,7 +381,52 @@ function onBackgroundClick(e: MouseEvent) {
     </header>
 
     <!-- ══ Toolbar ════════════════════════════════════════════════════════════ -->
-    <div v-if="library.hasVideos" class="px-6 pb-3 flex shrink-0 flex-wrap gap-2 items-center">
+    <!-- On a phone: the search, the filters in a row that scrolls sideways, then sort, view and play. -->
+    <div v-if="library.hasVideos && compact" class="px-4 pb-2 flex shrink-0 flex-col gap-2">
+      <UiInput
+        v-model="lq.search"
+        icon="i-carbon-search"
+        placeholder="Search names, tags, creators"
+        clearable
+        class="w-full"
+      />
+      <div class="chip-strip px-4 overflow-x-auto -mx-4">
+        <FilterChips :lq="lq" compact nowrap />
+      </div>
+      <div class="flex gap-1 items-center">
+        <UiPopover placement="bottom" align="start" flush>
+          <template #trigger="{ toggle, open }">
+            <UiButton variant="ghost" size="sm" :active="open" :icon="lq.sort.asc ? 'i-carbon-sort-ascending' : 'i-carbon-sort-descending'" @click="toggle">
+              {{ lq.sortLabel }}
+            </UiButton>
+          </template>
+          <template #default="{ close }">
+            <div class="p-1">
+              <UiMenu :items="lq.sortMenu" @done="close" />
+            </div>
+          </template>
+        </UiPopover>
+        <UiIconButton
+          v-if="currentIndex >= 0"
+          icon="i-carbon-center-circle"
+          label="Scroll to now playing"
+          @click="win.scrollToIndex(currentIndex)"
+        />
+        <div class="flex-1" />
+        <UiSegmented
+          v-model="viewMode"
+          :options="[
+            { value: 'grid', icon: 'i-carbon-grid', title: 'Grid' },
+            { value: 'list', icon: 'i-carbon-list', title: 'List' },
+          ]"
+        />
+        <UiIconButton icon="i-carbon-shuffle" label="Shuffle all" :disabled="!lq.results.length" @click="lq.shuffleAll()" />
+        <UiButton variant="primary" size="sm" icon="i-carbon-play-filled-alt" :disabled="!lq.results.length" @click="lq.playAll()">
+          Play all
+        </UiButton>
+      </div>
+    </div>
+    <div v-else-if="library.hasVideos" class="px-6 pb-3 flex shrink-0 flex-wrap gap-2 items-center">
       <UiInput
         ref="searchInput"
         v-model="lq.search"
@@ -486,7 +544,7 @@ function onBackgroundClick(e: MouseEvent) {
           <UiSpinner :size="13" />
           <span class="num">Scanning {{ library.totalFiles.toLocaleString() }} files and matching scripts…</span>
         </div>
-        <div class="gap-4 grid" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }">
+        <div class="gap-4 grid" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardMin}px, 1fr))` }">
           <div v-for="i in 18" :key="i" class="flex flex-col gap-2" :style="{ animationDelay: `${i * 30}ms` }">
             <div class="skeleton rounded-[var(--radius-md)] aspect-video" />
             <div class="skeleton rounded h-3 w-3/4" />
@@ -549,31 +607,31 @@ function onBackgroundClick(e: MouseEvent) {
 
       <template v-else>
         <!-- List header -->
-        <div v-if="viewMode === 'list'" class="list-cols eyebrow mx-6 px-2 border-b border-edge shrink-0 h-8 items-center">
-          <span />
+        <div v-if="viewMode === 'list'" class="list-cols eyebrow px-2 border-b border-edge shrink-0 h-8 items-center" :class="compact ? 'mx-4 phone-cols' : 'mx-6'">
+          <span class="col-index" />
           <span />
           <button type="button" class="sort-head" :class="lq.sort.key === 'name' ? 'text-fg' : ''" @click="lq.setSort('name')">
             Name<span v-if="lq.sort.key === 'name'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />
           </button>
-          <button v-tip="'Sort by intensity'" type="button" class="sort-head" :class="lq.sort.key === 'intensity' ? 'text-fg' : ''" @click="lq.setSort('intensity')">
+          <button v-tip="'Sort by intensity'" type="button" class="sort-head col-script" :class="lq.sort.key === 'intensity' ? 'text-fg' : ''" @click="lq.setSort('intensity')">
             Script<span v-if="lq.sort.key === 'intensity'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />
           </button>
           <button type="button" class="sort-head justify-end" :class="lq.sort.key === 'duration' ? 'text-fg' : ''" @click="lq.setSort('duration')">
             <span v-if="lq.sort.key === 'duration'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Length
           </button>
-          <button type="button" class="sort-head justify-end" :class="lq.sort.key === 'size' ? 'text-fg' : ''" @click="lq.setSort('size')">
+          <button type="button" class="sort-head col-size justify-end" :class="lq.sort.key === 'size' ? 'text-fg' : ''" @click="lq.setSort('size')">
             <span v-if="lq.sort.key === 'size'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Size
           </button>
           <button type="button" class="sort-head col-date justify-end" :class="lq.sort.key === 'date' ? 'text-fg' : ''" @click="lq.setSort('date')">
             <span v-if="lq.sort.key === 'date'" :class="lq.sort.asc ? 'i-carbon-arrow-up' : 'i-carbon-arrow-down'" />Modified
           </button>
-          <span />
+          <span class="col-actions" />
         </div>
 
         <div
           ref="scroller"
-          class="px-6 scroll-y flex-1"
-          :class="viewMode === 'list' ? 'pt-1' : 'pt-5'"
+          class="scroll-y flex-1"
+          :class="[compact ? 'px-4' : 'px-6', viewMode === 'list' ? 'pt-1' : compact ? 'pt-3' : 'pt-5']"
           @scroll.passive="onScroll"
           @click="onBackgroundClick"
         >
@@ -584,7 +642,7 @@ function onBackgroundClick(e: MouseEvent) {
                 v-for="row in rows"
                 :key="row.index"
                 class="grid inset-x-0 absolute"
-                :style="{ top: `${row.top}px`, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, columnGap: `${GAP}px` }"
+                :style="{ top: `${row.top}px`, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, columnGap: `${gap}px` }"
               >
                 <div
                   v-for="{ item: entry } in row.cells"
@@ -717,7 +775,7 @@ function onBackgroundClick(e: MouseEvent) {
                   v-for="{ item: entry, index } in row.cells"
                   :key="entry.name"
                   class="list-cols list-row group px-2 focusable rounded-[var(--radius-sm)] h-full cursor-pointer items-center"
-                  :class="{ 'is-selected': selected.has(entry.name), 'is-current': entry.name === currentName }"
+                  :class="{ 'is-selected': selected.has(entry.name), 'is-current': entry.name === currentName, 'phone-cols': compact }"
                   tabindex="0"
                   role="button"
                   :aria-label="entry.basename"
@@ -726,7 +784,7 @@ function onBackgroundClick(e: MouseEvent) {
                   @keydown.enter="lq.playEntry(entry)"
                   @contextmenu.prevent="openCtx($event, entry)"
                 >
-                  <span class="text-[11.5px] text-fg-faint num text-right">
+                  <span class="col-index text-[11.5px] text-fg-faint num text-right">
                     <Equaliser v-if="entry.name === currentName" class="text-accent-300" :playing="player.isPlaying" />
                     <button
                       v-else
@@ -753,7 +811,7 @@ function onBackgroundClick(e: MouseEvent) {
                       <span v-if="effectiveMeta(entry).rating" class="text-warn shrink-0">{{ '★'.repeat(effectiveMeta(entry).rating ?? 0) }}</span>
                     </span>
                   </span>
-                  <span class="flex gap-2 min-w-0 items-center">
+                  <span class="col-script flex gap-2 min-w-0 items-center">
                     <UiBadge
                       v-if="entry.scriptType !== 'none'"
                       v-tip="scriptBadge(entry).title"
@@ -767,10 +825,10 @@ function onBackgroundClick(e: MouseEvent) {
                     <IntensityMeter :summary="scripts.summaryOf(entry)" />
                   </span>
                   <span class="text-[12px] text-fg-muted num text-right">{{ entry.duration ? formatTime(entry.duration) : '' }}</span>
-                  <span v-if="entry.remote" class="text-[12px] text-fg-muted text-right truncate" :title="`From ${entry.remote.label}, added by a plugin`">{{ entry.remote.label }}</span>
-                  <span v-else class="text-[12px] text-fg-muted num text-right">{{ formatSize(entry.file.size) }}</span>
+                  <span v-if="entry.remote" class="col-size text-[12px] text-fg-muted text-right truncate" :title="`From ${entry.remote.label}, added by a plugin`">{{ entry.remote.label }}</span>
+                  <span v-else class="col-size text-[12px] text-fg-muted num text-right">{{ formatSize(entry.file.size) }}</span>
                   <span class="col-date text-[12px] text-fg-faint text-right">{{ entry.remote ? '' : formatDate(entry.file.lastModified) }}</span>
-                  <span class="flex items-center justify-end">
+                  <span class="col-actions flex items-center justify-end">
                     <button
                       v-if="entry.hasScript"
                       v-tip="'Share card'"
@@ -853,6 +911,13 @@ function onBackgroundClick(e: MouseEvent) {
 </template>
 
 <style scoped>
+/* The phone's filter row scrolls sideways under a finger; no bar for it. */
+.chip-strip {
+  scrollbar-width: none;
+}
+.chip-strip::-webkit-scrollbar {
+  display: none;
+}
 /* ── Grid cards ───────────────────────────────────────────────────────────── */
 .card-item .thumb {
   box-shadow: 0 0 0 1px var(--border);
@@ -962,6 +1027,18 @@ function onBackgroundClick(e: MouseEvent) {
   .col-date {
     display: none;
   }
+}
+/* A phone: the picture, the name (with what's under it) and the length; the rest is a long press away. */
+.list-cols.phone-cols {
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  column-gap: 10px;
+}
+.phone-cols > .col-index,
+.phone-cols > .col-script,
+.phone-cols > .col-size,
+.phone-cols > .col-date,
+.phone-cols > .col-actions {
+  display: none;
 }
 .sort-head {
   display: inline-flex;
