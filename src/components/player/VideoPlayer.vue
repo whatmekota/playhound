@@ -19,6 +19,7 @@ import { sessionNotice, useSessionActions } from '~/composables/useSessionAction
 import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { routesAudio } from '~/composables/useVideoBeat'
 import { useVideoSync } from '~/composables/useVideoSync'
+import { PhApp } from '~/lib/android/app'
 import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
@@ -469,6 +470,10 @@ function toggleFullscreen() {
     void popout.setFullScreen(!popout.fullScreen.value)
     return
   }
+  if (isAndroidApp) {
+    setAppFullscreen(!player.isFullscreen)
+    return
+  }
   const doc = playerDoc()
   if (doc.fullscreenElement)
     void doc.exitFullscreen().catch(() => {})
@@ -480,8 +485,29 @@ function toggleFullscreen() {
     void rootEl.value?.requestFullscreen().catch(() => {})
 }
 
+/**
+ * The Android app's fullscreen. Capacitor turns the WebView's own down, so
+ * the page lays itself out for it (player.isFullscreen) and the app hides
+ * Android's bars, turns a wide video sideways and takes Back to leave it.
+ */
+function setAppFullscreen(on: boolean) {
+  if (on === player.isFullscreen)
+    return
+  player.isFullscreen = on
+  if (!on)
+    fsMenu.value = null
+  const v = videoEl.value
+  const landscape = !!v && v.videoWidth > v.videoHeight * 1.1 && !vrView.value
+  void PhApp.setFullscreen({ on, landscape }).catch(() => {})
+  poke()
+}
+if (isAndroidApp) {
+  const back = PhApp.addListener('fullscreenBack', () => setAppFullscreen(false))
+  onBeforeUnmount(() => void back.then(h => h.remove()).catch(() => {}))
+}
+
 function onFullscreenChange() {
-  if (popped.value)
+  if (popped.value || isAndroidApp)
     return
   const fs = playerDoc().fullscreenElement
   player.isFullscreen = !!rootEl.value && (fs === rootEl.value || (compact.value && fs === document.documentElement))
@@ -495,6 +521,8 @@ function onFullscreenChange() {
 watch(() => safety.panicked, (p) => {
   if (p && document.fullscreenElement)
     void document.exitFullscreen().catch(() => {})
+  if (p && isAndroidApp)
+    setAppFullscreen(false)
 })
 
 // Popped out, the pop-out window's full screen is the player's. A window

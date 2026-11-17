@@ -21,7 +21,10 @@ interface PhAppPlugin {
   cancelUpdate: () => Promise<void>
   canInstall: () => Promise<{ allowed: boolean }>
   installUpdate: (o: { path: string }) => Promise<{ started?: boolean, needsPermission?: boolean }>
-  addListener: (event: 'updateProgress', cb: (e: { received: number, total: number }) => void) => Promise<PluginListenerHandle>
+  /** Hide (or show) Android's bars for the player's fullscreen; `landscape` turns the phone sideways meanwhile. */
+  setFullscreen: (o: { on: boolean, landscape?: boolean }) => Promise<void>
+  addListener: ((event: 'updateProgress', cb: (e: { received: number, total: number }) => void) => Promise<PluginListenerHandle>)
+    & ((event: 'fullscreenBack', cb: () => void) => Promise<PluginListenerHandle>)
 }
 
 export const PhApp = registerPlugin<PhAppPlugin>('PhApp')

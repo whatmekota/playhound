@@ -2,12 +2,17 @@ package io.github.whatmekota.playhound.app
 
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Base64
+import androidx.activity.OnBackPressedCallback
 import androidx.core.content.FileProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -26,6 +31,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - info: version, and whether this is a debug build (a release build
  *   cannot update one: they are signed with different keys).
  * - share: Android's share sheet for a file the page made (the share card).
+ * - setFullscreen: the player's fullscreen. The WebView's own (the page's
+ *   requestFullscreen) is turned down by Capacitor, so the page fills itself
+ *   and this hides Android's status and navigation bars (a swipe from the
+ *   edge shows them for a moment), turns a wide video sideways, and makes
+ *   Back leave fullscreen ("fullscreenBack") instead of the app.
  * - downloadUpdate / cancelUpdate / installUpdate / canInstall: the in-app
  *   updater. The APK goes to the app's cache ("updates/"), is checked
  *   against the SHA-256 GitHub lists for it, and is handed to Android's
@@ -73,6 +83,44 @@ class AppPlugin : Plugin() {
                 .put("debug", (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
                 .put("sdk", Build.VERSION.SDK_INT),
         )
+    }
+
+    // ── Fullscreen ───────────────────────────────────────────────────────────
+
+    private var fullscreenBack: OnBackPressedCallback? = null
+
+    /** { on, landscape? }: hide or show the system bars; landscape turns the phone sideways while on. */
+    @PluginMethod
+    fun setFullscreen(call: PluginCall) {
+        val on = call.getBoolean("on", false) ?: false
+        val landscape = call.getBoolean("landscape", false) ?: false
+        val act = activity ?: return call.reject("No activity")
+        act.runOnUiThread {
+            val window = act.window
+            val bars = WindowCompat.getInsetsController(window, window.decorView)
+            if (on) {
+                bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                bars.hide(WindowInsetsCompat.Type.systemBars())
+                act.requestedOrientation =
+                    if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                if (fullscreenBack == null) {
+                    val cb = object : OnBackPressedCallback(true) {
+                        override fun handleOnBackPressed() {
+                            notifyListeners("fullscreenBack", JSObject())
+                        }
+                    }
+                    act.onBackPressedDispatcher.addCallback(act, cb)
+                    fullscreenBack = cb
+                }
+            }
+            else {
+                bars.show(WindowInsetsCompat.Type.systemBars())
+                act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                fullscreenBack?.remove()
+                fullscreenBack = null
+            }
+            call.resolve()
+        }
     }
 
     // ── Share ────────────────────────────────────────────────────────────────
