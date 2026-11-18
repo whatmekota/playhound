@@ -23,6 +23,7 @@ declare global {
   const StreamError: typeof import('./src/composables/useStreams').StreamError
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
   const UI_SCALES: typeof import('./src/composables/useUiScale').UI_SCALES
+  const achievementCounts: typeof import('./src/composables/achievementEvents').achievementCounts
   const addAxisListener: typeof import('./src/composables/useTCode').addAxisListener
   const analyseActions: typeof import('./src/composables/useScriptAnalysis').analyseActions
   const analyseSoundtrack: typeof import('./src/composables/useSoundtrack').analyseSoundtrack
@@ -32,6 +33,8 @@ declare global {
   const autoResetRef: typeof import('@vueuse/core').autoResetRef
   const axisOutput: typeof import('./src/composables/useTCode').axisOutput
   const axisOutputAt: typeof import('./src/composables/useTCode').axisOutputAt
+  const axisPosition: typeof import('./src/composables/useTCode').axisPosition
+  const bestMoment: typeof import('./src/composables/achievementEvents').bestMoment
   const clearTapTempo: typeof import('./src/composables/useVideoBeat').clearTapTempo
   const closeFaceWindow: typeof import('./src/composables/useFaceScreen').closeFaceWindow
   const computed: typeof import('vue').computed
@@ -41,6 +44,7 @@ declare global {
   const computedWithControl: typeof import('@vueuse/core').computedWithControl
   const controlledComputed: typeof import('@vueuse/core').controlledComputed
   const controlledRef: typeof import('@vueuse/core').controlledRef
+  const countMoment: typeof import('./src/composables/achievementEvents').countMoment
   const createApp: typeof import('vue').createApp
   const createEventHook: typeof import('@vueuse/core').createEventHook
   const createGlobalState: typeof import('@vueuse/core').createGlobalState
@@ -51,6 +55,7 @@ declare global {
   const createSharedComposable: typeof import('@vueuse/core').createSharedComposable
   const createTemplatePromise: typeof import('@vueuse/core').createTemplatePromise
   const createUnrefFn: typeof import('@vueuse/core').createUnrefFn
+  const currentAchievementFacts: typeof import('./src/composables/useAchievements').currentAchievementFacts
   const customRef: typeof import('vue').customRef
   const debouncedRef: typeof import('@vueuse/core').debouncedRef
   const debouncedWatch: typeof import('@vueuse/core').debouncedWatch
@@ -101,8 +106,10 @@ declare global {
   const isStrengthToy: typeof import('./src/composables/useButtplug').isStrengthToy
   const listeningToPage: typeof import('./src/composables/useVideoBeat').listeningToPage
   const makeDestructurable: typeof import('@vueuse/core').makeDestructurable
+  const markMoment: typeof import('./src/composables/achievementEvents').markMoment
   const markRaw: typeof import('vue').markRaw
   const mediaKind: typeof import('./src/composables/useMediaDrop').mediaKind
+  const motorsOf: typeof import('./src/composables/useButtplug').motorsOf
   const netDisconnect: typeof import('./src/composables/useTCodeNet').netDisconnect
   const netIsRestim: typeof import('./src/composables/useTCodeNet').netIsRestim
   const netPanic: typeof import('./src/composables/useTCodeNet').netPanic
@@ -188,6 +195,7 @@ declare global {
   const sinkSupported: typeof import('./src/composables/useEstim').sinkSupported
   const snapRect: typeof import('./src/composables/wallGeometry').snapRect
   const soundtrackProgress: typeof import('./src/composables/useSoundtrack').soundtrackProgress
+  const startAchievements: typeof import('./src/composables/useAchievements').startAchievements
   const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
   const startUiScale: typeof import('./src/composables/useUiScale').startUiScale
   const startUpdates: typeof import('./src/composables/useUpdates').startUpdates
@@ -210,6 +218,7 @@ declare global {
   const toast: typeof import('./src/composables/useToast').toast
   const toggleDark: typeof import('./src/composables/dark').toggleDark
   const toggleSaved: typeof import('./src/composables/useSavedPosts').toggleSaved
+  const toyName: typeof import('./src/composables/useButtplug').toyName
   const triggerRef: typeof import('vue').triggerRef
   const tryOnBeforeMount: typeof import('@vueuse/core').tryOnBeforeMount
   const tryOnBeforeUnmount: typeof import('@vueuse/core').tryOnBeforeUnmount
@@ -393,6 +402,7 @@ declare global {
   const useStepper: typeof import('@vueuse/core').useStepper
   const useStorage: typeof import('@vueuse/core').useStorage
   const useStorageAsync: typeof import('@vueuse/core').useStorageAsync
+  const useStrokePad: typeof import('./src/composables/useStrokePad').useStrokePad
   const useStyleTag: typeof import('@vueuse/core').useStyleTag
   const useSupported: typeof import('@vueuse/core').useSupported
   const useSwipe: typeof import('@vueuse/core').useSwipe
@@ -467,7 +477,7 @@ declare global {
   export type { BeatMode } from './src/composables/useBinauralBeats'
   import('./src/composables/useBinauralBeats')
   // @ts-ignore
-  export type { ToyOutputs } from './src/composables/useButtplug'
+  export type { ToyOutputs, MotorKind, ToyMotor } from './src/composables/useButtplug'
   import('./src/composables/useButtplug')
   // @ts-ignore
   export type { EstimSettings } from './src/composables/useEstim'
@@ -559,6 +569,7 @@ declare module 'vue' {
     readonly StreamError: UnwrapRef<typeof import('./src/composables/useStreams')['StreamError']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
     readonly UI_SCALES: UnwrapRef<typeof import('./src/composables/useUiScale')['UI_SCALES']>
+    readonly achievementCounts: UnwrapRef<typeof import('./src/composables/achievementEvents')['achievementCounts']>
     readonly addAxisListener: UnwrapRef<typeof import('./src/composables/useTCode')['addAxisListener']>
     readonly analyseActions: UnwrapRef<typeof import('./src/composables/useScriptAnalysis')['analyseActions']>
     readonly analyseSoundtrack: UnwrapRef<typeof import('./src/composables/useSoundtrack')['analyseSoundtrack']>
@@ -568,6 +579,8 @@ declare module 'vue' {
     readonly autoResetRef: UnwrapRef<typeof import('@vueuse/core')['autoResetRef']>
     readonly axisOutput: UnwrapRef<typeof import('./src/composables/useTCode')['axisOutput']>
     readonly axisOutputAt: UnwrapRef<typeof import('./src/composables/useTCode')['axisOutputAt']>
+    readonly axisPosition: UnwrapRef<typeof import('./src/composables/useTCode')['axisPosition']>
+    readonly bestMoment: UnwrapRef<typeof import('./src/composables/achievementEvents')['bestMoment']>
     readonly clearTapTempo: UnwrapRef<typeof import('./src/composables/useVideoBeat')['clearTapTempo']>
     readonly closeFaceWindow: UnwrapRef<typeof import('./src/composables/useFaceScreen')['closeFaceWindow']>
     readonly computed: UnwrapRef<typeof import('vue')['computed']>
@@ -577,6 +590,7 @@ declare module 'vue' {
     readonly computedWithControl: UnwrapRef<typeof import('@vueuse/core')['computedWithControl']>
     readonly controlledComputed: UnwrapRef<typeof import('@vueuse/core')['controlledComputed']>
     readonly controlledRef: UnwrapRef<typeof import('@vueuse/core')['controlledRef']>
+    readonly countMoment: UnwrapRef<typeof import('./src/composables/achievementEvents')['countMoment']>
     readonly createApp: UnwrapRef<typeof import('vue')['createApp']>
     readonly createEventHook: UnwrapRef<typeof import('@vueuse/core')['createEventHook']>
     readonly createGlobalState: UnwrapRef<typeof import('@vueuse/core')['createGlobalState']>
@@ -587,6 +601,7 @@ declare module 'vue' {
     readonly createSharedComposable: UnwrapRef<typeof import('@vueuse/core')['createSharedComposable']>
     readonly createTemplatePromise: UnwrapRef<typeof import('@vueuse/core')['createTemplatePromise']>
     readonly createUnrefFn: UnwrapRef<typeof import('@vueuse/core')['createUnrefFn']>
+    readonly currentAchievementFacts: UnwrapRef<typeof import('./src/composables/useAchievements')['currentAchievementFacts']>
     readonly customRef: UnwrapRef<typeof import('vue')['customRef']>
     readonly debouncedRef: UnwrapRef<typeof import('@vueuse/core')['debouncedRef']>
     readonly debouncedWatch: UnwrapRef<typeof import('@vueuse/core')['debouncedWatch']>
@@ -637,8 +652,10 @@ declare module 'vue' {
     readonly isStrengthToy: UnwrapRef<typeof import('./src/composables/useButtplug')['isStrengthToy']>
     readonly listeningToPage: UnwrapRef<typeof import('./src/composables/useVideoBeat')['listeningToPage']>
     readonly makeDestructurable: UnwrapRef<typeof import('@vueuse/core')['makeDestructurable']>
+    readonly markMoment: UnwrapRef<typeof import('./src/composables/achievementEvents')['markMoment']>
     readonly markRaw: UnwrapRef<typeof import('vue')['markRaw']>
     readonly mediaKind: UnwrapRef<typeof import('./src/composables/useMediaDrop')['mediaKind']>
+    readonly motorsOf: UnwrapRef<typeof import('./src/composables/useButtplug')['motorsOf']>
     readonly netDisconnect: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netDisconnect']>
     readonly netIsRestim: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netIsRestim']>
     readonly netPanic: UnwrapRef<typeof import('./src/composables/useTCodeNet')['netPanic']>
@@ -724,6 +741,7 @@ declare module 'vue' {
     readonly sinkSupported: UnwrapRef<typeof import('./src/composables/useEstim')['sinkSupported']>
     readonly snapRect: UnwrapRef<typeof import('./src/composables/wallGeometry')['snapRect']>
     readonly soundtrackProgress: UnwrapRef<typeof import('./src/composables/useSoundtrack')['soundtrackProgress']>
+    readonly startAchievements: UnwrapRef<typeof import('./src/composables/useAchievements')['startAchievements']>
     readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
     readonly startUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['startUiScale']>
     readonly startUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['startUpdates']>
@@ -746,6 +764,7 @@ declare module 'vue' {
     readonly toast: UnwrapRef<typeof import('./src/composables/useToast')['toast']>
     readonly toggleDark: UnwrapRef<typeof import('./src/composables/dark')['toggleDark']>
     readonly toggleSaved: UnwrapRef<typeof import('./src/composables/useSavedPosts')['toggleSaved']>
+    readonly toyName: UnwrapRef<typeof import('./src/composables/useButtplug')['toyName']>
     readonly triggerRef: UnwrapRef<typeof import('vue')['triggerRef']>
     readonly tryOnBeforeMount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeMount']>
     readonly tryOnBeforeUnmount: UnwrapRef<typeof import('@vueuse/core')['tryOnBeforeUnmount']>
@@ -929,6 +948,7 @@ declare module 'vue' {
     readonly useStepper: UnwrapRef<typeof import('@vueuse/core')['useStepper']>
     readonly useStorage: UnwrapRef<typeof import('@vueuse/core')['useStorage']>
     readonly useStorageAsync: UnwrapRef<typeof import('@vueuse/core')['useStorageAsync']>
+    readonly useStrokePad: UnwrapRef<typeof import('./src/composables/useStrokePad')['useStrokePad']>
     readonly useStyleTag: UnwrapRef<typeof import('@vueuse/core')['useStyleTag']>
     readonly useSupported: UnwrapRef<typeof import('@vueuse/core')['useSupported']>
     readonly useSwipe: UnwrapRef<typeof import('@vueuse/core')['useSwipe']>

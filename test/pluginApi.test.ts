@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { soundTrackOf } from '~/lib/mediaSound'
 import { signatureOf, skipName } from '~/plugins/devFolder'
 import { capMove, ceilingPerMs, createFilterChain, filterActions } from '~/plugins/filters'
 import { CHUNK, fingerprintOf, fingerprintRanges, fingerprintSize } from '~/plugins/fingerprint'
@@ -53,7 +54,7 @@ describe('manifest v2', () => {
   })
 
   it('speaks API 3, and keeps full access to what there was before', () => {
-    expect(PLUGIN_API).toBe(6)
+    expect(PLUGIN_API).toBe(7)
     expect(readManifest({ ...base, api: 3, permissions: ['serve', 'socket', 'session', 'external', 'library-source'] }).permissions)
       .toEqual(['external', 'session', 'library-source', 'socket', 'serve'])
     const old = accessOf(readManifest(base))
@@ -260,5 +261,18 @@ describe('dev folders', () => {
     expect(signatureOf([...a].reverse())).toBe(sig)
     expect(signatureOf([{ ...a[0], lastModified: 2 }, a[1]])).not.toBe(sig)
     expect(signatureOf([a[0]])).not.toBe(sig)
+  })
+})
+
+describe('what is heard', () => {
+  const el = (o: object) => o as HTMLMediaElement
+  it('tells a sound track, or none, once the browser can', () => {
+    expect(soundTrackOf(el({ mozHasAudio: false }))).toBe(false)
+    expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 512, webkitVideoDecodedByteCount: 10 }))).toBe(true)
+    // Chromium: picture decoded and no sound yet, then a fair way and still none.
+    expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 0, webkitVideoDecodedByteCount: 20_000 }))).toBeNull()
+    expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 0, webkitVideoDecodedByteCount: 2_000_000 }))).toBe(false)
+    expect(soundTrackOf(el({ audioTracks: { length: 1 } }))).toBe(true)
+    expect(soundTrackOf(el({}))).toBeNull()
   })
 })

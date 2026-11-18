@@ -17,7 +17,9 @@
  * Pure: useVibeSync samples the stores and the clock and hands them in.
  */
 
-export type VibeSource = 'script-speed' | 'script-position' | 'music' | 'session' | 'motion' | 'off'
+/** Follows what another axis is sent: twist, pitch… (its position, 0–1). */
+export type AxisVibeSource = 'axis-L1' | 'axis-L2' | 'axis-R0' | 'axis-R1' | 'axis-R2'
+export type VibeSource = 'script-speed' | 'script-position' | 'music' | 'session' | 'motion' | AxisVibeSource | 'off'
 export type VibeCurve = 'linear' | 'gentle' | 'punchy'
 
 export interface VibeSettings {
@@ -27,9 +29,31 @@ export interface VibeSettings {
   /** Ceiling, 0–1. */
   max: number
   curve: VibeCurve
+  /**
+   * Script speed only: how much each stroke is felt, 0–1. The strength still
+   * comes from the speed, but dips toward the top of every stroke and swells
+   * at the bottom, so a steady pattern pulses in time instead of a flat hum.
+   * Absent in settings saved before it existed: DEFAULT_VIBE's then.
+   */
+  pulse?: number
+  /**
+   * How much earlier the toy is sent its level, ms, for the lag of its
+   * Bluetooth link, so a stroke's swell lands with the stroke. Script
+   * sources only (the others are live). Absent: 0.
+   */
+  leadMs?: number
+  /**
+   * A source per motor, by Buttplug feature index, for toys with several
+   * (a vibrator and a rotator, two vibrators). A motor not listed follows
+   * the toy's own source.
+   */
+  motors?: Record<string, VibeSource>
 }
 
-export const DEFAULT_VIBE: VibeSettings = { source: 'script-speed', min: 0.1, max: 1, curve: 'linear' }
+/** The most a toy's timing can lead by. */
+export const VIBE_LEAD_MAX = 500
+
+export const DEFAULT_VIBE: VibeSettings = { source: 'script-speed', min: 0.1, max: 1, curve: 'linear', pulse: 0.6 }
 
 export const VIBE_SOURCES: { value: VibeSource, label: string }[] = [
   { value: 'script-speed', label: 'Script speed' },
@@ -37,8 +61,23 @@ export const VIBE_SOURCES: { value: VibeSource, label: string }[] = [
   { value: 'music', label: 'Music loudness' },
   { value: 'session', label: 'Session intensity' },
   { value: 'motion', label: 'Generated motion' },
+  { value: 'axis-L1', label: 'Surge axis' },
+  { value: 'axis-L2', label: 'Sway axis' },
+  { value: 'axis-R0', label: 'Twist axis' },
+  { value: 'axis-R1', label: 'Roll axis' },
+  { value: 'axis-R2', label: 'Pitch axis' },
   { value: 'off', label: 'Off' },
 ]
+
+/** The TCode channel an axis source follows, or null. */
+export function axisOfSource(source: VibeSource): string | null {
+  return source.startsWith('axis-') ? source.slice(5) : null
+}
+
+/** A saved source that is still one there is (a later version may have added more). */
+export function knownSource(source: unknown): VibeSource | null {
+  return VIBE_SOURCES.some(s => s.value === source) ? source as VibeSource : null
+}
 
 /** Below this the source is "nothing happening" and the toy goes fully quiet, not to `min`. */
 export const VIBE_DEADZONE = 0.03
@@ -157,6 +196,67 @@ export function localSpeed(actions: Act[], tMs: number, halfWindowMs = 600): num
     dist += Math.abs(b.pos - a.pos) * ((e - s) / span)
   }
   return dist / ((to - from) / 1000)
+}
+
+/**
+ * A speed level with each stroke in it: full at the bottom of a stroke
+ * (position 0), down by `pulse` at the top (position 1).
+ */
+export function strokePulse(level: number, position: number, pulse: number): number {
+  const p = Math.max(0, Math.min(1, pulse))
+  const pos = Math.max(0, Math.min(1, position))
+  return level * (1 - p * pos)
+}
+
+/**
+ * A vibe script (.vib, 0–100) made from a stroke script, the way a toy on
+ * Script speed plays it: strength from how fast the script moves, swelling
+ * at the bottom of each stroke by `pulse`, within the range and curve. A
+ * point at each of the script's own, and every 300 ms through a long one,
+ * so a long hold goes quiet instead of ramping across it. Points that only
+ * repeat their neighbours are left out. In: positions 0–1, as parsed; out:
+ * a funscript's 0–100.
+ */
+export function vibeScriptFrom(actions: Act[], s: Pick<VibeSettings, 'min' | 'max' | 'curve'> & { pulse: number }): Act[] {
+  if (actions.length < 2)
+    return []
+  const fast = scriptFastSpeed(actions)
+  const times: number[] = []
+  for (let i = 0; i < actions.length; i++) {
+    times.push(actions[i].at)
+    const next = actions[i + 1]
+    if (next && next.at - actions[i].at > 600) {
+      for (let t = actions[i].at + 300; t < next.at - 150; t += 300)
+        times.push(t)
+    }
+  }
+  const out: Act[] = []
+  for (const t of times) {
+    const level = scriptSpeedLevel(localSpeed(actions, t), fast)
+    const pos = positionOf(actions, t)
+    const v = Math.round(mapVibe(strokePulse(level, pos, s.pulse), s) * 100)
+    const last = out[out.length - 1]
+    const before = out[out.length - 2]
+    // The middle of three equal points says nothing.
+    if (last && before && last.pos === v && before.pos === v)
+      last.at = Math.round(t)
+    else
+      out.push({ at: Math.round(t), pos: v })
+  }
+  return out
+}
+
+/** The script's position at `t`, straight between points. */
+function positionOf(actions: Act[], t: number): number {
+  const i = upperBound(actions, t)
+  if (i <= 0)
+    return actions[0].pos
+  if (i >= actions.length)
+    return actions[actions.length - 1].pos
+  const a = actions[i - 1]
+  const b = actions[i]
+  const span = b.at - a.at
+  return span > 0 ? a.pos + (b.pos - a.pos) * ((t - a.at) / span) : b.pos
 }
 
 /**

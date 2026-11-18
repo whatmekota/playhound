@@ -111,6 +111,48 @@ export function looksSbsBySize(w: number, h: number) {
 }
 
 /**
+ * A frame that holds two eyes, by name and shape: side by side, a big square
+ * or 1:2 one, or one the name calls top-bottom that isn't wide (a flat video
+ * is; " ou " in a French title says nothing).
+ */
+export function looksVrFrame(name: string, w: number, h: number): boolean {
+  return looksSbs(name, w, h) || !!looksTbBySize(w, h) || (guessVrLayout(name) === 'tb' && w / h <= 1.05)
+}
+
+/** A rectangle of a video frame, in its pixels. */
+export interface FrameRect { sx: number, sy: number, sw: number, sh: number }
+
+/**
+ * Where a VR frame's eyes are, for pictures of it: what the name says, else
+ * the shape (a big square or 1:2 frame is top-bottom, a 2:1 one side by
+ * side), else side by side for a wide frame known to be VR, else one picture.
+ */
+export function frameLayout(name: string, w: number, h: number, vr = false): VrLayout {
+  const named = guessVrLayout(name)
+  if (named)
+    return named
+  if (looksTbBySize(w, h))
+    return 'tb'
+  if (looksSbs(name, w, h) || (vr && w / h > 1.6))
+    return 'sbs'
+  return 'mono'
+}
+
+/**
+ * The part of a frame that shows one eye, for thumbnails, scrub previews and
+ * share cards: the left half of side by side, the top half of top-bottom,
+ * the whole of anything else. A crop of the middle would be the seam.
+ */
+export function oneEyeRect(name: string, w: number, h: number, vr = false): FrameRect {
+  const layout = frameLayout(name, w, h, vr)
+  if (layout === 'tb')
+    return { sx: 0, sy: 0, sw: w, sh: h / 2 }
+  if (layout === 'sbs')
+    return { sx: 0, sy: 0, sw: w / 2, sh: h }
+  return { sx: 0, sy: 0, sw: w, sh: h }
+}
+
+/**
  * Top-bottom VR by its shape: two 360° eyes (2:1 each) stack into a square,
  * two 180° ones (1:1) into a 1:2 frame. Only big ones: a flat video is never
  * 3K wide and square. The format it suggests, or null.

@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 <script setup lang="ts">
 import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
+import { countMoment } from '~/composables/achievementEvents'
 import { useFunscript } from '~/composables/useFunscript'
 import { downloadPost, downloads } from '~/composables/usePostDownload'
 import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
@@ -943,6 +944,7 @@ async function download(topic: ESTopic, link: VideoLink) {
     url: postUrl(topic),
   })
   if (job.phase === 'done') {
+    countMoment('download')
     toast.success(chosen.length ? `Saved with ${chosen.length} script${chosen.length === 1 ? '' : 's'}` : 'Saved', {
       detail: `${title} · in ${job.folder}`,
       icon: 'i-carbon-download',

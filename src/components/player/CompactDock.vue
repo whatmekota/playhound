@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useLocalStorage } from '@vueuse/core'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import MobileSheet from '~/components/shell/MobileSheet.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import { playerChrome } from '~/composables/playerChrome'
@@ -14,6 +14,7 @@ import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/ch
 import { KEYS } from '~/lib/persist'
 import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
+import { looksVrFrame, oneEyeRect } from '~/lib/vrFormat'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
@@ -82,6 +83,67 @@ watch(() => [playback.trackSeq, playback.currentEntry?.thumbnailUrl] as const, (
   if (e && !e.thumbnailUrl)
     void ensureThumb(e).catch(() => {})
 }, { immediate: true })
+
+// ─── Live picture (over other views) ─────────────────────────────────────────
+// On a phone the video doesn't float over the other views (it covered the
+// library); it plays on out of sight, and its thumbnail here is the picture
+// itself, a dozen frames a second. One eye of a VR video.
+const liveEl = ref<HTMLCanvasElement | null>(null)
+const live = computed(() => !ui.onPlayer && hasTrack.value && !player.audioOnly && player.videoKind !== 'external')
+let liveFrame: number | null = null
+let liveAt = -1
+let liveDrawn = 0
+const LIVE_EVERY_MS = 80
+
+function drawLive(now: number) {
+  liveFrame = requestAnimationFrame(drawLive)
+  const c = liveEl.value
+  const v = document.querySelector<HTMLVideoElement>('video[data-ph-main]')
+  if (!c || !v || v.readyState < 2 || !v.videoWidth)
+    return
+  if (v.currentTime === liveAt || now - liveDrawn < LIVE_EVERY_MS)
+    return
+  liveAt = v.currentTime
+  liveDrawn = now
+  const dpr = window.devicePixelRatio || 1
+  const w = Math.round(c.clientWidth * dpr)
+  const h = Math.round(c.clientHeight * dpr)
+  if (!w || !h)
+    return
+  if (c.width !== w || c.height !== h) {
+    c.width = w
+    c.height = h
+  }
+  const vr = player.sbs180 || looksVrFrame(player.videoPath ?? '', v.videoWidth, v.videoHeight)
+  const eye = vr ? oneEyeRect(player.videoPath ?? '', v.videoWidth, v.videoHeight, true) : { sx: 0, sy: 0, sw: v.videoWidth, sh: v.videoHeight }
+  // Cover the slot: crop the long side.
+  const target = w / h
+  let { sx, sy, sw, sh } = eye
+  if (sw / sh > target) {
+    const cw = sh * target
+    sx += (sw - cw) / 2
+    sw = cw
+  }
+  else {
+    const ch = sw / target
+    sy += (sh - ch) / 2
+    sh = ch
+  }
+  try {
+    c.getContext('2d')?.drawImage(v, sx, sy, sw, sh, 0, 0, w, h)
+  }
+  catch {}
+}
+
+watch([live, liveEl], ([on, el]) => {
+  if (liveFrame !== null)
+    cancelAnimationFrame(liveFrame)
+  liveFrame = null
+  liveAt = -1
+  if (on && el)
+    liveFrame = requestAnimationFrame(drawLive)
+}, { immediate: true })
+onBeforeUnmount(() => liveFrame !== null && cancelAnimationFrame(liveFrame))
 
 // ─── Slim progress (over other views) ────────────────────────────────────────
 const progressEl = ref<HTMLElement | null>(null)
@@ -156,6 +218,7 @@ function toggleStar() {
         <button type="button" class="text-left flex flex-1 gap-2.5 h-full min-w-0 items-center" :aria-label="`Open the player: ${title}`" @click="ui.openView('player')">
           <span class="rounded-[var(--radius-sm)] bg-surface-800 shrink-0 h-[36px] w-[64px] ring-1 ring-edge relative overflow-hidden">
             <img v-if="thumb" :src="thumb" alt="" class="h-full w-full inset-0 absolute object-cover">
+            <canvas v-if="live" ref="liveEl" class="h-full w-full inset-0 absolute" aria-hidden="true" />
             <span v-else :class="player.audioOnly ? 'i-carbon-music' : 'i-carbon-video'" class="text-[16px] text-fg-faint left-1/2 top-1/2 absolute -translate-x-1/2 -translate-y-1/2" />
           </span>
           <span class="min-w-0">
@@ -188,6 +251,7 @@ function toggleStar() {
         <!-- Edge: a button of its own; while one runs, its countdown -->
         <div class="cd-side justify-start">
           <button
+            v-if="control.settings.enabled"
             type="button"
             class="cd-edge"
             :class="edgeLive ? 'is-live' : ''"

@@ -80,22 +80,42 @@ const shown = ref<Record<string, boolean>>({})
 // ─── Buttons ────────────────────────────────────────────────────────────────
 // What a button's run gave back, or threw, shown under it.
 type ButtonField = Extract<SettingField, { type: 'button' }>
+type FileField = Extract<SettingField, { type: 'file' }>
 const running = reactive<Record<string, boolean>>({})
 const result = reactive<Record<string, { text: string, error: boolean } | null>>({})
-async function press(f: ButtonField) {
-  if (running[f.key])
+function press(f: ButtonField) {
+  return runField(f.key, () => f.run({ ...values.value }))
+}
+
+// A file field: its hidden <input>, opened by the button; cancelling calls nothing.
+const fileInputs: Record<string, HTMLInputElement | null> = {}
+function pickFiles(f: FileField) {
+  if (!running[f.key])
+    fileInputs[f.key]?.click()
+}
+function picked(f: FileField, e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = [...(input.files ?? [])]
+  // Cleared, so picking the same file again still counts as a change.
+  input.value = ''
+  if (files.length)
+    void runField(f.key, () => f.run(files, { ...values.value }))
+}
+
+async function runField(key: string, run: () => void | string | Promise<void | string>) {
+  if (running[key])
     return
-  running[f.key] = true
-  result[f.key] = null
+  running[key] = true
+  result[key] = null
   try {
-    const out = await f.run({ ...values.value })
-    result[f.key] = typeof out === 'string' && out.trim() ? { text: out.trim(), error: false } : null
+    const out = await run()
+    result[key] = typeof out === 'string' && out.trim() ? { text: out.trim(), error: false } : null
   }
   catch (err) {
-    result[f.key] = { text: err instanceof Error ? err.message : String(err), error: true }
+    result[key] = { text: err instanceof Error ? err.message : String(err), error: true }
   }
   finally {
-    running[f.key] = false
+    running[key] = false
   }
 }
 const BUTTON_VARIANT = { primary: 'primary', secondary: 'secondary', danger: 'danger' } as const
@@ -224,18 +244,28 @@ const typing = reactive<Record<string, boolean>>({})
             </div>
           </UiField>
 
-          <div v-else-if="f.type === 'button'" class="flex flex-col gap-1.5">
+          <div v-else-if="f.type === 'button' || f.type === 'file'" class="flex flex-col gap-1.5">
             <div class="flex gap-3 items-center">
               <UiButton
                 size="sm"
                 :variant="BUTTON_VARIANT[f.tone ?? 'secondary']"
+                :icon="f.type === 'file' ? 'i-carbon-document-add' : undefined"
                 :loading="running[f.key]"
                 :disabled="running[f.key]"
-                @click="press(f)"
+                @click="f.type === 'file' ? pickFiles(f) : press(f)"
               >
                 {{ f.text || f.label }}
               </UiButton>
               <span v-if="f.text && f.label !== f.text" class="text-[12.5px] text-fg-muted">{{ f.label }}</span>
+              <input
+                v-if="f.type === 'file'"
+                :ref="el => { fileInputs[f.key] = el as HTMLInputElement | null }"
+                type="file"
+                class="hidden"
+                :accept="f.accept"
+                :multiple="f.multiple"
+                @change="picked(f, $event)"
+              >
             </div>
             <span v-if="result[f.key]" class="text-[12px] leading-snug" :class="result[f.key]!.error ? 'text-danger' : 'text-fg-muted'">{{ result[f.key]!.text }}</span>
             <span v-else-if="f.hint" class="hint">{{ f.hint }}</span>

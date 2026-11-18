@@ -1,15 +1,16 @@
 import type { RemoteAction, RemoteEdge, RemoteState } from './useRemoteLink'
 import { watch } from 'vue'
-import { EDGE_FALL_SEC } from '~/lib/edging'
+import { edgeTotalSec } from '~/lib/edging'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
-import { remoteEnabled } from '~/stores/remoteStore'
+import { remoteEnabled, remotePad } from '~/stores/remoteStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useFaceLink } from './useFaceLink'
 import { remoteRoom, useRemoteLink } from './useRemoteLink'
 import { useRemoteStatus } from './useRemoteStatus'
+import { useStrokePad } from './useStrokePad'
 
 /**
  * Desktop end of the phone remote: executes what the phone sends, and pushes
@@ -99,20 +100,25 @@ export function useRemoteHost(actions: {
   }
 
   function edgeState(): RemoteEdge {
-    const { cooldownSec, rebuildSec } = ctl.settings
+    const { rebuildSec } = ctl.settings
     const holding = ctl.phase === 'falling' || ctl.phase === 'holding'
     return {
       phase: ctl.phase,
       remaining: Math.ceil(ctl.remainingSec),
       hold: holding ? Math.max(0, Math.ceil(ctl.remainingSec - rebuildSec)) : 0,
-      total: EDGE_FALL_SEC + cooldownSec + rebuildSec,
+      total: edgeTotalSec(ctl.settings),
       count: ctl.edges.length,
     }
   }
 
   const status = useRemoteStatus()
+  const pad = useStrokePad()
 
   const link = useRemoteLink('host', () => remoteRoom.value, (msg) => {
+    if (msg?.type === 'pad') {
+      pad.input(msg)
+      return
+    }
     if (msg?.type === 'cmd' && msg.action)
       apply(msg.action as RemoteAction)
     if (msg?.type === 'hello')
@@ -130,8 +136,11 @@ export function useRemoteHost(actions: {
       intensity: audio.intensity.value,
       knob: ctl.intensityScale,
       edge: edgeState(),
+      edges: ctl.settings.enabled,
       spm: motion.currentSpm,
       phase: audio.phase.value,
+      pad: remotePad.value,
+      padHeld: motion.handHeld,
     }
     link.send({ type: 'state', state })
   }
@@ -143,22 +152,30 @@ export function useRemoteHost(actions: {
   watch(link.peers, v => (status.peers.value = v), { deep: true, immediate: true })
 
   watch(remoteEnabled, (on) => {
-    if (on)
+    if (on) {
       link.connect()
-    else
+    }
+    else {
       link.disconnect()
+      pad.release()
+    }
   }, { immediate: true })
+  // The last phone gone with a finger down: let go now rather than at the timeout.
+  watch(() => link.peers.value.remotes, (n) => {
+    if (!n)
+      pad.release()
+  })
 
   // Keep the phone honest about what the desktop is doing.
   watch(
-    () => [player.isPlaying, player.videoPath, motion.enabled, audio.isPlaying.value, safety.panicked, audio.phase.value],
+    () => [player.isPlaying, player.videoPath, motion.enabled, audio.isPlaying.value, safety.panicked, audio.phase.value, remotePad.value, motion.handHeld],
     pushState,
   )
 
   // The edge countdown ticks every frame too; once a second is plenty for a
   // phone to draw it.
   watch(
-    () => [ctl.phase, Math.ceil(ctl.remainingSec), ctl.edges.length, ctl.intensityScale],
+    () => [ctl.phase, Math.ceil(ctl.remainingSec), ctl.edges.length, ctl.intensityScale, ctl.settings.enabled],
     pushState,
   )
 

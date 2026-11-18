@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createEdgeEnvelope, EDGE_FALL_SEC } from '../src/lib/edging'
+import { createEdgeEnvelope, EDGE_FALL_SEC, EDGE_PRESETS, presetOf } from '../src/lib/edging'
 
 const T = { cooldownSec: 10, rebuildSec: 10, depth: 0.8 }
 const at = (s: number) => s * 1000
@@ -73,5 +73,20 @@ describe('soft start (startAtDepth)', () => {
     expect(e.sample(at(1.5), SOFT).holdBack).toBeLessThan(0.2)
     e.startAtDepth(at(1.5), SOFT)
     expect(e.sample(at(1.5), SOFT).holdBack).toBeCloseTo(0.8)
+  })
+})
+
+describe('edge presets', () => {
+  const at = (s: number) => s * 1000
+  it('a Stop comes all the way down in its own short fall, and is told from your own settings', () => {
+    const stop = EDGE_PRESETS.find(p => p.id === 'stop')!
+    const e = createEdgeEnvelope()
+    e.trigger(at(0), stop)
+    expect(e.sample(at(0.15), stop).holdBack).toBeGreaterThan(0.4)
+    expect(e.sample(at(0.31), stop)).toMatchObject({ holdBack: 1, phase: 'holding' })
+    expect(presetOf(stop)?.id).toBe('stop')
+    expect(presetOf({ ...stop, cooldownSec: 21 })).toBeNull()
+    // Settings saved before there was a fall time are the default edge.
+    expect(presetOf({ cooldownSec: 20, rebuildSec: 25, depth: 0.85 })?.id).toBe('back-off')
   })
 })

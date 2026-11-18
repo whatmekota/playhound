@@ -34,9 +34,15 @@ export interface RemoteState {
    */
   knob?: number
   edge?: RemoteEdge
+  /** Edges are on (Settings → Edges); false hides the phone's edge button. */
+  edges?: boolean
   spm: number
   /** Session phase, so a remote can show what the session is doing. */
   phase: string
+  /** The desktop lets the phone's stroke pad drive the stroke (2.2.8; older hosts leave it out). */
+  pad?: boolean
+  /** A finger on a stroke pad has the device right now. */
+  padHeld?: boolean
 }
 
 /** Relay port from es-proxy.mjs. */

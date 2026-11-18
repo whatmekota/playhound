@@ -20,7 +20,7 @@ import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { previewDb } from '~/lib/idb'
 import { isAudioName } from '~/lib/mediaFiles'
 import { whenIdle } from '~/lib/thumbs'
-import { looksSbs } from '~/lib/vrFormat'
+import { looksVrFrame, oneEyeRect } from '~/lib/vrFormat'
 
 export interface PreviewStrip {
   /** Object URL of the sprite sheet. */
@@ -296,18 +296,18 @@ async function pump() {
 
 /** Source rect that fills a 16:9 frame without stretching. */
 function cropRect(name: string, vw: number, vh: number) {
-  const sx = 0
-  const sw = looksSbs(name, vw, vh) ? vw / 2 : vw
-  const sh = vh
+  // VR: one eye (the left half, or the top of top-bottom), not the seam.
+  const vr = looksVrFrame(name, vw, vh)
+  const { sx, sy, sw, sh } = vr ? oneEyeRect(name, vw, vh, true) : { sx: 0, sy: 0, sw: vw, sh: vh }
   const target = FRAME_W / FRAME_H
   if (!sw || !sh)
-    return { sx, sy: 0, sw, sh }
+    return { sx, sy, sw, sh }
   if (sw / sh > target) {
     const w = sh * target
-    return { sx: sx + (sw - w) / 2, sy: 0, sw: w, sh }
+    return { sx: sx + (sw - w) / 2, sy, sw: w, sh }
   }
   const h = sw / target
-  return { sx, sy: (sh - h) / 2, sw, sh: h }
+  return { sx, sy: sy + (sh - h) / 2, sw, sh: h }
 }
 
 function abortError() {

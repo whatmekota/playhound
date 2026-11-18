@@ -2,9 +2,11 @@
 import { computed, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue'
 import { useBinauralBeats } from '~/composables/useBinauralBeats'
 import { cancelFrame, requestFrame } from '~/lib/frames'
-import { breathRadius, flashOpacity, parseWords, spiralAngle, wordIndex } from '~/lib/hypno'
+import { bottomTurns, breathRadius, countBetween, flashAlpha, flashOpacity, parseWords, spiralAngle, wordIndex } from '~/lib/hypno'
 import { useAudioStore } from '~/stores/audio'
 import { useHypnoStore } from '~/stores/hypnoStore'
+import { usePlayerStore } from '~/stores/playerStore'
+import { useScriptStore } from '~/stores/scriptStore'
 
 const props = defineProps<{
   /**
@@ -20,6 +22,8 @@ const PREVIEW_STAGE_PX = 1100
 
 const hypno = useHypnoStore()
 const audio = useAudioStore()
+const player = usePlayerStore()
+const scripts = useScriptStore()
 const { getPulseClock } = useBinauralBeats()
 
 const canvasEl = ref<HTMLCanvasElement | null>(null)
@@ -42,6 +46,84 @@ const FALLBACK_RATE_HZ = 0.8
 let freePhase = 0
 
 const wordList = computed(() => parseWords(hypno.words))
+
+// ─── Flashes ─────────────────────────────────────────────────────────────────
+// At the bottom of every few strokes of the playing script; with no script
+// playing (or in the panel's preview), on the session pulse instead.
+const flashWordList = computed(() => parseWords(hypno.flashWords))
+/** Where the stroke script turns at the bottom, script ms. */
+const strokeTurns = computed(() => {
+  const s = scripts.activeScripts.find(x => x.channel === 'L0') ?? scripts.primaryScript
+  return s ? { at: bottomTurns(s.parsed.actions), offset: s.offsetMs ?? 0 } : null
+})
+const flashWord = ref('')
+const flashPicture = ref<string | null>(null)
+const flashLevel = ref(0)
+let flashedAt = Number.NEGATIVE_INFINITY
+let flashes = 0
+let beatsSince = 0
+let wordAt = 0
+let lastScriptMs: number | null = null
+
+/** The playing script's time, from the video itself (finer than timeupdate), or null. */
+function scriptMs(): number | null {
+  if (props.preview || !player.isPlaying || !strokeTurns.value?.at.length)
+    return null
+  const doc = canvasEl.value?.ownerDocument ?? document
+  const v = doc.querySelector<HTMLVideoElement>('video[data-ph-main]')
+  return (v ? v.currentTime : player.currentTime) * 1000 + strokeTurns.value.offset
+}
+
+function fireFlash(ts: number) {
+  const pics = hypno.flashPictures
+  const words = flashWordList.value
+  const wantPicture = hypno.flashWhat === 'pictures' || (hypno.flashWhat === 'both' && flashes % 2 === 1)
+  flashes++
+  if (wantPicture && pics.length) {
+    // Random, but never the same one twice running.
+    let next = pics[Math.floor(Math.random() * pics.length)].url
+    if (next === flashPicture.value && pics.length > 1)
+      next = pics[(pics.findIndex(p => p.url === next) + 1) % pics.length].url
+    flashPicture.value = next
+    flashWord.value = ''
+  }
+  else if (words.length) {
+    flashWord.value = words[wordAt++ % words.length]
+    flashPicture.value = null
+  }
+  else {
+    return
+  }
+  flashedAt = ts
+}
+
+function stepFlash(ts: number, pulsed: boolean) {
+  if (!hypno.flash) {
+    flashLevel.value = 0
+    lastScriptMs = null
+    return
+  }
+  let beats = 0
+  const ms = scriptMs()
+  if (ms !== null) {
+    // A seek or a long stall starts counting afresh rather than firing a burst.
+    if (lastScriptMs !== null && ms > lastScriptMs && ms - lastScriptMs < 1500)
+      beats = countBetween(strokeTurns.value!.at, lastScriptMs, ms)
+    lastScriptMs = ms
+  }
+  else {
+    lastScriptMs = null
+    beats = pulsed ? 1 : 0
+  }
+  if (beats) {
+    beatsSince += beats
+    if (beatsSince >= Math.max(1, Math.round(hypno.flashEvery))) {
+      beatsSince = 0
+      fireFlash(ts)
+    }
+  }
+  flashLevel.value = flashAlpha(ts - flashedAt, hypno.flashMs)
+}
 
 function resize() {
   const c = canvasEl.value
@@ -142,9 +224,11 @@ function frame(ts: number) {
   }
 
   // Count a pulse each time the phase wraps.
-  if (phase < lastPhase)
+  const pulsed = phase < lastPhase
+  if (pulsed)
     pulses++
   lastPhase = phase
+  stepFlash(ts, pulsed)
 
   turns += rate * hypno.spiralRate * dt * 8
 
@@ -215,6 +299,30 @@ onActivated(() => {
         background: `radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,${hypno.vignette}) 100%)`,
       }"
     />
+
+    <!-- Flashes: a picture fills the frame, a word lands big in the middle. -->
+    <img
+      v-if="hypno.flash && flashPicture && flashLevel > 0"
+      :src="flashPicture"
+      alt=""
+      class="h-full w-full inset-0 absolute object-cover"
+      :style="{ opacity: flashLevel * hypno.flashOpacity }"
+    >
+    <div
+      v-if="hypno.flash && flashWord && flashLevel > 0"
+      class="flex items-center inset-0 justify-center absolute"
+    >
+      <span
+        class="tracking-[0.12em] font-black uppercase"
+        :style="{
+          color: hypno.textColor,
+          fontSize: `${hypno.textSize * 1.6 * fit}px`,
+          opacity: flashLevel * hypno.flashOpacity,
+          transform: `scale(${1.06 - 0.06 * flashLevel})`,
+          textShadow: `0 ${2 * fit}px ${28 * fit}px rgba(0,0,0,0.7)`,
+        }"
+      >{{ flashWord }}</span>
+    </div>
 
     <div
       v-if="hypno.text && currentWord"

@@ -65,9 +65,9 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   calibration, a per-video script offset, A–B loops and speed control, and a
   timeline that shows the script's intensity, chapters, bookmarks and your past
   edges and finishes. A one-axis script can still fill a multi-axis device:
-  linked axes follow the stroke with their own delay, invert and travel (a few
-  setups built in, and your own saved), and the Motion panel draws every axis
-  live, device or not.
+  linked axes follow the stroke, or another axis, with their own delay, invert
+  and travel (a few setups built in, and your own saved), and the Motion panel
+  draws every axis live, device or not.
 - **The Handy, built in.** Connect over WiFi with the key from the Handy app, or
   straight over Bluetooth with no internet at all. The script is streamed a few
   seconds ahead and the Handy plays it on its own clock, kept in step with the
@@ -80,7 +80,9 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   **Shift+I** fills between two points with strokes (the generator's own
   shapes, a ramp from one speed to another, or on the soundtrack's beats),
   previewed before it goes in. Save a selection as a pattern and drop it in
-  again, stretched or repeated; a few classics come built in.
+  again, stretched or repeated; a few classics come built in. **Make a vibe
+  track** turns the stroke script into a `.vib` script for vibrators, to adjust
+  and save next to the video.
 - **Record a session as a script.** **Shift+C** records what the device does,
   whatever drives it (manual, music, a programme, a plugin), and saves it as a
   `.funscript`, timed to the video if one was playing.
@@ -119,18 +121,26 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   tap it in with **T**, even with no video at all: tap along to anything and
   the device follows.
 - **Stays in control.** **E** edges: everything backs off for a while and eases
-  back in. An intensity knob scales every source. **G** jumps to the next
+  back in. Settings → Edges sets how fast, how far (down to a full stop) and
+  for how long, with presets, or turns edges off. An intensity knob scales every source. **G** jumps to the next
   peak and **Shift+G** to the most intense part. **Esc** is panic.
 - **Programmes.** Plan a session in phases (warm-up, build, edges, peak,
   cool-down). playhound then picks chapters across your library to match the
-  plan and plays them as a highlight reel.
+  plan and plays them as a highlight reel. Or **Shuffle**: clips from all over
+  your library in any order, each a random length, with no plan to follow.
 - **Session engine.** It can also run without a video: a binaural tone
-  generator with noise, a breathing hypno overlay, a free-form media wall
+  generator with noise, a breathing hypno overlay (with words or your own
+  pictures flashed on the stroke), a free-form media wall
   (local files and YouTube) and a beat-synced slideshow, all moving through
   phases together.
+- **Achievements.** Well over a hundred badges in Stats, earned from what you
+  do anyway: hours watched, streaks, late nights, your library, devices and
+  toys, the script editor, and a few secret ones. Private and local, like the stats.
+  Plugins can bring their own.
 - **Body in the loop.** A Bluetooth heart-rate monitor can call an edge for you
   when your rate climbs fast. Vibrators get a strength worked out from the
-  script, the music or the session.
+  script, the music or the session; from a script, it follows how fast it
+  moves and swells with every stroke, so even a steady pattern is felt.
 - **Rules.** Automation without writing a plugin: "heart rate over 130 during
   Build → edge", "after 20 minutes → intensity +10%", "on finish → cool down
   and pause". Triggers are things the app really sees (heart rate, phases,
@@ -438,7 +448,11 @@ quota per connection.
 Open the **Remote** panel and open the link it gives you on your phone. The
 link carries your computer's LAN address, so the phone must be on the same
 Wi-Fi. The phone gets play/pause, next/previous, edge, intensity and a big panic button,
-and can keep its screen awake.
+and can keep its screen awake. Its **stroke pad** hands the stroke to a finger:
+slide up and down and the device follows, over a playing script too, within the
+speed limit, the intensity knob and edges. Lift the finger and whatever was
+playing takes back over. **Shift+C** on the desktop records it as a script. The
+Remote panel has a switch to turn the pad off.
 
 ### The face (optional)
 
@@ -480,7 +494,10 @@ it full screen on your second display, and it needs no relay or setup.
   inside playhound, so install only ones you trust.
 - **Library:** one folder or several (a collection split across drives),
   search (`tag:name` and `type:audio` too), filter chips and tags, sort by folder, script intensity and speed sparklines,
-  hover-scrub previews, watching for new videos (a switch in the library's
+  hover-scrub previews, a scripted video's picture taken where its script is
+  hottest (a switch in Settings → Library), a **Your type** sort that puts first
+  the videos most like the ones you finish to and star (their tags, creators,
+  pace and folders), watching for new videos (a switch in the library's
   menu, remembered), **+** over the playing video to put it in a playlist, and
   an **auto-director** that picks the next video
   to suit the moment (and, if you switch it on, leans towards videos you

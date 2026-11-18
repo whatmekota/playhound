@@ -1577,6 +1577,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               <!-- Session: the dock is not there to use in fullscreen -->
               <div class="ml-2 flex gap-1.5 items-center">
                 <UiIconButton
+                  v-if="control.settings.enabled"
                   icon="i-carbon-temperature-hot"
                   label="Edge — back everything off"
                   kbd="E"
@@ -1833,6 +1834,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
               />
               <UiIconButton :icon="volumeIcon" :label="player.isMuted ? 'Unmute' : 'Mute'" kbd="M" variant="glass" size="sm" tip="top" @click="toggleMute()" />
               <UiIconButton
+                v-if="control.settings.enabled"
                 icon="i-carbon-temperature-hot"
                 label="Edge — back everything off"
                 kbd="E"

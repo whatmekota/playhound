@@ -4,6 +4,7 @@ import type { FunscriptAction, ParsedAxis } from '~/lib/funscriptParser'
 import type { OrgPair, PairStatus } from '~/stores/organizerStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { countMoment } from '~/composables/achievementEvents'
 import { toast } from '~/composables/useToast'
 import { formatDate, formatSize } from '~/lib/entryInfo'
 import { extOf, sanitizeFilename } from '~/lib/fsRename'
@@ -454,6 +455,8 @@ async function apply() {
   discardAll()
   selected.clear()
   findOpen.value = false
+  if (ok)
+    countMoment('rename', ok)
   if (!failed.length)
     toast.success(`Renamed ${ok} item${ok === 1 ? '' : 's'}`, { icon: 'i-carbon-edit' })
 }

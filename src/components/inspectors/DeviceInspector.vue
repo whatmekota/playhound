@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ButtplugClientDevice } from 'buttplug'
 import type { MenuItem } from '~/components/ui/menu'
-import type { VibeCurve, VibeSettings } from '~/lib/vibeMap'
+import type { VibeCurve, VibeSettings, VibeSource } from '~/lib/vibeMap'
 import type { AxisConfig, DevicePreset } from '~/stores/deviceStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
@@ -9,7 +9,7 @@ import EstimSection from '~/components/device/EstimSection.vue'
 import LatencyCalibrateModal from '~/components/device/LatencyCalibrateModal.vue'
 import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
 import TcodeNetLink from '~/components/device/TcodeNetLink.vue'
-import { isStrengthToy, outputsOf, useButtplug } from '~/composables/useButtplug'
+import { isStrengthToy, outputsOf, toyName, useButtplug } from '~/composables/useButtplug'
 import { useHandy } from '~/composables/useHandy'
 import { useHeartRate } from '~/composables/useHeartRate'
 import { useSerialPort } from '~/composables/useSerialPort'
@@ -17,6 +17,7 @@ import { useSettings } from '~/composables/useSettings'
 import { axisOutput, useTCode } from '~/composables/useTCode'
 import { useTCodeNet } from '~/composables/useTCodeNet'
 import { toast } from '~/composables/useToast'
+import { useVibeSync } from '~/composables/useVibeSync'
 import { useDeviceLatency } from '~/composables/useVideoSync'
 import { intifaceUrl, phoneIntifaceField } from '~/lib/android/intiface'
 import { webSerial } from '~/lib/browserApi'
@@ -24,8 +25,9 @@ import { HANDY_OTA_URL } from '~/lib/handy'
 import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
 import { isAndroidApp, MISSING } from '~/lib/platform'
 import { serialLog } from '~/lib/serialLog'
-import { VIBE_SOURCES } from '~/lib/vibeMap'
+import { DEFAULT_VIBE, VIBE_LEAD_MAX, VIBE_SOURCES } from '~/lib/vibeMap'
 import { useDeviceStore } from '~/stores/deviceStore'
+import { useScriptStore } from '~/stores/scriptStore'
 import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useUiStore } from '~/stores/uiStore'
 
@@ -306,6 +308,44 @@ function setVibe(d: ButtplugClientDevice, patch: Partial<VibeSettings>) {
   bp.setVibe(d, patch)
 }
 const levelOf = (d: ButtplugClientDevice) => bp.levels[d.index] ?? 0
+
+/** Its battery (0–1), or null for a toy that doesn't report one. */
+const batteryOf = (d: ButtplugClientDevice) => bp.batteries[d.index] ?? null
+function batteryIcon(b: number) {
+  return b <= 0.15 ? 'i-carbon-battery-empty' : b <= 0.4 ? 'i-carbon-battery-quarter' : b <= 0.7 ? 'i-carbon-battery-half' : 'i-carbon-battery-full'
+}
+
+/** Timing: how much earlier the toy is sent its level, for its Bluetooth lag. */
+const vibeSync = useVibeSync()
+const scripts = useScriptStore()
+const leadLabel = (v: number) => (v ? `${v} ms early` : 'On time')
+function toggleLineUp(d: ButtplugClientDevice) {
+  if (vibeSync.lineUpToy.value === d.index)
+    vibeSync.stopLineUp()
+  else
+    vibeSync.startLineUp(d)
+}
+
+/** A toy with several motors: each can follow a source of its own. */
+const SAME = '__same__'
+function motorOptions(d: ButtplugClientDevice) {
+  return [{ value: SAME, label: `Same as the toy (${sourceLabel(d)})` }, ...VIBE_SOURCES]
+}
+function motorSource(d: ButtplugClientDevice, feature: number) {
+  return bp.vibeFor(d).motors?.[String(feature)] ?? SAME
+}
+function setMotorSource(d: ButtplugClientDevice, feature: number, v: string) {
+  const motors = { ...bp.vibeFor(d).motors }
+  if (v === SAME)
+    delete motors[String(feature)]
+  else
+    motors[String(feature)] = v as VibeSource
+  setVibe(d, { motors })
+}
+const motorLevel = (d: ButtplugClientDevice, feature: number) => bp.motorLevels[`${d.index}:${feature}`] ?? levelOf(d)
+/** A source that reads the script: these follow a video's own vibe script when it has one. */
+const followsScript = (d: ButtplugClientDevice) => bp.vibeFor(d).source === 'script-speed' || bp.vibeFor(d).source === 'script-position'
+const hasVibScript = computed(() => scripts.activeScripts.some(s => s.channel === 'V0' && s.parsed.actions.length > 0))
 /** Strength floors and ceilings keep a sliver apart, like axis ranges. */
 function setVibeMin(d: ButtplugClientDevice, v: number) {
   setVibe(d, { min: Math.min(v, bp.vibeFor(d).max - MIN_SPAN) })
@@ -893,7 +933,16 @@ const logOpen = ref(false)
                       :class="vibeOpen === d.index ? 'rotate-90' : ''"
                     />
                     <span v-else class="text-ok rounded-full bg-ok shrink-0 h-1.5 w-1.5" />
-                    <span class="text-[12.5px] text-fg flex-1 min-w-0 truncate">{{ d.name }}</span>
+                    <span v-tip="toyName(d) !== d.name ? d.name : undefined" class="text-[12.5px] text-fg flex-1 min-w-0 truncate">{{ toyName(d) }}</span>
+                    <span
+                      v-if="batteryOf(d) !== null"
+                      v-tip="`Battery ${pct(batteryOf(d)!)}`"
+                      class="text-[11px] num flex shrink-0 gap-0.5 items-center"
+                      :class="batteryOf(d)! <= 0.15 ? 'text-warn' : 'text-fg-faint'"
+                    >
+                      <span :class="batteryIcon(batteryOf(d)!)" class="text-[14px]" />
+                      {{ Math.round(batteryOf(d)! * 100) }}%
+                    </span>
                     <!-- Live strength: what was last sent to the motor -->
                     <span
                       v-if="isStrengthToy(d)"
@@ -920,6 +969,19 @@ const logOpen = ref(false)
                             :options="VIBE_SOURCES"
                             @update:model-value="v => setVibe(d, { source: v })"
                           />
+                          <p v-if="followsScript(d) && hasVibScript" class="hint flex gap-1.5 items-start">
+                            <span class="i-carbon-information text-[13px] mt-px shrink-0" />
+                            This video has its own vibe script, so the toy follows that.
+                          </p>
+                          <UiSlider
+                            v-if="bp.vibeFor(d).source === 'script-speed' && !hasVibScript"
+                            :model-value="bp.vibeFor(d).pulse ?? DEFAULT_VIBE.pulse ?? 0"
+                            label="Feel each stroke"
+                            :format="pct"
+                            :reset="DEFAULT_VIBE.pulse"
+                            hint="How much it dips and swells with every stroke. At 0 it follows the speed alone, so a steady pattern is one even buzz."
+                            @update:model-value="v => setVibe(d, { pulse: v })"
+                          />
                           <div class="gap-2 grid grid-cols-2">
                             <UiSlider
                               :model-value="bp.vibeFor(d).min"
@@ -935,6 +997,44 @@ const logOpen = ref(false)
                               :reset="1"
                               @update:model-value="v => setVibeMax(d, v)"
                             />
+                          </div>
+                          <div class="flex flex-col gap-1.5">
+                            <UiSlider
+                              :model-value="bp.vibeFor(d).leadMs ?? 0"
+                              label="Timing"
+                              :min="0"
+                              :max="VIBE_LEAD_MAX"
+                              :step="10"
+                              :reset="0"
+                              :format="leadLabel"
+                              hint="Bluetooth toys lag a little. Line up buzzes the toy with a click every second: slide until the two land together."
+                              @update:model-value="v => setVibe(d, { leadMs: v })"
+                            />
+                            <UiButton
+                              size="xs"
+                              :variant="vibeSync.lineUpToy.value === d.index ? 'primary' : 'secondary'"
+                              :icon="vibeSync.lineUpToy.value === d.index ? 'i-carbon-stop-filled-alt' : 'i-carbon-timer'"
+                              class="self-start"
+                              @click="toggleLineUp(d)"
+                            >
+                              {{ vibeSync.lineUpToy.value === d.index ? 'Stop lining up' : 'Line up' }}
+                            </UiButton>
+                          </div>
+                          <div v-if="bp.motorsOf(d).length > 1" class="flex flex-col gap-1.5">
+                            <span class="label">Motors</span>
+                            <div v-for="m in bp.motorsOf(d)" :key="m.feature" class="flex gap-2 items-center">
+                              <span class="text-[12px] text-fg-muted shrink-0 w-20 truncate">{{ m.label }}</span>
+                              <UiSelect
+                                class="flex-1 min-w-0"
+                                :model-value="motorSource(d, m.feature)"
+                                :options="motorOptions(d)"
+                                @update:model-value="v => setMotorSource(d, m.feature, v)"
+                              />
+                              <span class="rounded-full bg-surface-700 shrink-0 h-1.5 w-8 relative overflow-hidden">
+                                <span class="rounded-full bg-accent h-full transition-[width] duration-100 ease-out left-0 top-0 absolute" :style="{ width: pct(motorLevel(d, m.feature)) }" />
+                              </span>
+                            </div>
+                            <span class="hint">Say a rotation follows the twist script while the vibration follows the stroke.</span>
                           </div>
                           <div class="flex flex-col gap-1">
                             <span class="label">Curve</span>

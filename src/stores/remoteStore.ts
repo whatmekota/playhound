@@ -8,3 +8,6 @@ import { useLocalStorage } from '@vueuse/core'
  * `useLocalStorage` call as an export name of its own.
  */
 export const remoteEnabled = useLocalStorage('ph:remote.enabled', false)
+
+/** Whether a connected phone may drive the stroke with its stroke pad. */
+export const remotePad = useLocalStorage('ph:remote.pad', true)

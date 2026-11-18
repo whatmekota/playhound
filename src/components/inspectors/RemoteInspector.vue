@@ -3,9 +3,11 @@ import { computed, nextTick } from 'vue'
 import { RC_PORT, remoteRoom, remoteUrl } from '~/composables/useRemoteLink'
 import { useRemoteStatus } from '~/composables/useRemoteStatus'
 import { toast } from '~/composables/useToast'
-import { remoteEnabled } from '~/stores/remoteStore'
+import { useMotionStore } from '~/stores/motionStore'
+import { remoteEnabled, remotePad } from '~/stores/remoteStore'
 
 const status = useRemoteStatus()
+const motion = useMotionStore()
 
 const url = computed(() => remoteUrl(remoteRoom.value))
 // A phone cannot reach "localhost": the link has to carry the machine's LAN address.
@@ -70,6 +72,7 @@ const CAN_DO = [
   { icon: 'i-carbon-wave-height', label: 'Motion on / off' },
   { icon: 'i-carbon-headphones', label: 'Session audio' },
   { icon: 'i-carbon-meter', label: 'Intensity' },
+  { icon: 'i-carbon-temperature-hot', label: 'Edge' },
   { icon: 'i-carbon-warning-alt', label: 'Panic' },
 ]
 </script>
@@ -192,6 +195,16 @@ const CAN_DO = [
           </div>
           <p class="hint">
             While the panic screen is up, playback commands are ignored until you resume.
+          </p>
+          <UiSwitch
+            v-model="remotePad"
+            label="Stroke pad"
+            :hint="motion.handHeld ? 'A finger on the phone has the stroke now' : 'The phone can drive the stroke with a finger'"
+          />
+          <p class="hint">
+            While a finger is on the pad the device follows it, over a playing script too, within
+            the speed limit, the intensity knob and edges. Lifting it hands back to what was
+            playing. <UiKbd>Shift+C</UiKbd> records it as a script.
           </p>
         </UiSection>
       </div>

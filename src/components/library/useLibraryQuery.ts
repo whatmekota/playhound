@@ -5,11 +5,14 @@ import type { IntensityBand } from '~/lib/scriptIntensity'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { refDebounced, useLocalStorage } from '@vueuse/core'
 import { computed, reactive, ref, shallowRef, watch } from 'vue'
-import { bandCounts, filterCounts, nextSort, queryLibrary, SCRIPT_SORTS, SORT_LABELS, toggleBand as toggleBandIn, toggleFilter as toggleFilterIn, toggleTag as toggleTagIn, usesSummaries } from '~/lib/libraryQuery'
+import { bandCounts, filterCounts, nextSort, queryLibrary, SCRIPT_SORTS, SORT_LABELS, TASTE_SORTS, toggleBand as toggleBandIn, toggleFilter as toggleFilterIn, toggleTag as toggleTagIn, usesSummaries } from '~/lib/libraryQuery'
 import { KEYS } from '~/lib/persist'
+import { summaryFor } from '~/lib/tags'
+import { TASTE_MIN, tasteFeatures, tasteProfile, tasteScore } from '~/lib/yourType'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { useQueueStore } from '~/stores/queueStore'
+import { useStatsStore } from '~/stores/statsStore'
 import { useScriptSummaries } from './useScriptSummaries'
 
 export const FILTER_CHIPS: { key: FilterKey, label: string, icon: string }[] = [
@@ -33,6 +36,7 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   const library = useLibraryStore()
   const queue = useQueueStore()
   const scripts = useScriptSummaries()
+  const stats = useStatsStore()
 
   const sort = useLocalStorage<SortState>(KEYS.librarySort.key, { key: 'name', asc: true }, { mergeDefaults: true })
   const search = ref('')
@@ -80,12 +84,34 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   /** Sorting or filtering on script shape, where lazy analysis would shuffle rows under the pointer. */
   const scriptAware = computed(() => usesSummaries({ bands: bands.value, sort: sort.value, tags: tags.value, query: query.value }))
 
+  /**
+   * "Your type" (lib/yourType): what your finishes, stars and replays have
+   * in common, over the whole library, worked out only while sorted by it.
+   */
+  const taste = computed(() => {
+    if (!TASTE_SORTS.includes(sort.value.key))
+      return null
+    void scripts.settledCount.value
+    const rows = library.videos.map((v) => {
+      const s = stats.stats[v.name]
+      return {
+        name: v.name,
+        features: tasteFeatures(v, summaryFor(v, scripts.peek)),
+        signal: { finishes: s?.finishEvents.length ?? 0, plays: s?.totalPlays ?? 0, starred: !!v.starred },
+      }
+    })
+    const profile = tasteProfile(rows)
+    return profile ? new Map(rows.map(r => [r.name, tasteScore(profile, r.features)])) : null
+  })
+  const tasteReady = computed(() => !!taste.value)
+
   const results = computed(() => {
     const q = { query: query.value, filters: filters.value, bands: bands.value, tags: tags.value, sort: sort.value, folder: folder.value }
     // Only a script-aware query re-runs as analyses land, and then calmly.
     if (usesSummaries(q))
       void scripts.settledCount.value
-    return queryLibrary(videos(), q, scripts.peek)
+    const scores = taste.value
+    return queryLibrary(videos(), q, scripts.peek, scores ? v => scores.get(v.name) : undefined)
   })
 
   const counts = computed(() => filterCounts(videos()))
@@ -120,13 +146,18 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
 
   // ─── Menus ────────────────────────────────────────────────────────────────
   const sortMenu = computed<MenuItem[]>(() => {
-    const plain = (Object.keys(SORT_LABELS) as SortKey[]).filter(k => !SCRIPT_SORTS.includes(k))
+    const plain = (Object.keys(SORT_LABELS) as SortKey[]).filter(k => !SCRIPT_SORTS.includes(k) && !TASTE_SORTS.includes(k))
     const item = (k: SortKey): MenuItem => ({ label: SORT_LABELS[k], checked: sort.value.key === k, run: () => setSort(k, k === sort.value.key ? sort.value.asc : nextSort(sort.value, k).asc) })
     return [
       { heading: true, label: 'Sort by' },
       ...plain.map(item),
       { heading: true, label: 'Script' },
       ...SCRIPT_SORTS.map(item),
+      { heading: true, label: 'For you' },
+      ...TASTE_SORTS.map(k => ({
+        ...item(k),
+        hint: sort.value.key === k && !tasteReady.value ? `Finish to or star ${TASTE_MIN} videos first` : 'Most like what you finish to',
+      })),
       { separator: true },
       { label: 'Ascending', icon: 'i-carbon-sort-ascending', checked: sort.value.asc, run: () => setSort(sort.value.key, true) },
       { label: 'Descending', icon: 'i-carbon-sort-descending', checked: !sort.value.asc, run: () => setSort(sort.value.key, false) },
@@ -160,6 +191,7 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
     sortMenu,
     sortLabel,
     scripts,
+    tasteReady,
   }
 }
 

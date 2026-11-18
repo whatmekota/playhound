@@ -112,6 +112,11 @@ export const useMotionStore = defineStore('motion', () => {
   const gamepadPosition = ref(0.5)
   /** Whether the stick is currently away from centre, for rate mode. */
   const gamepadRateHeld = ref(false)
+  /**
+   * A finger on the phone's stroke pad has the device (useStrokePad): a
+   * playing script waits and the direct position follows the finger.
+   */
+  const handHeld = ref(false)
 
   // ─── Secondary axes ───────────────────────────────────────────────────────
   /** Drive R0/R1 alongside L0, at a slower rate and shallower depth. */
@@ -262,6 +267,7 @@ export const useMotionStore = defineStore('motion', () => {
     gamepadEnabled,
     gamepadPosition,
     gamepadRateHeld,
+    handHeld,
     secondaryAxes,
     secondaryDepth,
     vibrateFromIntensity,

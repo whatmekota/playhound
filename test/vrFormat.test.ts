@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { guessVrFormat, guessVrLayout, looksSbsBySize, looksTbBySize, vrFormat } from '~/lib/vrFormat'
+import { guessVrFormat, guessVrLayout, looksSbsBySize, looksTbBySize, looksVrFrame, oneEyeRect, vrFormat } from '~/lib/vrFormat'
 
 describe('guessVrFormat', () => {
   it.each([
@@ -63,5 +63,20 @@ describe('top-bottom and 360°', () => {
     expect(looksTbBySize(2880, 5760)).toBe('eq180')
     expect(looksTbBySize(1080, 1080)).toBeNull()
     expect(looksTbBySize(1080, 1920)).toBeNull()
+  })
+})
+
+describe('one eye for pictures', () => {
+  it('takes the left half, the top half, or the whole frame', () => {
+    expect(oneEyeRect('scene_180_LR.mp4', 5760, 2880)).toEqual({ sx: 0, sy: 0, sw: 2880, sh: 2880 })
+    expect(oneEyeRect('scene_360_TB.mp4', 4096, 4096)).toEqual({ sx: 0, sy: 0, sw: 4096, sh: 2048 })
+    expect(oneEyeRect('big square.mp4', 4096, 4096)).toEqual({ sx: 0, sy: 0, sw: 4096, sh: 2048 })
+    expect(oneEyeRect('scene_mono_360.mp4', 4096, 2048)).toEqual({ sx: 0, sy: 0, sw: 4096, sh: 2048 })
+  })
+
+  it('knows a two-eye frame without taking a flat title for one', () => {
+    expect(looksVrFrame('anything.mp4', 4096, 4096)).toBe(true)
+    expect(looksVrFrame('clip_TB.mp4', 2880, 2880)).toBe(true)
+    expect(looksVrFrame('toi ou moi.mp4', 1920, 1080)).toBe(false)
   })
 })

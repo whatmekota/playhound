@@ -26,6 +26,7 @@ import { createPartyCounter, partyOpen } from '~/lib/party'
 import { KEYS } from '~/lib/persist'
 import { isAndroidApp, MOD_KEY } from '~/lib/platform'
 import { buildActivity, DEFAULT_CLIENT_ID, DEFAULT_PRESENCE, isClientId, PRESENCE_PLACEHOLDERS } from '~/lib/presence'
+import { retakeScriptedThumbs, thumbsHot } from '~/lib/thumbs'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { SUBTITLE_DEFAULTS, useSubtitleStore } from '~/stores/subtitleStore'
@@ -34,6 +35,7 @@ import { useUiStore } from '~/stores/uiStore'
 import { version } from '../../../package.json'
 import AndroidStatus from './AndroidStatus.vue'
 import BrandMark from './BrandMark.vue'
+import EdgeSettings from './EdgeSettings.vue'
 
 /**
  * App-wide settings. Feature settings (device, audio, hypno…) live in their
@@ -121,6 +123,14 @@ function pokeMark() {
 const splash = useLocalStorage('ph:ui.splash', true)
 const resumeOnStart = useLocalStorage(KEYS.resumeOnStart.key, true)
 const showAutoTags = useShowAutoTags()
+
+/** Pictures from the hottest part: switching it takes the scripted videos' pictures again. */
+function setThumbsHot(on: boolean) {
+  if (thumbsHot.value === on)
+    return
+  thumbsHot.value = on
+  retakeScriptedThumbs(library.videos)
+}
 const uiScale = useUiScale()
 const updates = useUpdates()
 const upd = computed(() => updates.state.value)
@@ -145,11 +155,12 @@ const updateLine = computed(() => {
 })
 const SCALE_OPTIONS = UI_SCALES.map(s => ({ value: s as number, label: `${Math.round(s * 100)}%` }))
 
-type SectionId = 'android' | 'appearance' | 'playback' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
+type SectionId = 'android' | 'appearance' | 'playback' | 'edges' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
 const ALL_SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'android', label: 'Android app', icon: 'i-carbon-mobile' },
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
   { id: 'playback', label: 'Playback', icon: 'i-carbon-play-outline' },
+  { id: 'edges', label: 'Edges', icon: 'i-carbon-hourglass' },
   { id: 'startup', label: 'Startup', icon: 'i-carbon-rocket' },
   { id: 'safety', label: 'Safety', icon: 'i-carbon-security' },
   { id: 'library', label: 'Library', icon: 'i-carbon-folder' },
@@ -523,6 +534,10 @@ function openBackup() {
               </div>
             </template>
 
+            <template v-else-if="section === 'edges'">
+              <EdgeSettings />
+            </template>
+
             <!-- Updates -->
             <template v-else-if="section === 'plugins'">
               <PluginsSettings />
@@ -698,6 +713,12 @@ function openBackup() {
                   v-model="showAutoTags"
                   label="Show automatic tags"
                   hint="Worked out from each video and its script: fast, long, vr and so on. Shown outlined. Off, they leave cards and tag lists, but searches that name one still work."
+                />
+                <UiSwitch
+                  :model-value="thumbsHot"
+                  label="Pictures from the hottest part"
+                  hint="A scripted video's picture is taken where its script moves the most, instead of near the start. Switching it takes them again as they come into view."
+                  @update:model-value="setThumbsHot"
                 />
               </div>
               <p class="hint m-0">

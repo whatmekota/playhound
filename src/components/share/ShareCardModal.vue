@@ -11,6 +11,7 @@ import UiSegmented from '~/components/ui/UiSegmented.vue'
 import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
+import { countMoment } from '~/composables/achievementEvents'
 import { toast } from '~/composables/useToast'
 import { pickDirectory } from '~/lib/browserApi'
 import { KEYS } from '~/lib/persist'
@@ -334,6 +335,7 @@ async function copy() {
   busy.value = 'copy'
   try {
     await copyPng(png())
+    countMoment('share-card')
     toast.success('Card copied', { detail: 'Paste it into your post', icon: 'i-carbon-copy' })
   }
   catch {
@@ -356,6 +358,7 @@ async function saveBeside() {
       return
     }
     await writePng(dir, fileName.value, await png())
+    countMoment('share-card')
     toast.success('Card saved next to the video', { detail: fileName.value, icon: 'i-carbon-image' })
   }
   catch {
@@ -398,6 +401,7 @@ async function saveToFolder() {
       return
     }
     await writePng(dir, fileName.value, await png())
+    countMoment('share-card')
     toast.success('Card saved', { detail: `${fileName.value} · in ${dir.name}`, icon: 'i-carbon-image' })
   }
   catch {
@@ -414,6 +418,8 @@ async function saveAs() {
     const video = source.value?.video
     const dir = video ? await library.writableDirOf(video, false) : null
     const saved = await savePngAs(await png(), fileName.value, dir)
+    if (saved)
+      countMoment('share-card')
     if (saved && saved !== 'download')
       toast.success('Card saved', { detail: saved, icon: 'i-carbon-image' })
   }

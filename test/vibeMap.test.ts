@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyCurve,
+  axisOfSource,
+  knownSource,
   localSpeed,
   mapVibe,
   musicLevel,
   quantize,
+  scriptFastSpeed,
+  scriptSpeedLevel,
   shouldSend,
   smoothLevel,
   speedToLevel,
+  strokePulse,
+  vibeScriptFrom,
 } from '../src/lib/vibeMap'
 
 describe('curves and mapping', () => {
@@ -145,5 +151,61 @@ describe('script speed scaled to the script itself', () => {
     const { scriptFastSpeed, scriptSpeedLevel } = await import('~/lib/vibeMap')
     expect(scriptFastSpeed([{ at: 0, pos: 0 }, { at: 500, pos: 1 }])).toBeNull()
     expect(scriptSpeedLevel(1.2, null)).toBeCloseTo(speedToLevel(1.2))
+  })
+})
+
+describe('feeling each stroke', () => {
+  it('dips toward the top of a stroke by the pulse amount', () => {
+    expect(strokePulse(0.8, 0, 0.5)).toBeCloseTo(0.8)
+    expect(strokePulse(0.8, 1, 0.5)).toBeCloseTo(0.4)
+    expect(strokePulse(0.8, 1, 0)).toBeCloseTo(0.8)
+  })
+
+  it('pulses through the smoothing on a steady 143 spm triangle, and is flat without it', () => {
+    const half = 60000 / 143 / 2
+    const actions = Array.from({ length: 200 }, (_, i) => ({ at: Math.round(i * half), pos: i % 2 ? 94 : 6 }))
+    const fast = scriptFastSpeed(actions)
+    const range = { min: 0.1, max: 1, curve: 'linear' as const }
+    const swing = (pulse: number) => {
+      let smooth = 0
+      const seen: number[] = []
+      for (let t = 0; t < 20000; t += 50) {
+        let level = scriptSpeedLevel(localSpeed(actions, t), fast)
+        if (pulse > 0) {
+          const i = Math.min(actions.length - 2, Math.floor(t / half))
+          const f = (t - actions[i].at) / (actions[i + 1].at - actions[i].at)
+          level = strokePulse(level, (actions[i].pos + (actions[i + 1].pos - actions[i].pos) * f) / 100, pulse)
+        }
+        smooth = pulse > 0 ? smoothLevel(smooth, mapVibe(level, range), 50, 30, 60) : smoothLevel(smooth, mapVibe(level, range), 50)
+        if (t > 5000)
+          seen.push(smooth)
+      }
+      return Math.max(...seen) - Math.min(...seen)
+    }
+    expect(swing(0)).toBeLessThan(0.02)
+    expect(swing(0.5)).toBeGreaterThan(0.25)
+  })
+})
+
+describe('sources', () => {
+  it('reads the axis a source follows, and drops sources it does not know', () => {
+    expect(axisOfSource('axis-R0')).toBe('R0')
+    expect(axisOfSource('script-speed')).toBeNull()
+    expect(knownSource('axis-R2')).toBe('axis-R2')
+    expect(knownSource('from-the-future')).toBeNull()
+  })
+})
+
+describe('a vibe track from a stroke script', () => {
+  it('swells at the bottom of each stroke and goes quiet through a hold', () => {
+    const strokes = Array.from({ length: 40 }, (_, i) => ({ at: i * 300, pos: i % 2 ? 0.9 : 0.1 }))
+    const hold = [...strokes, { at: 39 * 300 + 6000, pos: 0.9 }]
+    const out = vibeScriptFrom(hold, { min: 0.1, max: 1, curve: 'linear', pulse: 0.6 })
+    const mid = out.filter(a => a.at > 3000 && a.at < 9000)
+    const bottoms = mid.filter(a => strokes.find(s => s.at === a.at)?.pos === 0.1).map(a => a.pos)
+    const tops = mid.filter(a => strokes.find(s => s.at === a.at)?.pos === 0.9).map(a => a.pos)
+    expect(Math.min(...bottoms)).toBeGreaterThan(Math.max(...tops))
+    expect(out.filter(a => a.at > 39 * 300 + 1500 && a.at < 39 * 300 + 4500).every(a => a.pos === 0)).toBe(true)
+    expect(out.every(a => a.pos >= 0 && a.pos <= 100)).toBe(true)
   })
 })

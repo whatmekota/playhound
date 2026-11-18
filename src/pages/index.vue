@@ -29,6 +29,7 @@ import TitleBar from '~/components/shell/TitleBar.vue'
 import ToastHost from '~/components/shell/ToastHost.vue'
 import UpdateBanner from '~/components/shell/UpdateBanner.vue'
 import WelcomeScreen from '~/components/shell/WelcomeScreen.vue'
+import { startAchievements } from '~/composables/useAchievements'
 import { useCompactLayout, useRailLayout } from '~/composables/useCompactLayout'
 import { useDiscordPresence } from '~/composables/useDiscordPresence'
 import { useEmulatorPhone } from '~/composables/useEmulatorPhone'
@@ -125,6 +126,8 @@ useHeartRate()
 useRules()
 useVibeSync()
 useDiscordPresence()
+// Achievements look at all of the above, so they start last.
+startAchievements()
 
 // Panic needs to reach video, audio and the device at once.
 const { toggle: togglePanic, resume: resumePanic } = useSafety({
@@ -244,6 +247,12 @@ const playerBox = computed(() => {
   const { w, h } = stageSize.value
   if (!mini.value)
     return { left: 0, top: 0, width: w, height: editorShown.value ? Math.max(0, h - editorHeight.value) : h, radius: 0 }
+  // A phone: no floating video over the other views (the player bar shows it
+  // in its thumbnail). It plays on out of sight, a pixel in the corner: the
+  // sync and the device follow it, and a video that isn't on the page at all
+  // may not be decoded.
+  if (compact.value)
+    return { left: 0, top: 0, width: 1, height: 1, radius: 0, hidden: true }
   const mw = compact.value ? Math.min(MINI_W_COMPACT, w * 0.6) : Math.min(MINI_W, Math.max(200, w * 0.4))
   const mh = mw * 9 / 16
   return { left: w - mw - MINI_MARGIN, top: h - mh - MINI_MARGIN, width: mw, height: mh, radius: 14 }
@@ -525,7 +534,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
         <div
           v-show="playerVisible"
           class="player-box bg-black absolute z-10 overflow-hidden"
-          :class="mini ? 'shadow-[var(--shadow-lg)] ring-1 ring-edge-strong' : ''"
+          :class="[mini && !playerBox.hidden ? 'shadow-[var(--shadow-lg)] ring-1 ring-edge-strong' : '', playerBox.hidden ? 'opacity-0 pointer-events-none' : '']"
           :style="{
             left: `${playerBox.left}px`,
             top: `${playerBox.top}px`,

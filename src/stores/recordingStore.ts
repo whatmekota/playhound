@@ -3,6 +3,7 @@ import type { SaveTarget } from '~/lib/funscriptSave'
 import type { AxisModel, RecordedAxis, Take } from '~/lib/recording'
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
+import { countMoment } from '~/composables/achievementEvents'
 import { useAnyDevice } from '~/composables/useAnyDevice'
 import { setAxisTap } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
@@ -293,6 +294,7 @@ export const useRecordingStore = defineStore('recording', () => {
       }
       await saveScripts(target, files)
       pending.value = null
+      countMoment('recording')
       toast.success(target.kind === 'folder' ? 'Recording saved' : 'Recording downloaded', {
         detail: files.map(f => f.name).join(', '),
         icon: 'i-carbon-recording',

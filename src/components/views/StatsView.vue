@@ -3,19 +3,30 @@ import type { VideoInfo } from '~/lib/insights'
 import type { VideoStat } from '~/stores/statsStore'
 import { useElementSize, useIntervalFn } from '@vueuse/core'
 import { computed, ref } from 'vue'
+import UiTabs from '~/components/ui/UiTabs.vue'
+import { currentAchievementFacts } from '~/composables/useAchievements'
 import { useAutoDirector } from '~/composables/useAutoDirector'
+import { ACHIEVEMENTS } from '~/lib/achievements'
 import { buildInsights } from '~/lib/insights'
 import { intensityBand } from '~/lib/scriptIntensity'
 import { summaryFor, tagSet } from '~/lib/tags'
 import { formatTime } from '~/lib/time'
+import { useAchievementStore } from '~/stores/achievementStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { dayKey, useStatsStore } from '~/stores/statsStore'
+import AchievementsGallery from './AchievementsGallery.vue'
 import StatsInsights from './StatsInsights.vue'
 
 defineOptions({ name: 'StatsView' })
 
 const stats = useStatsStore()
+const achievements = useAchievementStore()
+const tabs = computed(() => [
+  { value: 'overview' as const, label: 'Overview', icon: 'i-carbon-chart-bar' },
+  { value: 'achievements' as const, label: 'Achievements', icon: 'i-carbon-trophy', badge: `${achievements.earnedCount + achievements.pluginEarnedCount}/${ACHIEVEMENTS.length + achievements.pluginTotal}` },
+])
+const achFacts = computed(() => (achievements.statsTab === 'achievements' ? currentAchievementFacts() : null))
 const library = useLibraryStore()
 const playback = usePlaybackStore()
 
@@ -250,15 +261,21 @@ function fmtDay(ts: number, long = false) {
           What you have watched, how long, and when. Kept in this browser only.
         </p>
       </div>
+      <UiTabs v-model="achievements.statsTab" :tabs="tabs" />
       <UiBadge v-if="stats.live" tone="ok" dot pulse>
         Recording
       </UiBadge>
-      <UiButton v-if="hasAny" variant="ghost" icon="i-carbon-trash-can" @click="confirmClear = true">
+      <UiButton v-if="hasAny && achievements.statsTab === 'overview'" variant="ghost" icon="i-carbon-trash-can" @click="confirmClear = true">
         Clear
       </UiButton>
     </header>
 
-    <div class="scroll-y flex-1">
+    <div v-if="achievements.statsTab === 'achievements'" class="scroll-y flex-1">
+      <div class="mx-auto px-6 pb-[240px] pt-5 max-w-[1120px] animate-rise">
+        <AchievementsGallery :facts="achFacts" />
+      </div>
+    </div>
+    <div v-else class="scroll-y flex-1">
       <UiEmpty
         v-if="!hasAny"
         size="lg"

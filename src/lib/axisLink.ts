@@ -2,8 +2,9 @@ import type { FunscriptAction } from './funscriptParser'
 import { clamp } from './motionMath'
 
 /**
- * Linked axes: another axis follows the stroke (L0), a little later or
- * earlier, turned up or down, the right way round or inverted. The way
+ * Linked axes: an axis follows another (the stroke, L0, unless picked
+ * otherwise), a little later or earlier, turned up or down, the right way
+ * round or inverted. The way
  * MultiFunPlayer users fill an SR6 from a one-axis script: surge trailing
  * the stroke by a few tens of ms, pitch inverted with it, and so on. Unlike
  * the generated fill (axisSynth), the axis moves exactly as the stroke does.
@@ -13,6 +14,8 @@ import { clamp } from './motionMath'
 
 export interface AxisLink {
   channel: string
+  /** The axis it follows: L0 (the stroke) or another linkable one. */
+  source: string
   on: boolean
   /** ms: positive trails the stroke, negative leads it. */
   delayMs: number
@@ -29,10 +32,18 @@ export const LINKABLE_AXES = [
   { channel: 'R2', label: 'Pitch' },
 ] as const
 
+/** What an axis can follow: the stroke, or any other linkable axis. */
+export const LINK_SOURCES = [{ channel: 'L0', label: 'Stroke' }, ...LINKABLE_AXES] as const
+
 export const LINK_DELAY_MAX = 500
 
 export function defaultLinks(): AxisLink[] {
-  return LINKABLE_AXES.map(a => ({ channel: a.channel, on: false, delayMs: 0, invert: false, amount: 1 }))
+  return LINKABLE_AXES.map(a => ({ channel: a.channel, source: 'L0', on: false, delayMs: 0, invert: false, amount: 1 }))
+}
+
+/** A source an axis may follow: a known one, never itself. */
+function sourceFor(channel: string, raw: unknown): string {
+  return typeof raw === 'string' && raw !== channel && LINK_SOURCES.some(s => s.channel === raw) ? raw : 'L0'
 }
 
 /** Saved links, made safe: every linkable axis once, values in range. */
@@ -44,6 +55,7 @@ export function sanitizeLinks(raw: unknown): AxisLink[] {
       return d
     return {
       channel: d.channel,
+      source: sourceFor(d.channel, s.source),
       on: s.on === true,
       delayMs: typeof s.delayMs === 'number' ? Math.round(clamp(s.delayMs, -LINK_DELAY_MAX, LINK_DELAY_MAX)) : 0,
       invert: s.invert === true,
@@ -78,7 +90,7 @@ export function sameLinks(a: readonly AxisLink[], b: readonly AxisLink[]): boole
     const y = b.find(l => l.channel === channel)
     if (!x?.on || !y?.on)
       return !x?.on && !y?.on
-    return x.delayMs === y.delayMs && x.invert === y.invert && Math.abs(x.amount - y.amount) < 0.005
+    return (x.source ?? 'L0') === (y.source ?? 'L0') && x.delayMs === y.delayMs && x.invert === y.invert && Math.abs(x.amount - y.amount) < 0.005
   })
 }
 
@@ -126,6 +138,29 @@ export function linkedActions(actions: readonly FunscriptAction[], link: Pick<Ax
     byKey.set(key, out)
   }
   return out
+}
+
+/**
+ * In script mode, what an axis plays: its own script, or, for an axis linked
+ * to another, that one's (resolved the same way, so a chain of links works)
+ * shifted and mapped. Null for an axis with neither, and for a loop of links.
+ */
+export function resolveLinked<T extends { actions: readonly FunscriptAction[] }>(
+  channel: string,
+  scripted: ReadonlyMap<string, T>,
+  links: readonly AxisLink[],
+  depth = 0,
+): (T & { actions: FunscriptAction[] }) | null {
+  const own = scripted.get(channel)
+  if (own)
+    return own as T & { actions: FunscriptAction[] }
+  if (depth > LINKABLE_AXES.length)
+    return null
+  const link = links.find(l => l.on && l.channel === channel)
+  if (!link)
+    return null
+  const from = resolveLinked(link.source ?? 'L0', scripted, links, depth + 1)
+  return from ? { ...from, actions: linkedActions(from.actions, link) } : null
 }
 
 /**

@@ -4,8 +4,10 @@ import type { ScriptFile } from '~/stores/scriptStore'
 import { useLocalStorage } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, shallowRef, toRaw, watch } from 'vue'
+import { countMoment } from '~/composables/achievementEvents'
 import { toast } from '~/composables/useToast'
 import { fileHandleOf } from '~/lib/browserApi'
+import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { stringifyFunscript, writeAxes } from '~/lib/funscriptWrite'
 import { setLeaveGuard } from '~/lib/leaveGuard'
 import { KEYS } from '~/lib/persist'
@@ -22,6 +24,7 @@ import {
 } from '~/lib/scriptEdit'
 import { backupOnce, saveTextAs, takeName, writeTextFile, writeToHandle } from '~/lib/scriptFiles'
 import { applyTweaks, bakeOffset, shapeIsIdentity } from '~/lib/scriptTweaks'
+import { DEFAULT_VIBE, vibeScriptFrom } from '~/lib/vibeMap'
 import { useLibraryStore } from './libraryStore'
 import { usePlayerStore } from './playerStore'
 import { sourceOf, useScriptStore } from './scriptStore'
@@ -325,7 +328,51 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
   }
 
   // ─── Saving ─────────────────────────────────────────────────────────────
+  // ─── A vibe track ───────────────────────────────────────────────────────
+  /** The stroke script, to make a vibe track from. */
+  const strokeScript = computed(() => editable.value.find(s => s.channel === 'L0') ?? null)
+  const hasVibe = computed(() => editable.value.some(s => s.channel === 'V0'))
+
+  /**
+   * A vibe script (.vib) made from the stroke script, as a toy on Script
+   * speed plays it, opened here to adjust. It plays at once (toys follow a
+   * vibe script over the stroke script) and Save writes it next to the video
+   * as `<video>.vib.funscript`, for any player and any toy.
+   */
+  function makeVibeTrack() {
+    const stroke = strokeScript.value
+    if (!stroke || hasVibe.value)
+      return
+    const actions = vibeScriptFrom(toRaw(sourceOf(stroke)).actions, { min: DEFAULT_VIBE.min, max: DEFAULT_VIBE.max, curve: DEFAULT_VIBE.curve, pulse: DEFAULT_VIBE.pulse ?? 0.6 })
+    if (!actions.length) {
+      toast('The stroke script is too short to make a vibe track from', { icon: 'i-carbon-chart-line', key: 'edit' })
+      return
+    }
+    const base = (player.videoPath?.split(/[\\/]/).pop() ?? 'video').replace(/\.[^.]+$/, '')
+    const name = `${base}.vib.funscript`
+    const axis = parseFunscriptContent(JSON.stringify({ version: '1.0', actions }), name, '', 'vib').axes[0]
+    const file: ScriptFile = {
+      path: `made:${name}`,
+      filename: name,
+      channel: axis.channel,
+      axisKey: axis.axisKey,
+      label: axis.label,
+      enabled: true,
+      isAlt: false,
+      altName: '',
+      offsetMs: stroke.offsetMs,
+      parsed: axis,
+      edited: true,
+    }
+    scripts.setScripts([...scripts.scripts, file])
+    channel.value = axis.channel
+    tick.value++
+    countMoment('vibe-track')
+    toast.success('Vibe track made', { detail: 'From the stroke script. It plays now; Save puts it next to the video.', icon: 'i-carbon-activity', key: 'edit' })
+  }
+
   function markSaved(list: ScriptFile[]) {
+    countMoment('edit-save')
     for (const s of list) {
       const k = keyOf(s)
       histories.get(k)?.markSaved()
@@ -417,6 +464,18 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
           markSaved(group)
           toast.success('Script saved', { detail: kept ? `${name} · the original is kept as ${name}.bak` : name, icon: 'i-carbon-save', key: 'script-save' })
           continue
+        }
+        // Made here (a vibe track): next to the video, under its own name.
+        if (!first.file && first.path.startsWith('made:')) {
+          const video = library.videos.find(v => v.name === player.videoPath || v.file.name === player.videoPath?.split(/[\\/]/).pop())?.file
+          const vdir = video ? await library.writableDirOf(video) : null
+          if (vdir) {
+            const fresh = await writeTextFile(vdir, first.filename, stringifyFunscript(writeAxes({ version: '1.0' }, axesOf(group))))
+            rebind(group, fresh)
+            markSaved(group)
+            toast.success('Script saved', { detail: first.filename, icon: 'i-carbon-save', key: 'script-save' })
+            continue
+          }
         }
         // Nowhere to write in place (not from a library folder, or no
         // permission): the same as Save as.
@@ -550,6 +609,9 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
     open,
     channel,
     selection,
+    strokeScript,
+    hasVibe,
+    makeVibeTrack,
     prefs,
     saving,
     leavePrompt,

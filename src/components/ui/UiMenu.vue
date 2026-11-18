@@ -25,6 +25,7 @@ function run(item: MenuItem) {
       </div>
       <button
         v-else
+        v-tip="item.hint"
         type="button"
         role="menuitem"
         :disabled="item.disabled"

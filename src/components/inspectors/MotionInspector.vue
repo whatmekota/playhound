@@ -10,7 +10,7 @@ import { useMotionEngine } from '~/composables/useMotionEngine'
 import { useSoundtrack } from '~/composables/useSoundtrack'
 import { axisOutput, axisOutputAt } from '~/composables/useTCode'
 import { clearTapTempo, scaleTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
-import { activeLinks, BUILTIN_LINK_PRESETS, LINK_DELAY_MAX, LINKABLE_AXES, sameLinks } from '~/lib/axisLink'
+import { activeLinks, BUILTIN_LINK_PRESETS, LINK_DELAY_MAX, LINK_SOURCES, LINKABLE_AXES, sameLinks } from '~/lib/axisLink'
 import { synthTargets } from '~/lib/axisSynth'
 import { paceStrokesPerBeat } from '~/lib/musicMotion'
 import { formatTime } from '~/lib/time'
@@ -295,7 +295,24 @@ const linksScripted = computed(() => {
 /** Linked axes switched off in the Device panel: nothing will move. */
 const linksOff = computed(() => activeLinks(motion.axisLinks, []).filter(l => !device.axisConfigs[l.channel]?.enabled).map(l => l.channel))
 const linksSummary = computed(() => linksOn.value.length ? linksOn.value.map(l => linkLabel[l.channel]).join(', ') : 'Off')
-const delayLabel = (v: number) => (v === 0 ? 'With the stroke' : v > 0 ? `${v} ms behind` : `${-v} ms ahead`)
+/** What an axis follows, in a sentence: "the stroke", "twist". */
+const sourceWord = (ch: string) => (ch === 'L0' ? 'the stroke' : (linkLabel[ch] ?? ch).toLowerCase())
+const delayLabel = (v: number, source = 'L0') => (v === 0 ? `With ${sourceWord(source)}` : v > 0 ? `${v} ms behind` : `${-v} ms ahead`)
+/** What each axis can follow: the stroke or another axis, never itself. */
+const linkSourceOptions = (ch: string) => LINK_SOURCES.filter(s => s.channel !== ch).map(s => ({ value: s.channel, label: s.label }))
+/**
+ * With a script playing, an axis linked to one that has neither a script
+ * nor a link of its own has nothing to follow, and stays put.
+ */
+const linksStranded = computed(() => {
+  if (!scripts.activeScripts.length)
+    return []
+  const scripted = new Set(scripts.activeScripts.map(s => s.channel))
+  const on = new Set(linksOn.value.map(l => l.channel))
+  return linksOn.value
+    .filter(l => !scripted.has(l.channel) && !scripted.has(l.source ?? 'L0') && !on.has(l.source ?? 'L0'))
+    .map(l => `${linkLabel[l.channel]} follows ${sourceWord(l.source ?? 'L0')}`)
+})
 
 // Presets: the built-in starting points and the user's own.
 const linkPresetList = computed<LinkPreset[]>(() => [...BUILTIN_LINK_PRESETS, ...motion.linkPresets])
@@ -778,8 +795,8 @@ const PAD_MAP = [
     <!-- ─── Linked axes ───────────────────────────────────────────────────── -->
     <UiSection title="Linked axes" icon="i-carbon-link" :summary="linksSummary">
       <p class="hint -mt-1">
-        An axis that follows the stroke itself: a little behind or ahead of it, inverted, or with less travel. Works with
-        scripts and generated motion; never overrides an axis the script drives.
+        An axis that follows the stroke, or another axis: a little behind or ahead of it, inverted, or with less travel.
+        Works with scripts and generated motion; never overrides an axis the script drives.
       </p>
       <div class="flex flex-wrap gap-1.5 items-center">
         <div
@@ -836,7 +853,7 @@ const PAD_MAP = [
           <span class="text-[10px] text-fg-faint font-mono">{{ link.channel }}</span>
           <button
             v-if="link.on"
-            v-tip="'Moves the opposite way to the stroke'"
+            v-tip="`Moves the opposite way to ${sourceWord(link.source ?? 'L0')}`"
             type="button"
             class="text-[11.5px] font-medium ml-auto px-2 focusable rounded-[var(--radius-sm)] flex gap-1 h-6 pressable items-center"
             :class="link.invert ? 'bg-accent-soft text-accent-300 ring-1 ring-accent/30' : 'bg-fg/5 text-fg-muted hover:bg-fg/8 hover:text-fg'"
@@ -848,6 +865,15 @@ const PAD_MAP = [
           </button>
         </div>
         <template v-if="link.on">
+          <div class="flex gap-2 items-center">
+            <span class="label shrink-0">Follows</span>
+            <UiSelect
+              class="flex-1 min-w-0"
+              :model-value="link.source ?? 'L0'"
+              :options="linkSourceOptions(link.channel)"
+              @update:model-value="v => (link.source = v)"
+            />
+          </div>
           <UiSlider
             v-model="link.delayMs"
             label="Delay"
@@ -855,12 +881,15 @@ const PAD_MAP = [
             :max="LINK_DELAY_MAX"
             :step="5"
             :reset="0"
-            :format="delayLabel"
-            :hint="motion.isGenerated && link.delayMs < 0 ? 'Generated motion can only trail: this plays with the stroke' : undefined"
+            :format="v => delayLabel(v, link.source ?? 'L0')"
+            :hint="motion.isGenerated && link.delayMs < 0 ? `Generated motion can only trail: this plays with ${sourceWord(link.source ?? 'L0')}` : undefined"
           />
           <UiSlider v-model="link.amount" label="Amount" :format="pct" :reset="1" />
         </template>
       </div>
+      <p v-if="linksStranded.length" class="hint text-warn">
+        {{ linksStranded.join(', ') }}, which has no script or link here, so nothing moves there.
+      </p>
       <p v-if="linksScripted.length" class="hint">
         The script drives <span class="text-fg-muted font-mono">{{ linksScripted.join(' ') }}</span> itself, so those follow the script.
       </p>

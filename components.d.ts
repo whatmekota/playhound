@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AchievementsGallery: typeof import('./src/components/views/AchievementsGallery.vue')['default']
     AddYoutubeModal: typeof import('./src/components/views/AddYoutubeModal.vue')['default']
     AndroidDevices: typeof import('./src/components/shell/AndroidDevices.vue')['default']
     AndroidStatus: typeof import('./src/components/shell/AndroidStatus.vue')['default']
@@ -30,6 +31,7 @@ declare module 'vue' {
     DeviceInspector: typeof import('./src/components/inspectors/DeviceInspector.vue')['default']
     DirectorInspector: typeof import('./src/components/inspectors/DirectorInspector.vue')['default']
     EdgeBadge: typeof import('./src/components/player/EdgeBadge.vue')['default']
+    EdgeSettings: typeof import('./src/components/shell/EdgeSettings.vue')['default']
     EntryInfoModal: typeof import('./src/components/library/EntryInfoModal.vue')['default']
     Equaliser: typeof import('./src/components/library/Equaliser.vue')['default']
     EroScriptsView: typeof import('./src/components/views/EroScriptsView.vue')['default']

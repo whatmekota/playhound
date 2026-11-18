@@ -2,7 +2,7 @@ import type { PluginContext } from '~/plugins/types'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { heartReading } from '~/composables/useHeartRate'
-import { axisOutput } from '~/composables/useTCode'
+import { axisOutput, axisPosition, useTCode } from '~/composables/useTCode'
 import { readManifest } from '~/plugins/manifest'
 
 vi.mock('~/lib/idb', async (orig) => {
@@ -40,12 +40,23 @@ describe('plugin api 6', () => {
     expect(info().note).toBeNull()
   })
 
-  it('reads every axis, with player or device', async () => {
-    axisOutput.R2 = 0.25
+  it('reads every axis, with player or device: as meant, and (7) as the device gets it', async () => {
+    // An inverted axis: the motion says 0.25, the device is told 0.75.
+    axisPosition.R2 = 0.25
+    axisOutput.R2 = 0.75
     const none = (await contextWith([])).ctx
     expect(() => none.motion.axes()).toThrow(/"player" or the "device"/)
+    expect(() => none.motion.onAxis(() => {})).toThrow(/"player" or the "device"/)
     const ctx = (await contextWith(['player'])).ctx
     expect(ctx.motion.axes().R2).toBe(0.25)
+    expect(ctx.motion.output().R2).toBe(0.75)
+    const seen: [string, number, number][] = []
+    const off = ctx.motion.onAxis((axis, pos, inMs) => seen.push([axis, pos, inMs]))
+    useTCode().sendPosition('L0', 0.3, 50)
+    off()
+    useTCode().sendPosition('L0', 0.6, 50)
+    expect(seen).toEqual([['L0', 0.3, 50]])
+    expect(ctx.motion.axes().L0).toBe(0.6)
   })
 
   it('supplies heart rate, and stops when switched off', async () => {

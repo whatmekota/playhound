@@ -22,6 +22,7 @@ export const CATEGORIES = [
   { id: 'visuals', label: 'Visuals', icon: 'i-carbon-image' },
   { id: 'devices', label: 'Devices', icon: 'i-carbon-plug' },
   { id: 'tools', label: 'Tools', icon: 'i-carbon-tool-box' },
+  { id: 'fun', label: 'For fun', icon: 'i-carbon-game-console' },
 ] as const
 
 export type PluginCategory = typeof CATEGORIES[number]['id']

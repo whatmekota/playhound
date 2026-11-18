@@ -316,8 +316,8 @@ describe('templates', () => {
     }
   })
 
-  it('start gently and end low', () => {
-    for (const t of TEMPLATES) {
+  it('start gently and end low (Shuffle leaves the clips as they are)', () => {
+    for (const t of TEMPLATES.filter(t => t.order === 'arc')) {
       const total = totalSeconds(t.phases)
       expect(intensityAt(t.phases, 0)).toBeLessThanOrEqual(0.25)
       expect(intensityAt(t.phases, total - 0.01)).toBeLessThanOrEqual(0.15)

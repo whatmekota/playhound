@@ -52,7 +52,7 @@ A single folder wrapping all of this is fine; it's taken off.
   `blob:` URL, so relative imports don't resolve. Bundle everything into it
   (esbuild, rollup, vite in library mode).
 - `api`: the plugin API the plugin is written for, a whole number. Without it,
-  1. This playhound speaks 5; a plugin that needs a newer one is refused, with
+  1. This playhound speaks 7; a plugin that needs a newer one is refused, with
      a message saying to update playhound. Plugins written for older ones run
      as they did. API 3 added [playing in another app](#playing-in-another-app),
      [sockets](#sockets), [serving on the network](#serving-on-the-network),
@@ -96,7 +96,7 @@ Everything else needs none: settings, storage, the panel, commands, styles,
 toasts, `ui.stage / onStageChange / theme / onThemeChange`, `motion.readout`,
 `safety.*`, `webview.available`, `net.socketAvailable`, `http.available /
 url`, _(4)_ `music.analyse` of a file the plugin has, `music.script`, _(5)_ `music.plan`,
-`files.save`, `asset`, `log`, _(6)_ `ui.status`, and `motion.axes` with `player` or `device`. A call outside the list throws an `Error` naming the
+`files.save`, `asset`, `log`, _(6)_ `ui.status`, and `motion.axes` with `player` or `device`, _(7)_ `achievements.*`, and `motion.output / onAxis` with `player` or `device`. A call outside the list throws an `Error` naming the
 permission to add.
 
 A first install always shows the list and waits for the user to agree. An
@@ -142,7 +142,7 @@ The full contract, with comments, is in
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `manifest`                                                                | the plugin's own manifest                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `settings.get / all / set / onChange`                                     | its settings, as the user set them                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `storage.get / set / del`                                                 | a small persistent key/value store for its own data                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `storage.get / set / del`                                                 | a persistent key/value store for its own data (structured clones: objects, ArrayBuffers, Blobs, Files; see [Also in API 7](#also-in-api-7))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `ui.settings(fields)`                                                     | the form shown under the plugin in Settings → Plugins. Field types: `text`, `password`, `textarea`, `number`, `slider`, `switch`, `select` (fixed or fetched options, optionally free text), _(6)_ `button` and `heading`, which starts a section that folds away. Any field can have `when(values)` to show it only sometimes.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `ui.panel({ title, icon, mount })`                                        | its panel: its own button on the right-hand rail and a drawer titled with its name. `icon` is an inline SVG in `currentColor` (about 16×16); without one a generic icon is used. `mount` gets a plain element; you build its DOM yourself.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `ui.page({ title, icon, mount })`                                         | its page on the main stage, where the player, the library and the media wall show, with its own button in the left nav. Same shape as a panel; `mount` gets an element filling the stage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -162,7 +162,7 @@ The full contract, with comments, is in
 | `playback.play / pause / resume / onEnded`                                | put on a library video on its own, and know when it ends; _(3)_ `next() / previous()` do what the Next and Previous keys do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `playback.playFingerprint(fp)`                                            | play the library video with that fingerprint; false if there is none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `motion.take() → { set, hold, release }`                                  | the stroke generator (the Manual source), within the user's speed ceiling. Panic takes it back. Letting go restores the user's settings and leaves the generator stopped.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `motion.readout`                                                          | what the device is doing: the generator's rate and depth, and the stroke position (a script's, while one plays). _(3)_ `phase`, the generator's stroke phase 0–1 with 0 at the bottom, and `nextStrokeInMs`, until it is next at the bottom (where a beat lands); both null while it isn't stroking. `scriptDriving`: a script plays and drives the stroke, so `motion.take` waits until it stops (the two never fight over one axis)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `motion.readout`                                                          | what the device is doing: the generator's rate and depth, and the stroke position (a script's, while one plays). _(3)_ `phase`, the generator's stroke phase 0–1 with 0 at the bottom, and `nextStrokeInMs`, until it is next at the bottom (where a beat lands); both null while it isn't stroking. `scriptDriving`: a script plays and drives the stroke, so `motion.take` waits until it stops (the two never fight over one axis). _(7)_ `shape`, the generator's stroke shape, and `latencyMs`, the user's device latency                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `safety.panicked / onPanic / onResume`                                    | panic (Esc). Stop everything you're doing; `onResume` when the user lifts it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `net.fetch(url, init)`                                                    | `fetch()`; in the desktop app it's made from the app itself, so local servers without CORS headers answer, and it streams                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `webview.create({ url, zoom })`                                           | a real web page inside playhound (desktop app only); see [Web pages](#web-pages)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -578,8 +578,11 @@ one before, and ten seconds without a reading counts as lost.
 
 **Every axis.** `motion.axes()` (permission `player` or `device`) is where
 each axis was last sent, 0–1 by TCode channel (`L0` the stroke, `R2` pitch…),
-before the user's range: what the Motion panel's traces draw. Read it each
-frame to draw your own.
+before the user's range and invert: 0 is the bottom of the stroke whatever
+the device is set to. Read it each frame to draw your own. _(7)_ For where the
+device itself is told to be, after range and invert (what the Motion panel's
+traces draw), use `motion.output()`; to hear of every move, `motion.onAxis`
+(below).
 
 ```js
 ctx.ui.settings([
@@ -601,6 +604,97 @@ const hr = ctx.heart.provide('My watch')
 myWatch.onBeat(bpm => hr.push(bpm)) // your own connection to the watch
 ctx.ui.status({ text: 'Connected', tone: 'ok', detail: 'Heart rate from My watch' })
 ```
+
+## Achievements
+
+API 7 (playhound 2.2.8) lets a plugin have achievements of its own. They
+show in **Stats → Achievements** beside playhound's, under the plugin's
+name, and the user gets the same notice when one is earned. No permission
+needed. Write `"api": 7` and `"minPlayhound": "2.2.8"`.
+
+`achievements.define(list)` declares them, once at start (calling it again
+replaces the list; ones already earned stay earned). Each is `{ id, title,
+description, icon?, target?, hidden?, tier? }`: `id` is lower-case letters,
+digits and dashes; `icon` an emoji; `tier` 1 bronze to 4 platinum; `hidden`
+shows it as a secret until earned. `achievements.unlock(id)` earns one (true
+the first time). For one earned by counting, give it a `target` and report
+the count with `achievements.progress(id, n)`: the gallery shows the bar, and
+it is earned on reaching the target. `achievements.unlocked()` is the
+plugin's own earned ones, by id, with when.
+
+```js
+ctx.achievements.define([
+  { id: 'first-pull', title: 'Lucky start', description: 'Pull once', icon: '🎰' },
+  { id: 'pulls-100', title: 'Big spender', description: 'Pull 100 times', icon: '💸', target: 100, tier: 2 },
+])
+ctx.achievements.unlock('first-pull')
+ctx.achievements.progress('pulls-100', pulls.length)
+```
+
+Keep them fun and earnable; a list of a few dozen at most.
+
+### Also in API 7
+
+For plugins that follow the motion or add to what's heard (sounds in time
+with the stroke, a light show):
+
+- **Every move as it's sent.** `motion.onAxis((axis, pos, inMs) => …)`
+  (permission `player` or `device`) calls you with each position sent to an
+  axis, before range and invert as `motion.axes()` has it, and in how many ms
+  it should be there (0: it is there now). It comes many times a second for
+  each axis that moves, so keep it light. It returns an unsubscribe, and
+  ends by itself when the plugin stops.
+- **Device latency.** `motion.readout().latencyMs` is the user's device
+  latency: while a script plays, the device is sent its moves this much
+  before the picture, so it moves with it. `motion.axes()` and `onAxis` run
+  that much early too. Something that should land with the picture, such as
+  a sound, follows the video's clock (`player.clock()`) and the script
+  instead.
+- **The stroke's shape and rate.** `readout().shape` is the generator's
+  stroke shape (`sine`, `ease`, `pulse`, `saw` or `sharp`), how `phase` maps
+  to a position. `nextStrokeInMs` now counts a stroke the music source doubles
+  as two.
+- **What's heard.** `player.state()` has `muted`, `volume` (0–1), `external`
+  (the video plays in another app, a VR headset, with its sound there) and
+  `audible`: sound is coming out of playhound's player now (playing, not
+  muted, the volume up, and what plays has a sound track). `audible` is null
+  for the first moments of a video, before the browser has decoded any of
+  its sound, and false for a video playing elsewhere. `player.onChange` fires
+  when the sound is muted or the volume changes.
+- **Picking files in the settings.** A field `{ type: 'file', key, label,
+text?, accept?, multiple?, tone?, hint?, run(files, values) }` is a button
+  that opens the file dialog: "Add sounds…", "Import a list". `run` gets the
+  files picked (cancelling doesn't call it) and what it returns or throws
+  shows under it, as for a button. Nothing is saved under `key`; keep what
+  you need with `storage`.
+
+```js
+ctx.ui.settings([
+  {
+    key: 'add',
+    type: 'file',
+    label: 'Your own sounds',
+    text: 'Add sounds…',
+    accept: 'audio/*',
+    multiple: true,
+    async run(files) {
+      for (const f of files)
+        await ctx.storage.set(`sound:${f.name}`, await f.arrayBuffer())
+      return `Added ${files.length}`
+    },
+  },
+])
+ctx.motion.onAxis((axis, pos) => {
+  if (axis === 'L0' && pos < 0.05 && !ctx.player.state().audible)
+    slap() // your own sound, at the bottom of the stroke
+})
+```
+
+**Storage.** `storage.get / set / del` keep values in playhound's IndexedDB
+as structured clones: objects, arrays, `ArrayBuffer`s, `Blob`s and `File`s
+all keep. There's no fixed limit beyond the browser's own quota (a share of
+the free disk), but keep it to what the plugin needs. It goes when the
+plugin is removed.
 
 ## An example
 
@@ -719,7 +813,7 @@ Each field goes in `manifest.json`:
 | `icon`            | On the card, the details and the installed list                                                       | A file name: square PNG, 64 to 1024 px (**256 px** is best), under 256 KB; or an SVG under 64 KB                                      |
 | `screenshots`     | A strip in the details; a click shows one large                                                       | Up to 6 file names (with an optional `caption`): PNG, JPEG or WebP, 320 to 3840 px a side, under 3 MB each. **1280 × 800** reads well |
 | `longDescription` | "About" in the details. Without it, the repository's README shows                                     | Markdown, up to 10,000 characters                                                                                                     |
-| `category`        | The category filter, and a label on the card                                                          | One of `partner`, `sync`, `library`, `visuals`, `devices`, `tools`                                                                    |
+| `category`        | The category filter, and a label on the card                                                          | One of `partner`, `sync`, `library`, `visuals`, `devices`, `tools`, `fun`                                                             |
 | `keywords`        | Search finds the plugin by them                                                                       | Up to 10 words of up to 32 characters                                                                                                 |
 | `homepage`        | A "Website" link in the details (the repository is always linked)                                     | An `https://` address                                                                                                                 |
 | `minPlayhound`    | An older playhound shows "Needs playhound 2.2 or newer" and won't install it, from the store or a zip | A version, like `"2.2.0"`                                                                                                             |

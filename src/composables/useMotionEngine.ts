@@ -23,7 +23,7 @@ import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { useButtplug } from './useButtplug'
 import { useHandy } from './useHandy'
-import { useTCode } from './useTCode'
+import { addAxisListener, useTCode } from './useTCode'
 import { getBeatGrid, hasFreeTapTempo, isBeatReady, isPageBeatReady } from './useVideoBeat'
 import { useDeviceLatency } from './useVideoSync'
 
@@ -42,16 +42,6 @@ let lastPhase = 0
 let spm = 0
 let depth = 0
 let running = false
-/**
- * The generator's stroke right now, for plugins (motion.readout): its phase,
- * 0–1 with 0 at the bottom, and its rate; null while it isn't stroking.
- */
-export function generatorStroke(): { phase: number, spm: number } | null {
-  if (!running || spm <= 0)
-    return null
-  const TWO_PI = Math.PI * 2
-  return { phase: (((phase % TWO_PI) + TWO_PI) % TWO_PI) / TWO_PI, spm }
-}
 
 /** Music source: the stroke's own 0–1 phase, steered onto the beat grid. */
 let musicPhase = 0
@@ -61,12 +51,29 @@ let musicVar = { times: 1 as 1 | 2, depth: 1 }
 let varDepth = 1
 /** Variations reshuffle each time the generator starts, so it is not the same pattern every time. */
 let varSeed = 0
+
+/**
+ * The generator's stroke right now, for plugins (motion.readout): its phase,
+ * 0–1 with 0 at the bottom, and its rate, a stroke the music source doubles
+ * counted as two (the phase runs twice in its time); null while it isn't
+ * stroking.
+ */
+export function generatorStroke(): { phase: number, spm: number } | null {
+  if (!running || spm <= 0)
+    return null
+  const TWO_PI = Math.PI * 2
+  return { phase: (((phase % TWO_PI) + TWO_PI) % TWO_PI) / TWO_PI, spm: spm * musicVar.times }
+}
+
 /** This frame's rate and depth as the moves are planned, a doubled stroke included. */
 let effSpm = 0
 let effDepth = 0
 const subdivision = createSubdivisionHold()
 /** Where the stroke has been, for linked axes that trail it. */
 const strokeHistory = createStrokeHistory()
+/** Where other axes have been (what they were sent), for axes linked to them. */
+const axisHistories = new Map<string, ReturnType<typeof createStrokeHistory>>()
+let stopAxisHistory: (() => void) | null = null
 // Devices that take moves rather than positions (the Handy, Intiface
 // strokers) get one move per half-stroke, planned ahead by their delay.
 const unwrap = createPhaseUnwrapper()
@@ -140,8 +147,9 @@ export function useMotionEngine() {
    * The funscript wins whenever a script is actually playing — the generator
    * must never fight useVideoSync for the same axis.
    */
+  // A finger on the phone's stroke pad outranks a playing script.
   const funscriptBusy = computed(() =>
-    script.activeScripts.length > 0 && player.isPlaying,
+    script.activeScripts.length > 0 && player.isPlaying && !motion.handHeld,
   )
 
   /**
@@ -351,7 +359,9 @@ export function useMotionEngine() {
     strokeHistory.push(ts, pos)
     const links = activeLinks(motion.axisLinks, [])
     for (const link of links) {
-      const at = strokeHistory.at(ts, link.delayMs)
+      const source = link.source ?? 'L0'
+      const history = source === 'L0' ? strokeHistory : axisHistories.get(source)
+      const at = history?.at(ts, link.delayMs) ?? null
       if (at !== null)
         sendPosition(link.channel, linkedPosition(at, link), interval)
     }
@@ -390,6 +400,19 @@ export function useMotionEngine() {
     running = true
     lastTs = null
     strokeHistory.clear()
+    axisHistories.clear()
+    // What any axis but the stroke is sent, kept for the axes linked to it.
+    stopAxisHistory?.()
+    stopAxisHistory = addAxisListener((channel, position) => {
+      if (channel === 'L0' || !motion.axisLinks.some(l => l.on && l.source === channel))
+        return
+      let h = axisHistories.get(channel)
+      if (!h) {
+        h = createStrokeHistory()
+        axisHistories.set(channel, h)
+      }
+      h.push(performance.now(), position)
+    })
     rafId = requestFrame(tick, DEVICE_BACKSTOP_MS)
   }
 
@@ -401,6 +424,8 @@ export function useMotionEngine() {
     if (!running)
       return
     running = false
+    stopAxisHistory?.()
+    stopAxisHistory = null
     if (rafId !== null) {
       cancelFrame(rafId)
       rafId = null
@@ -433,8 +458,9 @@ export function useMotionEngine() {
   watch(shouldRun, (run) => {
     if (run)
       start()
+    // A script taking over sends its own position at once: no detour to rest.
     else
-      stop()
+      stop(!funscriptBusy.value)
   }, { immediate: true })
 
   return {

@@ -61,6 +61,79 @@ export function breathRadius(phase: number, inhaleRatio = 0.4): number {
   return 0.35 + 0.65 * smooth(1 - out)
 }
 
+/**
+ * Where a stroke script reaches the bottom of each stroke (ms), for flashes
+ * on the stroke. Positions 0–1; a wiggle smaller than `minMove` is not a
+ * turn, and a flat stretch turns at its first point, when the stroke lands.
+ */
+export function bottomTurns(actions: readonly { at: number, pos: number }[], minMove = 0.05): number[] {
+  const out: number[] = []
+  if (actions.length < 2)
+    return out
+  let dir = 0
+  let ext = actions[0]
+  for (let i = 1; i < actions.length; i++) {
+    const a = actions[i]
+    if (dir === 0) {
+      if (Math.abs(a.pos - ext.pos) >= minMove) {
+        dir = a.pos > ext.pos ? 1 : -1
+        ext = a
+      }
+      continue
+    }
+    if (dir > 0) {
+      if (a.pos > ext.pos) {
+        ext = a
+      }
+      else if (ext.pos - a.pos >= minMove) {
+        dir = -1
+        ext = a
+      }
+    }
+    else if (a.pos < ext.pos) {
+      ext = a
+    }
+    else if (a.pos - ext.pos >= minMove) {
+      out.push(ext.at)
+      dir = 1
+      ext = a
+    }
+  }
+  if (dir < 0)
+    out.push(ext.at)
+  return out
+}
+
+/** How many of the sorted `times` fall in (from, to]. */
+export function countBetween(times: readonly number[], from: number, to: number): number {
+  return to > from ? upper(times, to) - upper(times, from) : 0
+}
+
+function upper(xs: readonly number[], v: number): number {
+  let lo = 0
+  let hi = xs.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (xs[mid] <= v)
+      lo = mid + 1
+    else
+      hi = mid
+  }
+  return lo
+}
+
+/**
+ * Opacity of a flash `age` ms after it fired: full for `holdMs`, then a
+ * quick fade, so it reads as a flash and not a cut.
+ */
+export function flashAlpha(age: number, holdMs: number, fadeMs = 90): number {
+  if (age < 0)
+    return 0
+  if (age < holdMs)
+    return 1
+  return Math.max(0, 1 - (age - holdMs) / fadeMs)
+}
+
 /** Split a user's word list into usable entries. */
 export function parseWords(raw: string): string[] {
   return raw

@@ -21,8 +21,8 @@ import { useLocalStorage } from '@vueuse/core'
  * can be tested without a clock.
  */
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
-import { createEdgeEnvelope } from '~/lib/edging'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { createEdgeEnvelope, EDGE_PRESETS } from '~/lib/edging'
 import { KEYS } from '~/lib/persist'
 
 export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui' | 'plugin' | 'rule'
@@ -45,15 +45,20 @@ export interface EdgeEvent {
 }
 
 export interface EdgeSettings {
+  /** Edges at all: off, nothing calls one (the key, the buttons, the phone, a rule, a programme, the heart-rate guard). */
+  enabled: boolean
+  /** Seconds to fall to the hold level once called. */
+  fallSec: number
   /** Seconds to hold right back after an edge is called. */
   cooldownSec: number
   /** Seconds to ease back up to normal afterwards. */
   rebuildSec: number
-  /** How far down an edge takes things: 0.85 leaves 15%. */
+  /** How far down an edge takes things: 0.85 leaves 15%, 1 stops. */
   depth: number
 }
 
-const DEFAULT_EDGE: EdgeSettings = { cooldownSec: 20, rebuildSec: 25, depth: 0.85 }
+const BACK_OFF = EDGE_PRESETS[0]
+export const DEFAULT_EDGE: EdgeSettings = { enabled: true, fallSec: BACK_OFF.fallSec, cooldownSec: BACK_OFF.cooldownSec, rebuildSec: BACK_OFF.rebuildSec, depth: BACK_OFF.depth }
 
 export const useSessionControlStore = defineStore('sessionControl', () => {
   const settings = useLocalStorage<EdgeSettings>(KEYS.edgeSettings.key, { ...DEFAULT_EDGE }, { mergeDefaults: true })
@@ -80,6 +85,8 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
    * "still close" — rather than stacking.
    */
   function edge(source: EdgeSource, ctx: { videoTime?: number | null, videoName?: string | null } = {}) {
+    if (!settings.value.enabled)
+      return
     envelope.trigger(performance.now(), settings.value)
     edges.value.push({
       at: Date.now(),
@@ -128,6 +135,14 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
   function clearLog() {
     edges.value = []
   }
+
+  // Switched off while one runs: it ends at once.
+  watch(() => settings.value.enabled, (on) => {
+    if (!on) {
+      envelope.reset()
+      tick()
+    }
+  })
 
   /** The last "I came", for whoever wants to know (a partner's plugin). */
   const lastFinish = shallowRef<FinishMark | null>(null)

@@ -35,6 +35,9 @@ export interface ProgrammePhase {
 /** When the programme changes video. */
 export type VideoSwitch = 'ended' | 'phase' | 'interval'
 
+/** How the reel picks its clips: the ones that fit the arc, or any, shuffled (lib/reel). */
+export type ClipOrder = 'arc' | 'shuffle'
+
 export interface Programme {
   id: string
   name: string
@@ -48,6 +51,8 @@ export interface Programme {
   reel: boolean
   /** Shortest and longest reel clip, seconds. */
   clipSec: [number, number]
+  /** How the reel picks: clips that fit the arc, or any, shuffled, each a random length. */
+  order: ClipOrder
   /** When whole videos change. */
   video: VideoSwitch
   /** Minutes between changes when `video` is 'interval'. */
@@ -530,13 +535,14 @@ function phase(kind: PhaseKind, over: Partial<ProgrammePhase>, id: string): Prog
   return { ...KIND_DEFAULTS[kind], kind, ...over, id }
 }
 
-/** Built-in starting points. Fixed ids, so a selection survives reloads. */
+/** Built-in starting points. Fixed ids, so a selection survives reloads. Classic (the second) is the default. */
 export const TEMPLATES: Programme[] = [
   {
     id: 'tpl-short',
     name: 'Short',
     builtin: true,
     reel: true,
+    order: 'arc',
     clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'ended',
     everyMin: 5,
@@ -553,6 +559,7 @@ export const TEMPLATES: Programme[] = [
     name: 'Classic',
     builtin: true,
     reel: true,
+    order: 'arc',
     clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'ended',
     everyMin: 8,
@@ -569,6 +576,7 @@ export const TEMPLATES: Programme[] = [
     name: 'Edging',
     builtin: true,
     reel: true,
+    order: 'arc',
     clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'phase',
     everyMin: 8,
@@ -580,6 +588,19 @@ export const TEMPLATES: Programme[] = [
       phase('peak', { name: 'Release', minutes: 5, from: 0.9, to: 1 }, 'tpl-edging-4'),
       phase('cooldown', { minutes: 5, from: 0.4, to: 0.05, capSpm: 60 }, 'tpl-edging-5'),
     ],
+  },
+  {
+    id: 'tpl-shuffle',
+    name: 'Shuffle',
+    builtin: true,
+    reel: true,
+    order: 'shuffle',
+    clipSec: [30, 120],
+    video: 'ended',
+    everyMin: 5,
+    tone: false,
+    // One plateau at full: the clips as they are, nothing shaped.
+    phases: [phase('build', { name: 'Shuffle', minutes: 60, from: 1, to: 1 }, 'tpl-shuffle-1')],
   },
 ]
 
@@ -653,6 +674,7 @@ export function normaliseProgramme(raw: unknown): Programme | null {
     // Programmes saved before reels existed get one: it is what they were for.
     reel: r.reel !== false,
     clipSec: [Math.min(lo, hi), Math.max(lo, hi)],
+    order: r.order === 'shuffle' ? 'shuffle' : 'arc',
     video: SWITCHES.has(r.video as VideoSwitch) ? r.video as VideoSwitch : 'ended',
     everyMin: clamp(Math.round(num(r.everyMin, 8)), 1, 60),
     tone: r.tone === true,

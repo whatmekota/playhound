@@ -19,19 +19,43 @@ import type { Directive } from 'vue'
  */
 import type { TileAction } from '~/lib/audioTile'
 import type { VideoEntry } from '~/stores/libraryStore'
+import { useLocalStorage } from '@vueuse/core'
 import { reactive, shallowReactive, toRaw } from 'vue'
 import { isAndroidApp } from '~/lib/android/detect'
 import { isNativeMediaUrl } from '~/lib/android/nativeFile'
 import { fileSource, findCover } from '~/lib/audioCover'
 import { tileActions, tileColumns, tileHeat, tileHue } from '~/lib/audioTile'
+import { hottestMoment } from '~/lib/hotMoment'
 import { metaDb, thumbDb, videoMetaDb } from '~/lib/idb'
+import { KEYS } from '~/lib/persist'
 import { isVrVideo } from '~/lib/tags'
-import { looksSbs } from '~/lib/vrFormat'
+import { frameLayout, looksVrFrame, oneEyeRect } from '~/lib/vrFormat'
 
 const THUMB_W = 320
 const THUMB_H = 180
 /** Marks a VR video's thumbnail as one eye: those cached before both halves showed are made again. */
 const oneEyeKey = (e: VideoEntry) => `eye1:${e.name}`
+/** The same for top-bottom VR, whose one eye is the top half (2.2.8): those cut the old way are made again. */
+const topEyeKey = (e: VideoEntry) => `eye-tb:${e.name}`
+const isTopBottom = (e: VideoEntry) => !!(e.width && e.height) && frameLayout(e.name, e.width!, e.height!, true) === 'tb'
+
+/**
+ * A scripted video's picture comes from the hottest moment of its script
+ * (lib/hotMoment) rather than near the start. Each thumbnail remembers which
+ * it was taken for, so switching this retakes the scripted ones.
+ */
+export const thumbsHot = useLocalStorage(KEYS.thumbsHot.key, true)
+type ThumbFrom = 'hot' | 'early'
+const fromKey = (e: VideoEntry) => `thumbFrom:${e.name}`
+/** A video with a script; an audio file's picture is its cover or the script drawn. */
+const scriptedVideo = (e: VideoEntry) => e.hasScript && e.kind !== 'audio' && !e.remote
+const wantFrom = (e: VideoEntry): ThumbFrom => (thumbsHot.value && scriptedVideo(e) ? 'hot' : 'early')
+/**
+ * Pictures shown while a new one is taken: cached for the other setting, or
+ * before there was one. They count as missing, so they are decoded again.
+ */
+const stale = new Set<string>()
+const hasThumb = (e: VideoEntry) => !!e.thumbnailUrl && !stale.has(e.name)
 /**
  * Concurrent frame decodes. More than this starves playback of the decoder.
  * On a phone, one: every decode is a <video> with its own buffers, and
@@ -88,23 +112,47 @@ function pump() {
   }
 }
 
-function coverRect(sw: number, sh: number, oneEye = false) {
+function coverRect(sw: number, sh: number, eye: { sx: number, sy: number, sw: number, sh: number } | null = null) {
   // Crop to 16:9 instead of stretching, so portrait clips stay in proportion.
-  // Side-by-side VR shows its left eye, not both halves and the seam.
-  if (oneEye)
-    sw /= 2
+  // VR shows one eye (oneEyeRect), not both and the seam between them.
+  const ox = eye?.sx ?? 0
+  const oy = eye?.sy ?? 0
+  if (eye) {
+    sw = eye.sw
+    sh = eye.sh
+  }
   const target = THUMB_W / THUMB_H
   if (!sw || !sh)
-    return { sx: 0, sy: 0, sw, sh }
+    return { sx: ox, sy: oy, sw, sh }
   if (sw / sh > target) {
     const w = sh * target
-    return { sx: (sw - w) / 2, sy: 0, sw: w, sh }
+    return { sx: ox + (sw - w) / 2, sy: oy, sw: w, sh }
   }
   const h = sw / target
-  return { sx: 0, sy: (sh - h) / 2, sw, sh: h }
+  return { sx: ox, sy: oy + (sh - h) / 2, sw, sh: h }
 }
 
-function decodeFrame(entry: VideoEntry): Promise<void> {
+/** Seconds into the video of its script's hottest moment, or null to take the usual early frame. */
+async function hotSecondsOf(entry: VideoEntry): Promise<number | null> {
+  if (wantFrom(entry) !== 'hot')
+    return null
+  const main = entry.scriptMatches.find(m => !m.isAlt) ?? entry.scriptMatches[0]
+  if (!main)
+    return null
+  try {
+    const ms = hottestMoment(tileActions(await main.file.text()))
+    return ms === null ? null : ms / 1000
+  }
+  catch {
+    return null
+  }
+}
+
+async function decodeFrame(entry: VideoEntry): Promise<void> {
+  return decodeFrameAt(entry, await hotSecondsOf(entry))
+}
+
+function decodeFrameAt(entry: VideoEntry, hotSec: number | null): Promise<void> {
   const url = URL.createObjectURL(entry.file)
   const video = document.createElement('video')
   video.preload = 'auto'
@@ -137,8 +185,11 @@ function decodeFrame(entry: VideoEntry): Promise<void> {
     video.addEventListener('loadedmetadata', () => {
       if (Number.isFinite(video.duration)) {
         setDuration(entry, video.duration)
-        // Skip cold opens and title cards, but stay early enough to be representative.
-        video.currentTime = Math.min(video.duration * 0.12, 60)
+        // The script's hottest moment; otherwise skip cold opens and title
+        // cards, but stay early enough to be representative.
+        video.currentTime = hotSec !== null && hotSec < video.duration - 1
+          ? hotSec
+          : Math.min(video.duration * 0.12, 60)
       }
       else {
         video.currentTime = 1
@@ -169,14 +220,22 @@ function decodeFrame(entry: VideoEntry): Promise<void> {
         const c = document.createElement('canvas')
         c.width = THUMB_W
         c.height = THUMB_H
-        const oneEye = isVrVideo(entry) || looksSbs(entry.name, video.videoWidth, video.videoHeight)
-        const r = coverRect(video.videoWidth, video.videoHeight, oneEye)
+        const vw = video.videoWidth
+        const vh = video.videoHeight
+        const oneEye = isVrVideo(entry) || looksVrFrame(entry.name, vw, vh)
+        const eye = oneEye ? oneEyeRect(entry.name, vw, vh, true) : null
+        const r = coverRect(vw, vh, eye)
         c.getContext('2d')!.drawImage(video, r.sx, r.sy, r.sw, r.sh, 0, 0, THUMB_W, THUMB_H)
         const dataUrl = c.toDataURL('image/jpeg', 0.72)
         entry.thumbnailUrl = dataUrl
+        stale.delete(entry.name)
         void thumbDb.set(entry.name, dataUrl).catch(() => {})
+        if (scriptedVideo(entry))
+          void metaDb.set(fromKey(entry), wantFrom(entry)).catch(() => {})
         if (oneEye)
           void metaDb.set(oneEyeKey(entry), 1).catch(() => {})
+        if (oneEye && eye!.sh < vh)
+          void metaDb.set(topEyeKey(entry), 1).catch(() => {})
         done()
       }
       catch (err) {
@@ -290,6 +349,15 @@ async function fromCache(entry: VideoEntry): Promise<boolean> {
     const cached = await thumbDb.get(entry.name)
     if (cached && isVrVideo(entry) && !await metaDb.get(oneEyeKey(entry)))
       return false
+    if (cached && isTopBottom(entry) && !await metaDb.get(topEyeKey(entry)))
+      return false
+    // Taken for the other setting (or before there was one): shown until
+    // the new one is ready.
+    if (cached && scriptedVideo(entry) && ((await metaDb.get<ThumbFrom>(fromKey(entry))) ?? 'early') !== wantFrom(entry)) {
+      entry.thumbnailUrl ??= cached
+      stale.add(entry.name)
+      return false
+    }
     if (cached) {
       entry.thumbnailUrl = cached
       return true
@@ -310,7 +378,7 @@ async function fromCache(entry: VideoEntry): Promise<boolean> {
  */
 export function ensureThumb(entry: VideoEntry, opts: { lazy?: boolean } = {}): Promise<void> {
   // A video from another app has no file to take a frame from: its source's picture or none.
-  if (entry.thumbnailUrl || entry.remote || thumbFailed.has(entry.name))
+  if (hasThumb(entry) || entry.remote || thumbFailed.has(entry.name))
     return Promise.resolve()
   const running = inflight.get(entry.name)
   if (running) {
@@ -397,7 +465,7 @@ function watchLazy(el: HTMLElement, entry: VideoEntry | null | undefined) {
     return
   observer().unobserve(el)
   lazyTargets.delete(el)
-  if (entry && !entry.thumbnailUrl) {
+  if (entry && !hasThumb(entry)) {
     lazyTargets.set(el, entry)
     observer().observe(el)
   }
@@ -437,7 +505,7 @@ let jobCancelled = false
 export async function generateAllThumbs(entries: VideoEntry[]) {
   if (thumbJob.running)
     return
-  const todo = entries.filter(e => !e.thumbnailUrl && !thumbFailed.has(e.name))
+  const todo = entries.filter(e => !hasThumb(e) && !thumbFailed.has(e.name) && !e.remote)
   if (!todo.length)
     return
   jobCancelled = false
@@ -460,6 +528,22 @@ export async function generateAllThumbs(entries: VideoEntry[]) {
 
 export function cancelGenerateAll() {
   jobCancelled = true
+}
+
+/**
+ * The hottest-moment setting changed: every scripted video's picture is
+ * taken again, keeping the old one on screen meanwhile, starting with
+ * whatever lists show now.
+ */
+export function retakeScriptedThumbs(entries: VideoEntry[]) {
+  for (const e of entries) {
+    if (scriptedVideo(e) && e.thumbnailUrl)
+      stale.add(e.name)
+  }
+  for (const list of onScreen.values()) {
+    for (let i = list.length - 1; i >= 0; i--)
+      void ensureThumb(list[i], { lazy: true })
+  }
 }
 
 // ─── Durations ─────────────────────────────────────────────────────────────────

@@ -208,6 +208,21 @@ describe('planning', () => {
     check(planReel(pool, req, { seed: 2, minSec: 30, maxSec: 60 }).clips, 30, 60)
   })
 
+  it('shuffled: any order and varied lengths, no chapter twice, the arc left out', () => {
+    const flat = { from: 0, to: total, target: () => 1 }
+    const { clips, shortfall } = planReel(pool, flat, { seed: 5, shuffle: true, minSec: 30, maxSec: 120 })
+    expect(shortfall).toBe(false)
+    check(clips, 30, 120)
+    expect(new Set(clips.map(c => c.key)).size).toBe(clips.length)
+    // Lengths spread over the range rather than all near one.
+    const lens = clips.map(clipSeconds).sort((a, b) => a - b)
+    expect(lens[lens.length - 1] - lens[0]).toBeGreaterThan(40)
+    // Not the hardest ones only, as the arc's plateau at full would pick.
+    const mean = clips.reduce((n, c) => n + c.intensity, 0) / clips.length
+    expect(mean).toBeLessThan(0.75)
+    expect(new Set(clips.map(c => c.video)).size).toBeGreaterThan(clips.length * 0.6)
+  })
+
   it('does not straddle a change in the arc when it can help it', () => {
     const step = (t: number) => (t < 600 ? 0.2 : 0.8)
     const { clips } = planReel(pool, { from: 0, to: 1200, target: step, breaks: [600] }, { seed: 4 })

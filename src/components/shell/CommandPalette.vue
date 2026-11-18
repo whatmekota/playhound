@@ -26,6 +26,7 @@ import { useRecordingStore } from '~/stores/recordingStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptEditStore } from '~/stores/scriptEditStore'
 import { useScriptStore } from '~/stores/scriptStore'
+import { useSessionControlStore } from '~/stores/sessionControlStore'
 import { useStatsStore } from '~/stores/statsStore'
 import { THEMES, useThemeStore } from '~/stores/themeStore'
 import { useUiStore } from '~/stores/uiStore'
@@ -42,6 +43,7 @@ const emit = defineEmits<{ openFile: [] }>()
 
 const ui = useUiStore()
 const session = useSessionActions()
+const control = useSessionControlStore()
 const player = usePlayerStore()
 const audioVisual = useAudioVisual()
 const playback = usePlaybackStore()
@@ -189,7 +191,7 @@ const commands = computed<Item[]>(() => {
     },
     scripts.hasScripts && { id: 'cmd:share-card', kind: 'command', label: 'Share card…', hint: 'A heatmap picture of the script, for its post', icon: 'i-carbon-image', keywords: 'heatmap image picture png post forum eroscripts export share', run: () => { ui.shareCard = { kind: 'loaded' } } },
     scripts.anyTweaked && { id: 'cmd:reset-tweaks', kind: 'command', label: 'Reset script tweaks', hint: 'Play the script as written', icon: 'i-carbon-reset', keywords: 'invert range speed limit smoothing offset', run: () => scripts.resetTweaks() },
-    { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
+    control.settings.enabled && { id: 'cmd:edge', kind: 'command', label: 'Edge', hint: 'Back everything off, then build again', icon: 'i-carbon-hourglass', keywords: 'close hold stop slow cooldown', kbd: ['E'], run: () => session.edge('ui') },
     loaded && { id: 'cmd:next-peak', kind: 'command', label: 'Jump to the next peak', icon: 'i-carbon-skip-forward-outline', keywords: 'good part intense fast chapter', kbd: ['G'], run: () => session.nextPeak() },
     loaded && { id: 'cmd:finish', kind: 'command', label: 'Finish', hint: 'Jump to the most intense part', icon: 'i-carbon-flash', keywords: 'climax end peak best', kbd: ['Shift', 'G'], run: () => session.finish() },
     loaded && { id: 'cmd:came', kind: 'command', label: 'I came', hint: 'Mark it on this video', icon: 'i-carbon-rain-drop', keywords: 'came cum finished orgasm mark', kbd: ['C'], run: () => session.came() },

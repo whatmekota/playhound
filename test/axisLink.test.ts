@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { activeLinks, BUILTIN_LINK_PRESETS, createStrokeHistory, defaultLinks, linkedActions, linkedPosition, sameLinks, sanitizeLinkPresets, sanitizeLinks } from '~/lib/axisLink'
+import { activeLinks, BUILTIN_LINK_PRESETS, createStrokeHistory, defaultLinks, linkedActions, linkedPosition, resolveLinked, sameLinks, sanitizeLinkPresets, sanitizeLinks } from '~/lib/axisLink'
 
 describe('axis links', () => {
   it('maps the stroke: inverted, turned down around the middle', () => {
@@ -38,5 +38,22 @@ describe('axis links', () => {
     expect(sameLinks(mine, sr6)).toBe(true)
     expect(sameLinks(mine.map(l => (l.channel === 'L1' ? { ...l, delayMs: 65 } : l)), sr6)).toBe(false)
     expect(sanitizeLinkPresets([{ id: 'a', name: '  Mine ', links: mine }, { id: 'b', name: '' }, null])).toEqual([{ id: 'a', name: 'Mine', links: sanitizeLinks(mine) }])
+  })
+
+  it('follows another axis, through a chain of links, and not round a loop', () => {
+    const links = sanitizeLinks([
+      { channel: 'R1', on: true, source: 'R0', delayMs: 50 },
+      { channel: 'R2', on: true, source: 'R1', invert: true },
+      { channel: 'L1', on: true, source: 'L1' },
+      { channel: 'L2', on: true, source: 'R2' },
+    ])
+    expect(links.find(l => l.channel === 'L1')!.source).toBe('L0')
+    const twist = { actions: [{ at: 0, pos: 20 }, { at: 1000, pos: 80 }], ms: 500 }
+    const played = new Map([['R0', twist]])
+    expect(resolveLinked('R1', played, links)?.actions).toEqual([{ at: 50, pos: 20 }, { at: 1050, pos: 80 }])
+    expect(resolveLinked('R2', played, links)?.actions).toEqual([{ at: 50, pos: 80 }, { at: 1050, pos: 20 }])
+    expect(resolveLinked('R2', played, links)?.ms).toBe(500)
+    const loop = sanitizeLinks([{ channel: 'R1', on: true, source: 'R2' }, { channel: 'R2', on: true, source: 'R1' }])
+    expect(resolveLinked('R1', new Map(), loop)).toBeNull()
   })
 })

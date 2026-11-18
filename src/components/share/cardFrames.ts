@@ -1,5 +1,5 @@
 import type { Pic } from './drawCard'
-import { looksSbs } from '~/lib/vrFormat'
+import { looksVrFrame, oneEyeRect } from '~/lib/vrFormat'
 
 /**
  * Frames for a share card, from the video's own source in a hidden <video>
@@ -101,10 +101,12 @@ export async function openGrabber(media: FrameMedia): Promise<FrameGrabber | nul
     return null
   }
 
-  const sbs = looksSbs(media.name, v.videoWidth, v.videoHeight)
+  // VR: one eye (the left half, or the top of top-bottom), not the seam.
+  const vr = looksVrFrame(media.name, v.videoWidth, v.videoHeight)
+  const eye = vr ? oneEyeRect(media.name, v.videoWidth, v.videoHeight, true) : { sx: 0, sy: 0, sw: v.videoWidth, sh: v.videoHeight }
   const draw = (maxWidth: number): Pic | null => {
-    const sw = sbs ? v.videoWidth / 2 : v.videoWidth
-    const sh = v.videoHeight
+    const sw = eye.sw
+    const sh = eye.sh
     const scale = Math.min(1, maxWidth / sw)
     const w = Math.max(1, Math.round(sw * scale))
     const h = Math.max(1, Math.round(sh * scale))
@@ -114,7 +116,7 @@ export async function openGrabber(media: FrameMedia): Promise<FrameGrabber | nul
     const g = c.getContext('2d')
     if (!g)
       return null
-    g.drawImage(v, 0, 0, sw, sh, 0, 0, w, h)
+    g.drawImage(v, eye.sx, eye.sy, sw, sh, 0, 0, w, h)
     // Throws for a stream whose server did not allow reading it.
     g.getImageData(0, 0, 1, 1)
     return { img: c, w, h }

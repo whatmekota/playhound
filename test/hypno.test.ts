@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { breathRadius, flashOpacity, parseWords, spiralAngle, wordIndex } from '../src/lib/hypno'
+import { bottomTurns, breathRadius, countBetween, flashOpacity, parseWords, spiralAngle, wordIndex } from '../src/lib/hypno'
 
 describe('wordIndex', () => {
   it('advances every N pulses and wraps', () => {
@@ -82,5 +82,26 @@ describe('parseWords', () => {
 
   it('caps the list', () => {
     expect(parseWords(Array.from({ length: 500 }, (_, i) => `w${i}`).join(','))).toHaveLength(200)
+  })
+})
+
+describe('flashes on the stroke', () => {
+  it('finds the bottom of each stroke, ignoring wiggles', () => {
+    const actions = [
+      { at: 0, pos: 1 },
+      { at: 100, pos: 0 },
+      { at: 150, pos: 0.02 },
+      { at: 200, pos: 0 },
+      { at: 300, pos: 1 },
+      { at: 400, pos: 0.1 },
+      { at: 500, pos: 0.9 },
+    ]
+    expect(bottomTurns(actions)).toEqual([100, 400])
+  })
+
+  it('counts the turns passed between two moments', () => {
+    expect(countBetween([100, 400, 700], 50, 450)).toBe(2)
+    expect(countBetween([100, 400, 700], 400, 700)).toBe(1)
+    expect(countBetween([100, 400, 700], 450, 300)).toBe(0)
   })
 })

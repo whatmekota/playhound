@@ -12,7 +12,7 @@ import { effectiveMeta } from './entryInfo'
 import { intensityBand } from './scriptIntensity'
 import { manualTags, needsSummary, parseSearch, summaryFor, tagSet } from './tags'
 
-export type SortKey = 'name' | 'path' | 'size' | 'date' | 'duration' | 'intensity' | 'peak'
+export type SortKey = 'name' | 'path' | 'size' | 'date' | 'duration' | 'intensity' | 'peak' | 'type'
 export interface SortState { key: SortKey, asc: boolean }
 
 export type FilterKey = 'scripted' | 'multi' | 'starred' | 'unscripted' | 'audio'
@@ -25,10 +25,14 @@ export const SORT_LABELS: Record<SortKey, string> = {
   duration: 'Duration',
   intensity: 'Intensity',
   peak: 'Peak speed',
+  type: 'Your type',
 }
 
 /** Sorts that need the script analysed; unanalysed videos sink to the end. */
 export const SCRIPT_SORTS: readonly SortKey[] = ['intensity', 'peak']
+
+/** Sorts worked out from your history (lib/yourType): most like what you finish to first. */
+export const TASTE_SORTS: readonly SortKey[] = ['type']
 
 /**
  * Pick a sort. Choosing the current key again flips it; a new key starts in
@@ -87,6 +91,8 @@ export function matchesQuery(v: VideoEntry, q: string): boolean {
 }
 
 export type SummaryOf = (name: string) => ScriptSummary | undefined
+/** "Your type" score of a video (lib/yourType), or undefined while there is no profile. */
+export type TasteOf = (v: VideoEntry) => number | undefined
 
 export interface LibraryQuery {
   query: string
@@ -124,8 +130,9 @@ export function comparePaths(a: string[], b: string[], asc = true): number {
   return a.length - b.length
 }
 
-function sortValue(v: VideoEntry, key: SortKey, summaryOf: SummaryOf): number | undefined {
+function sortValue(v: VideoEntry, key: SortKey, summaryOf: SummaryOf, tasteOf?: TasteOf): number | undefined {
   switch (key) {
+    case 'type': return tasteOf?.(v)
     case 'size': return v.file.size
     case 'date': return v.file.lastModified ?? 0
     case 'duration': return v.duration ?? 0
@@ -140,7 +147,7 @@ function sortValue(v: VideoEntry, key: SortKey, summaryOf: SummaryOf): number | 
  * re-sorts, and for the script sorts anything without an analysis goes last
  * whichever way round, since "unknown" is neither gentle nor intense.
  */
-export function sortEntries(list: VideoEntry[], sort: SortState, summaryOf: SummaryOf): VideoEntry[] {
+export function sortEntries(list: VideoEntry[], sort: SortState, summaryOf: SummaryOf, tasteOf?: TasteOf): VideoEntry[] {
   const { key, asc } = sort
   if (key === 'name')
     return list.sort((a, b) => (asc ? byName(a, b) : byName(b, a)))
@@ -152,7 +159,7 @@ export function sortEntries(list: VideoEntry[], sort: SortState, summaryOf: Summ
   // Read every key once rather than twice per comparison.
   const val = new Map<VideoEntry, number | undefined>()
   for (const v of list)
-    val.set(v, sortValue(v, key, summaryOf))
+    val.set(v, sortValue(v, key, summaryOf, tasteOf))
   return list.sort((a, b) => {
     const x = val.get(a)
     const y = val.get(b)
@@ -202,8 +209,8 @@ export function filterEntries(videos: readonly VideoEntry[], q: Omit<LibraryQuer
 }
 
 /** Filter, then sort. Returns a new array; `videos` is untouched. */
-export function queryLibrary(videos: readonly VideoEntry[], q: LibraryQuery, summaryOf: SummaryOf): VideoEntry[] {
-  return sortEntries(filterEntries(videos, q, summaryOf), q.sort, summaryOf)
+export function queryLibrary(videos: readonly VideoEntry[], q: LibraryQuery, summaryOf: SummaryOf, tasteOf?: TasteOf): VideoEntry[] {
+  return sortEntries(filterEntries(videos, q, summaryOf), q.sort, summaryOf, tasteOf)
 }
 
 /** Whether the result depends on script analyses, so it must refresh as they arrive. */

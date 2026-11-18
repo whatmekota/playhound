@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { RemoteAction, RemoteState } from '~/composables/useRemoteLink'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRemoteLink } from '~/composables/useRemoteLink'
+import { PAD_KEEPALIVE_MS, PAD_SEND_MS, padHeight } from '~/lib/strokePad'
 import { formatTime } from '~/lib/time'
 
 defineOptions({ name: 'RemotePage' })
@@ -49,8 +50,14 @@ function send(action: RemoteAction) {
 onMounted(() => {
   if (room.value)
     link.connect()
-  link.send({ type: 'hello' })
 })
+// Ask for the desktop's state once both ends are there: a hello sent before
+// the socket opened was lost, and a desktop that comes (back) later has
+// never seen one.
+watch(online, (on) => {
+  if (on)
+    link.send({ type: 'hello' })
+}, { immediate: true })
 
 const title = computed(() => state.value?.title.replace(/\.[^.]+$/, '') ?? '')
 // The knob when the desktop sends one; an older desktop only had the session's.
@@ -108,6 +115,83 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisible)
   void lock?.release().catch(() => {})
 })
+
+// ─── Stroke pad ───────────────────────────────────────────────────────────────
+// The finger's height is the stroke on the desktop (lib/strokePad): sent at
+// most every PAD_SEND_MS while it moves and every PAD_KEEPALIVE_MS while it
+// rests, so the desktop lets go if the phone goes quiet. Lifting it hands back.
+const padOpen = ref(false)
+const padEl = ref<HTMLElement | null>(null)
+/** The finger's height, 0–1, while one is down. */
+const finger = ref<number | null>(null)
+const padAllowed = computed(() => !!state.value?.pad)
+let pointer: number | null = null
+let lastSentAt = 0
+let lastEnd: 'top' | 'bottom' | null = null
+let pendingSend: ReturnType<typeof setTimeout> | undefined
+let keepAlive: ReturnType<typeof setInterval> | undefined
+
+function sendPad(pos: number) {
+  if (!online.value)
+    return
+  link.send({ type: 'pad', pos: Math.round(pos * 1000) / 1000 })
+  lastSentAt = performance.now()
+}
+
+function padMove(e: PointerEvent) {
+  if (e.pointerId !== pointer || !padEl.value)
+    return
+  const r = padEl.value.getBoundingClientRect()
+  const pos = padHeight(e.clientY, r.top, r.height)
+  finger.value = pos
+  // A tick at either end, so the range can be felt without looking.
+  const end = pos > 0.97 ? 'top' : pos < 0.03 ? 'bottom' : null
+  if (end && end !== lastEnd)
+    navigator.vibrate?.(8)
+  lastEnd = end
+  clearTimeout(pendingSend)
+  const wait = PAD_SEND_MS - (performance.now() - lastSentAt)
+  if (wait <= 0)
+    sendPad(pos)
+  else
+    pendingSend = setTimeout(() => finger.value !== null && sendPad(finger.value), wait)
+}
+
+function padDown(e: PointerEvent) {
+  if (pointer !== null || !online.value || state.value?.panicked)
+    return
+  pointer = e.pointerId
+  ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+  navigator.vibrate?.(12)
+  lastSentAt = 0
+  padMove(e)
+  clearInterval(keepAlive)
+  keepAlive = setInterval(() => finger.value !== null && sendPad(finger.value), PAD_KEEPALIVE_MS)
+}
+
+function padUp(e?: PointerEvent) {
+  if (e && e.pointerId !== pointer)
+    return
+  pointer = null
+  clearTimeout(pendingSend)
+  clearInterval(keepAlive)
+  if (finger.value === null)
+    return
+  finger.value = null
+  lastEnd = null
+  link.send({ type: 'pad', up: true })
+}
+
+function closePad() {
+  padUp()
+  padOpen.value = false
+}
+
+function padPanic() {
+  padUp()
+  send('panic')
+}
+onBeforeUnmount(() => padUp())
 </script>
 
 <template>
@@ -229,8 +313,17 @@ onBeforeUnmount(() => {
         </button>
       </section>
 
-      <!-- ─── Edge: big, near the thumb, above panic ─────────────────────── -->
-      <section class="mx-4 mt-3 flex shrink-0 gap-3" :class="online ? '' : 'opacity-40'">
+      <!-- ─── Stroke pad: opens a screen of its own ──────────────────────── -->
+      <section v-if="padAllowed" class="mx-4 mt-3 shrink-0" :class="online ? '' : 'opacity-40'">
+        <button type="button" class="rc-tile rc-wide px-4 h-14 w-full" :disabled="!online" @click="padOpen = true">
+          <span class="i-carbon-touch-1 text-[22px] text-accent-300" />
+          <span class="text-[15px] text-fg font-semibold">Stroke pad</span>
+          <span class="text-[12px] ml-auto truncate">Drive it with a finger</span>
+        </button>
+      </section>
+
+      <!-- ─── Edge: big, near the thumb, above panic (gone while edges are off) ─ -->
+      <section v-if="state?.edges !== false" class="mx-4 mt-3 flex shrink-0 gap-3" :class="online ? '' : 'opacity-40'">
         <button
           type="button"
           class="rc-edge rounded-[var(--radius-xl)] flex flex-1 gap-3 h-[4.5rem] min-w-0 items-center"
@@ -319,6 +412,53 @@ onBeforeUnmount(() => {
           {{ state?.panicked ? 'Everything is stopped and covered on the desktop' : 'Stops video, audio and device at once' }}
         </p>
       </section>
+
+      <!-- ─── The stroke pad's own screen ─────────────────────────────────── -->
+      <Transition name="t-fade">
+        <div v-if="padOpen" class="pad-screen bg-surface-950 flex flex-col inset-0 fixed z-50">
+          <header class="px-5 pb-3 pt-4 flex shrink-0 gap-3 items-center">
+            <span class="text-[17px] font-semibold">Stroke pad</span>
+            <span class="chip" :class="state?.padHeld ? 'text-ok' : ''">
+              {{ !online ? 'Offline' : state?.panicked ? 'Panic is on' : state?.padHeld ? 'You have it' : 'Touch to take over' }}
+            </span>
+            <button type="button" class="rc-round ml-auto h-10 w-10" aria-label="Close the stroke pad" @click="closePad">
+              <span class="i-carbon-close text-[20px]" />
+            </button>
+          </header>
+          <div
+            ref="padEl"
+            class="pad mx-4 rounded-[var(--radius-xl)] flex-1 relative overflow-hidden"
+            :class="[finger !== null ? 'is-down' : '', online && !state?.panicked ? '' : 'opacity-40']"
+            @pointerdown="padDown"
+            @pointermove="padMove"
+            @pointerup="padUp"
+            @pointercancel="padUp"
+            @lostpointercapture="padUp"
+          >
+            <span class="pad-label top-3">Top</span>
+            <span class="pad-label bottom-3">Bottom</span>
+            <template v-if="finger !== null">
+              <div class="pad-fill inset-x-0 bottom-0 absolute" :style="{ height: `${finger * 100}%` }" />
+              <div class="pad-line inset-x-0 absolute" :style="{ bottom: `${finger * 100}%` }" />
+            </template>
+            <p v-else class="text-[14px] text-fg-muted leading-relaxed px-10 text-center flex items-center inset-0 justify-center absolute">
+              Slide up and down: the stroke follows your finger. Lift it to hand back to what was playing.
+            </p>
+          </div>
+          <section class="panic-wrap px-4 pt-3 shrink-0">
+            <button
+              type="button"
+              class="rc-panic text-[17px] font-semibold rounded-[var(--radius-xl)] flex gap-2.5 h-16 w-full items-center justify-center"
+              :class="state?.panicked ? 'bg-ok/16 text-ok ring-1 ring-ok/30' : 'bg-danger text-surface-950'"
+              :disabled="!online"
+              @click="padPanic"
+            >
+              <span :class="state?.panicked ? 'i-carbon-play-filled-alt' : 'i-carbon-warning-alt'" class="text-[22px]" />
+              {{ state?.panicked ? 'Resume' : 'Panic' }}
+            </button>
+          </section>
+        </div>
+      </Transition>
     </template>
   </div>
 </template>
@@ -417,6 +557,52 @@ onBeforeUnmount(() => {
 .rc-edge.is-live {
   background: color-mix(in srgb, var(--warn) 22%, var(--bg-850));
 }
+.rc-wide {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.pad-screen {
+  padding-top: env(safe-area-inset-top);
+}
+.pad {
+  /* The finger owns the pad: no scrolling, no zoom, no text selection. */
+  touch-action: none;
+  background:
+    repeating-linear-gradient(to top, transparent 0 calc(25% - 1px), var(--border) calc(25% - 1px) 25%),
+    linear-gradient(to top, color-mix(in srgb, var(--accent) 8%, var(--bg-850)), var(--bg-850));
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: box-shadow var(--dur) var(--ease-out);
+}
+.pad.is-down {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.pad-label {
+  position: absolute;
+  left: 16px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.pad-fill {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--accent) 30%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent)
+  );
+  pointer-events: none;
+}
+.pad-line {
+  height: 4px;
+  margin-bottom: -2px;
+  background: var(--accent);
+  box-shadow: 0 0 18px var(--accent);
+  pointer-events: none;
+}
+
 /* The host sends the countdown once a second; glide between the ticks. */
 .rc-ring {
   transition: stroke-dashoffset 1s linear;

@@ -4,7 +4,7 @@ import type { FunscriptAction } from '~/lib/funscriptParser'
 import type { ScaledScript } from '~/lib/scriptScale'
 import { useLocalStorage } from '@vueuse/core'
 import { onUnmounted, ref } from 'vue'
-import { activeLinks, linkedActions } from '~/lib/axisLink'
+import { activeLinks, resolveLinked } from '~/lib/axisLink'
 import { advanceTwistPhase, estimateVelocity, synthAxes, synthTargets } from '~/lib/axisSynth'
 import { cancelFrame, DEVICE_BACKSTOP_MS, requestFrame } from '~/lib/frames'
 import { nextActionAt } from '~/lib/funscriptParser'
@@ -266,6 +266,17 @@ export function useVideoSync() {
     if (!syncing.value || !videoEl)
       return
 
+    // The phone's stroke pad has the device (useStrokePad): the script waits
+    // and picks up where the video is once the finger lets go, the way it
+    // does after a seek.
+    if (motion.handHeld) {
+      snap = true
+      lastDir = {}
+      bpSegmentAt = Number.NaN
+      rafId = requestFrame(tick, DEVICE_BACKSTOP_MS)
+      return
+    }
+
     const rawMs = videoEl.currentTime * 1000
     const speed = videoEl.playbackRate
 
@@ -288,7 +299,8 @@ export function useVideoSync() {
     const dtSec = prevTs ? Math.min(0.1, (now - prevTs) / 1000) : 0
     prevTs = now
     let strokePos: number | null = null
-    let stroke: { actions: FunscriptAction[], ms: number } | null = null
+    /** Each scripted axis's actions and time, for the axes linked to it. */
+    const played = new Map<string, { actions: FunscriptAction[], ms: number }>()
 
     const lead = leadMs(speed)
     for (const script of scriptStore.activeScripts) {
@@ -300,10 +312,10 @@ export function useVideoSync() {
       const adjustedMs = timeMs + (offsetMs ?? 0) + lead
       const nextAt = nextActionAt(actions, adjustedMs)
       const pos = sendAxis(channel, actions, adjustedMs, speed, nextAt, hold)
+      played.set(channel, { actions, ms: adjustedMs })
 
       if (channel === 'L0') {
         strokePos = pos
-        stroke = { actions, ms: adjustedMs }
         // The Handy plays the script itself: it is only told where the video
         // is and how deep an edge is. Buffering stops it, and its own offset
         // stands in for the device latency.
@@ -326,12 +338,14 @@ export function useVideoSync() {
       }
     }
 
-    // Linked axes play the stroke script, shifted and mapped, through the
-    // same path as a script of their own: knob, edges and filters included.
-    if (stroke) {
-      for (const link of activeLinks(motion.axisLinks, scriptStore.activeScripts.map(s => s.channel))) {
-        const linked = linkedActions(stroke.actions, link)
-        sendAxis(link.channel, linked, stroke.ms, speed, nextActionAt(linked, stroke.ms), hold)
+    // Linked axes play the script of the axis they follow (or what that one
+    // follows in turn), shifted and mapped, through the same path as a script
+    // of their own: knob, edges and filters included.
+    if (played.size) {
+      for (const link of activeLinks(motion.axisLinks, [...played.keys()])) {
+        const linked = resolveLinked(link.channel, played, motion.axisLinks)
+        if (linked)
+          sendAxis(link.channel, linked.actions, linked.ms, speed, nextActionAt(linked.actions, linked.ms), hold)
       }
     }
 

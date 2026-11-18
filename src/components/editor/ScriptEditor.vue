@@ -255,6 +255,16 @@ const fpsOptions = [24, 25, 30, 60].map(v => ({ value: v, label: String(v) }))
         </template>
         <SavePatternPanel @close="edit.patternSaveOpen = false" />
       </UiPopover>
+      <UiButton
+        v-if="edit.strokeScript && !edit.hasVibe"
+        v-tip="'A vibe script for vibrators, made from the stroke script: strength from its speed, swelling with each stroke. Adjust it here, then Save'"
+        variant="ghost"
+        size="sm"
+        icon="i-carbon-activity"
+        @click="edit.makeVibeTrack()"
+      >
+        Make a vibe track
+      </UiButton>
 
       <div class="mx-1 divider-x" />
       <UiPopover placement="top" align="start" width="272px">

@@ -5,8 +5,9 @@
  * Scans for devices and exposes a sendLinear() method that maps funscript
  * positions to linear strokers, and sendStrength() for toys that only know
  * "how hard" (vibrate, rotate, oscillate) — useVibeSync drives those, each
- * from the source chosen for it here (vibeSettings, persisted by toy name,
- * since Intiface hands out a new index every session).
+ * from the source chosen for it here (vibeSettings, persisted by toy name:
+ * the one given it in Intiface, else the model's; Intiface hands out a new
+ * index every session).
  *
  * Usage:
  *   const bp = useButtplug()
@@ -23,9 +24,12 @@ import {
   ButtplugBrowserWebsocketClientConnector,
   ButtplugClient,
   DeviceOutput,
+  InputCommandType,
+  InputType,
   OutputType,
 } from 'buttplug'
 import { computed, reactive, ref, shallowRef } from 'vue'
+import { toast } from '~/composables/useToast'
 import { KEYS } from '~/lib/persist'
 import { logCommand } from '~/lib/serialLog'
 import { DEFAULT_VIBE } from '~/lib/vibeMap'
@@ -53,6 +57,15 @@ function vibeSettings() {
 
 /** Strength last sent to each toy (by index), 0–1, for the live meters. */
 const levels = reactive<Record<number, number>>({})
+/** The same per motor (`${index}:${feature}`), for toys whose motors follow sources of their own. */
+const motorLevels = reactive<Record<string, number>>({})
+/** Battery, 0–1, by toy index, for toys that report one; read every minute. */
+const batteries = reactive<Record<number, number>>({})
+/** Battery at or under this: a notice, once a session per toy. */
+const BATTERY_LOW = 0.15
+const BATTERY_EVERY_MS = 60_000
+const warnedLow = new Set<string>()
+let batteryTimer: ReturnType<typeof setInterval> | null = null
 
 export interface ToyOutputs {
   linear: boolean
@@ -83,21 +96,122 @@ export function outputsOf(d: ButtplugClientDevice): ToyOutputs {
   }
 }
 
+export type MotorKind = 'vibrate' | 'rotate' | 'oscillate'
+const MOTOR_OUTPUT: Record<MotorKind, OutputType> = { vibrate: OutputType.Vibrate, rotate: OutputType.Rotate, oscillate: OutputType.Oscillate }
+const MOTOR_LABEL: Record<MotorKind, string> = { vibrate: 'Vibration', rotate: 'Rotation', oscillate: 'Oscillation' }
+
+/** One motor of a toy: a Buttplug feature that takes a strength. */
+export interface ToyMotor {
+  feature: number
+  kind: MotorKind
+  /** "Vibration", "Vibration 2", "Rotation". */
+  label: string
+}
+
+/** A toy's motors, in feature order. Guarded like outputsOf. */
+export function motorsOf(d: ButtplugClientDevice): ToyMotor[] {
+  const o = outputsOf(d)
+  const out: ToyMotor[] = []
+  try {
+    for (const f of d.features.values()) {
+      for (const kind of ['vibrate', 'rotate', 'oscillate'] as const) {
+        if (o[kind] && f.hasOutput(MOTOR_OUTPUT[kind]))
+          out.push({ feature: f.index, kind, label: MOTOR_LABEL[kind] })
+      }
+    }
+  }
+  catch {
+    return []
+  }
+  // Number the ones that share a kind: "Vibration 1", "Vibration 2".
+  for (const kind of ['vibrate', 'rotate', 'oscillate'] as const) {
+    const same = out.filter(m => m.kind === kind)
+    if (same.length > 1)
+      same.forEach((m, i) => (m.label = `${MOTOR_LABEL[kind]} ${i + 1}`))
+  }
+  return out
+}
+
 /** Takes a strength rather than a position: vibrators, rotators, oscillators. */
 export function isStrengthToy(d: ButtplugClientDevice): boolean {
   const o = outputsOf(d)
   return o.vibrate || o.rotate || o.oscillate
 }
 
+/**
+ * What the toy is called: the name given it in Intiface Central when there
+ * is one, so two of the same toy can be told apart (and set up apart), else
+ * the model's name.
+ */
+export function toyName(d: ButtplugClientDevice): string {
+  try {
+    return d.displayName?.trim() || d.name
+  }
+  catch {
+    return d.name
+  }
+}
+
 function ensureVibe(d: ButtplugClientDevice) {
   const store = vibeSettings()
-  if (isStrengthToy(d) && !store.value[d.name])
-    store.value = { ...store.value, [d.name]: { ...DEFAULT_VIBE } }
+  const key = toyName(d)
+  if (!isStrengthToy(d) || store.value[key])
+    return
+  // Named in Intiface after it was set up here: it keeps what it had under its model's name.
+  store.value = { ...store.value, [key]: { ...(store.value[d.name] ?? DEFAULT_VIBE) } }
 }
 
 function clearLevels() {
   for (const k of Object.keys(levels))
     delete levels[Number(k)]
+  for (const k of Object.keys(motorLevels))
+    delete motorLevels[k]
+}
+
+/** The toy's battery, 0–1, or null when it has none or doesn't answer. */
+async function readBattery(d: ButtplugClientDevice): Promise<number | null> {
+  try {
+    for (const f of d.features.values()) {
+      if (!f.hasInput(InputType.Battery))
+        continue
+      const r = await f.runInput(InputType.Battery, InputCommandType.Read)
+      if (!r || typeof r.value !== 'number')
+        return null
+      const top = f.input(InputType.Battery)?.valueRange[1] ?? 100
+      return Math.max(0, Math.min(1, top > 1 ? r.value / top : r.value))
+    }
+  }
+  catch {}
+  return null
+}
+
+async function checkBatteries() {
+  for (const d of devices.value) {
+    const b = await readBattery(d)
+    if (b === null) {
+      delete batteries[d.index]
+      continue
+    }
+    batteries[d.index] = b
+    const name = toyName(d)
+    if (b <= BATTERY_LOW && !warnedLow.has(name)) {
+      warnedLow.add(name)
+      toast.warn(`${name} is low on battery`, { detail: `${Math.round(b * 100)}% left`, icon: 'i-carbon-battery-low', key: `battery-${name}` })
+    }
+    else if (b > BATTERY_LOW + 0.1) {
+      warnedLow.delete(name)
+    }
+  }
+}
+
+function watchBatteries(on: boolean) {
+  if (batteryTimer !== null)
+    clearInterval(batteryTimer)
+  batteryTimer = on ? setInterval(() => void checkBatteries(), BATTERY_EVERY_MS) : null
+  if (!on) {
+    for (const k of Object.keys(batteries))
+      delete batteries[Number(k)]
+  }
 }
 
 export function useButtplug() {
@@ -113,15 +227,18 @@ export function useButtplug() {
       client.addListener('deviceadded', (d: ButtplugClientDevice) => {
         ensureVibe(d)
         devices.value = [...devices.value, d]
+        void checkBatteries()
       })
       client.addListener('deviceremoved', (d: ButtplugClientDevice) => {
         devices.value = devices.value.filter(x => x.index !== d.index)
         delete levels[d.index]
+        delete batteries[d.index]
       })
       client.addListener('disconnect', () => {
         connected.value = false
         devices.value = []
         clearLevels()
+        watchBatteries(false)
       })
 
       // Use Browser WebSocket connector (works in browser, not Node)
@@ -133,6 +250,8 @@ export function useButtplug() {
       // client.devices is a Map<number, ButtplugClientDevice>
       devices.value = [...(client.devices as unknown as Map<number, ButtplugClientDevice>).values()]
       devices.value.forEach(ensureVibe)
+      watchBatteries(true)
+      void checkBatteries()
     }
     catch (e: any) {
       error.value = e?.message ?? 'Connection failed'
@@ -147,6 +266,7 @@ export function useButtplug() {
     connected.value = false
     devices.value = []
     clearLevels()
+    watchBatteries(false)
   }
 
   async function startScan() {
@@ -223,6 +343,20 @@ export function useButtplug() {
     await Promise.allSettled(sends)
   }
 
+  /** One motor of a toy (motorsOf) at `level`, 0–1. */
+  async function sendMotor(device: ButtplugClientDevice, motor: ToyMotor, level: number) {
+    const v = Math.max(0, Math.min(1, level))
+    motorLevels[`${device.index}:${motor.feature}`] = v
+    const f = device.features.get(motor.feature)
+    if (!f)
+      return
+    const cmd = motor.kind === 'vibrate' ? DeviceOutput.Vibrate : motor.kind === 'rotate' ? DeviceOutput.Rotate : DeviceOutput.Oscillate
+    try {
+      await f.runOutput(cmd.percent(v))
+    }
+    catch {}
+  }
+
   async function stopAll() {
     clearLevels()
     for (const device of devices.value) {
@@ -238,12 +372,13 @@ export function useButtplug() {
 
   /** Settings for one toy, falling back to the defaults for one never seen. */
   function vibeFor(d: ButtplugClientDevice): VibeSettings {
-    return vibeSettings().value[d.name] ?? DEFAULT_VIBE
+    const store = vibeSettings().value
+    return store[toyName(d)] ?? store[d.name] ?? DEFAULT_VIBE
   }
 
   function setVibe(d: ButtplugClientDevice, patch: Partial<VibeSettings>) {
     const store = vibeSettings()
-    store.value = { ...store.value, [d.name]: { ...vibeFor(d), ...patch } }
+    store.value = { ...store.value, [toyName(d)]: { ...vibeFor(d), ...patch } }
   }
 
   const deviceCount = computed(() => devices.value.length)
@@ -263,6 +398,9 @@ export function useButtplug() {
     hasVibrators,
     strengthToys,
     levels,
+    motorLevels,
+    batteries,
+    motorsOf,
     connect,
     disconnect,
     startScan,
@@ -271,6 +409,7 @@ export function useButtplug() {
     stopAll,
     setEnabled,
     sendStrength,
+    sendMotor,
     vibeFor,
     setVibe,
   }

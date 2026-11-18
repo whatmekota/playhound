@@ -26,6 +26,13 @@ export const axisOutput: Record<string, number> = {}
 export const axisOutputAt: Record<string, number> = {}
 
 /**
+ * Last position sent per axis before range and inversion: the motion as it
+ * is meant, 0 the bottom of the stroke whatever the device is set to. What
+ * plugins read (motion.axes).
+ */
+export const axisPosition: Record<string, number> = {}
+
+/**
  * Every position any part of the app sends, before range and inversion:
  * script, generators, plugins, derived axes, homing. The session recorder
  * listens here; null when nothing does, so it costs nothing then.
@@ -51,6 +58,7 @@ function track(channel: string, position: number, limits: AxisLimits, intervalMs
   axisTap?.(channel, position, intervalMs)
   for (const fn of axisListeners)
     fn(channel, position, intervalMs)
+  axisPosition[channel] = Math.max(0, Math.min(1, position))
   let p = limits.invert ? 1 - position : position
   p = limits.min + p * (limits.max - limits.min)
   axisOutput[channel] = Math.max(0, Math.min(1, p))

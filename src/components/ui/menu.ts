@@ -11,4 +11,6 @@ export interface MenuItem {
   separator?: boolean
   /** Render a small section heading instead of an item. */
   heading?: boolean
+  /** A tooltip saying more than the label. */
+  hint?: string
 }

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { PhaseKind, Programme, ProgrammePhase, RunShape, VideoSwitch } from '~/lib/programme'
+import type { ClipOrder, PhaseKind, Programme, ProgrammePhase, RunShape, VideoSwitch } from '~/lib/programme'
 import type { ReelClip } from '~/lib/reel'
 import type { VideoEntry } from '~/stores/libraryStore'
 import { computed, onMounted, ref, useId } from 'vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiEmpty from '~/components/ui/UiEmpty.vue'
+import UiField from '~/components/ui/UiField.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiInput from '~/components/ui/UiInput.vue'
 import UiPanel from '~/components/ui/UiPanel.vue'
@@ -68,6 +69,11 @@ const KIND_TONE: Record<PhaseKind, string> = {
   peak: 'var(--warn)',
   cooldown: 'var(--accent)',
 }
+
+const ORDER_MODES: { value: ClipOrder, label: string }[] = [
+  { value: 'arc', label: 'Follow the arc' },
+  { value: 'shuffle', label: 'Shuffle' },
+]
 
 const VIDEO_MODES: { value: VideoSwitch, label: string, title: string }[] = [
   { value: 'ended', label: 'When it ends', title: 'Each video plays out; the director picks the next one for where the arc is then' },
@@ -354,6 +360,7 @@ function createNew() {
     name: 'My programme',
     builtin: false,
     reel: true,
+    order: 'arc',
     clipSec: [DEFAULT_CLIP_SEC[0], DEFAULT_CLIP_SEC[1]],
     video: 'ended',
     everyMin: 8,
@@ -500,7 +507,7 @@ const edgeLine = computed(() => {
             <span v-else-if="prog.finished && showingRun" key="done" class="text-[12px] text-ok flex gap-1.5 items-center">
               <span class="i-carbon-checkmark-outline" /> Finished · {{ clock(prog.elapsed) }}
             </span>
-            <span v-else key="idle" class="hint num">{{ shown.phases.length }} phases · {{ clock(shownTotal) }}<template v-if="reelShown"> · {{ prog.reel.length }} clips</template></span>
+            <span v-else key="idle" class="hint num">{{ shown.phases.length }} {{ shown.phases.length === 1 ? 'phase' : 'phases' }} · {{ clock(shownTotal) }}<template v-if="reelShown"> · {{ prog.reel.length }} clips</template></span>
           </Transition>
         </div>
 
@@ -643,6 +650,7 @@ const edgeLine = computed(() => {
           +5 min
         </UiButton>
         <UiButton
+          v-if="control.settings.enabled"
           v-tip="edge && edge.pass < edge.of ? 'Close: end this pass and ease right off' : 'Close: back everything off for a while'"
           size="sm"
           variant="subtle"
@@ -986,12 +994,17 @@ const edgeLine = computed(() => {
           <UiSwitch
             v-model="draft.reel"
             label="Highlight reel"
-            hint="The best-fitting chapters of many videos, back to back, gentle ones first and the hardest at the peak. Whole videos play while the chapter index is too small."
+            :hint="draft.order === 'shuffle'
+              ? 'Clips from many videos, back to back, in any order. Whole videos play while the chapter index is too small.'
+              : 'The best-fitting chapters of many videos, back to back, gentle ones first and the hardest at the peak. Whole videos play while the chapter index is too small.'"
             size="sm"
           />
           <Transition name="t-collapse">
             <div v-if="draft.reel">
-              <div class="min-h-0 overflow-hidden">
+              <div class="flex flex-col gap-3 min-h-0 overflow-hidden">
+                <UiField label="Which clips" :hint="draft.order === 'shuffle' ? 'Any video, any order, each clip a random length between the two below. Make the phases one plateau to leave the clips as they are.' : 'The ones that fit the arc: gentle while it warms up, the hardest at the peak.'">
+                  <UiSegmented v-model="draft.order" :options="ORDER_MODES" size="xs" block />
+                </UiField>
                 <div class="gap-3 grid grid-cols-2">
                   <UiSlider :model-value="draft.clipSec[0]" label="Shortest clip" :min="10" :max="300" :step="5" :format="secFormat" @update:model-value="setClip(0, $event)" />
                   <UiSlider :model-value="draft.clipSec[1]" label="Longest clip" :min="10" :max="600" :step="10" :format="secFormat" @update:model-value="setClip(1, $event)" />
@@ -1050,7 +1063,7 @@ const edgeLine = computed(() => {
             <div class="flex flex-1 flex-col min-w-0">
               <span class="text-[12.5px] font-medium truncate" :class="prog.selectedId === p.id ? 'text-accent-300' : 'text-fg'">{{ p.name }}</span>
               <span class="text-[10.5px] text-fg-faint num truncate">
-                {{ minutesOf(p) }} min · {{ p.phases.length }} phases<template v-if="p.phases.some(ph => ph.edges > 1)"> · edging</template><template v-if="p.reel"> · reel</template>
+                {{ minutesOf(p) }} min · {{ p.phases.length }} {{ p.phases.length === 1 ? 'phase' : 'phases' }}<template v-if="p.phases.some(ph => ph.edges > 1)"> · edging</template><template v-if="p.reel"> · {{ p.order === 'shuffle' ? 'shuffled' : 'reel' }}</template>
               </span>
             </div>
             <UiBadge v-if="prog.active && prog.plan?.id === p.id" tone="ok" size="xs" dot pulse>

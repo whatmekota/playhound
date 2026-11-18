@@ -12,7 +12,7 @@ import { toast } from '~/composables/useToast'
 import { storage } from '~/lib/browserApi'
 import { buildIndex, cancelIndex, indexRecord, indexRevision, indexState } from '~/lib/chapterIndex'
 import { chaptersForScript } from '~/lib/chapters'
-import { EDGE_FALL_SEC } from '~/lib/edging'
+import { fallOf } from '~/lib/edging'
 import { KEYS } from '~/lib/persist'
 import {
   cloneProgramme,
@@ -373,7 +373,7 @@ export const useProgrammeStore = defineStore('programme', () => {
   /** Calm after an edge before the next pass climbs: the edge's own fall and hold, and half its rebuild. */
   function restSec() {
     const s = control.settings
-    return EDGE_FALL_SEC + s.cooldownSec + s.rebuildSec * 0.5
+    return fallOf(s) + s.cooldownSec + s.rebuildSec * 0.5
   }
 
   function freshLive(p: Programme): (LiveEdges | null)[] {
@@ -384,6 +384,9 @@ export const useProgrammeStore = defineStore('programme', () => {
   const previewShape = computed(() => runShape(selected.value.phases, [], freshLive(selected.value), 0))
 
   // ─── Reel planning ──────────────────────────────────────────────────────────
+
+  /** The running (or selected) programme shuffles its clips rather than following the arc. */
+  const shuffled = () => (plan.value && active.value ? plan.value : selected.value).order === 'shuffle'
 
   function planFrom(sh: RunShape, from: number, opts: { history?: ReelClip[], fixed?: ReelClip[], salt?: number, to?: number }) {
     const p = plan.value && active.value ? plan.value : selected.value
@@ -399,6 +402,7 @@ export const useProgrammeStore = defineStore('programme', () => {
       exclude: skipped,
       fixed: opts.fixed,
       history: opts.history,
+      shuffle: p.order === 'shuffle',
     })
   }
 
@@ -447,7 +451,7 @@ export const useProgrammeStore = defineStore('programme', () => {
       planPreview()
     }, 250)
   }
-  watch([() => JSON.stringify(selected.value), pool, () => control.settings.cooldownSec, () => control.settings.rebuildSec], () => {
+  watch([() => JSON.stringify(selected.value), pool, () => control.settings.cooldownSec, () => control.settings.rebuildSec, () => control.settings.fallSec], () => {
     if (!active.value)
       schedulePreview()
   })
@@ -841,7 +845,7 @@ export const useProgrammeStore = defineStore('programme', () => {
     // suit the phase being entered, not the end of the last one.
     target.value = shapeAt(shape.value!, elapsed.value)
     if (mode.value === 'videos')
-      director.steer.value = target.value
+      director.steer.value = shuffled() ? null : target.value
     if (loc.index !== enteredPhase)
       enterPhase(loc.index, true)
     writeIntensity(slew(output.value, target.value, FOLLOW_PER_SEC, dt))
@@ -944,7 +948,7 @@ export const useProgrammeStore = defineStore('programme', () => {
       void playClip(0)
     }
     else {
-      director.steer.value = target.value
+      director.steer.value = shuffled() ? null : target.value
       if (player.videoUrl) {
         logCurrent()
       }

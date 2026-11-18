@@ -21,6 +21,10 @@
  * - **Locks.** Clips the user locked stay, in order, re-timed to wherever the
  *   plan has got to; everything around them is planned fresh.
  *
+ * Or **shuffled** (`shuffle`): any video, any order, each clip a random length
+ * between the shortest and the longest and a random stretch of its chapter,
+ * the arc and its breaks left out. The variety rules still hold.
+ *
  * Pure and deterministic for a given seed, so it can be tested and replanned
  * freely (an edge, a skip, "keep this longer" all just replan the rest).
  */
@@ -84,6 +88,8 @@ export interface ReelOptions {
   fixed?: ReelClip[]
   /** Clips already played (latest last), so variety carries over a replan. */
   history?: ReelClip[]
+  /** Any clip in any order, each a random length (see the file comment), rather than what fits the arc. */
+  shuffle?: boolean
 }
 
 export interface ReelPlan {
@@ -212,12 +218,19 @@ export function chooseWindow(
   minMs: number,
   target: number,
   trimMs = capMs,
+  /** Given, a long chapter is trimmed to a random stretch rather than the best-matching one. */
+  random?: () => number,
 ): Window | null {
   const limit = Math.max(0, src.durationMs - END_GUARD_MS)
   let a = ch.start
   let b = Math.min(ch.end, limit)
   const lenMs = Math.min(capMs, Math.max(minMs, trimMs))
-  if (b - a > capMs) {
+  if (b - a > capMs && random) {
+    const steps = Math.max(0, Math.floor((b - lenMs - a) / CURVE_MS))
+    a += Math.floor(random() * (steps + 1)) * CURVE_MS
+    b = a + lenMs
+  }
+  else if (b - a > capMs) {
     // Slide a slot-long window across the chapter a curve step at a time.
     let bestA = a
     let bestScore = Number.POSITIVE_INFINITY
@@ -341,20 +354,23 @@ export function planReel(pool: ReelSource[], req: ReelRequest, opts: ReelOptions
       continue
     }
 
-    // The slot: up to the next change in the arc, within bounds.
+    // The slot: up to the next change in the arc, within bounds; shuffled, any length within them.
     const nextBreak = breaks.find(b => b > t + minSec * 0.75) ?? req.to
-    let slot = Math.min(maxSec, Math.max(minSec, nextBreak - t))
+    let slot = opts.shuffle
+      ? minSec + random() * (maxSec - minSec)
+      : Math.min(maxSec, Math.max(minSec, nextBreak - t))
     if (fixed.length)
       slot = Math.min(slot, Math.max(minSec, fixed[0].at - t))
     slot = Math.min(slot, Math.max(minSec, req.to - t))
     const target = meanOver(req.target, t, t + slot)
 
-    const pick = choose(all, { used, recent, last, spacing, slot, prefSec, minSec, target, random })
+    const shuffle = !!opts.shuffle
+    const pick = choose(all, { used, recent, last, spacing, slot, prefSec, minSec, target, random, shuffle })
       ?? (() => {
         // Ran dry: let videos come round again sooner, then let chapters repeat.
         shortfall = true
-        return choose(all, { used, recent: [], last, spacing: 0, slot, prefSec, minSec, target, random })
-          ?? choose(all, { used: new Set(), recent: last ? [last] : [], last, spacing: 1, slot, prefSec, minSec, target, random })
+        return choose(all, { used, recent: [], last, spacing: 0, slot, prefSec, minSec, target, random, shuffle })
+          ?? choose(all, { used: new Set(), recent: last ? [last] : [], last, spacing: 1, slot, prefSec, minSec, target, random, shuffle })
       })()
     if (!pick)
       break
@@ -381,6 +397,7 @@ interface ChooseCtx {
   minSec: number
   target: number
   random: () => number
+  shuffle: boolean
 }
 
 function choose(all: Candidate[], x: ChooseCtx): { c: Candidate, w: Window } | null {
@@ -392,6 +409,8 @@ function choose(all: Candidate[], x: ChooseCtx): { c: Candidate, w: Window } | n
   const open = all.filter(c => !x.used.has(c.key) && !recentVideos.has(c.src.video))
   if (!open.length)
     return null
+  if (x.shuffle)
+    return chooseAny(open, x)
   const rough = open
     .map(c => ({ c, d: Math.abs(c.ch.intensity - x.target) }))
     .sort((a, b) => a.d - b.d)
@@ -428,6 +447,41 @@ function choose(all: Candidate[], x: ChooseCtx): { c: Candidate, w: Window } | n
     }
   }
   return best
+}
+
+/**
+ * Shuffled: a video at random (each as likely, however many chapters it
+ * has), then one of its chapters, a random stretch of it as long as the
+ * slot. Not by the creator just played while there's another.
+ */
+function chooseAny(open: Candidate[], x: ChooseCtx): { c: Candidate, w: Window } | null {
+  const byVideo = new Map<string, Candidate[]>()
+  for (const c of open) {
+    const list = byVideo.get(c.src.video)
+    if (list)
+      list.push(c)
+    else
+      byVideo.set(c.src.video, [c])
+  }
+  const videos = [...byVideo.values()]
+  for (let i = videos.length - 1; i > 0; i--) {
+    const j = Math.floor(x.random() * (i + 1))
+    ;[videos[i], videos[j]] = [videos[j], videos[i]]
+  }
+  const slotMs = x.slot * 1000
+  let sameCreator: { c: Candidate, w: Window } | null = null
+  for (const list of videos.slice(0, SHORTLIST)) {
+    const c = list[Math.floor(x.random() * list.length)]
+    const w = chooseWindow(c.src, c.ch, slotMs, x.minSec * 1000, c.ch.intensity, slotMs, x.random)
+    if (!w)
+      continue
+    if (c.src.creator && c.src.creator === x.last?.creator) {
+      sameCreator ??= { c, w }
+      continue
+    }
+    return { c, w }
+  }
+  return sameCreator
 }
 
 function tagsOf(all: Candidate[], video: string): string[] {

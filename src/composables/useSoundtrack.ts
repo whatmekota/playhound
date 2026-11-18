@@ -21,6 +21,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { sourceOf, useScriptStore } from '~/stores/scriptStore'
+import { countMoment } from './achievementEvents'
 import { useFunscript } from './useFunscript'
 import { toast } from './useToast'
 
@@ -258,6 +259,7 @@ function install() {
       generated.value = { key, filename: script.name, json, parsed: toRaw(sourceOf(results[0])) }
       if (device.axisConfigs.L0)
         device.axisConfigs.L0.enabled = true
+      countMoment('music-script')
       toast.success('Script made from the music', {
         detail: `${actions.length.toLocaleString()} actions at ${Math.round(a.bpm)} bpm. Save it to keep it.`,
         icon: 'i-carbon-music',

@@ -14,7 +14,7 @@ import { generatorStroke } from '~/composables/useMotionEngine'
 import { analyseActions, scriptAnalysisKey } from '~/composables/useScriptAnalysis'
 import { analyseSoundtrack, soundtrackProgress } from '~/composables/useSoundtrack'
 import { proxiedStream } from '~/composables/useStreams'
-import { axisOutput } from '~/composables/useTCode'
+import { addAxisListener, axisOutput, axisPosition } from '~/composables/useTCode'
 import { toast } from '~/composables/useToast'
 import { isAndroidApp } from '~/lib/android/detect'
 import { AXIS_MAP, extractSuffix } from '~/lib/axisMap'
@@ -25,6 +25,8 @@ import { effectiveMeta } from '~/lib/entryInfo'
 import { sampleEnvelope } from '~/lib/funscriptAnalysis'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
 import { handleDb, pluginDb, summaryDb, videoMetaDb } from '~/lib/idb'
+import { clampLatency } from '~/lib/latency'
+import { soundTrackOf } from '~/lib/mediaSound'
 import { musicScript } from '~/lib/musicScript'
 import { KEYS } from '~/lib/persist'
 import { intensityBand } from '~/lib/scriptIntensity'
@@ -51,6 +53,7 @@ import { parseStage, stageOf } from '~/plugins/stage'
 import { loadReleases, saveReleases } from '~/plugins/storeCache'
 import { createWebview } from '~/plugins/webview'
 import { stripCommonRoot, unzip } from '~/plugins/zip'
+import { useAchievementStore } from '~/stores/achievementStore'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useLibraryStore } from '~/stores/libraryStore'
 import { useMotionStore } from '~/stores/motionStore'
@@ -310,6 +313,8 @@ export const usePluginStore = defineStore('plugins', () => {
   // ─── Session control: the user's limit, and one ramp at a time ────────────
   /** Settings → Plugins: the highest intensity a plugin may set (ctx.session.intensity.set). */
   const intensityMax = useLocalStorage<number>(KEYS.pluginIntensityMax.key, DEFAULT_PLUGIN_INTENSITY_MAX)
+  /** The device latency setting (the Device panel's), for motion.readout. */
+  const deviceLatency = useLocalStorage<number>(KEYS.deviceLatency.key, 0)
   /** The knob moving toward what a plugin asked for, until it gets there or someone else turns it. */
   let ramp: { timer: ReturnType<typeof setInterval>, owner: string } | null = null
   /**
@@ -1049,16 +1054,31 @@ export const usePluginStore = defineStore('plugins', () => {
       return fn(...a)
     }
 
-    const snapshot = (): PlayerSnapshot => ({
-      playing: player.isPlaying,
-      title: player.videoPath ? player.videoPath.split(/[\\/]/).pop() ?? player.videoPath : null,
-      time: player.currentTime,
-      duration: player.videoDuration,
-      hasScript: scripts.hasScripts,
-      rate: player.playbackSpeed,
-      width: player.videoWidth,
-      height: player.videoHeight,
-    })
+    /** Sound coming out of the player now; null while the browser can't tell yet whether it has a sound track. */
+    const audibleNow = (external: boolean): boolean | null => {
+      if (!player.isPlaying || external || player.isMuted || player.volume < 0.01)
+        return false
+      const el = usePlaybackStore().videoElement()
+      return el ? soundTrackOf(el) : null
+    }
+
+    const snapshot = (): PlayerSnapshot => {
+      const external = player.videoKind === 'external'
+      return {
+        playing: player.isPlaying,
+        title: player.videoPath ? player.videoPath.split(/[\\/]/).pop() ?? player.videoPath : null,
+        time: player.currentTime,
+        duration: player.videoDuration,
+        hasScript: scripts.hasScripts,
+        rate: player.playbackSpeed,
+        width: player.videoWidth,
+        height: player.videoHeight,
+        muted: player.isMuted,
+        volume: player.volume,
+        external,
+        audible: audibleNow(external),
+      }
+    }
 
     // ─── Library and playback ──────────────────────────────────────────────
     const library = useLibraryStore()
@@ -1147,6 +1167,12 @@ export const usePluginStore = defineStore('plugins', () => {
       return { spm: Math.round(cur.spm), level, next, endsInS: Math.max(0, Math.round((a.durationMs - t) / 1000)) }
     }
 
+    /** The axis readers want `player` (what plays) or `device`. */
+    const seesAxes = (call: string) => {
+      if (!allows(access, 'player') && !allows(access, 'device'))
+        throw new Error(`${manifestName} can't use ${call}: its manifest doesn't ask for the "player" or the "device" permission`)
+    }
+
     const readout = (): MotionReadout => {
       // The generator's own stroke, when it is the one moving (not a script).
       const g = scripts.hasScripts && player.isPlaying ? null : generatorStroke()
@@ -1160,6 +1186,8 @@ export const usePluginStore = defineStore('plugins', () => {
         phase: g ? g.phase : null,
         nextStrokeInMs: g ? Math.round((1 - g.phase) * 60_000 / g.spm) : null,
         scriptDriving: scripts.hasScripts && player.isPlaying,
+        shape: motion.shape,
+        latencyMs: clampLatency(deviceLatency.value),
       }
     }
 
@@ -1947,7 +1975,7 @@ export const usePluginStore = defineStore('plugins', () => {
         frame: gate('player', 'player.frame', (o: { maxWidth?: number, quality?: number } = {}) => playback.grabFrame(Math.max(64, Math.min(1280, o.maxWidth ?? 512)), Math.max(0.3, Math.min(0.95, o.quality ?? 0.72)))),
         onChange: gate('player', 'player.onChange', (fn: (s: PlayerSnapshot) => void) => {
           // What plays and whether it plays; not every tick of the clock.
-          const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts, player.playbackSpeed, player.videoWidth, player.videoHeight], () => fn(snapshot()))
+          const stop = watch(() => [player.isPlaying, player.videoPath, player.videoDuration, scripts.hasScripts, player.playbackSpeed, player.videoWidth, player.videoHeight, player.isMuted, player.volume, player.videoKind], () => fn(snapshot()))
           return later(stop)
         }),
         clock: gate('player', 'player.clock', clockNow),
@@ -1991,9 +2019,29 @@ export const usePluginStore = defineStore('plugins', () => {
         readout,
         filter: gate('device', 'motion.filter', setFilter),
         axes: () => {
-          if (!allows(access, 'player') && !allows(access, 'device'))
-            throw new Error(`${manifestName} can't use motion.axes: its manifest doesn't ask for the "player" or the "device" permission`)
+          seesAxes('motion.axes')
+          return { ...axisPosition }
+        },
+        output: () => {
+          seesAxes('motion.output')
           return { ...axisOutput }
+        },
+        onAxis: (fn: (axis: string, pos: number, inMs: number) => void) => {
+          seesAxes('motion.onAxis')
+          if (typeof fn !== 'function')
+            throw new TypeError('motion.onAxis takes a function')
+          let failed = false
+          return later(addAxisListener((axis, pos, inMs) => {
+            try {
+              fn(axis, Math.max(0, Math.min(1, pos)), inMs)
+            }
+            catch (err) {
+              // Said once: it runs many times a second.
+              if (!failed)
+                console.error(`[plugin ${id}] motion.onAxis failed`, err)
+              failed = true
+            }
+          }))
         },
       },
       heart: {
@@ -2014,6 +2062,16 @@ export const usePluginStore = defineStore('plugins', () => {
           const drop = later(() => source.close())
           return { push: (bpm: number) => source.push(Number(bpm)), close: drop }
         }),
+      },
+      achievements: {
+        define(list) {
+          useAchievementStore().pluginDefine(id, manifestName, list)
+        },
+        unlock: (aid: string) => useAchievementStore().pluginUnlock(id, String(aid)),
+        progress(aid: string, value: number) {
+          useAchievementStore().pluginProgress(id, String(aid), Number(value))
+        },
+        unlocked: () => ({ ...(useAchievementStore().saved.plugins[id]?.unlocked ?? {}) }),
       },
       safety: {
         panicked: () => safety.panicked,

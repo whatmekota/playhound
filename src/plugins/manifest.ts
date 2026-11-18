@@ -26,9 +26,10 @@ import { APP_VERSION, meetsMin, readStoreFields, shortVersion } from './storeMet
  * files; 5 a song's sections and bar confidence, music.plan's strokes and
  * library videos' stroke profiles; 6 a status line of its own, heart rate
  * (read and supplied), button fields in its settings and every axis's
- * position. Plugins written for older ones run as before.
+ * position; 7 achievements of its own. Plugins written for older ones run
+ * as before.
  */
-export const PLUGIN_API = 6
+export const PLUGIN_API = 7
 
 export interface PermissionInfo {
   id: PluginPermission

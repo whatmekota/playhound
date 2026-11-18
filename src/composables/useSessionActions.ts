@@ -56,6 +56,10 @@ export function useSessionActions() {
   }
 
   function edge(source: EdgeSource) {
+    if (!ctl.settings.enabled) {
+      toast('Edges are off', { detail: 'Turn them on in Settings → Edges.', icon: 'i-carbon-hourglass', key: 'edges-off' })
+      return
+    }
     ctl.edge(source, {
       videoTime: player.videoUrl ? player.currentTime : null,
       videoName: videoName.value,
