@@ -1179,8 +1179,8 @@ export const usePluginStore = defineStore('plugins', () => {
       return {
         spm: motion.currentSpm,
         depth: motion.currentDepth,
-        // What was last sent to the stroke axis: the generator's or a script's, whichever drives it.
-        pos: axisOutput.L0 ?? motion.currentPos,
+        // What was last sent to the stroke axis (the generator's or a script's, whichever drives it), before range and invert.
+        pos: axisPosition.L0 ?? motion.currentPos,
         maxSpm: motion.maxSpm,
         device: anyDevice.value,
         phase: g ? g.phase : null,

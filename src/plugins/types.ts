@@ -310,7 +310,7 @@ export interface MotionTarget {
 export interface MotionReadout {
   spm: number
   depth: number
-  /** Where the stroke axis is now, 0-1: the generator's output, or a script's while one plays. */
+  /** Where the stroke axis is now, 0-1: the generator's output, or a script's while one plays; before range and invert, as motion.axes has it. */
   pos: number
   /** The app's speed ceiling, strokes per minute. */
   maxSpm: number
