@@ -272,6 +272,10 @@ describe('what is heard', () => {
     // Chromium: picture decoded and no sound yet, then a fair way and still none.
     expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 0, webkitVideoDecodedByteCount: 20_000 }))).toBeNull()
     expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 0, webkitVideoDecodedByteCount: 2_000_000 }))).toBe(false)
+    // A small video that has played a second with no sound: none, without waiting for the bytes.
+    const played = (sec: number) => ({ length: 1, start: () => 0, end: () => sec })
+    expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 0, webkitVideoDecodedByteCount: 20_000, played: played(0.4) }))).toBeNull()
+    expect(soundTrackOf(el({ webkitAudioDecodedByteCount: 0, webkitVideoDecodedByteCount: 20_000, played: played(1.2) }))).toBe(false)
     expect(soundTrackOf(el({ audioTracks: { length: 1 } }))).toBe(true)
     expect(soundTrackOf(el({}))).toBeNull()
   })
