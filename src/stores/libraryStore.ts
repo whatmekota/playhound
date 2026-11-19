@@ -9,7 +9,7 @@ import { canPickDirectory, collectHandleFiles, desktop, filePath, handlePathOf, 
 import { canWrite } from '~/lib/funscriptSave'
 import { handleDb, metaDb, videoMetaDb } from '~/lib/idb'
 import { applyChanges, baseName, diffPaths, diskPathOf, isLibraryName, keepUnchanged, listPaths, MAX_CHANGES, normaliseChanges, POLL_MS } from '~/lib/libraryWatch'
-import { isAudioName, isListed, matchScripts, scriptMapOf } from '~/lib/mediaFiles'
+import { isAudioName, isListed, matchScripts, pairingBase, scriptMapOf } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { isAndroidApp } from '~/lib/platform'
 import { sniffScript } from '~/lib/scriptSniff'
@@ -297,10 +297,15 @@ export const useLibraryStore = defineStore('library', () => {
     const CHUNK = 200
     const entries: VideoEntry[] = []
 
+    // Every video's own name, so a script named after another video isn't taken for this one's.
+    const bases = new Set(videoFiles.map(f => pairingBase(f.name)))
     for (let i = 0; i < videoFiles.length; i += CHUNK) {
       const chunk = videoFiles.slice(i, i + CHUNK)
       for (const f of chunk) {
-        const matches = matchScripts(f.name, scriptMap)
+        const own = pairingBase(f.name)
+        bases.delete(own)
+        const matches = matchScripts(f.name, scriptMap, bases)
+        bases.add(own)
         const was = known.get(f)
         if (was && was.scriptMatches.length === matches.length && was.scriptMatches.every((m, k) => m.file === matches[k].file)) {
           was.subtitles = undefined

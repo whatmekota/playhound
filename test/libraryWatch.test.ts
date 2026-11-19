@@ -75,6 +75,20 @@ describe('script lookup', () => {
     map.set('clip.pitch.funscript', new File(['{}'], 'clip.pitch.funscript'))
     expect(matchScripts('Clip.mp4', map).filter(m => !m.isAlt).map(m => m.file.name)).toEqual(['clip.roll.funscript', 'clip.funscript', 'clip.twist.funscript', 'clip.pitch.funscript'])
   })
+
+  it('takes a bracketed take for the script when there is no main one, but not one named for another video', () => {
+    const map = scriptMapOf(['BULLY - ANNA ANON [SHORT - PMV HMV].funscript', 'Clipper.funscript', 'Clip 2.funscript'].map(n => new File(['{}'], n)))
+    const bully = matchScripts('BULLY - ANNA ANON.mp4', map)
+    expect(bully).toHaveLength(1)
+    expect(bully[0].isAlt).toBe(false)
+    // "Clipper" runs on into another word; "Clip 2" is another video's own name.
+    expect(matchScripts('Clip.mp4', map, new Set(['clip 2'])).every(m => m.isAlt)).toBe(true)
+    // Without that video, "Clip 2" stands in.
+    expect(matchScripts('Clip.mp4', map).find(m => !m.isAlt)?.file.name).toBe('Clip 2.funscript')
+    // With a main script, the takes stay takes.
+    const both = scriptMapOf(['Clip.funscript', 'Clip (soft).funscript'].map(n => new File(['{}'], n)))
+    expect(matchScripts('Clip.mp4', both).map(m => m.isAlt)).toEqual([false, true])
+  })
 })
 
 describe('desktop folders', () => {

@@ -70,8 +70,9 @@ export function useFunscript() {
           lastRawMetadata.value = parsed.rawMetadata
         }
         for (const axis of parsed.axes) {
-          // Enable all non-alt axes. For alt scripts, only enable if no primary
-          // script for that channel has been registered yet.
+          // Main scripts are on, the first for each axis; alternate takes
+          // start off (a take that stands in for a missing main script is
+          // a main one already, see matchScripts).
           const alreadyHasPrimary = enabledChannels.has(axis.channel)
           const enabled = !isAlt && !alreadyHasPrimary
           if (enabled)

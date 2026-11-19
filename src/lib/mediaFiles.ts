@@ -53,8 +53,15 @@ export function pairingBase(name: string): string {
  * file. A name that adds a known axis (`.roll`, `.twist`, `.r0`) is that
  * axis; anything else added (`(bounce)`, ` soft`) is an alternate take.
  * Main scripts first, then the takes by name.
+ *
+ * With no script named exactly like the video, the first take whose name
+ * only adds something after a space, bracket or dash ("Clip [PMV
+ * HMV].funscript") is its script: it plays like one. Not a name that runs
+ * on into a longer word ("Clipper"), nor one that is exactly another
+ * video's name in `others` (pairing bases: "clip 2" when "Clip 2.mp4" is
+ * there too).
  */
-export function matchScripts(name: string, scripts: ReadonlyMap<string, File>): ScriptMatch[] {
+export function matchScripts(name: string, scripts: ReadonlyMap<string, File>, others?: ReadonlySet<string>): ScriptMatch[] {
   const base = pairingBase(name)
   const matches: ScriptMatch[] = []
   for (const key of keysStartingWith(scripts, base)) {
@@ -74,6 +81,18 @@ export function matchScripts(name: string, scripts: ReadonlyMap<string, File>): 
       return a.isAlt ? 1 : -1
     return a.altName.localeCompare(b.altName)
   })
+  const hasStroke = matches.some(m => !m.isAlt && pairingBase(m.file.name) === base)
+  if (!hasStroke) {
+    const stands = matches.find((m) => {
+      const own = m.file.name.slice(0, -SCRIPT_SUFFIX.length).toLowerCase()
+      return m.isAlt && /^[\s([{\-_]/.test(own.slice(base.length)) && !others?.has(own)
+    })
+    if (stands) {
+      stands.isAlt = false
+      stands.altName = ''
+      matches.sort((a, b) => Number(a.isAlt) - Number(b.isAlt))
+    }
+  }
   return matches
 }
 
