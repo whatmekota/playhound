@@ -15,6 +15,18 @@ import { useQueueStore } from '~/stores/queueStore'
 import { useStatsStore } from '~/stores/statsStore'
 import { useScriptSummaries } from './useScriptSummaries'
 
+/**
+ * What a video played from the library does to the queue: line up the rest
+ * of the list after it ('rest'), or play on its own ('one'), slotted in after
+ * the current video with whatever was queued by hand kept. Play all, Shuffle
+ * and a selection always line up their list.
+ */
+export type LibraryPlay = 'rest' | 'one'
+
+export function useLibraryPlay() {
+  return useLocalStorage<LibraryPlay>(KEYS.libraryPlay.key, 'rest')
+}
+
 export const FILTER_CHIPS: { key: FilterKey, label: string, icon: string }[] = [
   { key: 'scripted', label: 'Scripted', icon: 'i-carbon-chart-line-smooth' },
   { key: 'multi', label: 'Multi-axis', icon: 'i-carbon-chart-multi-line' },
@@ -121,8 +133,12 @@ export function useLibraryQuery(videos: () => VideoEntry[], label = 'Library') {
   })
 
   // ─── Playing ──────────────────────────────────────────────────────────────
+  const libraryPlay = useLibraryPlay()
   function playEntry(entry: VideoEntry) {
-    void playback.play(entry, results.value, label)
+    if (libraryPlay.value === 'one')
+      void playback.play(entry)
+    else
+      void playback.play(entry, results.value, label)
   }
 
   function playAll() {

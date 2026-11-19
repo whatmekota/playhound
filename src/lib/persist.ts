@@ -70,6 +70,7 @@ export const KEYS = {
   intensityScale: def('ph:session.intensity', 'setting', 'Intensity knob'),
   discord: def('ph:discord', 'setting', 'Discord Rich Presence'),
   upNextDelay: def('ph:player.upNextDelay', 'setting', 'Countdown before the next video'),
+  libraryPlay: def('ph:library.play', 'setting', 'Whether a video played from the library lines up the rest'),
   audioVisual: def('ph:player.audioVisual', 'setting', 'What the stage shows with an audio file'),
   subtitles: def('ph:player.subtitles', 'setting', 'Subtitles on/off, language and style'),
   motionConfig: def('ph:motion.config', 'setting', 'Motion source and limits'),

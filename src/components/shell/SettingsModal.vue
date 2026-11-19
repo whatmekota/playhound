@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { LibraryPlay } from '~/components/library/useLibraryQuery'
 import type { ThemeId } from '~/stores/themeStore'
 import { useLocalStorage } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
+import { useLibraryPlay } from '~/components/library/useLibraryQuery'
 import { useShowAutoTags } from '~/components/library/useLibraryTags'
 import SubtitleText from '~/components/player/SubtitleText.vue'
 import PluginsSettings from '~/components/plugins/PluginsSettings.vue'
@@ -52,6 +54,11 @@ const UPNEXT_OPTIONS: { value: number, label: string }[] = [
   { value: 3, label: '3 s' },
   { value: 5, label: '5 s' },
   { value: 10, label: '10 s' },
+]
+const libraryPlay = useLibraryPlay()
+const LIBRARY_PLAY_OPTIONS: { value: LibraryPlay, label: string }[] = [
+  { value: 'rest', label: 'The rest lines up' },
+  { value: 'one', label: 'Just that video' },
 ]
 const subtitles = useSubtitleStore()
 const SUB_SIZES: { value: number, label: string }[] = [
@@ -504,6 +511,12 @@ function openBackup() {
               <div class="px-4 py-3 card flex flex-col gap-3">
                 <UiField label="Before the next video" hint="How long the Up next card waits when a video ends. Instant skips the card.">
                   <UiSegmented v-model="upNextDelay" :options="UPNEXT_OPTIONS" size="xs" />
+                </UiField>
+              </div>
+
+              <div class="px-4 py-3 card flex flex-col gap-3">
+                <UiField label="A video played from the library" hint="The rest of the list can line up behind it in the queue, or it plays on its own and what you queued yourself stays. Play all, Shuffle and a selection always line up their list.">
+                  <UiSegmented v-model="libraryPlay" :options="LIBRARY_PLAY_OPTIONS" size="xs" />
                 </UiField>
               </div>
 
