@@ -24,8 +24,11 @@ export default defineConfig({
   server: {
     // Build output, downloads and worktrees are not source: watching them
     // (gigabytes of installers and unpacked apps after a build) only costs memory.
+    // The Android project too (the top-level one, not src/lib/android): a
+    // mobile build copies the whole web build into its assets and writes
+    // thousands of Gradle files, none of them the page's source.
     watch: {
-      ignored: ['**/release/**', '**/.desktop/**', '**/dist/**', '**/brand/**', '**/.claude/**', '**/firmware/**'],
+      ignored: ['**/release/**', '**/.desktop/**', '**/dist/**', '**/brand/**', '**/.claude/**', '**/firmware/**', `${path.resolve(__dirname, 'android').replace(/\\/g, '/')}/**`],
     },
     proxy: {
       // EroScripts + Pixeldrain fetches are served by es-proxy.mjs (pnpm dev:proxy)
