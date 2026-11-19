@@ -1,6 +1,6 @@
 import type { ComputedRef } from 'vue'
-import { useMediaQuery, useWindowSize } from '@vueuse/core'
-import { computed, effectScope, watchEffect } from 'vue'
+import { useActiveElement, useMediaQuery, useWindowSize } from '@vueuse/core'
+import { computed, effectScope, shallowRef, watch, watchEffect } from 'vue'
 import { devPhoneLayout } from '~/lib/android/detect'
 import { isAndroidApp } from '~/lib/platform'
 
@@ -20,6 +20,12 @@ import { isAndroidApp } from '~/lib/platform'
  * a ~576 px-tall phone held sideways. A narrow or short window on a bigger
  * screen (split screen) still gets it too.
  *
+ * The on-screen keyboard takes its room out of the window, so on a tablet
+ * the window goes under 500 px tall and on a phone it can turn wider than
+ * tall. Either would switch the layout under the field being typed into,
+ * and the field, gone, would take the keyboard down with it. So while a text
+ * field has focus, a window that only got shorter keeps the layout it had.
+ *
  * Only in the Android app: a narrow browser window keeps the desktop layout.
  * (In development, `?phone` in the address lays a desktop browser out the
  * same way, for styling and screenshots; see android/detect.ts.)
@@ -35,10 +41,23 @@ const phoneLayoutHere = isAndroidApp || devPhoneLayout
 /** Below this shorter side (CSS px) a screen is a phone's. */
 export const PHONE_SHORT_SIDE = 600
 
+/** Inputs that never bring up the keyboard. */
+const NOT_TYPED = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit'])
+
+/** Whether focus is somewhere the on-screen keyboard comes up for. */
+export function typesText(el: Element | null | undefined): boolean {
+  if (!el)
+    return false
+  if (el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)
+    return true
+  return el.tagName === 'INPUT' && !NOT_TYPED.has((el as HTMLInputElement).type)
+}
+
 function make(): Layout {
   // Its own scope: shared by every component, owned by none of them.
   return effectScope(true).run(() => {
-    const small = useMediaQuery('(max-width: 767px), (max-height: 500px)')
+    const narrow = useMediaQuery('(max-width: 767px)')
+    const short = useMediaQuery('(max-height: 500px)')
     const landscape = useMediaQuery('(orientation: landscape)')
     // Read again on every resize: a foldable opening is a new screen.
     const win = useWindowSize()
@@ -47,8 +66,16 @@ function make(): Layout {
       void win.height.value
       return typeof screen !== 'undefined' && Math.min(screen.width, screen.height) < PHONE_SHORT_SIDE
     })
-    const compact = computed(() => phoneLayoutHere && (phoneScreen.value || small.value))
-    const rail = computed(() => compact.value && landscape.value)
+    // The window as it was when typing started. A new width (turned, split,
+    // unfolded) is a real change and lets go; the keyboard only takes height.
+    const active = useActiveElement()
+    const held = shallowRef<{ width: number, short: boolean, landscape: boolean } | null>(null)
+    watch(() => typesText(active.value), (typing) => {
+      held.value = typing ? { width: win.width.value, short: short.value, landscape: landscape.value } : null
+    }, { flush: 'sync' })
+    const hold = computed(() => held.value?.width === win.width.value ? held.value : null)
+    const compact = computed(() => phoneLayoutHere && (phoneScreen.value || narrow.value || (hold.value?.short ?? short.value)))
+    const rail = computed(() => compact.value && (hold.value?.landscape ?? landscape.value))
     if (phoneLayoutHere && typeof document !== 'undefined') {
       watchEffect(() => {
         document.documentElement.classList.toggle('ph-compact', compact.value)

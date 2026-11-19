@@ -225,6 +225,7 @@ declare global {
   const tryOnMounted: typeof import('@vueuse/core').tryOnMounted
   const tryOnScopeDispose: typeof import('@vueuse/core').tryOnScopeDispose
   const tryOnUnmounted: typeof import('@vueuse/core').tryOnUnmounted
+  const typesText: typeof import('./src/composables/useCompactLayout').typesText
   const udpAvailable: typeof import('./src/composables/useTCodeNet').udpAvailable
   const unref: typeof import('vue').unref
   const unrefElement: typeof import('@vueuse/core').unrefElement
@@ -771,6 +772,7 @@ declare module 'vue' {
     readonly tryOnMounted: UnwrapRef<typeof import('@vueuse/core')['tryOnMounted']>
     readonly tryOnScopeDispose: UnwrapRef<typeof import('@vueuse/core')['tryOnScopeDispose']>
     readonly tryOnUnmounted: UnwrapRef<typeof import('@vueuse/core')['tryOnUnmounted']>
+    readonly typesText: UnwrapRef<typeof import('./src/composables/useCompactLayout')['typesText']>
     readonly udpAvailable: UnwrapRef<typeof import('./src/composables/useTCodeNet')['udpAvailable']>
     readonly unref: UnwrapRef<typeof import('vue')['unref']>
     readonly unrefElement: UnwrapRef<typeof import('@vueuse/core')['unrefElement']>
