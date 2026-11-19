@@ -860,25 +860,34 @@ function onBackgroundClick(e: MouseEvent) {
     </div>
 
     <!-- ══ Selection bar ══════════════════════════════════════════════════════ -->
-    <div class="flex pointer-events-none inset-x-0 bottom-5 justify-center absolute z-20">
+    <!-- On a phone: the screen's width, the lesser actions as icons. -->
+    <div class="flex pointer-events-none bottom-5 justify-center absolute z-20" :class="compact ? 'inset-x-3' : 'inset-x-0'">
       <Transition name="t-slide-up">
         <div
           v-if="selected.size"
-          class="p-1.5 pl-4 pop flex gap-1 pointer-events-auto ring-1 ring-edge-strong items-center"
+          class="pop flex pointer-events-auto ring-1 ring-edge-strong items-center"
+          :class="compact ? 'sel-strip p-1 pl-3 gap-0.5 max-w-full overflow-x-auto' : 'p-1.5 pl-4 gap-1'"
         >
-          <span class="text-[13px] text-fg font-medium num mr-2 whitespace-nowrap">{{ selected.size.toLocaleString() }} selected</span>
-          <UiButton variant="primary" icon="i-carbon-play-filled-alt" @click="playList(selectedEntries)">
+          <span class="text-[13px] text-fg font-medium num mr-2 whitespace-nowrap">{{ selected.size.toLocaleString() }}{{ compact ? '' : ' selected' }}</span>
+          <UiButton variant="primary" icon="i-carbon-play-filled-alt" class="shrink-0" @click="playList(selectedEntries)">
             Play
           </UiButton>
-          <UiButton variant="ghost" icon="i-carbon-skip-forward" @click="playback.playNextInQueue(selectedEntries)">
-            Play next
-          </UiButton>
-          <UiButton variant="ghost" icon="i-carbon-list-boxes" @click="playback.addToQueue(selectedEntries)">
-            Queue
-          </UiButton>
+          <template v-if="compact">
+            <UiIconButton icon="i-carbon-skip-forward" label="Play next" @click="playback.playNextInQueue(selectedEntries)" />
+            <UiIconButton icon="i-carbon-list-boxes" label="Add to the queue" @click="playback.addToQueue(selectedEntries)" />
+          </template>
+          <template v-else>
+            <UiButton variant="ghost" icon="i-carbon-skip-forward" @click="playback.playNextInQueue(selectedEntries)">
+              Play next
+            </UiButton>
+            <UiButton variant="ghost" icon="i-carbon-list-boxes" @click="playback.addToQueue(selectedEntries)">
+              Queue
+            </UiButton>
+          </template>
           <UiPopover placement="top" flush>
             <template #trigger="{ toggle, open }">
-              <UiButton variant="ghost" icon="i-carbon-playlist" :active="open" @click="toggle">
+              <UiIconButton v-if="compact" icon="i-carbon-playlist" label="Add to a playlist" :active="open" @click="toggle" />
+              <UiButton v-else variant="ghost" icon="i-carbon-playlist" :active="open" @click="toggle">
                 Playlist
               </UiButton>
             </template>
@@ -911,11 +920,13 @@ function onBackgroundClick(e: MouseEvent) {
 </template>
 
 <style scoped>
-/* The phone's filter row scrolls sideways under a finger; no bar for it. */
-.chip-strip {
+/* The phone's filter row and selection bar scroll sideways under a finger; no bar for them. */
+.chip-strip,
+.sel-strip {
   scrollbar-width: none;
 }
-.chip-strip::-webkit-scrollbar {
+.chip-strip::-webkit-scrollbar,
+.sel-strip::-webkit-scrollbar {
   display: none;
 }
 /* ── Grid cards ───────────────────────────────────────────────────────────── */

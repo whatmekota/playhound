@@ -6,6 +6,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { countMoment } from '~/composables/achievementEvents'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { useFunscript } from '~/composables/useFunscript'
 import { downloadPost, downloads } from '~/composables/usePostDownload'
 import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
@@ -76,6 +77,8 @@ interface VideoLink {
 defineOptions({ name: 'EroScriptsView' })
 // Browse state lives at module scope so leaving the view and coming back finds
 // the same results, scroll aside, instead of refetching from page one.
+/** The phone layout: the search gets a row of its own. */
+const compact = useCompactLayout()
 const topics = ref<ESTopic[]>([])
 const page = ref(0)
 const hasMore = ref(true)
@@ -1020,7 +1023,7 @@ onBeforeUnmount(() => {
           icon="i-carbon-search"
           placeholder="Search scripts"
           clearable
-          class="flex-1 max-w-[420px] min-w-[200px]"
+          :class="compact ? 'basis-full' : 'flex-1 max-w-[420px] min-w-[200px]'"
           @enter="doSearch"
         >
           <template #suffix>
