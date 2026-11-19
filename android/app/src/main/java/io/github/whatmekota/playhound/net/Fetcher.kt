@@ -115,6 +115,13 @@ class Fetcher(
     private val proxy: () -> Proxy? = { null },
     private val connectTimeoutMs: Int = 20_000,
     private val readTimeoutMs: Int = 60_000,
+    /**
+     * The User-Agent of the browser the cookie store's sessions were made in
+     * (the WebView the forum's sign-in page ran in), for requests that use
+     * the store: a session made in one browser and used from "another" can
+     * be turned down. Null: DEFAULT_UA, as for everything else.
+     */
+    private val sessionUa: () -> String? = { null },
 ) {
     fun open(
         url: String,
@@ -146,7 +153,7 @@ class Fetcher(
                 if (k.equals("cookie", ignoreCase = true)) hasCookie = true
                 conn.setRequestProperty(k, v)
             }
-            if (!hasUa) conn.setRequestProperty("User-Agent", DEFAULT_UA)
+            if (!hasUa) conn.setRequestProperty("User-Agent", (if (useJar) sessionUa() else null) ?: DEFAULT_UA)
             if (useJar && !hasCookie) jar.cookieFor(current)?.takeIf { it.isNotEmpty() }?.let { conn.setRequestProperty("Cookie", it) }
             if (payload != null && verb != "GET" && verb != "HEAD") {
                 conn.doOutput = true

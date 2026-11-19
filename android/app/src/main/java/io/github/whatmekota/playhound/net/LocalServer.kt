@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.WebSettings
 import io.github.whatmekota.playhound.folders.ContentSource
 import io.github.whatmekota.playhound.folders.MediaServer
 import io.github.whatmekota.playhound.folders.WriteSessions
@@ -49,7 +50,11 @@ object LocalServer {
     @Volatile
     private var proxy: Proxy? = null
 
-    val fetcher = Fetcher(WebViewCookies, { proxy })
+    /** The WebView's own User-Agent, which the forum session was made with (ForumLoginActivity). */
+    @Volatile
+    private var webUa: String? = null
+
+    val fetcher = Fetcher(WebViewCookies, { proxy }, sessionUa = { webUa })
     val streams = StreamRegistry()
 
     @Volatile
@@ -66,6 +71,14 @@ object LocalServer {
 
     @Synchronized
     fun get(context: Context): MediaServer {
+        if (webUa == null) {
+            webUa = try {
+                WebSettings.getDefaultUserAgent(context.applicationContext)
+            }
+            catch (_: Exception) {
+                null
+            }
+        }
         server?.let { return it }
         val resolver = context.applicationContext.contentResolver
         val w = WriteSessions({ uri -> openForWrite(resolver, uri) })
