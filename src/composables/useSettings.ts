@@ -1,4 +1,4 @@
-import { storage } from '~/lib/browserApi'
+import { onAndroid, storage } from '~/lib/browserApi'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useThemeStore } from '~/stores/themeStore'
@@ -52,7 +52,9 @@ export function useSettings() {
     return new Promise((resolve, reject) => {
       const input = document.createElement('input')
       input.type = 'file'
-      input.accept = '.goon,application/json'
+      // Android knows no type for .goon and would grey the files out.
+      if (!onAndroid())
+        input.accept = '.goon,application/json'
       input.onchange = async () => {
         const file = input.files?.[0]
         if (!file) { resolve(); return }

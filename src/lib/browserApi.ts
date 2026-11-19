@@ -31,8 +31,13 @@ export function fileHandleOf(f: File): FileSystemFileHandle | null {
   return fileHandles.get(f) ?? null
 }
 
+/** Android (the app or a browser there). */
+export const onAndroid = (userAgent = globalThis.navigator?.userAgent ?? '') => /Android/i.test(userAgent)
+
 export async function openScriptFiles(): Promise<File[]> {
-  if ('showOpenFilePicker' in window) {
+  // Not on Android: its WebView has showOpenFilePicker now, and asked for
+  // JSON it greys out every .funscript (Android knows no type for them).
+  if ('showOpenFilePicker' in window && !onAndroid()) {
     try {
       const handles = await (window as any).showOpenFilePicker({
         types: [{ description: 'Funscript Files', accept: { 'application/json': ['.funscript'] } }],
@@ -57,7 +62,7 @@ export async function openScriptFiles(): Promise<File[]> {
  * there; the picked files are checked afterwards (splitPickedScripts).
  */
 export function scriptInputAccept(userAgent = globalThis.navigator?.userAgent ?? ''): string[] {
-  return /Android/i.test(userAgent) ? [] : ['.funscript']
+  return onAndroid(userAgent) ? [] : ['.funscript']
 }
 
 /** Sort picked files into scripts and the rest, by name. */
