@@ -488,9 +488,11 @@ function openBackup() {
               <div class="px-4 py-3 card flex flex-col gap-3">
                 <UiField
                   label="Interface size"
-                  :hint="uiScale.supported
-                    ? `Everything larger, for a big screen far away. ${MOD_KEY} + = and ${MOD_KEY} + − change it too, ${MOD_KEY} + 0 goes back.`
-                    : `In a browser, use its own zoom: ${MOD_KEY} + = and ${MOD_KEY} + −, ${MOD_KEY} + 0 to go back. The desktop app has it here.`"
+                  :hint="isAndroidApp
+                    ? 'Everything larger, easier to read and to tap. On a small screen, a larger size can switch to the phone layout.'
+                    : uiScale.supported
+                      ? `Everything larger, for a big screen far away. ${MOD_KEY} + = and ${MOD_KEY} + − change it too, ${MOD_KEY} + 0 goes back.`
+                      : `In a browser, use its own zoom: ${MOD_KEY} + = and ${MOD_KEY} + −, ${MOD_KEY} + 0 to go back. The desktop app has it here.`"
                 >
                   <UiSegmented v-if="uiScale.supported" v-model="uiScale.scale.value" :options="SCALE_OPTIONS" size="xs" />
                 </UiField>
