@@ -23,7 +23,7 @@ import {
   snapTime,
 } from '~/lib/scriptEdit'
 import { backupOnce, saveTextAs, takeName, writeTextFile, writeToHandle } from '~/lib/scriptFiles'
-import { applyTweaks, bakeOffset, shapeIsIdentity } from '~/lib/scriptTweaks'
+import { bakeOffset } from '~/lib/scriptTweaks'
 import { DEFAULT_VIBE, vibeScriptFrom } from '~/lib/vibeMap'
 import { useLibraryStore } from './libraryStore'
 import { usePlayerStore } from './playerStore'
@@ -382,18 +382,21 @@ export const useScriptEditStore = defineStore('scriptEdit', () => {
     tick.value++
   }
 
-  /** The axes of `list` as they would be written: by axis key, edited points. */
+  /**
+   * The axes of `list` as they would be written: by axis key, edited points;
+   * or, `played`, what plays, with the offset baked in. What plays is taken
+   * as the store made it, so the export has every tweak in, down to the ones
+   * that need more than the axis itself (another axis's script, the video's
+   * length, the humanising seed).
+   */
   function axesOf(list: ScriptFile[], played = false) {
     const out = new Map<string, Pt[]>()
     for (const s of list) {
-      const src = toRaw(sourceOf(s)).actions
       if (!played) {
-        out.set(s.axisKey, src)
+        out.set(s.axisKey, toRaw(sourceOf(s)).actions)
         continue
       }
-      const t = scripts.tweaksFor(s.channel)
-      const shaped = shapeIsIdentity(t) ? src : applyTweaks(src, t)
-      out.set(s.axisKey, bakeOffset(shaped, t.offsetMs))
+      out.set(s.axisKey, bakeOffset(toRaw(s.parsed).actions, scripts.tweaksFor(s.channel).offsetMs))
     }
     return out
   }

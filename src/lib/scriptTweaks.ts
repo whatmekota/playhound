@@ -1,5 +1,7 @@
 import type { ScaleAction } from './scriptScale'
+import { lowerBound, positionAt, segmentSpeed } from './scriptEdit'
 import { scaleScript, turningPoints } from './scriptScale'
+import { formatTime } from './time'
 
 /**
  * Per-video script tweaks: changes to how a script plays that never touch
@@ -14,6 +16,8 @@ import { scaleScript, turningPoints } from './scriptScale'
 export type SmoothLevel = 'off' | 'light' | 'medium'
 /** As written, twice the strokes, or half as many, on the script's own beats. */
 export type StrokeCount = 'as-is' | 'double' | 'half'
+/** How much each turn of the script is varied: not at all, a little, a little more. */
+export type HumaniseLevel = 'off' | 'light' | 'medium'
 
 export interface ScriptTweaks {
   /** Lowest output position, 0–100. */
@@ -25,7 +29,23 @@ export interface ScriptTweaks {
   /** Fastest movement allowed, funscript units per second; 0 for none. */
   speedCap: number
   smooth: SmoothLevel
+  /** Smooth only where the script moves faster than this, units per second; 0 smooths everywhere. */
+  smoothAbove: number
   strokes: StrokeCount
+  /** Small variations in each turn's timing and depth, the same every time this video plays. */
+  humanise: HumaniseLevel
+  /**
+   * A stretch of the video, ms, that plays again and again from its end to
+   * the end of the video, in place of what the script has there. Both 0 when off.
+   */
+  repeatFromMs: number
+  repeatToMs: number
+  /**
+   * Another loaded axis whose script this one plays (its channel, 'R1'), with
+   * this axis's own tweaks on top; '' for its own. The script store does the
+   * swap, since only it knows what else is loaded.
+   */
+  plays: string
   /** The existing script offset, ms; positive plays the script earlier. Applied at play time, not here. */
   offsetMs: number
 }
@@ -33,13 +53,26 @@ export interface ScriptTweaks {
 /** A video's tweaks as saved with it, by channel; only channels with something set. */
 export type SavedTweaks = Record<string, Partial<ScriptTweaks>>
 
+/** What the tweaks need to know beyond the script itself. */
+export interface TweakContext {
+  /** The video's length, ms, once known: a repeated stretch fills up to it. 0 or absent: up to the script's end. */
+  videoMs?: number
+  /** What humanising draws its variations from: the same seed, the same variations, every time. */
+  seed?: string
+}
+
 export const DEFAULT_TWEAKS: Readonly<ScriptTweaks> = Object.freeze({
   min: 0,
   max: 100,
   invert: false,
   speedCap: 0,
   smooth: 'off',
+  smoothAbove: 0,
   strokes: 'as-is',
+  humanise: 'off',
+  repeatFromMs: 0,
+  repeatToMs: 0,
+  plays: '',
   offsetMs: 0,
 })
 
@@ -47,34 +80,71 @@ export const DEFAULT_TWEAKS: Readonly<ScriptTweaks> = Object.freeze({
 export const MIN_SPEED_CAP = 50
 export const MAX_SPEED_CAP = 1000
 
+/** The shortest stretch that can repeat: about one stroke. */
+export const MIN_REPEAT_MS = 500
+/** Nothing is longer than a day; a time past it is a typo. */
+const MAX_REPEAT_MS = 24 * 3600 * 1000
+
 /** How far either side of a point smoothing looks, ms. */
 const SMOOTH_WINDOW: Record<SmoothLevel, number> = { off: 0, light: 50, medium: 100 }
 
+/** How far humanising may move a turn: in time (ms) and in depth (0–1). */
+const HUMANISE: Record<HumaniseLevel, { ms: number, depth: number }> = {
+  off: { ms: 0, depth: 0 },
+  light: { ms: 15, depth: 0.04 },
+  medium: { ms: 35, depth: 0.08 },
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback)
+const level = <T extends string>(v: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(v as T) ? v as T : fallback)
 
-/** A tweak record as stored (or as typed), made safe: anything missing or odd is the default. */
-export function normaliseTweaks(raw: unknown): ScriptTweaks {
+/**
+ * A tweak record as stored (or as typed), made safe: anything missing or odd
+ * is the default, so records saved before a tweak existed load as they were.
+ * `channel` is the axis the record belongs to: playing its own script is the
+ * same as playing nothing else.
+ */
+export function normaliseTweaks(raw: unknown, channel?: string): ScriptTweaks {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Record<keyof ScriptTweaks, unknown>>
   let min = clamp(Math.round(num(r.min, 0)), 0, 100)
   let max = clamp(Math.round(num(r.max, 100)), 0, 100)
   if (min > max)
     [min, max] = [max, min]
   const cap = Math.round(num(r.speedCap, 0))
+  const smooth = level(r.smooth, ['light', 'medium'], 'off')
+  // Only meaningful with smoothing on; dropped with it, so "off" is one record, not many.
+  const above = smooth === 'off' ? 0 : Math.round(num(r.smoothAbove, 0))
+  let from = clamp(Math.round(num(r.repeatFromMs, 0)), 0, MAX_REPEAT_MS)
+  let to = clamp(Math.round(num(r.repeatToMs, 0)), 0, MAX_REPEAT_MS)
+  if (from > to)
+    [from, to] = [to, from]
+  if (to - from < MIN_REPEAT_MS)
+    from = to = 0
+  const plays = typeof r.plays === 'string' && /^[A-Z][A-Z0-9]{0,7}$/i.test(r.plays) && r.plays !== channel ? r.plays : ''
   return {
     min,
     max,
     invert: r.invert === true,
     speedCap: cap <= 0 ? 0 : clamp(cap, MIN_SPEED_CAP, MAX_SPEED_CAP),
-    smooth: r.smooth === 'light' || r.smooth === 'medium' ? r.smooth : 'off',
-    strokes: r.strokes === 'double' || r.strokes === 'half' ? r.strokes : 'as-is',
+    smooth,
+    smoothAbove: above <= 0 ? 0 : clamp(above, MIN_SPEED_CAP, MAX_SPEED_CAP),
+    strokes: level(r.strokes, ['double', 'half'], 'as-is'),
+    humanise: level(r.humanise, ['light', 'medium'], 'off'),
+    repeatFromMs: from,
+    repeatToMs: to,
+    plays,
     offsetMs: clamp(Math.round(num(r.offsetMs, 0)), -9999, 9999),
   }
 }
 
+/** True when a stretch is set to repeat. */
+export const repeats = (t: ScriptTweaks | undefined): boolean => !!t && t.repeatToMs > t.repeatFromMs
+
 /** True when the tweaks leave the script's shape alone (the offset may still be set). */
 export function shapeIsIdentity(t: ScriptTweaks): boolean {
   return t.min === 0 && t.max === 100 && !t.invert && t.speedCap === 0 && t.smooth === 'off' && t.strokes === 'as-is'
+    && t.humanise === 'off' && !repeats(t) && !t.plays
 }
 
 /** True when nothing is tweaked at all, offset included. */
@@ -85,6 +155,10 @@ export function isDefaultTweaks(t: ScriptTweaks): boolean {
 /** Short words for what is on, for a summary line: "Range 10–90 · inverted". */
 export function describeTweaks(t: ScriptTweaks): string[] {
   const out: string[] = []
+  if (t.plays)
+    out.push(`Plays ${t.plays}`)
+  if (repeats(t))
+    out.push(`Repeats ${formatTime(t.repeatFromMs / 1000)}–${formatTime(t.repeatToMs / 1000)}`)
   if (t.min !== 0 || t.max !== 100)
     out.push(`Range ${t.min}–${t.max}`)
   if (t.invert)
@@ -94,7 +168,9 @@ export function describeTweaks(t: ScriptTweaks): string[] {
   if (t.strokes !== 'as-is')
     out.push(t.strokes === 'double' ? 'Double strokes' : 'Half strokes')
   if (t.smooth !== 'off')
-    out.push(t.smooth === 'light' ? 'Light smoothing' : 'Medium smoothing')
+    out.push(`${t.smooth === 'light' ? 'Light' : 'Medium'} smoothing${t.smoothAbove ? ` over ${t.smoothAbove}/s` : ''}`)
+  if (t.humanise !== 'off')
+    out.push(t.humanise === 'light' ? 'Light humanise' : 'Medium humanise')
   if (t.offsetMs)
     out.push(`${t.offsetMs > 0 ? '+' : ''}${t.offsetMs} ms`)
   return out
@@ -107,11 +183,16 @@ export function describeTweaks(t: ScriptTweaks): string[] {
  * stroke loses a few units at each end). Times never move, and the point
  * count stays the same.
  *
+ * With `aboveSpeed` (units per second), only points on a part moving faster
+ * than that take the average: jittery, fast parts are smoothed, while slow,
+ * deliberate ones stay exactly as written. A point's speed is the faster of
+ * the two lines that meet at it.
+ *
  * The curve is piecewise linear, so the average is exact: the integral of
  * the curve up to each point is accumulated once, and each window is a
  * difference of two integrals.
  */
-export function smoothActions(actions: readonly ScaleAction[], halfWindowMs: number): ScaleAction[] {
+export function smoothActions(actions: readonly ScaleAction[], halfWindowMs: number, aboveSpeed = 0): ScaleAction[] {
   const n = actions.length
   if (n < 3 || halfWindowMs <= 0)
     return actions.map(a => ({ at: a.at, pos: a.pos }))
@@ -148,7 +229,9 @@ export function smoothActions(actions: readonly ScaleAction[], halfWindowMs: num
   for (let i = 0; i < n; i++) {
     const t = actions[i].at
     // The first and last points stay put: there is no curve beyond them to average.
-    if (i === 0 || i === n - 1) {
+    // Nor do slow ones, when only the fast parts are smoothed.
+    if (i === 0 || i === n - 1
+      || (aboveSpeed > 0 && Math.max(segmentSpeed(actions[i - 1], actions[i]), segmentSpeed(actions[i], actions[i + 1])) <= aboveSpeed)) {
       out[i] = { at: t, pos: actions[i].pos }
       continue
     }
@@ -217,22 +300,181 @@ export function restroke(actions: readonly ScaleAction[], count: StrokeCount): S
   return out
 }
 
+/** Which way the script leaves point `i`: 1 up, -1 down, 0 holding (the last point: the way it came in, reversed). */
+function leaves(actions: readonly ScaleAction[], i: number): number {
+  const n = actions.length
+  return i < n - 1 ? Math.sign(actions[i + 1].pos - actions[i].pos) : -Math.sign(actions[i].pos - actions[i - 1].pos)
+}
+
 /**
- * The script as it plays with `t` applied. Order matters: the stroke count
- * first (it decides where the turning points are), then smoothing (on that
- * shape), then invert and the output range, then the speed cap last, so the
- * cap holds on what actually reaches the device.
- * The speed cap shortens the travel of strokes that are too fast rather than
- * moving anything in time (the same method as the intensity knob).
+ * Where a repeated stretch really starts and ends, ms: at the turning points
+ * nearest the times asked for, with the end on one that leaves the same way
+ * as the start (a bottom for a bottom), so each repeat runs into the next
+ * like the strokes it was cut from. Within a quarter of the stretch (and two
+ * seconds) of what was asked; past that, or with no such turn, the times as
+ * asked, and the seam is one straight line.
+ */
+function snapStretch(actions: readonly ScaleAction[], from: number, to: number): [number, number] {
+  const reach = Math.min((to - from) / 4, 2000)
+  const keys = turningPoints(actions)
+  const nearest = (t: number, ok: (i: number) => boolean) => {
+    let best = -1
+    for (const k of keys) {
+      const d = Math.abs(actions[k].at - t)
+      if (d <= reach && ok(k) && (best < 0 || d < Math.abs(actions[best].at - t)))
+        best = k
+    }
+    return best
+  }
+  const a = nearest(from, () => true)
+  if (a < 0)
+    return [from, to]
+  const way = leaves(actions, a)
+  const b = nearest(to, k => k > a && leaves(actions, k) === way)
+  if (b < 0 || actions[b].at - actions[a].at < MIN_REPEAT_MS)
+    return [from, to]
+  return [actions[a].at, actions[b].at]
+}
+
+/**
+ * Repeat a stretch, for a script that stops early or goes wrong near the
+ * end: the script as it is up to the stretch's end, then the stretch again
+ * and again, back to back, up to `endMs`, in place of whatever the script
+ * had there (and nothing past `endMs`). The ends snap to nearby turning
+ * points (see snapStretch). A stretch with nothing in it, or one that ends
+ * at or past `endMs`, leaves the script as it is.
+ */
+export function repeatStretch(actions: readonly ScaleAction[], fromMs: number, toMs: number, endMs: number): ScaleAction[] {
+  const copy = () => actions.map(a => ({ at: a.at, pos: a.pos }))
+  if (actions.length < 2 || toMs - fromMs < MIN_REPEAT_MS)
+    return copy()
+  const [a, b] = snapStretch(actions, fromMs, toMs)
+  const len = b - a
+  // The stretch: where the curve is at its start, then every point inside it.
+  const body: ScaleAction[] = [{ at: a, pos: positionAt(actions, a) }]
+  for (let i = lowerBound(actions, a); i < actions.length && actions[i].at < b; i++) {
+    if (actions[i].at > a)
+      body.push(actions[i])
+  }
+  if (body.length < 2 || endMs <= b)
+    return copy()
+
+  const out = actions.slice(0, lowerBound(actions, b)).map(p => ({ at: p.at, pos: p.pos }))
+  // A long video and a short, dense stretch is a lot of points; past this it is surely a mistake.
+  const limit = 2_000_000
+  for (let k = 1; out.length < limit; k++) {
+    for (const q of body) {
+      const at = q.at + k * len
+      if (at > endMs) {
+        // Right up to the end: where the curve is then.
+        const last = out[out.length - 1]
+        if (last.at < endMs)
+          out.push({ at: endMs, pos: last.pos + (q.pos - last.pos) * (endMs - last.at) / (at - last.at) })
+        return out
+      }
+      out.push({ at, pos: q.pos })
+    }
+  }
+  return out
+}
+
+/** A 32-bit hash of a string (FNV-1a), to seed humanising. */
+function hashString(s: string): number {
+  let h = 0x811C9DC5
+  for (let i = 0; i < s.length; i++)
+    h = Math.imul(h ^ s.charCodeAt(i), 0x01000193)
+  return h >>> 0
+}
+
+/** A number in -1..1 that depends only on the seed, a time and which variation it is for. */
+function wobble(seed: number, at: number, salt: number): number {
+  let h = (seed ^ Math.imul(Math.round(at) + salt * 0x632BE5AB, 0x9E3779B1)) >>> 0
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B)
+  h = Math.imul(h ^ (h >>> 13), 0xC2B2AE35)
+  h = (h ^ (h >>> 16)) >>> 0
+  return h / 0xFFFFFFFF * 2 - 1
+}
+
+/**
+ * Humanise: each turn of the script lands a little early or late and goes a
+ * little further or less far, so a looped or generated pattern stops feeling
+ * mechanical. The variations come from `seed` and each turn's own time, so
+ * the same video and axis play the same way every time (and an edit only
+ * changes the turns it touches).
+ *
+ * Nothing is reordered or crosses over: a turn moves in time by at most a
+ * fifth of the gap to the points either side of it, and in depth by at most
+ * a quarter of its travel to the turns either side (so a hold, with no
+ * travel, stays a hold). The points between two turns follow them in
+ * position, keeping their place along the way. The first and last points stay
+ * as they are.
+ */
+export function humanise(actions: readonly ScaleAction[], amount: HumaniseLevel, seed: string): ScaleAction[] {
+  const out = actions.map(a => ({ at: a.at, pos: a.pos }))
+  const keys = turningPoints(actions)
+  const { ms, depth } = HUMANISE[amount]
+  if (amount === 'off' || keys.length < 3)
+    return out
+  const base = hashString(seed)
+  for (let j = 1; j < keys.length - 1; j++) {
+    const i = keys[j]
+    const p = actions[i]
+    const room = Math.floor(Math.min(p.at - actions[i - 1].at, actions[i + 1].at - p.at) / 5)
+    out[i].at = p.at + Math.round(wobble(base, p.at, 1) * Math.min(ms, room))
+    const travel = Math.min(Math.abs(p.pos - actions[keys[j - 1]].pos), Math.abs(p.pos - actions[keys[j + 1]].pos))
+    out[i].pos = clamp(p.pos + wobble(base, p.at, 2) * Math.min(depth, travel / 4), 0, 1)
+  }
+  // Between two turns the line runs one way; its points are stretched to the turns' new depths.
+  for (let j = 0; j < keys.length - 1; j++) {
+    const a = keys[j]
+    const b = keys[j + 1]
+    const from = actions[a].pos
+    const span = actions[b].pos - from
+    if (b - a < 2 || span === 0)
+      continue
+    const scale = (out[b].pos - out[a].pos) / span
+    for (let i = a + 1; i < b; i++)
+      out[i].pos = clamp(out[a].pos + (actions[i].pos - from) * scale, 0, 1)
+  }
+  return out
+}
+
+/**
+ * The script as it plays with `t` applied. Order matters:
+ *
+ * 1. Which script (its own, or another axis's) is the script store's choice,
+ *    made before this.
+ * 2. The repeated stretch first: it decides what the script says over time,
+ *    and everything after treats the result as if it were written that way
+ *    (doubled strokes double the repeats too).
+ * 3. The stroke count, which decides where the turning points are.
+ * 4. Smoothing, on that shape, to iron out its jitter.
+ * 5. Humanising after smoothing, so smoothing does not iron the variations
+ *    away, and before the range, so they stay inside it.
+ * 6. Invert and the output range.
+ * 7. The speed cap last, so it holds on what actually reaches the device.
+ *    It shortens the travel of strokes that are too fast rather than moving
+ *    anything in time (the same method as the intensity knob).
+ *
+ * The stretch to repeat is in video time, as the player shows it; it is
+ * moved by the offset into the script's own time here.
  *
  * Returns new objects; the input is left alone. The offset is not applied:
  * it is a play-time setting.
  */
-export function applyTweaks(actions: readonly ScaleAction[], t: ScriptTweaks): ScaleAction[] {
-  const counted = t.strokes !== 'as-is' ? restroke(actions, t.strokes) : actions
-  let out: ScaleAction[] = t.smooth !== 'off'
-    ? smoothActions(counted, SMOOTH_WINDOW[t.smooth])
-    : counted.map(a => ({ at: a.at, pos: a.pos }))
+export function applyTweaks(actions: readonly ScaleAction[], t: ScriptTweaks, ctx: TweakContext = {}): ScaleAction[] {
+  let shaped = actions
+  if (repeats(t) && actions.length > 1) {
+    const end = ctx.videoMs && ctx.videoMs > 0 ? ctx.videoMs + t.offsetMs : actions[actions.length - 1].at
+    shaped = repeatStretch(actions, t.repeatFromMs + t.offsetMs, t.repeatToMs + t.offsetMs, end)
+  }
+  if (t.strokes !== 'as-is')
+    shaped = restroke(shaped, t.strokes)
+  if (t.smooth !== 'off')
+    shaped = smoothActions(shaped, SMOOTH_WINDOW[t.smooth], t.smoothAbove)
+  if (t.humanise !== 'off')
+    shaped = humanise(shaped, t.humanise, ctx.seed ?? '')
+  let out: ScaleAction[] = shaped === actions ? actions.map(a => ({ at: a.at, pos: a.pos })) : shaped as ScaleAction[]
 
   const lo = t.min / 100
   const span = (t.max - t.min) / 100
