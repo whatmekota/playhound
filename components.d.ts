@@ -107,6 +107,7 @@ declare module 'vue' {
     SetupModal: typeof import('./src/components/setup/SetupModal.vue')['default']
     SetupNetwork: typeof import('./src/components/setup/SetupNetwork.vue')['default']
     SetupPlugins: typeof import('./src/components/setup/SetupPlugins.vue')['default']
+    SetupPrivacy: typeof import('./src/components/setup/SetupPrivacy.vue')['default']
     SetupSpeed: typeof import('./src/components/setup/SetupSpeed.vue')['default']
     ShareCardModal: typeof import('./src/components/share/ShareCardModal.vue')['default']
     ShortcutsModal: typeof import('./src/components/shell/ShortcutsModal.vue')['default']

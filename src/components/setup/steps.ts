@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import type { StepLike } from '~/lib/setup'
 import { netProxy, netProxyInfo } from '~/composables/useNetProxy'
+import { usePrivacyLock } from '~/composables/usePrivacyLock'
 import { desktop } from '~/lib/browserApi'
 import { presetOf } from '~/lib/edging'
 import { isAndroidApp } from '~/lib/platform'
@@ -11,6 +12,7 @@ import SetupDevice from './SetupDevice.vue'
 import SetupEdges from './SetupEdges.vue'
 import SetupNetwork from './SetupNetwork.vue'
 import SetupPlugins from './SetupPlugins.vue'
+import SetupPrivacy from './SetupPrivacy.vue'
 import SetupSpeed from './SetupSpeed.vue'
 
 /**
@@ -77,12 +79,14 @@ export const SETUP_STEPS: SetupStep[] = [
     available: () => !!desktop || isAndroidApp || netProxyInfo.value !== null,
     summary: () => (netProxy.value.trim() ? `Through ${netProxy.value.trim()}` : 'Direct'),
   },
-  // ── Privacy lock ─────────────────────────────────────────────────────────
-  // Its step goes here once the lock exists (it is being built on its own):
-  // a SetupPrivacy.vue in this folder, and an entry like the others, e.g.
-  //   { id: 'privacy', title: 'Privacy lock', icon: 'i-carbon-locked', lede: '…',
-  //     component: SetupPrivacy, summary: () => (locked ? 'On' : 'Off') },
-  // Skippable like every step; `available` if it can't work everywhere.
+  {
+    id: 'privacy',
+    title: 'Privacy lock',
+    icon: 'i-carbon-locked',
+    lede: 'A PIN that opens playhound, so nobody nearby wanders in.',
+    component: SetupPrivacy,
+    summary: () => (usePrivacyLock().enabled.value ? 'A PIN opens playhound' : 'No lock'),
+  },
   {
     id: 'plugins',
     title: 'Plugins',
