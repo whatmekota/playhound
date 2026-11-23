@@ -448,6 +448,8 @@ declare global {
   const useWindowFocus: typeof import('@vueuse/core').useWindowFocus
   const useWindowScroll: typeof import('@vueuse/core').useWindowScroll
   const useWindowSize: typeof import('@vueuse/core').useWindowSize
+  const useXrHost: typeof import('./src/composables/useXrHost').useXrHost
+  const useXrServer: typeof import('./src/composables/useXrHost').useXrServer
   const viewportContent: typeof import('./src/composables/useUiScale').viewportContent
   const watch: typeof import('vue').watch
   const watchArray: typeof import('@vueuse/core').watchArray
@@ -996,6 +998,8 @@ declare module 'vue' {
     readonly useWindowFocus: UnwrapRef<typeof import('@vueuse/core')['useWindowFocus']>
     readonly useWindowScroll: UnwrapRef<typeof import('@vueuse/core')['useWindowScroll']>
     readonly useWindowSize: UnwrapRef<typeof import('@vueuse/core')['useWindowSize']>
+    readonly useXrHost: UnwrapRef<typeof import('./src/composables/useXrHost')['useXrHost']>
+    readonly useXrServer: UnwrapRef<typeof import('./src/composables/useXrHost')['useXrServer']>
     readonly viewportContent: UnwrapRef<typeof import('./src/composables/useUiScale')['viewportContent']>
     readonly watch: UnwrapRef<typeof import('vue')['watch']>
     readonly watchArray: UnwrapRef<typeof import('@vueuse/core')['watchArray']>

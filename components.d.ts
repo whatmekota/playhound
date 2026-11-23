@@ -40,6 +40,7 @@ declare module 'vue' {
     FaceInspector: typeof import('./src/components/inspectors/FaceInspector.vue')['default']
     FilterChips: typeof import('./src/components/library/FilterChips.vue')['default']
     FunscriptTimeline: typeof import('./src/components/player/FunscriptTimeline.vue')['default']
+    HeadsetInspector: typeof import('./src/components/inspectors/HeadsetInspector.vue')['default']
     HypnoInspector: typeof import('./src/components/inspectors/HypnoInspector.vue')['default']
     HypnoOverlay: typeof import('./src/components/player/HypnoOverlay.vue')['default']
     InspectorDrawer: typeof import('./src/components/shell/InspectorDrawer.vue')['default']
