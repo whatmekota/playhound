@@ -246,7 +246,7 @@ const ESCAPE = isAndroidApp
       <UiSwitch
         v-model="privacy.blankRecents"
         label="Blank in recent apps"
-        hint="Recent apps shows an empty card for playhound. It also blocks screenshots and screen recordings of it, so turn it off to send one with a bug report."
+        hint="Recent apps shows an empty card for playhound. On Android 12 and older it also blocks screenshots and screen recordings of it, so turn it off there to send one with a bug report."
       />
     </div>
 

@@ -124,6 +124,8 @@ let backoffUntil = 0
 let queue: Promise<void> = Promise.resolve()
 let pending = 0
 let preparedKey: string | null = null
+/** How long an upload waits for the video's length when a repeated stretch needs it. */
+const LENGTH_WAIT_MS = 4000
 let prepareSeq = 0
 const uploads = new Map<string, string>()
 /** HSP: a session is set up on the device, and how many points a batch may carry. */
@@ -685,7 +687,7 @@ export function useHandy() {
       })
 
       let timer: ReturnType<typeof setTimeout> | undefined
-      watch([hsspText, base, state, mode, modeEpoch], ([text, b, st, proto]) => {
+      watch([hsspText, base, state, mode, modeEpoch, () => scripts.awaitingLength], ([text, b, st, proto, , waiting]) => {
         clearTimeout(timer)
         if (st !== 'connected')
           return
@@ -701,8 +703,11 @@ export function useHandy() {
           void prepareHsp(!!b)
           return
         }
-        // A knob turned step by step or a range dragged settles first.
-        timer = setTimeout(() => void prepareHssp(text), script.value === 'ready' || script.value === 'loading' ? 800 : 0)
+        // A knob turned step by step or a range dragged settles first. A
+        // repeated stretch waits for the video's length, which reshapes the
+        // script (a few seconds at most: a video may never say).
+        const wait = waiting ? LENGTH_WAIT_MS : script.value === 'ready' || script.value === 'loading' ? 800 : 0
+        timer = setTimeout(() => void prepareHssp(text), wait)
       }, { immediate: true })
 
       // Switching protocol stops what the old one was playing, and the new

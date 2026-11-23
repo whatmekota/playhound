@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   package installer through the FileProvider; Android itself refuses one
  *   signed with another key than the installed app.
  * - The app lock (src/stores/privacyStore.ts): "away" when the app goes out
- *   of sight and comes back, setSecure (FLAG_SECURE: blank in recent apps),
+ *   of sight and comes back, setSecure (blank in recent apps),
  *   and biometricStatus / authenticate for unlocking with a fingerprint or face.
  */
 @CapacitorPlugin(name = "PhApp")
@@ -192,13 +192,21 @@ class AppPlugin : Plugin() {
         notifyListeners("away", JSObject().put("away", true).put("own", ownLaunch))
     }
 
-    /** { on }: FLAG_SECURE on the window. Blank in recent apps, and no screenshots or screen recordings. */
+    /**
+     * { on }: blank in recent apps. Android 13 and newer take no picture of
+     * the app for Recents and leave screenshots alone; older ones only have
+     * FLAG_SECURE, which also blocks screenshots and screen recordings.
+     */
     @PluginMethod
     fun setSecure(call: PluginCall) {
         val on = call.getBoolean("on", false) ?: false
         val act = activity ?: return call.reject("No activity")
         act.runOnUiThread {
-            if (on) act.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                act.setRecentsScreenshotEnabled(!on)
+                act.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }
+            else if (on) act.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
             else act.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             call.resolve()
         }

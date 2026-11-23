@@ -162,9 +162,11 @@ describe('script tweaks', () => {
     store.setScripts([file([...STROKES, { at: 1500, pos: 1 }, { at: 2000, pos: 0 }])])
     store.setTweaks('L0', { repeatFromMs: 0, repeatToMs: 1000 })
     expect(store.scripts[0].parsed.duration).toBe(2000)
+    expect(store.awaitingLength).toBe(true)
     player.videoDuration = 5
     await nextTick()
     expect(store.scripts[0].parsed.duration).toBe(5000)
+    expect(store.awaitingLength).toBe(false)
     expect(store.scripts[0].parsed.actions.filter(a => a.at % 1000 === 0).every(a => a.pos === 0)).toBe(true)
   })
 

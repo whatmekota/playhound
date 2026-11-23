@@ -167,6 +167,13 @@ export const useScriptStore = defineStore('script', () => {
     if (ms)
       scripts.value.filter(s => repeats(tweaks.value[s.channel])).forEach(applyTo)
   })
+  /**
+   * A repeated stretch is waiting for that length: what plays until then is
+   * a first go that ends with the script. A device that takes the whole
+   * script at once (the Handy over WiFi) waits for the real one rather than
+   * upload twice.
+   */
+  const awaitingLength = computed(() => !videoMs.value && scripts.value.some(s => repeats(tweaks.value[s.channel])))
 
   // One pending write per video: switching videos must not drop the last one's.
   const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -311,6 +318,7 @@ export const useScriptStore = defineStore('script', () => {
 
   return {
     scripts,
+    awaitingLength,
     autoDetected,
     activeScripts,
     hasScripts,
