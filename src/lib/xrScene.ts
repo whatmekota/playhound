@@ -235,15 +235,31 @@ export async function startXrScene(o: XrSceneOptions): Promise<XrScene> {
     const found = raycaster.intersectObjects(buttons.map(b => b.mesh), false)[0]
     return found ? { button: buttons.find(b => b.mesh === found.object)!, u: found.uv?.x ?? 0.5 } : null
   }
+  // The panel keeps out of the picture: it shows when you look down, for a
+  // few seconds after entering VR or pressing a trigger, and while a ray is
+  // on it. Squeeze keeps it shown, and squeeze again lets it go back to that.
+  const SHOW_MS = 4000
+  /** Looking further down than this (the view's y) brings it up. */
+  const LOOK_DOWN = -0.34
+  let shownUntil = performance.now() + SHOW_MS
+  let pinned = false
   for (let i = 0; i < 2; i++) {
     const c = renderer.xr.getController(i)
     c.add(new THREE.Line(rayGeo, rayMat))
     c.addEventListener('selectstart', () => {
+      // Hidden: a press only brings it back, so nothing is pressed unseen.
+      const wasShown = panel.visible
+      shownUntil = performance.now() + SHOW_MS
+      if (!wasShown)
+        return
       const h = hit(c)
       if (h && h.button !== status)
         h.button.press(h.u)
     })
-    c.addEventListener('squeezestart', () => (panel.visible = !panel.visible))
+    c.addEventListener('squeezestart', () => {
+      pinned = !pinned
+      shownUntil = performance.now() + SHOW_MS
+    })
     scene.add(c)
     controllers.push(c)
   }
@@ -251,8 +267,13 @@ export async function startXrScene(o: XrSceneOptions): Promise<XrScene> {
   // ── Every frame ──────────────────────────────────────────────────────────
   let hot: Button | null = null
   let lastLabelAt = 0
+  const look = new THREE.Vector3()
   renderer.setAnimationLoop((t: number) => {
-    // The button under a ray lights up.
+    renderer.xr.getCamera().getWorldDirection(look)
+    panel.visible = pinned || look.y < LOOK_DOWN || t < shownUntil
+    // The button under a ray lights up (and keeps the panel up).
+    if (hot)
+      shownUntil = Math.max(shownUntil, t + 1000)
     let now: Button | null = null
     for (const c of controllers) {
       const h = hit(c)

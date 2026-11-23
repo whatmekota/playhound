@@ -132,6 +132,15 @@ function connect() {
 
 // ── The library ──────────────────────────────────────────────────────────────
 const videos = shallowRef<XrVideo[]>([])
+/**
+ * VR views set here, by video. The computer saves them too, but a library it
+ * sent before it heard (playing a video makes it send one) would still have
+ * the old view: these win over it.
+ */
+const chosen = new Map<string, XrView>()
+function withChosen(list: XrVideo[]): XrVideo[] {
+  return list.map(v => (chosen.has(v.id) ? { ...v, view: { ...chosen.get(v.id)! } } : v))
+}
 const thumbs = reactive<Record<string, string>>({})
 const query = ref('')
 const filter = ref<'all' | 'vr' | 'scripted'>('all')
@@ -185,9 +194,28 @@ const vrOk = ref(false)
 const inVr = ref(false)
 let scene: XrScene | null = null
 
+// What's set here is remembered on the computer, for the next time.
+let viewTimer: ReturnType<typeof setTimeout> | null = null
+watch(view, () => {
+  const c = current.value
+  if (!c)
+    return
+  if (viewTimer)
+    clearTimeout(viewTimer)
+  viewTimer = setTimeout(() => {
+    // Only a change made here: opening a video copies its view in too, and
+    // the computer's own guess shouldn't be saved as a choice.
+    if (current.value?.id !== c.id || JSON.stringify({ ...view }) === JSON.stringify(chosen.get(c.id) ?? c.view))
+      return
+    chosen.set(c.id, { ...view })
+    videos.value = withChosen(videos.value)
+    send({ type: 'view', id: c.id, view: { ...view } })
+  }, 300)
+})
+
 function open(v: XrVideo) {
   current.value = v
-  Object.assign(view, v.view)
+  Object.assign(view, chosen.get(v.id) ?? v.view)
   following.value = false
   refused.value = ''
   screen.value = 'video'
@@ -260,7 +288,7 @@ watch(current, (c) => {
 function onMessage(msg: DeskMessage) {
   switch (msg?.type) {
     case 'library':
-      videos.value = Array.isArray(msg.videos) ? msg.videos : []
+      videos.value = withChosen(Array.isArray(msg.videos) ? msg.videos : [])
       break
     case 'thumb':
       if (typeof msg.data === 'string' && msg.data.startsWith('data:image/'))

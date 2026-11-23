@@ -185,6 +185,17 @@ export function useXrHost(actions: { edge: () => void, panic: () => void, nudgeI
         if (Array.isArray(raw.ids))
           void sendThumbs(raw.ids.filter((x): x is string => typeof x === 'string'))
         break
+      case 'view': {
+        // Remembered with the desktop player's own choice, so the video opens
+        // the same way next time, in the headset and on the screen.
+        const item = typeof raw.id === 'string' ? listed.get(raw.id) : null
+        const v = raw.view
+        if (item && v && typeof v === 'object') {
+          player.setVrChoice(item.entry.name, { on: !!v.on, layout: v.layout, format: v.format, eye: v.eye })
+          item.video.view = player.vrViewOf(item.entry.name, !!v.on)
+        }
+        break
+      }
       case 'action':
         if (raw.action === 'knobUp')
           actions.nudgeIntensity(0.1)

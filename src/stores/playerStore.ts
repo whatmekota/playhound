@@ -81,6 +81,10 @@ export const usePlayerStore = defineStore('player', () => {
     const name = videoPath.value
     if (applyingVr || !name || videoKind.value === 'external')
       return
+    setVrChoice(name, change)
+  }
+  /** Remember how a video shows in VR, for the player here and the headset (useXrHost). */
+  function setVrChoice(name: string, change: VrChoice) {
     const next = { ...vrChoices.get(name), ...change }
     vrChoices.delete(name)
     vrChoices.set(name, next)
@@ -282,6 +286,7 @@ export const usePlayerStore = defineStore('player', () => {
     vrAuto,
     applyVr,
     vrViewOf,
+    setVrChoice,
     renameVrChoice,
     controlsVisible,
     controlsTimeout,

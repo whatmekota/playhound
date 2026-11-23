@@ -56,6 +56,8 @@ export type HeadsetMessage
     /** Thumbnails for these ids, as they scroll into view. */
     | { type: 'thumbs', ids: string[] }
     | { type: 'action', action: 'knobUp' | 'knobDown' | 'edge' | 'panic' }
+    /** How this video shows in VR, as set in the headset: remembered on the computer. */
+    | { type: 'view', id: string, view: XrView }
 
 export type DeskMessage
   = | { type: 'library', videos: XrVideo[] }
