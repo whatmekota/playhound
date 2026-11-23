@@ -50,6 +50,7 @@ import { startUiScale } from '~/composables/useUiScale'
 import { startUpdates } from '~/composables/useUpdates'
 import { useVibeSync } from '~/composables/useVibeSync'
 import { clearTapTempo, tapState, tapTempo, useVideoBeat } from '~/composables/useVideoBeat'
+import { useXrHost } from '~/composables/useXrHost'
 import { desktop, openVideoFile, storage } from '~/lib/browserApi'
 import { cancelFrame, requestFrame } from '~/lib/frames'
 import { SHELL_HOTKEYS } from '~/lib/hotkeys'
@@ -130,7 +131,7 @@ useDiscordPresence()
 startAchievements()
 
 // Panic needs to reach video, audio and the device at once.
-const { toggle: togglePanic, resume: resumePanic } = useSafety({
+const { toggle: togglePanic, resume: resumePanic, panic: engagePanic } = useSafety({
   pauseVideo: () => playback.pause(),
   playVideo: () => playback.resume(),
   isVideoPlaying: () => player.isPlaying,
@@ -155,6 +156,13 @@ useRemoteHost({
   ...transport,
   edge: () => session.edge('remote'),
   release: () => session.release(),
+  nudgeIntensity: d => sessionControl.nudgeIntensity(d),
+})
+// The headset player (desktop app only), when switched on in the Headset panel.
+// Its panic button only ever engages panic: resuming is for the computer.
+useXrHost({
+  edge: () => session.edge('headset'),
+  panic: () => engagePanic(),
   nudgeIntensity: d => sessionControl.nudgeIntensity(d),
 })
 

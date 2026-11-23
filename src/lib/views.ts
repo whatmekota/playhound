@@ -23,7 +23,7 @@ export type ViewId
 export type InspectorId
   = | 'library-panel' | 'playlists-panel'
     | 'queue' | 'scripts' | 'bookmarks'
-    | 'device' | 'motion' | 'remote'
+    | 'device' | 'motion' | 'remote' | 'headset'
     | 'binaural' | 'hypno' | 'director' | 'programme' | 'rules' | 'face'
     | 'backup' | 'plugins'
 
@@ -110,6 +110,7 @@ export const INSPECTOR_GROUPS: ViewGroup<InspectorId | FloatingId>[] = [
       { id: 'motion', kind: 'inspector', label: 'Motion', icon: 'i-carbon-wave-height', hint: 'What drives the device: script, session, beat or manual' },
       { id: 'emulator', kind: 'floating', label: 'Emulator', icon: 'i-carbon-cube', hint: 'Floating OSR preview over any view' },
       { id: 'remote', kind: 'inspector', label: 'Remote', icon: 'i-carbon-mobile', hint: 'Control playback from your phone' },
+      { id: 'headset', kind: 'inspector', label: 'Headset', icon: 'i-carbon-augmented-reality', hint: 'Watch in a VR headset; the device follows it' },
       { id: 'face', kind: 'inspector', label: 'Face', icon: 'i-carbon-face-wink', hint: 'The CYD face: what it shows and how it reacts' },
     ],
   },

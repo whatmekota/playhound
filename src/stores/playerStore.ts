@@ -138,6 +138,21 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /**
+   * How a video would show in the VR view, without loading it: as the user
+   * left it for that video, or what its name gives away (the headset player
+   * asks this for every video it lists).
+   */
+  function vrViewOf(name: string, isVr: boolean): { on: boolean, layout: VrLayout, format: string, eye: VrEye } {
+    const c = vrChoices.get(name)
+    return {
+      on: c?.on ?? isVr,
+      layout: isLayout(c?.layout) ? c.layout : guessVrLayout(name) ?? 'sbs',
+      format: c?.format && VR_FORMATS.some(f => f.id === c.format) ? c.format : guessVrFormat(name) ?? DEFAULT_VR_FORMAT,
+      eye: c?.eye === 'right' ? 'right' : 'left',
+    }
+  }
+
   // UI state
   const controlsVisible = ref(true)
   const controlsTimeout = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -266,6 +281,7 @@ export const usePlayerStore = defineStore('player', () => {
     vrLayout,
     vrAuto,
     applyVr,
+    vrViewOf,
     renameVrChoice,
     controlsVisible,
     controlsTimeout,

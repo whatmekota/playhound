@@ -28,7 +28,7 @@ import { createEdgeEnvelope, EDGE_PRESETS } from '~/lib/edging'
 import { KEYS } from '~/lib/persist'
 import { MAX_INTENSITY, MIN_INTENSITY } from '~/lib/scriptScale'
 
-export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui' | 'plugin' | 'rule'
+export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'headset' | 'heart' | 'programme' | 'ui' | 'plugin' | 'rule'
 
 /** "I came", as marked (C, the phone, the dock). */
 export interface FinishMark {

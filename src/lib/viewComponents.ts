@@ -6,6 +6,7 @@ import BookmarksInspector from '~/components/inspectors/BookmarksInspector.vue'
 import DeviceInspector from '~/components/inspectors/DeviceInspector.vue'
 import DirectorInspector from '~/components/inspectors/DirectorInspector.vue'
 import FaceInspector from '~/components/inspectors/FaceInspector.vue'
+import HeadsetInspector from '~/components/inspectors/HeadsetInspector.vue'
 import HypnoInspector from '~/components/inspectors/HypnoInspector.vue'
 import LibraryInspector from '~/components/inspectors/LibraryInspector.vue'
 import MotionInspector from '~/components/inspectors/MotionInspector.vue'
@@ -54,6 +55,7 @@ export const INSPECTOR_COMPONENTS: Record<InspectorId, Component> = {
   'device': DeviceInspector,
   'motion': MotionInspector,
   'remote': RemoteInspector,
+  'headset': HeadsetInspector,
   'binaural': BinauralInspector,
   'hypno': HypnoInspector,
   'director': DirectorInspector,
