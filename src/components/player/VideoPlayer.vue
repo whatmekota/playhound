@@ -103,7 +103,9 @@ const popout = usePopout()
  * document, which playback does not notice), with their frames painted in
  * the pop-out (see "Pop-out picture"): an HLS stream, which hls.js feeds
  * through a MediaSource a reload would lose, and a video the Music source
- * listens to, whose sound runs through this window's audio graph.
+ * listens to in a browser that can't copy its sound out (no captureStream),
+ * whose sound then runs through this window's audio graph. In Chromium (the
+ * desktop app) it listens to a copy, and the video moves like any other.
  */
 const rootTo = shallowRef<HTMLElement | null>(null)
 const parked = ref(false)

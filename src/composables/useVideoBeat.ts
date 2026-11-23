@@ -28,9 +28,17 @@ const PAGE_QUIET_MS = 5000
 
 // Singleton: one element, one source node, one analysis loop.
 let ctx: AudioContext | null = null
+/** The element whose sound was diverted into the graph (browsers without captureStream). */
 let sourceEl: HTMLVideoElement | null = null
 let analyser: AnalyserNode | null = null
 let raf: number | null = null
+
+// Chromium: the video's sound copied out (captureStream) rather than
+// diverted, so the video plays on as it was and may move to the pop-out.
+let capFrom: HTMLVideoElement | null = null
+let capStream: MediaStream | null = null
+let capTrack: MediaStreamTrack | null = null
+let capNode: MediaStreamAudioSourceNode | null = null
 
 // ─── Listening to a web page ──────────────────────────────────────────────────
 // With no video playing, the sound of a plugin's web page (a PMV in the
@@ -54,10 +62,46 @@ export const listeningToPage = computed(() => listeningTo.value === 'page')
 /**
  * The video's sound goes through this window's audio graph. Moved into the
  * pop-out window it would fall silent (and its clock all but stop), so the
- * pop-out leaves such a video where it is.
+ * pop-out leaves such a video where it is. Only where the sound can't be
+ * copied out instead (no captureStream: Firefox, Safari): in Chromium the
+ * Music source listens to a copy, which leaves the video free to move.
+ * (Diverted, the video stayed behind in the main window, and with the
+ * windows on different screens it stalled and stopped.)
  */
 export function routesAudio(el: HTMLVideoElement | null): boolean {
   return !!el && sourceEl === el
+}
+
+/** This browser copies a video's sound out without taking it from the speakers. */
+function canCopySound(el: HTMLVideoElement): el is HTMLVideoElement & { captureStream: () => MediaStream } {
+  return typeof (el as any).captureStream === 'function'
+}
+
+/**
+ * The copy's live audio track feeding the analyser. A reload (the video
+ * carried into the pop-out, a new file) ends the tracks and adds new ones to
+ * the same stream, so this is checked every frame. Video tracks are stopped
+ * at once: copying an 8K picture frame by frame is work nobody wants.
+ */
+function linkCopy(): boolean {
+  if (!capStream)
+    return false
+  for (const t of capStream.getVideoTracks()) {
+    if (t.readyState === 'live')
+      t.stop()
+  }
+  if (capTrack?.readyState === 'live')
+    return true
+  capNode?.disconnect()
+  capNode = null
+  capTrack = null
+  const track = capStream.getAudioTracks().find(t => t.readyState === 'live')
+  if (!track || !ctx || !analyser)
+    return false
+  capNode = ctx.createMediaStreamSource(new MediaStream([track]))
+  capNode.connect(analyser)
+  capTrack = track
+  return true
 }
 
 // Loop state lives here, not per call: the shell and the Motion panel both
@@ -315,6 +359,33 @@ export function useVideoBeat() {
   function ensureGraph(el: HTMLVideoElement): boolean {
     if (analyser && sourceEl === el)
       return true
+    if (!sourceEl && canCopySound(el)) {
+      try {
+        const AC = (window as any).AudioContext ?? (window as any).webkitAudioContext
+        ctx ??= new AC() as AudioContext
+        if (!analyser) {
+          analyser = ctx.createAnalyser()
+          analyser.fftSize = 1024
+          analyser.smoothingTimeConstant = 0
+        }
+        if (capFrom !== el) {
+          capNode?.disconnect()
+          capNode = null
+          capTrack = null
+          capStream = el.captureStream()
+          capFrom = el
+        }
+        // No audio track until the video has loaded: tick links it then.
+        linkCopy()
+        return true
+      }
+      catch {
+        // A video from another site without CORS can't be listened to. Its
+        // sound is left alone (diverting it would only have silenced it).
+        available.value = false
+        return false
+      }
+    }
     // In the pop-out's window: this window's audio graph cannot take its sound.
     if (el.ownerDocument !== document)
       return false
@@ -371,6 +442,8 @@ export function useVideoBeat() {
   }
 
   function tick() {
+    if (listeningTo.value === 'video' && capStream)
+      linkCopy()
     const an = listeningTo.value === 'page' ? pageAnalyser : listeningTo.value === 'video' && ctx ? analyser : null
     if (!an) {
       raf = null
