@@ -86,7 +86,10 @@ export async function startXrScene(o: XrSceneOptions): Promise<XrScene> {
   const renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.xr.enabled = true
   renderer.xr.setReferenceSpaceType('local')
-  renderer.domElement.style.display = 'none'
+  // Not hidden: a headset shows the session by itself, but an emulator in a
+  // desktop browser (Meta's Immersive Web Emulator) shows this canvas, moved
+  // into a full-window box of its own; hidden, it showed nothing.
+  renderer.domElement.style.pointerEvents = 'none'
   document.body.appendChild(renderer.domElement)
   await renderer.xr.setSession(session)
 
