@@ -16,6 +16,7 @@ import * as THREE from 'three'
  */
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { cancelFrame, requestFrame } from '~/lib/frames'
+import { eyeRect, VR_FRAG, VR_VERT } from '~/lib/vrSphere'
 
 const props = defineProps<{ videoEl: HTMLVideoElement | null, format: VrFormat, eye?: VrEye, layout?: VrLayout }>()
 
@@ -159,45 +160,6 @@ function initThree() {
   startLoop()
 }
 
-/** Direction from the eye, in view space where -Z is the middle of the frame. */
-const VERT = /* glsl */`
-varying vec3 vDir;
-void main() {
-  vDir = position;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`
-
-/**
- * Where a direction lands in one eye's half of the frame (eyeX: 0 left, 0.5 right).
- *   equirect: longitude across the field of view, latitude over 180°
- *   fisheye:  equidistant, the angle off centre grows evenly to the rim
- */
-const FRAG = /* glsl */`
-uniform sampler2D map;
-uniform float halfFov;
-uniform bool fisheye;
-uniform vec4 eyeRect;
-varying vec3 vDir;
-const float PI = 3.14159265358979;
-void main() {
-  vec3 d = normalize(vDir);
-  vec2 uv;
-  if (fisheye) {
-    float theta = acos(clamp(-d.z, -1.0, 1.0));
-    if (theta > halfFov) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-    float r = 0.5 * theta / halfFov;
-    float phi = atan(d.y, d.x);
-    uv = vec2(0.5 + r * cos(phi), 0.5 + r * sin(phi));
-  }
-  else {
-    float lon = atan(d.x, -d.z);
-    float lat = asin(clamp(d.y, -1.0, 1.0));
-    if (abs(lon) > halfFov) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
-    uv = vec2(0.5 + 0.5 * lon / halfFov, 0.5 + lat / PI);
-  }
-  gl_FragColor = texture2D(map, eyeRect.xy + uv * eyeRect.zw);
-}`
-
 function buildSphere() {
   if (!props.videoEl || !scene)
     return
@@ -226,8 +188,8 @@ function buildSphere() {
       fisheye: { value: false },
       eyeRect: { value: new THREE.Vector4(0, 0, 0.5, 1) },
     },
-    vertexShader: VERT,
-    fragmentShader: FRAG,
+    vertexShader: VR_VERT,
+    fragmentShader: VR_FRAG,
     side: THREE.BackSide,
     depthWrite: false,
   })
@@ -242,15 +204,8 @@ function applyFormat() {
     return
   mat.uniforms.halfFov.value = THREE.MathUtils.degToRad(props.format.fov / 2)
   mat.uniforms.fisheye.value = props.format.projection === 'fisheye'
-  // Texture v runs bottom to top (flipY), so the top half is 0.5–1.
-  const right = props.eye === 'right'
   const rect = mat.uniforms.eyeRect.value as THREE.Vector4
-  if (props.layout === 'tb')
-    rect.set(0, right ? 0 : 0.5, 1, 0.5)
-  else if (props.layout === 'mono')
-    rect.set(0, 0, 1, 1)
-  else
-    rect.set(right ? 0.5 : 0, 0, 0.5, 1)
+  rect.set(...eyeRect(props.layout ?? 'sbs', props.eye ?? 'left'))
   drawn = ''
 }
 
