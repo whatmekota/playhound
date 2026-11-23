@@ -364,7 +364,8 @@ function toggleTray(t: 'transition' | 'timing') {
       @pointerleave="overToolbar = false"
       @pointerdown.stop
     >
-      <div class="p-1 rounded-full glass flex gap-0.5 ring-1 ring-edge-strong shadow-[var(--shadow-lg)] items-center">
+      <!-- Wider than a phone: there it scrolls sideways (ph-strip). -->
+      <div class="ph-strip p-1 rounded-full glass flex gap-0.5 max-w-full ring-1 ring-edge-strong shadow-[var(--shadow-lg)] items-center">
         <UiIconButton icon="i-carbon-skip-back-filled" label="Previous slide" kbd="←" tip="bottom" class="!rounded-full" @click="prev" />
         <button
           v-tip="{ text: isPlaying ? 'Pause' : 'Play', kbd: 'Space', placement: 'bottom' }"
@@ -765,5 +766,14 @@ function toggleTray(t: 'transition' | 'timing') {
   opacity: 0;
   transform: translate(-50%, -8px);
   pointer-events: none;
+}
+/* A phone: the stage's width, so the toolbar can scroll inside it. */
+.ph-compact .chrome {
+  left: 8px;
+  right: 8px;
+  transform: none;
+}
+.ph-compact .chrome.is-hidden {
+  transform: translateY(-8px);
 }
 </style>

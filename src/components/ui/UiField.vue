@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * Settings row: label (and hint) on the left, control on the right.
- * `stacked` puts the control underneath instead, for wide controls.
+ * `stacked` puts the control underneath instead, for wide controls. On a
+ * phone a control too wide to sit beside the text drops under it on its own
+ * (`ui-field`, styles/android.css).
  */
 defineProps<{
   label: string
@@ -11,7 +13,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="flex min-w-0" :class="stacked ? 'flex-col gap-1.5' : 'items-center justify-between gap-3'">
+  <div class="flex min-w-0" :class="stacked ? 'flex-col gap-1.5' : 'ui-field items-center justify-between gap-3'">
     <div class="flex flex-col gap-0.5 min-w-0">
       <span class="text-[13px] text-fg">{{ label }}</span>
       <span v-if="hint" class="hint">{{ hint }}</span>

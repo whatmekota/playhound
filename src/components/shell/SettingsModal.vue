@@ -2,7 +2,7 @@
 import type { LibraryPlay } from '~/components/library/useLibraryQuery'
 import type { ThemeId } from '~/stores/themeStore'
 import { useLocalStorage } from '@vueuse/core'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useLibraryPlay } from '~/components/library/useLibraryQuery'
 import { useShowAutoTags } from '~/components/library/useLibraryTags'
 import SubtitleText from '~/components/player/SubtitleText.vue'
@@ -184,6 +184,13 @@ const section = ref<SectionId>(isAndroidApp ? 'android' : 'appearance')
 /** On a phone the sections run along the top. */
 const compact = useCompactLayout()
 const current = computed(() => SECTIONS.find(s => s.id === section.value)!)
+// …in a row wider than the screen: the open one is scrolled into sight, also
+// when Settings opens at a section further along.
+const navEl = ref<HTMLElement | null>(null)
+watch([section, () => ui.settingsOpen, compact], () => {
+  if (compact.value && ui.settingsOpen)
+    void nextTick(() => navEl.value?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }))
+})
 
 const THEME_NOTE: Record<ThemeId, string> = {
   dark: 'Neutral black, magenta accent',
@@ -372,6 +379,7 @@ function openBackup() {
     <div class="border-t border-edge flex" :class="compact ? 'flex-col h-[calc(100dvh-76px)]' : 'h-[min(560px,70vh)]'">
       <!-- Sections -->
       <nav
+        ref="navEl"
         class="p-2 bg-surface-900/40 flex shrink-0 gap-0.5"
         :class="compact ? 'border-b border-edge overflow-x-auto' : 'border-r border-edge flex-col w-[184px]'"
         aria-label="Settings sections"

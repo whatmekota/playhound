@@ -204,7 +204,8 @@ const fpsOptions = [24, 25, 30, 60].map(v => ({ value: v, label: String(v) }))
       @pointerdown="startResize"
     />
 
-    <header class="px-3 border-b border-edge flex shrink-0 gap-2 h-10 items-center">
+    <!-- ph-strip: wider than a phone, so there it scrolls sideways. -->
+    <header class="ph-strip px-3 border-b border-edge flex shrink-0 gap-2 h-10 items-center">
       <span class="i-carbon-edit text-[15px] text-accent-300 shrink-0" />
       <span class="text-[13px] text-fg font-medium shrink-0">Edit script</span>
       <UiSegmented v-if="axisOptions.length > 1" v-model="axisModel" :options="axisOptions" size="xs" class="num" />
