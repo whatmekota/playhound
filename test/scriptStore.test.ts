@@ -82,7 +82,7 @@ describe('script tweaks', () => {
     store.setTweaks('L0', { min: 20, max: 80 })
     expect(store.scripts[0].parsed.actions.map(a => a.pos)).toEqual([0.2, 0.8, 0.2])
     await flush()
-    expect(vidmeta.get('clip.mp4')).toEqual({ tags: ['x'], scriptTweaks: { L0: { min: 20, max: 80, invert: false, speedCap: 0, smooth: 'off', offsetMs: 0 } } })
+    expect(vidmeta.get('clip.mp4')).toEqual({ tags: ['x'], scriptTweaks: { L0: { min: 20, max: 80, invert: false, speedCap: 0, smooth: 'off', strokes: 'as-is', offsetMs: 0 } } })
 
     store.resetTweaks()
     expect(store.scripts[0].parsed).toStrictEqual(sourceOf(store.scripts[0]))
