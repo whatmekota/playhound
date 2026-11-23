@@ -9,10 +9,21 @@ vi.mock('~/lib/idb', () => ({
 vi.mock('~/composables/useToast', () => ({
   toast: Object.assign(vi.fn(), { warn: vi.fn(), error: vi.fn(), success: vi.fn() }),
 }))
+// What "Save as" would have written.
+const savedAs = vi.hoisted(() => [] as string[])
+vi.mock('~/lib/scriptFiles', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/lib/scriptFiles')>(),
+  saveTextAs: async (text: string) => {
+    savedAs.push(text)
+    return { kind: 'download' }
+  },
+}))
 
 const { useScriptStore, sourceOf } = await import('../src/stores/scriptStore')
 const { useScriptEditStore } = await import('../src/stores/scriptEditStore')
 const { mayLeave } = await import('../src/lib/leaveGuard')
+const { bakeOffset } = await import('../src/lib/scriptTweaks')
+const { toFileActions } = await import('../src/lib/funscriptWrite')
 
 function file(actions: { at: number, pos: number }[]): ScriptFile {
   const parsed: ParsedAxis = {
@@ -56,6 +67,24 @@ describe('script edit store', () => {
     expect(edit.dirty).toBe(false)
     edit.redo()
     expect(edit.points[1].pos).toBeCloseTo(0.8)
+  })
+
+  it('exports what plays, every tweak in, the offset baked', async () => {
+    const scripts = useScriptStore()
+    await scripts.useTweaksFor('clip.mp4', false)
+    const roll = file([{ at: 0, pos: 0.2 }, { at: 400, pos: 0.6 }, { at: 800, pos: 0.2 }, { at: 1200, pos: 0.6 }])
+    // In a file of its own: only the stroke's file has a tweak, so only it is exported.
+    Object.assign(roll, { path: 'clip.roll.funscript', channel: 'R1', parsed: { ...roll.parsed, channel: 'R1' } })
+    scripts.setScripts([file(POINTS), roll])
+    scripts.setTweaks('L0', { plays: 'R1', humanise: 'medium', offsetMs: 100 })
+    savedAs.length = 0
+    expect(await useScriptEditStore().exportTweaked()).toBe(true)
+    const out = JSON.parse(savedAs[0])
+    // The roll script, humanised, 100 ms earlier: what plays, not what L0's file says.
+    const played = scripts.scripts[0].parsed.actions
+    expect(played.length).toBe(4)
+    expect(played).not.toEqual(roll.parsed.actions)
+    expect(out.actions).toEqual(toFileActions(bakeOffset(played, 100)))
   })
 
   it('a fill applied through commit is one undo step', async () => {

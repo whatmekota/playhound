@@ -14,6 +14,7 @@ vi.mock('~/lib/idb', () => ({
 }))
 
 const { useScriptStore, sourceOf } = await import('../src/stores/scriptStore')
+const { usePlayerStore } = await import('../src/stores/playerStore')
 const { snapshotOf } = await import('../src/plugins/scripts')
 const { analysisKey, scriptAnalysisKey } = await import('../src/composables/useScriptAnalysis')
 
@@ -82,7 +83,20 @@ describe('script tweaks', () => {
     store.setTweaks('L0', { min: 20, max: 80 })
     expect(store.scripts[0].parsed.actions.map(a => a.pos)).toEqual([0.2, 0.8, 0.2])
     await flush()
-    expect(vidmeta.get('clip.mp4')).toEqual({ tags: ['x'], scriptTweaks: { L0: { min: 20, max: 80, invert: false, speedCap: 0, smooth: 'off', strokes: 'as-is', offsetMs: 0 } } })
+    expect(vidmeta.get('clip.mp4')).toEqual({ tags: ['x'], scriptTweaks: { L0: {
+      min: 20,
+      max: 80,
+      invert: false,
+      speedCap: 0,
+      smooth: 'off',
+      smoothAbove: 0,
+      strokes: 'as-is',
+      humanise: 'off',
+      repeatFromMs: 0,
+      repeatToMs: 0,
+      plays: '',
+      offsetMs: 0,
+    } } })
 
     store.resetTweaks()
     expect(store.scripts[0].parsed).toStrictEqual(sourceOf(store.scripts[0]))
@@ -115,6 +129,58 @@ describe('script tweaks', () => {
     store.setScripts([file(STROKES)])
     expect(store.isTweaked('L0')).toBe(false)
     expect(store.scripts[0].parsed.actions[0].pos).toBe(0)
+  })
+
+  it('an axis can play another loaded axis\'s script, with its own tweaks on top', async () => {
+    const ROLL = [{ at: 0, pos: 0.2 }, { at: 400, pos: 0.6 }, { at: 800, pos: 0.2 }]
+    const store = useScriptStore()
+    await store.useTweaksFor('clip.mp4', false)
+    store.setScripts([file(STROKES), file(ROLL, { channel: 'R1' })])
+    store.setTweaks('L0', { plays: 'R1', invert: true })
+    expect(store.scripts[0].parsed.actions.map(a => a.pos)).toEqual([0.8, 0.4, 0.8])
+    // Its own file is untouched, and the other axis plays as before.
+    expect(sourceOf(store.scripts[0]).actions).toEqual(STROKES)
+    expect(store.scripts[1].parsed.actions).toEqual(ROLL)
+    // Playing each other's scripts swaps them: each takes the other's as written.
+    store.setTweaks('R1', { plays: 'L0' })
+    expect(store.scripts[1].parsed.actions).toEqual(STROKES)
+    expect(store.scripts[0].parsed.actions.map(a => a.pos)).toEqual([0.8, 0.4, 0.8])
+    // An edit of the other axis reaches this one.
+    store.setSourceActions(store.scripts[1], [{ at: 0, pos: 0.5 }, { at: 400, pos: 1 }])
+    expect(store.scripts[0].parsed.actions.map(a => a.pos)).toEqual([0.5, 0])
+    // Itself: nothing to play. Not loaded on another video: its own script.
+    store.setTweaks('L0', { plays: 'L0', invert: false })
+    expect(store.isTweaked('L0')).toBe(false)
+    store.setTweaks('L0', { plays: 'R2' })
+    expect(store.scripts[0].parsed.actions).toEqual(STROKES)
+  })
+
+  it('a repeated stretch reaches the video\'s end once its length is known', async () => {
+    const store = useScriptStore()
+    const player = usePlayerStore()
+    await store.useTweaksFor('clip.mp4', false)
+    store.setScripts([file([...STROKES, { at: 1500, pos: 1 }, { at: 2000, pos: 0 }])])
+    store.setTweaks('L0', { repeatFromMs: 0, repeatToMs: 1000 })
+    expect(store.scripts[0].parsed.duration).toBe(2000)
+    player.videoDuration = 5
+    await nextTick()
+    expect(store.scripts[0].parsed.duration).toBe(5000)
+    expect(store.scripts[0].parsed.actions.filter(a => a.at % 1000 === 0).every(a => a.pos === 0)).toBe(true)
+  })
+
+  it('humanises the same way every time for a video and axis, differently for another video', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ at: i * 400, pos: i % 2 ? 0.9 : 0.1 }))
+    const store = useScriptStore()
+    const playedOn = async (video: string) => {
+      await store.useTweaksFor(video, false)
+      store.setScripts([file(many)])
+      store.setTweaks('L0', { humanise: 'medium' })
+      return store.scripts[0].parsed.actions.map(a => ({ ...a }))
+    }
+    const a = await playedOn('a.mp4')
+    expect(a).not.toEqual(many)
+    expect(await playedOn('a.mp4')).toEqual(a)
+    expect(await playedOn('b.mp4')).not.toEqual(a)
   })
 
   it('plays edits through the tweaks, and caches see a new version', async () => {

@@ -3,7 +3,8 @@ import type { SavedTweaks, ScriptTweaks } from '~/lib/scriptTweaks'
 import { defineStore } from 'pinia'
 import { computed, markRaw, ref, toRaw, watch } from 'vue'
 import { videoMetaDb } from '~/lib/idb'
-import { applyTweaks, DEFAULT_TWEAKS, isDefaultTweaks, normaliseTweaks, shapeIsIdentity } from '~/lib/scriptTweaks'
+import { applyTweaks, DEFAULT_TWEAKS, isDefaultTweaks, normaliseTweaks, repeats, shapeIsIdentity } from '~/lib/scriptTweaks'
+import { usePlayerStore } from '~/stores/playerStore'
 
 export interface ScriptFile {
   path: string
@@ -76,6 +77,54 @@ export const useScriptStore = defineStore('script', () => {
   const anyTweaked = computed(() => scripts.value.some(s => isTweaked(s.channel)))
   const anyEdited = computed(() => scripts.value.some(s => s.edited))
 
+  /**
+   * The video's length, ms, once the player knows it (0 before): a repeated
+   * stretch fills up to it. Read from the player rather than handed in, so
+   * it follows wherever the length comes from (a file, a stream, a headset).
+   */
+  const player = usePlayerStore()
+  const videoMs = computed(() => {
+    const d = player.videoDuration
+    return Number.isFinite(d) && d > 0 ? Math.round(d * 1000) : 0
+  })
+
+  /**
+   * The take of `channel` whose script others play: the one playing, else
+   * the main one. Null when the channel is not loaded.
+   */
+  function takeOf(channel: string, list: ScriptFile[]): ScriptFile | null {
+    const takes = list.filter(x => x.channel === channel)
+    return takes.find(x => x.enabled) ?? takes.find(x => !x.isAlt) ?? takes[0] ?? null
+  }
+
+  /**
+   * What an axis's tweaks are applied to: another loaded axis's script when
+   * it plays one, else its own. Always the other's script as written (or as
+   * edited), never what that axis plays, so two axes playing each other's
+   * scripts swap them instead of going round in a loop. An axis that is not
+   * loaded on this video leaves this one on its own script.
+   */
+  function inputOf(s: ScriptFile, t: ScriptTweaks, list: ScriptFile[]): readonly FunscriptAction[] {
+    const other = t.plays && t.plays !== s.channel ? takeOf(t.plays, list) : null
+    return toRaw(sourceOf(other ?? s)).actions
+  }
+
+  /** What plays for `s` under `t`: a new axis, so caches keyed on its version see the change. */
+  function shaped(s: ScriptFile, t: ScriptTweaks, list: ScriptFile[]): ParsedAxis {
+    const src = toRaw(sourceOf(s))
+    const actions = applyTweaks(inputOf(s, t, list), t, {
+      videoMs: videoMs.value,
+      // Humanising plays the same every time for this video and axis.
+      seed: `${tweakVideo.value ?? ''}\u0000${s.channel}`,
+    }) as FunscriptAction[]
+    return frozen({
+      ...src,
+      actions,
+      duration: actions.length ? actions[actions.length - 1].at : 0,
+      rev: nextRev(),
+    })
+  }
+
   /** Recompute what plays from the source and the tweaks. Keeps `parsed` as is when nothing changes it. */
   function applyTo(s: ScriptFile) {
     s.source ??= frozen(s.parsed)
@@ -87,29 +136,37 @@ export const useScriptStore = defineStore('script', () => {
         s.parsed = src
       return
     }
-    const actions = applyTweaks(src.actions, t) as FunscriptAction[]
-    s.parsed = frozen({
-      ...src,
-      actions,
-      duration: actions.length ? actions[actions.length - 1].at : 0,
-      rev: nextRev(),
-    })
+    s.parsed = shaped(s, t, scripts.value)
+  }
+
+  /** The axes that play `channel`'s script follow it when what it says, or which take plays, changes. */
+  function refollow(channel: string) {
+    scripts.value.filter(s => s.channel !== channel && tweaks.value[s.channel]?.plays === channel).forEach(applyTo)
   }
 
   function prepare(list: ScriptFile[]) {
     for (const s of list) {
       s.parsed = frozen(s.parsed)
       s.source = s.source ? frozen(s.source) : s.parsed
+    }
+    // Every source first, so an axis playing another's script finds it in the new list.
+    for (const s of list) {
       // Through the same rules as a change, so a new list plays tweaked from the start.
       const t = tweaks.value[s.channel]
       s.offsetMs = t?.offsetMs ?? s.offsetMs ?? 0
-      if (t && !shapeIsIdentity(t)) {
-        const actions = applyTweaks(s.source.actions, t) as FunscriptAction[]
-        s.parsed = frozen({ ...s.source, actions, duration: actions.length ? actions[actions.length - 1].at : 0, rev: nextRev() })
-      }
+      if (t && !shapeIsIdentity(t))
+        s.parsed = shaped(s, t, list)
     }
     return list
   }
+
+  // The length arrives after the scripts (when the video's metadata loads):
+  // a repeated stretch then reaches the real end. Going back to 0 is a new
+  // video on its way, whose scripts are prepared afresh.
+  watch(videoMs, (ms) => {
+    if (ms)
+      scripts.value.filter(s => repeats(tweaks.value[s.channel])).forEach(applyTo)
+  })
 
   // One pending write per video: switching videos must not drop the last one's.
   const saveTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -140,7 +197,7 @@ export const useScriptStore = defineStore('script', () => {
   }
 
   function setTweaks(channel: string, patch: Partial<ScriptTweaks>) {
-    const next = normaliseTweaks({ ...tweaksFor(channel), ...patch })
+    const next = normaliseTweaks({ ...tweaksFor(channel), ...patch }, channel)
     if (isDefaultTweaks(next)) {
       const { [channel]: _gone, ...rest } = tweaks.value
       tweaks.value = rest
@@ -175,7 +232,7 @@ export const useScriptStore = defineStore('script', () => {
         const saved = (await videoMetaDb.get(video))?.scriptTweaks
         if (saved && typeof saved === 'object') {
           for (const [ch, t] of Object.entries(saved)) {
-            const n = normaliseTweaks(t)
+            const n = normaliseTweaks(t, ch)
             if (!isDefaultTweaks(n))
               loaded[ch] = n
           }
@@ -220,6 +277,7 @@ export const useScriptStore = defineStore('script', () => {
     s.source = frozen({ ...src, actions, duration: actions.length ? actions[actions.length - 1].at : 0, rev: nextRev() })
     s.edited = edited
     applyTo(s)
+    refollow(s.channel)
   }
 
   // ─── Loading ────────────────────────────────────────────────────────────
@@ -243,6 +301,7 @@ export const useScriptStore = defineStore('script', () => {
         .forEach((x) => { x.enabled = false })
     }
     s.enabled = !s.enabled
+    refollow(channel)
   }
 
   function clearScripts() {
