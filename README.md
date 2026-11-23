@@ -112,6 +112,11 @@ uploaded. Like it? [Get the Windows app](https://github.com/whatmekota/playhound
   window, wherever the two windows are.
 - **VR too.** VR plays in a look-around view: side by side, top-bottom or mono;
   180° to 220° equirectangular or fisheye, and 360°.
+- **In your VR headset.** Switch on the **Headset** panel (desktop app) and open
+  the address it shows in the headset's browser: pair once with a 6-digit code,
+  pick a video from your library, and it plays in VR in the headset while
+  playhound drives your device to its clock. Play, seek, intensity, edges and
+  panic are on a panel in VR. New: reports welcome.
 - **No script? Use the music.** It finds the beat in the video's soundtrack and
   strokes in time with it, or writes a real `.funscript` from the whole track
   that you can save and edit. Depth can follow how loud the music is or stay at
@@ -593,7 +598,13 @@ world only when you use a feature that needs it:
   shows the app and a timer, never what's playing; titles appear only if you
   write a custom template that asks for them.
 
-The phone remote and the CYD face talk to your own computer over your LAN.
+The phone remote, the CYD face and the headset player talk to your own computer
+over your LAN. While the Headset panel is switched on, the desktop app serves
+your library over HTTPS there, only to headsets paired with its code.
+
+An app lock (**Settings → Privacy**) keeps playhound closed to people nearby: a
+PIN, or on Android a fingerprint or face, asked when it opens and again after
+time away. It hides the app; it doesn't encrypt anything.
 
 ## Development
 
