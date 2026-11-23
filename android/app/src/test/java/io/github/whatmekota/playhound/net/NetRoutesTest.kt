@@ -11,7 +11,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.net.CookieHandler
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
@@ -135,6 +137,25 @@ class NetRoutesTest {
         assertTrue(seen["echo"]!!["cookie"]!!.contains("a=1"))
         open(proxied("$up/echo")).inputStream.readBytes()
         assertNull(seen["echo"]!!["cookie"])
+    }
+
+    @Test
+    fun sendsOnlyTheJarsCookiesWhateverTheDefaultCookieHandler() {
+        // What Capacitor does at every start: its cookie bridge becomes the
+        // VM's default handler, which HttpURLConnection asks on every request.
+        val before = CookieHandler.getDefault()
+        CookieHandler.setDefault(object : CookieHandler() {
+            override fun get(uri: URI, requestHeaders: Map<String, List<String>>) = mapOf("Cookie" to listOf("_t=stale"))
+            override fun put(uri: URI, responseHeaders: Map<String, List<String>>) {}
+        })
+        try {
+            jar.kept["_t"] = "_t=fresh"
+            open(proxied("$up/echo")) { setRequestProperty("X-Ph-Jar", "1") }.inputStream.readBytes()
+            assertEquals("_t=fresh", seen["echo"]!!["cookie"])
+        }
+        finally {
+            CookieHandler.setDefault(before)
+        }
     }
 
     @Test

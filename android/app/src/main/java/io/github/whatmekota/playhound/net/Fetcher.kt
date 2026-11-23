@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
+import java.net.CookieHandler
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -136,6 +137,7 @@ class Fetcher(
         var payload = body
         var sent = headers.filterKeys { it.lowercase() !in NOT_FORWARDED }
         val cookies = ArrayList<String>()
+        dropDefaultCookieHandler()
         for (hop in 0..maxRedirects) {
             val target = URL(current)
             if (target.protocol != "http" && target.protocol != "https") throw IOException("Only http(s) links")
@@ -198,6 +200,23 @@ class Fetcher(
     }
 
     companion object {
+        /**
+         * Cookies here are the request's and the jar's business alone. Capacitor
+         * makes its cookie bridge the VM's default CookieHandler at every start
+         * (CapacitorCookies.load, whatever the config says), and HttpURLConnection
+         * asks that handler on every request: it put the WebView store's cookies
+         * in a second Cookie header next to the one set here, so the forum got
+         * its session twice, joined into one line, read a token with the rest of
+         * the line stuck to it, and answered as to someone logged out. The
+         * handler also filed every Set-Cookie under the app's own address.
+         * Nothing in this app uses Capacitor's HTTP plugin, the one thing the
+         * handler is for. Every request rather than once, as Capacitor sets it
+         * again each time the activity is made.
+         */
+        fun dropDefaultCookieHandler() {
+            if (CookieHandler.getDefault() != null) CookieHandler.setDefault(null)
+        }
+
         private val REDIRECTS = setOf(301, 302, 303, 307, 308)
 
         /** Set by the connection itself, or meaningless for a hop. */
