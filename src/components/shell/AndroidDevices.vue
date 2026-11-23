@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
 import { useAndroidSession } from '~/composables/useAndroidSession'
+import { useAndroidBack } from '~/lib/android/back'
 import { activePicker } from '~/lib/android/picker'
 
 /**
@@ -18,6 +19,9 @@ const s = computed(() => activePicker.value)
 const v = computed(() => s.value?.view)
 
 const icon = computed(() => (v.value?.kind === 'usb' ? 'i-carbon-usb' : 'i-carbon-bluetooth'))
+
+// The phone's Back cancels the chooser, like tapping outside it.
+useAndroidBack(() => !!(s.value && v.value), () => s.value?.on.cancel())
 </script>
 
 <template>

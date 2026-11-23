@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { MenuItem } from './menu'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useAndroidBack } from '~/lib/android/back'
 import { useOccluder } from '~/lib/occluders'
 import UiMenu from './UiMenu.vue'
 
@@ -58,6 +59,8 @@ onBeforeUnmount(close)
 
 // A plugin's web page under it steps aside while it is open.
 useOccluder(() => !!model.value, () => el.value)
+// The phone's Back closes it, like Escape.
+useAndroidBack(() => !!model.value, close)
 </script>
 
 <template>

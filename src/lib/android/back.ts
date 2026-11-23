@@ -1,3 +1,4 @@
+import { onScopeDispose, watch } from 'vue'
 import { PhApp } from './app'
 import { isAndroidApp } from './detect'
 
@@ -27,4 +28,20 @@ export function onAndroidBack(handler: () => void): () => void {
     if (!handlers.length)
       void PhApp.setBackHandler({ on: false }).catch(() => {})
   }
+}
+
+/**
+ * onAndroidBack for as long as `open()` holds, in a component: a dialog,
+ * sheet, panel or page over the rest that Back should close. Given up again
+ * when it closes, or when the component goes away while open.
+ */
+export function useAndroidBack(open: () => boolean, close: () => void): void {
+  if (!isAndroidApp)
+    return
+  let giveUp: (() => void) | null = null
+  watch(open, (on) => {
+    giveUp?.()
+    giveUp = on ? onAndroidBack(close) : null
+  }, { immediate: true })
+  onScopeDispose(() => giveUp?.())
 }
