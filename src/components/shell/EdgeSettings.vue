@@ -10,7 +10,7 @@ import UiKbd from '~/components/ui/UiKbd.vue'
 import UiSegmented from '~/components/ui/UiSegmented.vue'
 import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
-import { EDGE_PRESETS, edgeTotalSec, fallOf, MIN_FALL_SEC, presetOf } from '~/lib/edging'
+import { EDGE_PRESETS, edgeShape, fallOf, MIN_FALL_SEC, presetOf, withPreset } from '~/lib/edging'
 import { DEFAULT_EDGE, useSessionControlStore } from '~/stores/sessionControlStore'
 
 const control = useSessionControlStore()
@@ -27,7 +27,7 @@ const presetModel = computed({
   set: (id: string) => {
     const p = EDGE_PRESETS.find(x => x.id === id)
     if (p)
-      control.settings = { ...control.settings, fallSec: p.fallSec, depth: p.depth, cooldownSec: p.cooldownSec, rebuildSec: p.rebuildSec }
+      control.settings = withPreset(control.settings, p)
   },
 })
 
@@ -54,22 +54,7 @@ const howFar = (v: number) => (v >= 0.995 ? 'Stops' : `Leaves ${Math.round((1 - 
 /** The shape over the whole edge: intensity against time, the hold shaded. */
 const W = 300
 const H = 56
-const shape = computed(() => {
-  const total = Math.max(0.1, edgeTotalSec(s.value))
-  const x = (t: number) => (t / total) * W
-  const y = (holdBack: number) => 4 + holdBack * (H - 8)
-  const smooth = (p: number) => p * p * (3 - 2 * p)
-  const f = fallOf(s.value)
-  const d = Math.max(0, Math.min(1, s.value.depth))
-  const pts: string[] = []
-  const n = 24
-  for (let i = 0; i <= n; i++)
-    pts.push(`${x((f * i) / n).toFixed(1)},${y(d * smooth(i / n)).toFixed(1)}`)
-  pts.push(`${x(f + s.value.cooldownSec).toFixed(1)},${y(d).toFixed(1)}`)
-  for (let i = 1; i <= n; i++)
-    pts.push(`${x(f + s.value.cooldownSec + (s.value.rebuildSec * i) / n).toFixed(1)},${y(d * (1 - smooth(i / n))).toFixed(1)}`)
-  return { line: `M${pts.join(' L')}`, holdFrom: x(f), holdTo: x(f + s.value.cooldownSec), total }
-})
+const shape = computed(() => edgeShape(s.value, W, H))
 </script>
 
 <template>

@@ -39,7 +39,7 @@ import { canRead, folderSignature, readFolder } from '~/plugins/devFolder'
 import { motionFilters } from '~/plugins/filters'
 import { fingerprintOf, fingerprintSize } from '~/plugins/fingerprint'
 import { aliasesOf, baseUrl, baseUrls, serve as serveHttp, servingAvailable, shareFile, unserve, unshareAll } from '~/plugins/http'
-import { accessOf, addedPermissions, allows, permissionError, readManifest } from '~/plugins/manifest'
+import { accessOf, addedPermissions, allows, asksFirst, permissionError, readManifest } from '~/plugins/manifest'
 import { pluginFetch } from '~/plugins/net'
 import { clearPictureFx, setPictureFx } from '~/plugins/pictureFx'
 import { cleanProvidedList, entryOf } from '~/plugins/provider'
@@ -489,9 +489,11 @@ export const usePluginStore = defineStore('plugins', () => {
   /**
    * Install (or update) from a zip. A first install, and an update that asks
    * for more than the installed version had, wait for the user to agree in
-   * the install dialog; null if they don't.
+   * the install dialog; null if they don't. `agreed` is a manifest whose
+   * permissions the user already said yes to where they picked the plugin
+   * (the first-run setup): within those, there is no second question.
    */
-  async function install(file: Blob | Uint8Array, source?: string): Promise<PluginInfo | null> {
+  async function install(file: Blob | Uint8Array, source?: string, agreed?: PluginManifest): Promise<PluginInfo | null> {
     const pkg = await readPackage(file)
     const id = pkg.manifest.id
     const was = find(id)
@@ -499,7 +501,7 @@ export const usePluginStore = defineStore('plugins', () => {
       throw new Error(`${was.manifest.name} is loaded from a folder right now. Remove that first.`)
     const access = accessOf(pkg.manifest)
     const added = addedPermissions(was ? accessOf(was.manifest) : null, access)
-    if (!was || added.length) {
+    if (asksFirst(was ? accessOf(was.manifest) : null, access, agreed?.id === id ? accessOf(agreed) : null)) {
       // A dialog already up is answered no: one question at a time.
       answerInstall(false)
       const ok = await new Promise<boolean>((resolve) => {
@@ -2355,15 +2357,18 @@ export const usePluginStore = defineStore('plugins', () => {
     keepSources()
   }
 
-  /** Download a source's latest release and install it (or update the installed one); null if the user said no. */
-  async function installFromSource(repo: string): Promise<PluginInfo | null> {
+  /**
+   * Download a source's latest release and install it (or update the
+   * installed one); null if the user said no. `agreed`: see install().
+   */
+  async function installFromSource(repo: string, agreed?: PluginManifest): Promise<PluginInfo | null> {
     const s = sourceFor(repo)
     const rel = s.release ?? await fetchRelease(pluginFetch, repo)
     s.release = rel
     const res = await pluginFetch(rel.zipUrl)
     if (!res.ok)
       throw new Error(`Download failed: ${res.status}`)
-    return install(new Uint8Array(await res.arrayBuffer()), repo)
+    return install(new Uint8Array(await res.arrayBuffer()), repo, agreed)
   }
 
   /** At startup: look at the sources once a day, and say if something can be updated. */

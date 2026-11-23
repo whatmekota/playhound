@@ -1,6 +1,7 @@
 import type { BackupStore, VideoMeta } from './idb'
 import { BACKUP_STORES, exportStore, importStore } from './idb'
 import { isOwnKey, runMigrations, SCHEMA_VERSION, storedSchema } from './persist'
+import { markSetupDone } from './setup'
 
 /**
  * Backup and restore of everything the app keeps in the browser.
@@ -116,6 +117,9 @@ export async function restoreBackup(
   else if (storedSchema(localStorage) < SCHEMA_VERSION) {
     runMigrations(localStorage)
   }
+  // A backup comes from an install that was in use, older than the setup or
+  // past it: restored onto a fresh one, the setup has nothing left to ask.
+  markSetupDone(localStorage)
 
   let idbRecords = 0
   for (const name of BACKUP_STORES) {

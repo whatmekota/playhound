@@ -12,12 +12,15 @@ import { useSessionControlStore } from '~/stores/sessionControlStore'
  * set the volume and its limit, and Start. See useEstim for the safety rules.
  */
 
+/** `expanded`: open from the start (the first-run setup, where it is the step), not only while running. */
+const props = defineProps<{ expanded?: boolean }>()
+
 const estim = useEstim()
 const safety = useSafetyStore()
 const control = useSessionControlStore()
 const s = estim.settings
 
-const open = ref(estim.running.value)
+const open = ref(props.expanded || estim.running.value)
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
 onMounted(() => void estim.refreshOutputs())

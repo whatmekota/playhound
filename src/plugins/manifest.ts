@@ -97,6 +97,19 @@ export function addedPermissions(prev: Access | null, next: Access): PluginPermi
 }
 
 /**
+ * Whether installing asks the user first: a first install does, and so does
+ * an update that asks for more than the installed version had. Not when the
+ * user already agreed to at least this much where they picked the plugin
+ * (the first-run setup lists each one's permissions by its checkbox); a
+ * package that asks for more than what they saw still asks.
+ */
+export function asksFirst(installed: Access | null, next: Access, agreed: Access | null = null): boolean {
+  if (agreed && !addedPermissions(agreed, next).length)
+    return false
+  return !installed || addedPermissions(installed, next).length > 0
+}
+
+/**
  * Read a parsed manifest.json into a manifest, or throw saying what is wrong
  * with it, fit to show the user. `main` defaults to index.js.
  */

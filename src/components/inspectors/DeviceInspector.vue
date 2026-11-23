@@ -1,28 +1,26 @@
 <script setup lang="ts">
 import type { ButtplugClientDevice } from 'buttplug'
 import type { MenuItem } from '~/components/ui/menu'
+import type { Transport } from '~/composables/useDeviceConnect'
 import type { VibeCurve, VibeSettings, VibeSource } from '~/lib/vibeMap'
 import type { AxisConfig, DevicePreset } from '~/stores/deviceStore'
-import { useLocalStorage } from '@vueuse/core'
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import EstimSection from '~/components/device/EstimSection.vue'
-import LatencyCalibrateModal from '~/components/device/LatencyCalibrateModal.vue'
+import LatencyControl from '~/components/device/LatencyControl.vue'
 import SerialLogViewer from '~/components/device/SerialLogViewer.vue'
 import TcodeNetLink from '~/components/device/TcodeNetLink.vue'
 import { isStrengthToy, outputsOf, toyName, useButtplug } from '~/composables/useButtplug'
+import { TONE_DOT as DOT, explainSerialError, TONE_TILE as TILE, useDeviceConnect } from '~/composables/useDeviceConnect'
 import { useHandy } from '~/composables/useHandy'
 import { useHeartRate } from '~/composables/useHeartRate'
-import { useSerialPort } from '~/composables/useSerialPort'
 import { useSettings } from '~/composables/useSettings'
 import { axisOutput, useTCode } from '~/composables/useTCode'
 import { useTCodeNet } from '~/composables/useTCodeNet'
 import { toast } from '~/composables/useToast'
 import { useVibeSync } from '~/composables/useVibeSync'
 import { useDeviceLatency } from '~/composables/useVideoSync'
-import { intifaceUrl, phoneIntifaceField } from '~/lib/android/intiface'
 import { webSerial } from '~/lib/browserApi'
 import { HANDY_OTA_URL } from '~/lib/handy'
-import { clampLatency, LATENCY_LIMIT_MS } from '~/lib/latency'
 import { isAndroidApp, MISSING } from '~/lib/platform'
 import { serialLog } from '~/lib/serialLog'
 import { DEFAULT_VIBE, VIBE_LEAD_MAX, VIBE_SOURCES } from '~/lib/vibeMap'
@@ -40,10 +38,29 @@ const device = useDeviceStore()
 const ui = useUiStore()
 const bp = useButtplug()
 const handy = useHandy()
-const { requestAndConnect, disconnect, connecting } = useSerialPort()
-const { homeAllAxes, testAxis } = useTCode()
+const { homeAllAxes } = useTCode()
 const net = useTCodeNet()
 const { save, load, downloadGoon, importGoon } = useSettings()
+const conn = useDeviceConnect()
+const {
+  transport,
+  tcodeNet,
+  serialConnecting: connecting,
+  connectSerial,
+  disconnectSerial,
+  serialSummary,
+  bpUrl,
+  bpConnecting,
+  connectIntiface: connectBp,
+  disconnectIntiface: disconnectBp,
+  handyBle,
+  handyBusy,
+  connectHandy,
+  disconnectHandy,
+  status,
+  held,
+  releaseOutput,
+} = conn
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
 /** Keep a sliver of travel; min == max would pin the axis (or a toy's range) in place. */
@@ -73,8 +90,8 @@ onBeforeUnmount(() => {
 })
 
 // ─── Transport ────────────────────────────────────────────────────────────────
-type Transport = 'serial' | 'buttplug' | 'handy'
-const transport = useLocalStorage<Transport>('ph:device.transport', 'serial')
+// Connecting, the status line and the test stroke are useDeviceConnect's,
+// shared with the first-run setup.
 onMounted(() => {
   // Land on whichever link is actually up, when only one is.
   const up = ([
@@ -91,12 +108,9 @@ onMounted(() => {
 })
 
 // ─── TCode link: USB (Web Serial) or the network ─────────────────────────────
-const tcodeNet = computed(() => net.settings.value.link === 'network')
 const tcodeLink = computed({
   get: () => net.settings.value.link,
-  set: (v: 'usb' | 'network') => {
-    net.settings.value = { ...net.settings.value, link: v }
-  },
+  set: (v: 'usb' | 'network') => conn.setTcodeLink(v),
 })
 /** Both links can be up at once (an OSR on USB and restim, say); the switch only picks which one to look at, and says which are on. */
 const TCODE_LINKS = computed(() => [
@@ -125,95 +139,14 @@ const TCODE_VERSIONS = [
   { value: 'v2' as const, label: 'v2 · 000–999' },
 ]
 
-/** Browser error strings are written for developers; say what to actually do. */
-function explainSerialError(msg: string) {
-  if (/failed to open/i.test(msg))
-    return 'The port is busy. Close anything else using it (another tab, MultiFunPlayer, a serial monitor) and try again.'
-  if (/disconnected|device lost|closed/i.test(msg))
-    return 'The device went away. Check the USB cable, then reconnect.'
-  if (/not supported/i.test(msg))
-    return 'This browser has no Web Serial. Use Chrome or Edge.'
-  return msg
-}
-
-let leaving = false
-async function connectSerial() {
-  await requestAndConnect(device.baudRate)
-  if (device.connected) {
-    toast.success('Device connected', { detail: `${device.baudRate} baud · TCode ${device.tcodeVersion}`, icon: 'i-carbon-plug-filled', key: 'serial' })
-  }
-  else if (device.connectionError) {
-    toast.error('Could not connect', { detail: explainSerialError(device.connectionError), key: 'serial' })
-  }
-  // A cancelled port picker leaves neither, and deserves no toast.
-}
-
-async function disconnectSerial() {
-  leaving = true
-  await disconnect()
-  leaving = false
-  toast('Device disconnected', { icon: 'i-carbon-plug', key: 'serial' })
-}
-
-// The read loop drops `connected` when the cable is pulled; say so. (A
-// network link says so itself, and reconnects on its own.)
-watch(() => device.serialUp, (now, was) => {
-  if (was && !now && !leaving) {
-    toast.warn('Device connection lost', {
-      detail: explainSerialError(device.connectionError ?? 'disconnected'),
-      key: 'serial',
-      action: { label: 'Reconnect', run: () => void connectSerial() },
-    })
-  }
-})
-
-const serialSummary = computed(() => `${device.baudRate} baud · TCode ${device.tcodeVersion}`)
+// The read loop drops `connected` when the cable is pulled; say so.
+conn.watchSerialLoss()
 
 // ─── Buttplug ─────────────────────────────────────────────────────────────────
-// On the phone, Intiface runs on the PC: the desktop's localhost default means nothing there.
-const bpUrl = ref(isAndroidApp ? phoneIntifaceField(bp.serverUrl.value) : bp.serverUrl.value)
-const bpConnecting = ref(false)
 const bpEnabled = computed({
   get: () => bp.enabled.value,
   set: v => bp.setEnabled(v),
 })
-
-async function connectBp() {
-  let url = bpUrl.value.trim() || 'ws://localhost:12345'
-  if (isAndroidApp) {
-    const r = intifaceUrl(bpUrl.value)
-    if (r.url === null) {
-      toast.error('Where is Intiface?', { detail: r.problem, key: 'bp' })
-      return
-    }
-    url = bpUrl.value = r.url
-  }
-  bpConnecting.value = true
-  try {
-    await bp.connect(url)
-  }
-  finally {
-    bpConnecting.value = false
-  }
-  if (bp.connected.value) {
-    toast.success('Connected to Intiface', { detail: bp.deviceCount.value ? `${bp.deviceCount.value} device(s) ready` : 'Scan to find your devices', icon: 'i-brand-intiface', key: 'bp' })
-    if (!bp.deviceCount.value)
-      void bp.startScan()
-  }
-  else {
-    toast.error('Could not reach Intiface', {
-      detail: isAndroidApp
-        ? `Nothing answered at ${bpUrl.value}. Is Intiface Central's server started on the PC, set to listen on all network interfaces, and is the phone on the same Wi-Fi? A firewall on the PC may also be blocking port ${new URL(bpUrl.value).port || 12345}.`
-        : `Is Intiface Central running with its server started at ${bpUrl.value}?`,
-      key: 'bp',
-    })
-  }
-}
-
-async function disconnectBp() {
-  await bp.disconnect()
-  toast('Disconnected from Intiface', { icon: 'i-carbon-bluetooth-off', key: 'bp' })
-}
 
 function deviceKinds(d: ButtplugClientDevice) {
   const o = outputsOf(d)
@@ -231,7 +164,6 @@ function deviceKinds(d: ButtplugClientDevice) {
 
 // ─── The Handy (WiFi or Bluetooth) ────────────────────────────────────────────
 const handyAdvanced = ref(!handy.hasBuiltInAppId && handy.link.value === 'wifi')
-const handyBle = computed(() => handy.link.value === 'ble')
 const HANDY_LINKS = [
   { value: 'wifi' as const, label: 'WiFi', icon: 'i-carbon-wifi', title: 'Through Handy\'s server, with the connection key from the Handy app' },
   { value: 'ble' as const, label: 'Bluetooth', icon: 'i-carbon-bluetooth', title: 'Straight to the Handy from this computer, no internet needed' },
@@ -240,23 +172,8 @@ const handyEnabled = computed({
   get: () => handy.enabled.value,
   set: v => handy.setEnabled(v),
 })
-const handyBusy = computed(() => handy.state.value === 'connecting')
 const handyNeedsUpdate = computed(() => /firmware update/i.test(handy.error.value ?? ''))
 const signedMs = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v)} ms`
-
-async function connectHandy() {
-  await handy.connect()
-  const i = handy.info.value
-  if (handy.connected.value)
-    toast.success('Connected to the Handy', { detail: i ? [i.model, i.firmware && `firmware ${i.firmware}`, handyBle.value ? 'Bluetooth' : 'WiFi'].filter(Boolean).join(' · ') : undefined, icon: handyBle.value ? 'i-carbon-bluetooth' : 'i-carbon-wifi', key: 'handy' })
-  else if (handy.error.value)
-    toast.error('Could not connect to the Handy', { detail: handy.error.value, key: 'handy' })
-}
-
-async function disconnectHandy() {
-  await handy.disconnect()
-  toast('Disconnected from the Handy', { icon: handyBle.value ? 'i-carbon-bluetooth-off' : 'i-carbon-wifi-off', key: 'handy' })
-}
 
 const HANDY_PROTOCOLS = [
   { value: 'hsp' as const, label: 'Streamed', title: 'HSP: the next few seconds at a time; the knob and edges apply at once' },
@@ -437,89 +354,7 @@ async function disconnectHeart() {
 }
 
 // ─── Connection hero ──────────────────────────────────────────────────────────
-type Tone = 'ok' | 'info' | 'warn' | 'danger' | 'idle'
-const status = computed<{ tone: Tone, label: string, detail: string }>(() => {
-  if (transport.value === 'serial' && tcodeNet.value) {
-    const where = net.target.value ? net.settings.value.address : ''
-    switch (net.status.value) {
-      case 'connecting':
-        return { tone: 'info', label: 'Connecting…', detail: `Reaching ${where}` }
-      case 'reconnecting':
-        return { tone: 'warn', label: 'Reconnecting…', detail: net.error.value ?? `Trying ${where} again` }
-      case 'connected':
-        return device.deviceEnabled
-          ? { tone: 'ok', label: 'Connected', detail: `${device.netPath} · TCode ${device.tcodeVersion}` }
-          : { tone: 'warn', label: 'Connected, output held', detail: 'Device output is switched off' }
-    }
-    return { tone: 'idle', label: 'Not connected', detail: net.udpAvailable ? 'An ESP32 build on WiFi, or restim' : 'An ESP32 build on WiFi (WebSocket), or restim' }
-  }
-  if (transport.value === 'serial') {
-    if (connecting.value)
-      return { tone: 'info', label: 'Connecting…', detail: isAndroidApp ? 'Pick the device in the list' : 'Pick the port in the browser dialog' }
-    if (device.serialUp) {
-      return device.deviceEnabled
-        ? { tone: 'ok', label: 'Connected', detail: `${device.portPath || 'Serial port'} · ${serialSummary.value}` }
-        : { tone: 'warn', label: 'Connected, output held', detail: 'Device output is switched off' }
-    }
-    if (!webSerial.supported)
-      return { tone: 'danger', label: 'Web Serial unavailable', detail: MISSING.serialShort }
-    return { tone: 'idle', label: 'Not connected', detail: 'Plug the device in by USB, then connect' }
-  }
-  if (transport.value === 'handy') {
-    const via = handyBle.value ? 'Bluetooth' : 'WiFi'
-    if (handyBusy.value)
-      return { tone: 'info', label: 'Connecting…', detail: handyBle.value ? 'Reaching the Handy over Bluetooth' : 'Reaching the Handy through Handy\'s server' }
-    if (handy.connected.value) {
-      if (!handy.enabled.value)
-        return { tone: 'warn', label: 'Connected, output held', detail: '"Send to device" is off' }
-      return { tone: 'ok', label: 'Connected', detail: handy.info.value ? `${handy.info.value.model} · ${via}` : via }
-    }
-    if (handyBle.value && !handy.bluetoothSupported)
-      return { tone: 'danger', label: 'Web Bluetooth unavailable', detail: MISSING.bluetoothShort }
-    return { tone: 'idle', label: 'Not connected', detail: handyBle.value ? 'Turn the Handy on, then connect' : 'Enter the connection key from the Handy app' }
-  }
-  if (bpConnecting.value)
-    return { tone: 'info', label: 'Connecting…', detail: bpUrl.value }
-  if (bp.connected.value) {
-    const n = bp.deviceCount.value
-    if (!bp.enabled.value)
-      return { tone: 'warn', label: 'Connected, output held', detail: '"Send to devices" is off' }
-    return { tone: n ? 'ok' : 'warn', label: n ? 'Connected' : 'No devices yet', detail: n ? `Intiface · ${n} device${n === 1 ? '' : 's'}` : 'Scan, then wake the toy' }
-  }
-  return { tone: 'idle', label: 'Not connected', detail: 'Start Intiface Central, then connect' }
-})
-
-/** Connected but nothing is sent: worth a button right where it says so. */
-const held = computed(() => {
-  if (transport.value === 'serial')
-    return device.connected && !device.deviceEnabled
-  if (transport.value === 'handy')
-    return handy.connected.value && !handy.enabled.value
-  return bp.connected.value && !bp.enabled.value
-})
-function releaseOutput() {
-  if (transport.value === 'serial')
-    device.deviceEnabled = true
-  else if (transport.value === 'handy')
-    handy.setEnabled(true)
-  else
-    bp.setEnabled(true)
-}
-
-const DOT: Record<Tone, string> = {
-  ok: 'bg-ok text-ok',
-  info: 'bg-info text-info',
-  warn: 'bg-warn text-warn',
-  danger: 'bg-danger text-danger',
-  idle: 'bg-fg-faint text-fg-faint',
-}
-const TILE: Record<Tone, string> = {
-  ok: 'bg-ok/12 text-ok',
-  info: 'bg-info/12 text-info',
-  warn: 'bg-warn/12 text-warn',
-  danger: 'bg-danger/12 text-danger',
-  idle: 'bg-surface-800 text-fg-muted',
-}
+// The status line and its tones are useDeviceConnect's.
 const live = computed(() => status.value.tone === 'ok' || status.value.tone === 'info')
 
 // ─── Axes ─────────────────────────────────────────────────────────────────────
@@ -545,23 +380,12 @@ function setMax(axis: AxisConfig, e: Event) {
 /** Linear and rotary axes rest centred; vibration and suction rest off. */
 const restDefault = (ch: string) => (ch.startsWith('L') || ch.startsWith('R') ? 0.5 : 0)
 
-let handySweep: ReturnType<typeof setTimeout>[] = []
-
 function test(ch: string) {
-  void testAxis(ch)
-  // The Handy is the stroke axis too: same sweep, through the same range
-  // and direction, as live moves.
-  const onHandy = ch === 'L0' && handy.connected.value && handy.enabled.value
-  if (onHandy) {
-    handySweep.forEach(clearTimeout)
-    handy.liveMove(0, 1000)
-    handySweep = [
-      setTimeout(() => handy.liveMove(1, 1000), 1100),
-      setTimeout(() => handy.liveRest(500), 2200),
-    ]
-  }
+  // The Handy and Intiface's strokers are the stroke axis too: the same
+  // sweep, through the same range and direction.
+  const reached = conn.testStroke(ch)
   toast(`Testing ${device.axisConfigs[ch]?.label ?? ch}`, {
-    detail: device.connected || onHandy ? 'Bottom, top, then back to rest' : 'No device connected: the emulator shows it',
+    detail: reached ? 'Bottom, top, then back to rest' : 'No device connected: the emulator shows it',
     icon: 'i-carbon-play',
     key: 'axis-test',
   })
@@ -616,18 +440,7 @@ onBeforeUnmount(stopFrames)
 // Rarely needed, so it sits closed and only says what it is set to.
 const latency = useDeviceLatency()
 const latencyOpen = ref(false)
-const calibrating = ref(false)
-const LATENCY_STEP = 10
 const latencySummary = computed(() => (latency.value ? `${latency.value > 0 ? '+' : '−'}${Math.abs(latency.value)} ms` : 'Off'))
-
-function setLatency(v: number) {
-  latency.value = clampLatency(v)
-}
-function onLatencyInput(e: Event) {
-  const el = e.target as HTMLInputElement
-  setLatency(Number.parseInt(el.value, 10) || 0)
-  el.value = String(latency.value)
-}
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 const presetsOpen = ref(false)
@@ -1546,57 +1359,8 @@ const logOpen = ref(false)
       collapsible
       :summary="latencySummary"
     >
-      <div class="flex gap-2 items-center">
-        <div class="flex flex-1 flex-col min-w-0">
-          <span class="text-[12.5px] text-fg">Device latency</span>
-          <span class="hint">Added to every script's own offset</span>
-        </div>
-        <div class="well flex shrink-0 items-center">
-          <button
-            type="button"
-            class="text-fg-muted focusable rounded-[var(--radius-sm)] center h-7 w-6 pressable hover:text-fg hover:bg-fg/8"
-            aria-label="Less latency"
-            @click="setLatency(latency - LATENCY_STEP)"
-          >
-            <span class="i-carbon-subtract text-[13px]" />
-          </button>
-          <input
-            type="number"
-            :step="LATENCY_STEP"
-            :min="-LATENCY_LIMIT_MS"
-            :max="LATENCY_LIMIT_MS"
-            :value="latency"
-            class="text-[12px] text-fg num text-center outline-none bg-transparent h-7 w-14"
-            aria-label="Device latency in milliseconds"
-            @change="onLatencyInput"
-          >
-          <button
-            type="button"
-            class="text-fg-muted focusable rounded-[var(--radius-sm)] center h-7 w-6 pressable hover:text-fg hover:bg-fg/8"
-            aria-label="More latency"
-            @click="setLatency(latency + LATENCY_STEP)"
-          >
-            <span class="i-carbon-add text-[13px]" />
-          </button>
-        </div>
-        <span class="text-[11.5px] text-fg-faint">ms</span>
-      </div>
-
-      <div class="flex gap-1.5 items-center">
-        <UiButton size="xs" icon="i-carbon-touch-1" @click="calibrating = true">
-          Calibrate…
-        </UiButton>
-        <UiButton size="xs" variant="ghost" icon="i-carbon-reset" class="ml-auto" :disabled="!latency" @click="setLatency(0)">
-          Reset
-        </UiButton>
-      </div>
-
-      <p class="hint">
-        Positive sends commands earlier, for a device that arrives late. Leave it at 0 unless strokes feel behind the video on every script.
-      </p>
+      <LatencyControl />
     </UiSection>
-
-    <LatencyCalibrateModal v-model:open="calibrating" />
 
     <!-- ─── Presets ───────────────────────────────────────────────────────── -->
     <UiSection v-model:open="presetsOpen" title="Presets" icon="i-carbon-settings-adjust" collapsible :summary="activePresetName">
