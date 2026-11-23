@@ -2,6 +2,12 @@ import { isAndroidApp } from '~/lib/android/detect'
 import { desktop } from '~/lib/browserApi'
 
 /**
+ * The desktop app's forum proxy (es-proxy.mjs), which plugins call for
+ * EroScripts, signed in as the app is (Threads does).
+ */
+const FORUM_PROXY = /^https?:\/\/(?:localhost|127\.0\.0\.1):7071(?:\/|$)/i
+
+/**
  * fetch() for plugins. In the desktop app the request is made by the main
  * process (desktop/netbridge.mjs), so servers that send no CORS headers still
  * answer; the response streams back as it arrives. In a browser it is plain
@@ -10,8 +16,14 @@ import { desktop } from '~/lib/browserApi'
 export async function pluginFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const net = desktop?.net
   // The Android app makes it natively (lib/android/net.ts), CORS-free as on the desktop.
-  if (!net && isAndroidApp && /^https?:/i.test(url))
-    return (await import('~/lib/android/net')).nativeFetch(url, init)
+  if (!net && isAndroidApp && /^https?:/i.test(url)) {
+    const android = await import('~/lib/android/net')
+    // It has no forum proxy to call ("playhound's forum connection is not
+    // running"): it asks the forum itself, as the EroScripts view does.
+    if (FORUM_PROXY.test(url) && (init.method ?? 'GET').toUpperCase() === 'GET')
+      return android.forumProxyFetch(url, { headers: Object.fromEntries(new Headers(init.headers)), signal: init.signal ?? undefined })
+    return android.nativeFetch(url, init)
+  }
   if (!net)
     return fetch(url, init)
 
