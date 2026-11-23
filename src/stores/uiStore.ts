@@ -64,6 +64,8 @@ export const useUiStore = defineStore('ui', () => {
   const settingsOpen = ref(false)
   /** A Settings section to open at, picked up (and cleared) by the modal. */
   const settingsSection = ref<string | null>(null)
+  /** The first-run setup is up: on a fresh install's first start, or from Settings. */
+  const setupOpen = ref(false)
   /** "Play a link…": paste a link to stream. */
   const playLinkOpen = ref(false)
   /** "Share card…": the dialog is open for this. */
@@ -185,6 +187,7 @@ export const useUiStore = defineStore('ui', () => {
     shortcutsOpen,
     settingsOpen,
     settingsSection,
+    setupOpen,
     playLinkOpen,
     shareCard,
     dragging,

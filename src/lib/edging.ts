@@ -62,9 +62,35 @@ export function presetOf(t: EdgeTiming): EdgePreset | null {
   return EDGE_PRESETS.find(p => near(p.fallSec, fallOf(t)) && near(p.depth, t.depth) && near(p.cooldownSec, t.cooldownSec) && near(p.rebuildSec, t.rebuildSec)) ?? null
 }
 
+/** Settings with a preset's timing in place of their own; the rest (on or off) kept. */
+export function withPreset<T extends EdgeTiming>(t: T, p: EdgePreset): T {
+  return { ...t, fallSec: p.fallSec, depth: p.depth, cooldownSec: p.cooldownSec, rebuildSec: p.rebuildSec }
+}
+
 function smoothstep(x: number): number {
   const t = Math.max(0, Math.min(1, x))
   return t * t * (3 - 2 * t)
+}
+
+/**
+ * An edge drawn as intensity against time, for an SVG `w` by `h`: the line
+ * (down at the top, so a deeper edge dips further), where the hold starts and
+ * ends, and the seconds the whole of it takes.
+ */
+export function edgeShape(t: EdgeTiming, w: number, h: number): { line: string, holdFrom: number, holdTo: number, total: number } {
+  const total = Math.max(0.1, edgeTotalSec(t))
+  const x = (s: number) => (s / total) * w
+  const y = (holdBack: number) => 4 + holdBack * (h - 8)
+  const f = fallOf(t)
+  const d = Math.max(0, Math.min(1, t.depth))
+  const pts: string[] = []
+  const n = 24
+  for (let i = 0; i <= n; i++)
+    pts.push(`${x((f * i) / n).toFixed(1)},${y(d * smoothstep(i / n)).toFixed(1)}`)
+  pts.push(`${x(f + t.cooldownSec).toFixed(1)},${y(d).toFixed(1)}`)
+  for (let i = 1; i <= n; i++)
+    pts.push(`${x(f + t.cooldownSec + (t.rebuildSec * i) / n).toFixed(1)},${y(d * (1 - smoothstep(i / n))).toFixed(1)}`)
+  return { line: `M${pts.join(' L')}`, holdFrom: x(f), holdTo: x(f + t.cooldownSec), total }
 }
 
 export function createEdgeEnvelope() {

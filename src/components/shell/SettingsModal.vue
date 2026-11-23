@@ -18,7 +18,6 @@ import UiSelect from '~/components/ui/UiSelect.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import { useCompactLayout } from '~/composables/useCompactLayout'
 import { presenceStatus, usePresenceContext, usePresenceSettings } from '~/composables/useDiscordPresence'
-import { netProxy, netProxyError, netProxyInfo, refreshNetProxy } from '~/composables/useNetProxy'
 import { toast } from '~/composables/useToast'
 import { UI_SCALES, useUiScale } from '~/composables/useUiScale'
 import { useUpdates } from '~/composables/useUpdates'
@@ -39,6 +38,7 @@ import AndroidStatus from './AndroidStatus.vue'
 import BrandMark from './BrandMark.vue'
 import EdgeSettings from './EdgeSettings.vue'
 import PrivacySettings from './PrivacySettings.vue'
+import ProxySettings from './ProxySettings.vue'
 
 /**
  * App-wide settings. Feature settings (device, audio, hypno…) live in their
@@ -327,33 +327,6 @@ watch(() => [ui.settingsOpen, ui.settingsSection] as const, ([open, want]) => {
   }
 }, { immediate: true })
 
-// ─── Network ─────────────────────────────────────────────────────────────────
-// Edited as a draft and applied on Enter or the button, so the server is not
-// handed every half-typed address on the way.
-const proxyDraft = ref(netProxy.value)
-watch(section, (s) => {
-  if (s === 'network') {
-    proxyDraft.value = netProxy.value
-    void refreshNetProxy()
-  }
-})
-function applyProxy() {
-  netProxy.value = proxyDraft.value.trim()
-  proxyDraft.value = netProxy.value
-}
-const proxyStatus = computed(() => {
-  const info = netProxyInfo.value
-  if (!info)
-    return { tone: 'muted', text: isAndroidApp ? 'The network bridge of the app is not answering.' : 'The local proxy is not running, so there is nothing to apply this to. It runs with the desktop app, start.bat or pnpm dev:proxy.' }
-  if (netProxyError.value)
-    return { tone: 'danger', text: netProxyError.value }
-  if (info.configured)
-    return { tone: 'ok', text: `Using ${info.configured}` }
-  if (info.env)
-    return { tone: 'ok', text: `Using ${info.env}, from HTTPS_PROXY on this computer` }
-  return { tone: 'muted', text: 'Connecting directly, no proxy' }
-})
-
 // ─── Elsewhere ───────────────────────────────────────────────────────────────
 function openShortcuts() {
   ui.settingsOpen = false
@@ -366,6 +339,10 @@ function openPalette() {
 function openBackup() {
   ui.settingsOpen = false
   ui.openInspector('backup')
+}
+function runSetup() {
+  ui.settingsOpen = false
+  ui.setupOpen = true
 }
 </script>
 
@@ -634,6 +611,15 @@ function openBackup() {
                   the home screen brings it back.
                 </p>
               </div>
+              <div class="px-4 py-3 card flex gap-3 items-center">
+                <div class="flex flex-1 flex-col gap-0.5 min-w-0">
+                  <span class="text-[13px] text-fg">First-run setup</span>
+                  <span class="hint">Your device, a speed limit, edges, the network and plugins, one question at a time.</span>
+                </div>
+                <UiButton icon="i-carbon-list-checked" class="shrink-0" @click="runSetup">
+                  Run setup again
+                </UiButton>
+              </div>
             </template>
 
             <!-- Safety -->
@@ -756,30 +742,7 @@ function openBackup() {
 
             <!-- Network -->
             <template v-else-if="section === 'network'">
-              <div class="p-4 card flex flex-col gap-3">
-                <div class="flex flex-col gap-1">
-                  <span class="text-[13px] text-fg font-medium">Proxy</span>
-                  <span v-if="isAndroidApp" class="hint">
-                    For the EroScripts browser and streaming. Some of these sites are blocked on some networks, and
-                    an HTTP proxy gets you through (no user name and password). Leave it empty to connect directly.
-                  </span>
-                  <span v-else class="hint">
-                    For the EroScripts browser, streaming and yt-dlp. Some of these sites are blocked on some
-                    networks, and an HTTP proxy gets you through. Leave it empty to use HTTPS_PROXY from this
-                    computer, if it has one.
-                  </span>
-                </div>
-                <div class="flex gap-2 items-center">
-                  <UiInput v-model="proxyDraft" class="flex-1" placeholder="http://127.0.0.1:8080" mono clearable @enter="applyProxy" />
-                  <UiButton variant="primary" :disabled="proxyDraft.trim() === netProxy" @click="applyProxy">
-                    Apply
-                  </UiButton>
-                </div>
-                <p class="text-[12px] flex gap-1.5 items-start" :class="proxyStatus.tone === 'danger' ? 'text-danger' : proxyStatus.tone === 'ok' ? 'text-fg-muted' : 'text-fg-faint'">
-                  <span class="text-[14px] mt-px shrink-0" :class="proxyStatus.tone === 'danger' ? 'i-carbon-warning-alt' : proxyStatus.tone === 'ok' ? 'i-carbon-checkmark-outline text-ok' : 'i-carbon-information'" />
-                  {{ proxyStatus.text }}
-                </p>
-              </div>
+              <ProxySettings />
             </template>
 
             <!-- Keyboard -->

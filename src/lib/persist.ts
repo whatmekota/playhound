@@ -163,6 +163,7 @@ export const KEYS = {
   hypnoFlashOpacity: def('ph:hypno.flashOpacity', 'setting', 'Flash strength'),
 
   // ── Layout and leftovers ───────────────────────────────────────────────
+  setup: def('ph:setup', 'ui', 'First-run setup: still to come, or done'),
   shell: def('ph:ui.shell', 'ui', 'Open views and panels'),
   queueSession: def('ph:queue.session', 'ui', 'Queue to resume'),
   librarySort: def('ph:library.sort', 'ui', 'Library sort'),

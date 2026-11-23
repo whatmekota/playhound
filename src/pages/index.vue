@@ -59,6 +59,7 @@ import { SHELL_HOTKEYS } from '~/lib/hotkeys'
 import { isMediaName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { isAndroidApp } from '~/lib/platform'
+import { setupPending } from '~/lib/setup'
 import { isSubtitleName } from '~/lib/subtitles'
 import { VIEW_COMPONENTS } from '~/lib/viewComponents'
 import { useBookmarkStore } from '~/stores/bookmarkStore'
@@ -81,6 +82,9 @@ defineOptions({ name: 'IndexPage' })
 
 // The Android app's device picker and session service: its own chunk, never loaded elsewhere.
 const AndroidDevices = isAndroidApp ? defineAsyncComponent(() => import('~/components/shell/AndroidDevices.vue')) : null
+// The first-run setup: its own chunk, loaded only on a fresh install's first
+// start or when Settings runs it again.
+const SetupModal = defineAsyncComponent(() => import('~/components/setup/SetupModal.vue'))
 
 const ui = useUiStore()
 const player = usePlayerStore()
@@ -120,6 +124,15 @@ startUiScale()
 startUpdates()
 // Switched-on plugins load once the page is up, so a slow one can't hold it back.
 onMounted(() => void plugins.start())
+// A fresh install starts with the setup (decided in main.ts, lib/setup.ts).
+// Until it is finished or skipped it comes back at every start.
+onMounted(() => {
+  if (setupPending())
+    ui.setupOpen = true
+})
+/** Mounted when first opened and kept after, so closing it can fade out. */
+const setupMounted = ref(false)
+watch(() => ui.setupOpen, open => open && (setupMounted.value = true), { immediate: true })
 
 // Instantiate these once at the shell level so they keep running whichever
 // view or inspector happens to be open.
@@ -476,7 +489,7 @@ function onGlobalKeyDown(e: KeyboardEvent) {
   // Plugins' shortcuts, before the modifier check: theirs may use Ctrl or Alt.
   // They can't take a key playhound uses (src/plugins/shortcuts.ts), and
   // nothing of theirs runs while a dialog is up or the screen is covered.
-  if (!ui.paletteOpen && !ui.settingsOpen && !safety.panicked && plugins.runShortcut(e)) {
+  if (!ui.paletteOpen && !ui.settingsOpen && !ui.setupOpen && !safety.panicked && plugins.runShortcut(e)) {
     e.preventDefault()
     return
   }
@@ -484,7 +497,7 @@ function onGlobalKeyDown(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey)
     return
   // A dialog is up: it owns the keyboard.
-  if (ui.paletteOpen || ui.settingsOpen)
+  if (ui.paletteOpen || ui.settingsOpen || ui.setupOpen)
     return
 
   // '?' is a shifted key, so match the character rather than the code.
@@ -606,6 +619,7 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     <CommandPalette @open-file="openSingleVideo" />
     <ShortcutsModal />
     <SettingsModal />
+    <SetupModal v-if="setupMounted" />
     <PlayLinkModal />
     <RecordingSheet />
     <UnsavedEditsModal />

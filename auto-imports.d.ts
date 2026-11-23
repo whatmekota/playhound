@@ -21,6 +21,8 @@ declare global {
   const SCREEN_PING_MS: typeof import('./src/composables/useFaceScreen').SCREEN_PING_MS
   const STREAM_PROXY: typeof import('./src/composables/useStreams').STREAM_PROXY
   const StreamError: typeof import('./src/composables/useStreams').StreamError
+  const TONE_DOT: typeof import('./src/composables/useDeviceConnect').TONE_DOT
+  const TONE_TILE: typeof import('./src/composables/useDeviceConnect').TONE_TILE
   const TransitionName: typeof import('./src/composables/useSlideshowEngine').TransitionName
   const UI_SCALES: typeof import('./src/composables/useUiScale').UI_SCALES
   const achievementCounts: typeof import('./src/composables/achievementEvents').achievementCounts
@@ -70,6 +72,7 @@ declare global {
   const effectScope: typeof import('vue').effectScope
   const estimPanic: typeof import('./src/composables/useEstim').estimPanic
   const estimStop: typeof import('./src/composables/useEstim').estimStop
+  const explainSerialError: typeof import('./src/composables/useDeviceConnect').explainSerialError
   const extendRef: typeof import('@vueuse/core').extendRef
   const faceScreenOpen: typeof import('./src/composables/useFaceScreen').faceScreenOpen
   const faceScreenSettings: typeof import('./src/composables/useFaceScreen').faceScreenSettings
@@ -202,6 +205,7 @@ declare global {
   const startUpdates: typeof import('./src/composables/useUpdates').startUpdates
   const stepUiScale: typeof import('./src/composables/useUiScale').stepUiScale
   const storeToRefs: typeof import('pinia').storeToRefs
+  const string: typeof import('./src/composables/useDeviceConnect').string
   const supplyHeartRate: typeof import('./src/composables/useHeartRate').supplyHeartRate
   const syncRef: typeof import('@vueuse/core').syncRef
   const syncRefs: typeof import('@vueuse/core').syncRefs
@@ -280,6 +284,7 @@ declare global {
   const useDebounce: typeof import('@vueuse/core').useDebounce
   const useDebounceFn: typeof import('@vueuse/core').useDebounceFn
   const useDebouncedRefHistory: typeof import('@vueuse/core').useDebouncedRefHistory
+  const useDeviceConnect: typeof import('./src/composables/useDeviceConnect').useDeviceConnect
   const useDeviceLatency: typeof import('./src/composables/useVideoSync').useDeviceLatency
   const useDeviceMotion: typeof import('@vueuse/core').useDeviceMotion
   const useDeviceOrientation: typeof import('@vueuse/core').useDeviceOrientation
@@ -486,6 +491,9 @@ declare global {
   export type { ToyOutputs, MotorKind, ToyMotor } from './src/composables/useButtplug'
   import('./src/composables/useButtplug')
   // @ts-ignore
+  export type { Transport, Tone } from './src/composables/useDeviceConnect'
+  import('./src/composables/useDeviceConnect')
+  // @ts-ignore
   export type { EstimSettings } from './src/composables/useEstim'
   import('./src/composables/useEstim')
   // @ts-ignore
@@ -573,6 +581,8 @@ declare module 'vue' {
     readonly SCREEN_PING_MS: UnwrapRef<typeof import('./src/composables/useFaceScreen')['SCREEN_PING_MS']>
     readonly STREAM_PROXY: UnwrapRef<typeof import('./src/composables/useStreams')['STREAM_PROXY']>
     readonly StreamError: UnwrapRef<typeof import('./src/composables/useStreams')['StreamError']>
+    readonly TONE_DOT: UnwrapRef<typeof import('./src/composables/useDeviceConnect')['TONE_DOT']>
+    readonly TONE_TILE: UnwrapRef<typeof import('./src/composables/useDeviceConnect')['TONE_TILE']>
     readonly TransitionName: UnwrapRef<typeof import('./src/composables/useSlideshowEngine')['TransitionName']>
     readonly UI_SCALES: UnwrapRef<typeof import('./src/composables/useUiScale')['UI_SCALES']>
     readonly achievementCounts: UnwrapRef<typeof import('./src/composables/achievementEvents')['achievementCounts']>
@@ -622,6 +632,7 @@ declare module 'vue' {
     readonly effectScope: UnwrapRef<typeof import('vue')['effectScope']>
     readonly estimPanic: UnwrapRef<typeof import('./src/composables/useEstim')['estimPanic']>
     readonly estimStop: UnwrapRef<typeof import('./src/composables/useEstim')['estimStop']>
+    readonly explainSerialError: UnwrapRef<typeof import('./src/composables/useDeviceConnect')['explainSerialError']>
     readonly extendRef: UnwrapRef<typeof import('@vueuse/core')['extendRef']>
     readonly faceScreenOpen: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenOpen']>
     readonly faceScreenSettings: UnwrapRef<typeof import('./src/composables/useFaceScreen')['faceScreenSettings']>
@@ -754,6 +765,7 @@ declare module 'vue' {
     readonly startUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['startUpdates']>
     readonly stepUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['stepUiScale']>
     readonly storeToRefs: UnwrapRef<typeof import('pinia')['storeToRefs']>
+    readonly string: UnwrapRef<typeof import('./src/composables/useDeviceConnect')['string']>
     readonly supplyHeartRate: UnwrapRef<typeof import('./src/composables/useHeartRate')['supplyHeartRate']>
     readonly syncRef: UnwrapRef<typeof import('@vueuse/core')['syncRef']>
     readonly syncRefs: UnwrapRef<typeof import('@vueuse/core')['syncRefs']>
@@ -832,6 +844,7 @@ declare module 'vue' {
     readonly useDebounce: UnwrapRef<typeof import('@vueuse/core')['useDebounce']>
     readonly useDebounceFn: UnwrapRef<typeof import('@vueuse/core')['useDebounceFn']>
     readonly useDebouncedRefHistory: UnwrapRef<typeof import('@vueuse/core')['useDebouncedRefHistory']>
+    readonly useDeviceConnect: UnwrapRef<typeof import('./src/composables/useDeviceConnect')['useDeviceConnect']>
     readonly useDeviceLatency: UnwrapRef<typeof import('./src/composables/useVideoSync')['useDeviceLatency']>
     readonly useDeviceMotion: UnwrapRef<typeof import('@vueuse/core')['useDeviceMotion']>
     readonly useDeviceOrientation: UnwrapRef<typeof import('@vueuse/core')['useDeviceOrientation']>
