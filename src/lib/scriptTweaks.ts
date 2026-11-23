@@ -1,5 +1,5 @@
 import type { ScaleAction } from './scriptScale'
-import { scaleScript } from './scriptScale'
+import { scaleScript, turningPoints } from './scriptScale'
 
 /**
  * Per-video script tweaks: changes to how a script plays that never touch
@@ -12,6 +12,8 @@ import { scaleScript } from './scriptScale'
  */
 
 export type SmoothLevel = 'off' | 'light' | 'medium'
+/** As written, twice the strokes, or half as many, on the script's own beats. */
+export type StrokeCount = 'as-is' | 'double' | 'half'
 
 export interface ScriptTweaks {
   /** Lowest output position, 0–100. */
@@ -23,6 +25,7 @@ export interface ScriptTweaks {
   /** Fastest movement allowed, funscript units per second; 0 for none. */
   speedCap: number
   smooth: SmoothLevel
+  strokes: StrokeCount
   /** The existing script offset, ms; positive plays the script earlier. Applied at play time, not here. */
   offsetMs: number
 }
@@ -36,6 +39,7 @@ export const DEFAULT_TWEAKS: Readonly<ScriptTweaks> = Object.freeze({
   invert: false,
   speedCap: 0,
   smooth: 'off',
+  strokes: 'as-is',
   offsetMs: 0,
 })
 
@@ -63,13 +67,14 @@ export function normaliseTweaks(raw: unknown): ScriptTweaks {
     invert: r.invert === true,
     speedCap: cap <= 0 ? 0 : clamp(cap, MIN_SPEED_CAP, MAX_SPEED_CAP),
     smooth: r.smooth === 'light' || r.smooth === 'medium' ? r.smooth : 'off',
+    strokes: r.strokes === 'double' || r.strokes === 'half' ? r.strokes : 'as-is',
     offsetMs: clamp(Math.round(num(r.offsetMs, 0)), -9999, 9999),
   }
 }
 
 /** True when the tweaks leave the script's shape alone (the offset may still be set). */
 export function shapeIsIdentity(t: ScriptTweaks): boolean {
-  return t.min === 0 && t.max === 100 && !t.invert && t.speedCap === 0 && t.smooth === 'off'
+  return t.min === 0 && t.max === 100 && !t.invert && t.speedCap === 0 && t.smooth === 'off' && t.strokes === 'as-is'
 }
 
 /** True when nothing is tweaked at all, offset included. */
@@ -86,6 +91,8 @@ export function describeTweaks(t: ScriptTweaks): string[] {
     out.push('Inverted')
   if (t.speedCap)
     out.push(`Max ${t.speedCap}/s`)
+  if (t.strokes !== 'as-is')
+    out.push(t.strokes === 'double' ? 'Double strokes' : 'Half strokes')
   if (t.smooth !== 'off')
     out.push(t.smooth === 'light' ? 'Light smoothing' : 'Medium smoothing')
   if (t.offsetMs)
@@ -153,9 +160,68 @@ export function smoothActions(actions: readonly ScaleAction[], halfWindowMs: num
 }
 
 /**
- * The script as it plays with `t` applied. Order matters: smoothing first
- * (on the shape as written), then invert and the output range, then the
- * speed cap last, so the cap holds on what actually reaches the device.
+ * Twice the strokes or half as many, on the script's own beats. The strokes
+ * come out straight (a curve along one is not kept); holds stay holds.
+ *
+ * Double: every turning point becomes the bottom of a stroke, with its top
+ * halfway to the next, so each stroke of the script is two, landing on the
+ * same moments. Twice as fast for the same travel: the speed limit below
+ * shortens what a device can't keep up with.
+ *
+ * Half: one stroke where the script has two. The turning point that starts
+ * each pair and the one that ends it stay where they are; between them, at
+ * the turning point in the middle, the furthest of the pair's two tops.
+ *
+ * "Bottom" and "top" are relative: a script that starts at its top works the
+ * same way with the two swapped.
+ */
+export function restroke(actions: readonly ScaleAction[], count: StrokeCount): ScaleAction[] {
+  const copy = () => actions.map(a => ({ at: a.at, pos: a.pos }))
+  const keys = turningPoints(actions)
+  if (count === 'as-is' || keys.length < 3)
+    return copy()
+  const e = keys.map(k => actions[k])
+  const n = e.length
+  const out: ScaleAction[] = []
+
+  if (count === 'double') {
+    // Which way the script's own first stroke goes: its turning points become that stroke's start.
+    const up = e[1].pos >= e[0].pos
+    const flat = (i: number) => i >= 0 && i < n - 1 && e[i].pos === e[i + 1].pos
+    for (let i = 0; i < n; i++) {
+      const near = [e[i - 1]?.pos, e[i].pos, e[i + 1]?.pos].filter((p): p is number => p !== undefined)
+      // A hold keeps its own level at both ends.
+      const start = flat(i) || flat(i - 1) ? e[i].pos : up ? Math.min(...near) : Math.max(...near)
+      out.push({ at: e[i].at, pos: start })
+      if (i < n - 1 && !flat(i) && e[i + 1].at - e[i].at >= 2) {
+        const turn = up ? Math.max(e[i].pos, e[i + 1].pos) : Math.min(e[i].pos, e[i + 1].pos)
+        out.push({ at: Math.round((e[i].at + e[i + 1].at) / 2), pos: turn })
+      }
+    }
+    return out
+  }
+
+  // Half: pairs of strokes, four turning points apart.
+  let j = 0
+  out.push({ at: e[0].at, pos: e[0].pos })
+  while (j + 4 < n) {
+    const goingUp = e[j + 1].pos >= e[j].pos
+    const turn = goingUp ? Math.max(e[j + 1].pos, e[j + 3].pos) : Math.min(e[j + 1].pos, e[j + 3].pos)
+    out.push({ at: e[j + 2].at, pos: turn })
+    out.push({ at: e[j + 4].at, pos: e[j + 4].pos })
+    j += 4
+  }
+  // Fewer than two strokes left: as they are.
+  for (let k = j + 1; k < n; k++)
+    out.push({ at: e[k].at, pos: e[k].pos })
+  return out
+}
+
+/**
+ * The script as it plays with `t` applied. Order matters: the stroke count
+ * first (it decides where the turning points are), then smoothing (on that
+ * shape), then invert and the output range, then the speed cap last, so the
+ * cap holds on what actually reaches the device.
  * The speed cap shortens the travel of strokes that are too fast rather than
  * moving anything in time (the same method as the intensity knob).
  *
@@ -163,9 +229,10 @@ export function smoothActions(actions: readonly ScaleAction[], halfWindowMs: num
  * it is a play-time setting.
  */
 export function applyTweaks(actions: readonly ScaleAction[], t: ScriptTweaks): ScaleAction[] {
+  const counted = t.strokes !== 'as-is' ? restroke(actions, t.strokes) : actions
   let out: ScaleAction[] = t.smooth !== 'off'
-    ? smoothActions(actions, SMOOTH_WINDOW[t.smooth])
-    : actions.map(a => ({ at: a.at, pos: a.pos }))
+    ? smoothActions(counted, SMOOTH_WINDOW[t.smooth])
+    : counted.map(a => ({ at: a.at, pos: a.pos }))
 
   const lo = t.min / 100
   const span = (t.max - t.min) / 100

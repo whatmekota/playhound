@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ScriptTweaks, SmoothLevel } from '~/lib/scriptTweaks'
+import type { ScriptTweaks, SmoothLevel, StrokeCount } from '~/lib/scriptTweaks'
 import { computed } from 'vue'
 import UiButton from '~/components/ui/UiButton.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
@@ -11,8 +11,9 @@ import { useScriptEditStore } from '~/stores/scriptEditStore'
 import { useScriptStore } from '~/stores/scriptStore'
 
 /**
- * How one axis plays on this video: range, invert, a speed cap, smoothing
- * and the offset. Saved with the video, never written into the script.
+ * How one axis plays on this video: range, invert, double or half the
+ * strokes, a speed cap, smoothing and the offset. Saved with the video,
+ * never written into the script.
  */
 const props = defineProps<{ channel: string }>()
 
@@ -46,6 +47,21 @@ const smooth = computed({
   get: () => t.value.smooth,
   set: (v: SmoothLevel) => set({ smooth: v }),
 })
+
+const strokes = computed({
+  get: () => t.value.strokes,
+  set: (v: StrokeCount) => set({ strokes: v }),
+})
+const STROKE_OPTIONS: { value: StrokeCount, label: string }[] = [
+  { value: 'as-is', label: 'As written' },
+  { value: 'double', label: 'Double' },
+  { value: 'half', label: 'Half' },
+]
+const STROKE_HINT: Record<StrokeCount, string> = {
+  'as-is': '',
+  'double': 'Two strokes where the script has one, landing on the same moments: twice as fast for the same travel. The speed limit below shortens what a device can’t keep up with.',
+  'half': 'One stroke where the script has two, on every other bottom, as tall as the taller of the pair.',
+}
 
 const SMOOTH_OPTIONS: { value: SmoothLevel, label: string }[] = [
   { value: 'off', label: 'Off' },
@@ -83,6 +99,16 @@ function setOffset(raw: string) {
     </div>
 
     <UiSwitch v-model="invert" size="sm" label="Invert" hint="Up becomes down." />
+
+    <div class="flex flex-col gap-1">
+      <div class="flex gap-2 items-center justify-between">
+        <span class="label">Strokes</span>
+        <UiSegmented v-model="strokes" :options="STROKE_OPTIONS" size="xs" />
+      </div>
+      <p v-if="strokes !== 'as-is'" class="hint">
+        {{ STROKE_HINT[strokes] }}
+      </p>
+    </div>
 
     <UiSlider
       v-model="cap"

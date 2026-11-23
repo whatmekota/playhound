@@ -8,6 +8,7 @@ import {
   describeTweaks,
   isDefaultTweaks,
   normaliseTweaks,
+  restroke,
   shapeIsIdentity,
   smoothActions,
 } from '../src/lib/scriptTweaks'
@@ -20,7 +21,7 @@ describe('normaliseTweaks', () => {
   it('fills defaults and clamps nonsense', () => {
     expect(normaliseTweaks(undefined)).toEqual(DEFAULT_TWEAKS)
     expect(normaliseTweaks({ min: 120, max: -5, invert: 'yes', speedCap: 10, smooth: 'heavy', offsetMs: 1e9 }))
-      .toEqual({ min: 0, max: 100, invert: false, speedCap: 50, smooth: 'off', offsetMs: 9999 })
+      .toEqual({ min: 0, max: 100, invert: false, speedCap: 50, smooth: 'off', strokes: 'as-is', offsetMs: 9999 })
     expect(normaliseTweaks({ min: 80, max: 20 })).toMatchObject({ min: 20, max: 80 })
   })
 
@@ -92,6 +93,36 @@ describe('applyTweaks', () => {
     // A hold stays a hold.
     const hold = [{ at: 0, pos: 0.3 }, { at: 400, pos: 0.3 }, { at: 800, pos: 0.3 }]
     expect(smoothActions(hold, 100).map(x => x.pos)).toEqual([0.3, 0.3, 0.3])
+  })
+})
+
+describe('double and half strokes', () => {
+  // Bottom, top, bottom, top, bottom: two strokes of 1 s.
+  const two = [{ at: 0, pos: 0.1 }, { at: 500, pos: 0.9 }, { at: 1000, pos: 0.2 }, { at: 1500, pos: 0.8 }, { at: 2000, pos: 0.1 }]
+
+  it('doubles: every turning point a bottom, a top halfway to the next', () => {
+    const d = restroke(two, 'double')
+    expect(d.map(a => a.at)).toEqual([0, 250, 500, 750, 1000, 1250, 1500, 1750, 2000])
+    // The script's tops become bottoms (the lower of their neighbours), with the stroke's top between.
+    expect(d.map(a => a.pos)).toEqual([0.1, 0.9, 0.1, 0.9, 0.2, 0.8, 0.1, 0.8, 0.1])
+  })
+
+  it('halves: one stroke where there were two, on the same bottoms, with the higher top', () => {
+    const h = restroke(two, 'half')
+    expect(h).toEqual([{ at: 0, pos: 0.1 }, { at: 1000, pos: 0.9 }, { at: 2000, pos: 0.1 }])
+    // An odd stroke at the end is left as it is.
+    const three = [...two, { at: 2500, pos: 0.7 }, { at: 3000, pos: 0 }]
+    expect(restroke(three, 'half').map(a => a.at)).toEqual([0, 1000, 2000, 2500, 3000])
+  })
+
+  it('keeps a hold a hold, and is a tweak like the others', () => {
+    const held = [{ at: 0, pos: 0 }, { at: 500, pos: 1 }, { at: 1500, pos: 1 }, { at: 2000, pos: 0 }]
+    const d = restroke(held, 'double')
+    expect(d.filter(a => a.at >= 500 && a.at <= 1500).map(a => a.pos)).toEqual([1, 1])
+    expect(shapeIsIdentity(tw({ strokes: 'double' }))).toBe(false)
+    expect(normaliseTweaks({ strokes: 'triple' }).strokes).toBe('as-is')
+    expect(describeTweaks(tw({ strokes: 'half' }))).toContain('Half strokes')
+    expect(applyTweaks(two, tw({ strokes: 'half', invert: true })).map(a => a.pos)).toEqual([0.9, 0.1, 0.9].map(v => expect.closeTo(v, 9)))
   })
 })
 
