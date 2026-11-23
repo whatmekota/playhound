@@ -606,6 +606,12 @@ export interface DesktopWindowState {
   maximized: boolean
   /** OS fullscreen, including the one HTML fullscreen (the video player's) puts the window in. */
   fullScreen: boolean
+  /**
+   * Minimised or hidden, for the app lock. The page can't tell by itself:
+   * the window keeps running at full speed when minimised (it drives
+   * hardware), and that also keeps document.hidden false. Absent in older builds.
+   */
+  minimized?: boolean
 }
 
 export interface DesktopWindow {
@@ -615,7 +621,7 @@ export interface DesktopWindow {
   toggleMaximize: () => void
   close: () => void
   state: () => DesktopWindowState
-  /** Called on every maximise / restore / fullscreen change; returns an unsubscribe. */
+  /** Called on every maximise / minimise / restore / fullscreen change; returns an unsubscribe. */
   onStateChange: (cb: (state: DesktopWindowState) => void) => () => void
 }
 

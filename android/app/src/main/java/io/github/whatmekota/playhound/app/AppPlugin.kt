@@ -8,7 +8,11 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Base64
+import android.view.WindowManager
 import androidx.activity.OnBackPressedCallback
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -41,9 +45,27 @@ import java.util.concurrent.atomic.AtomicBoolean
  *   against the SHA-256 GitHub lists for it, and is handed to Android's
  *   package installer through the FileProvider; Android itself refuses one
  *   signed with another key than the installed app.
+ * - The app lock (src/stores/privacyStore.ts): "away" when the app goes out
+ *   of sight and comes back, setSecure (FLAG_SECURE: blank in recent apps),
+ *   and biometricStatus / authenticate for unlocking with a fingerprint or face.
  */
 @CapacitorPlugin(name = "PhApp")
 class AppPlugin : Plugin() {
+    companion object {
+        /**
+         * The activity started another one (MainActivity.startActivityForResult)
+         * and has not been back in front since: a picker, the share sheet, the
+         * forum's sign-in. Going out of sight for one of those is not walking
+         * away, and the app lock gives it a minute.
+         */
+        @Volatile private var ownLaunch = false
+
+        @JvmStatic
+        fun markOwnLaunch(on: Boolean) {
+            ownLaunch = on
+        }
+    }
+
     private val work = Executors.newCachedThreadPool { r -> Thread(r, "ph-app").apply { isDaemon = true } }
     private val cancel = AtomicBoolean(false)
 
@@ -150,6 +172,88 @@ class AppPlugin : Plugin() {
                 pageBack = null
             }
             call.resolve()
+        }
+    }
+
+    // ── App lock ─────────────────────────────────────────────────────────────
+
+    // The page's own visibilitychange can't be used for this: while a session
+    // runs, PhWebView keeps telling the page it is visible (so the devices
+    // keep going with the screen off). The activity knows.
+    override fun handleOnStart() {
+        notifyListeners("away", JSObject().put("away", false).put("own", false))
+    }
+
+    override fun handleOnResume() {
+        ownLaunch = false
+    }
+
+    override fun handleOnStop() {
+        notifyListeners("away", JSObject().put("away", true).put("own", ownLaunch))
+    }
+
+    /** { on }: FLAG_SECURE on the window. Blank in recent apps, and no screenshots or screen recordings. */
+    @PluginMethod
+    fun setSecure(call: PluginCall) {
+        val on = call.getBoolean("on", false) ?: false
+        val act = activity ?: return call.reject("No activity")
+        act.runOnUiThread {
+            if (on) act.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            else act.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            call.resolve()
+        }
+    }
+
+    // Class 2 ("weak") takes the face unlock most phones have, not only
+    // fingerprints. Enough for what the lock is: privacy from people nearby.
+    private val unlockWith = BiometricManager.Authenticators.BIOMETRIC_WEAK
+
+    /** { available, hardware }: a fingerprint or face is set up; the phone has a sensor for one at all. */
+    @PluginMethod
+    fun biometricStatus(call: PluginCall) {
+        val r = BiometricManager.from(context).canAuthenticate(unlockWith)
+        val available = r == BiometricManager.BIOMETRIC_SUCCESS || r == BiometricManager.BIOMETRIC_STATUS_UNKNOWN
+        val hardware = available ||
+            r == BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ||
+            r == BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE
+        call.resolve(JSObject().put("available", available).put("hardware", hardware))
+    }
+
+    /**
+     * { title, cancel }: Android's fingerprint / face prompt, with `cancel` as
+     * its button back to the PIN. Resolves { ok: true } once recognised, or
+     * { ok: false, code } when it closes without (that button, Back, too many tries).
+     */
+    @PluginMethod
+    fun authenticate(call: PluginCall) {
+        val title = call.getString("title") ?: "Unlock"
+        val cancel = call.getString("cancel") ?: "Use PIN"
+        val act = activity ?: return call.reject("No activity")
+        act.runOnUiThread {
+            val done = AtomicBoolean(false)
+            val callback = object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    if (done.compareAndSet(false, true)) call.resolve(JSObject().put("ok", true))
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    if (done.compareAndSet(false, true)) call.resolve(JSObject().put("ok", false).put("code", errorCode))
+                }
+                // onAuthenticationFailed (a finger or face it didn't know): the
+                // prompt stays up and says so itself.
+            }
+            try {
+                val info = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle(title)
+                    .setNegativeButtonText(cancel)
+                    .setAllowedAuthenticators(unlockWith)
+                    .setConfirmationRequired(false)
+                    .build()
+                BiometricPrompt(act, ContextCompat.getMainExecutor(act), callback).authenticate(info)
+            }
+            catch (e: Exception) {
+                if (done.compareAndSet(false, true)) call.reject(e.message ?: "The fingerprint prompt did not open")
+            }
         }
     }
 

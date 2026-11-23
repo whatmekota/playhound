@@ -197,6 +197,7 @@ declare global {
   const soundtrackProgress: typeof import('./src/composables/useSoundtrack').soundtrackProgress
   const startAchievements: typeof import('./src/composables/useAchievements').startAchievements
   const startNetProxySync: typeof import('./src/composables/useNetProxy').startNetProxySync
+  const startPrivacyLock: typeof import('./src/composables/usePrivacyLock').startPrivacyLock
   const startUiScale: typeof import('./src/composables/useUiScale').startUiScale
   const startUpdates: typeof import('./src/composables/useUpdates').startUpdates
   const stepUiScale: typeof import('./src/composables/useUiScale').stepUiScale
@@ -367,6 +368,7 @@ declare global {
   const usePresenceContext: typeof import('./src/composables/useDiscordPresence').usePresenceContext
   const usePresenceSettings: typeof import('./src/composables/useDiscordPresence').usePresenceSettings
   const usePrevious: typeof import('@vueuse/core').usePrevious
+  const usePrivacyLock: typeof import('./src/composables/usePrivacyLock').usePrivacyLock
   const useRafFn: typeof import('@vueuse/core').useRafFn
   const useRailLayout: typeof import('./src/composables/useCompactLayout').useRailLayout
   const useRefHistory: typeof import('@vueuse/core').useRefHistory
@@ -747,6 +749,7 @@ declare module 'vue' {
     readonly soundtrackProgress: UnwrapRef<typeof import('./src/composables/useSoundtrack')['soundtrackProgress']>
     readonly startAchievements: UnwrapRef<typeof import('./src/composables/useAchievements')['startAchievements']>
     readonly startNetProxySync: UnwrapRef<typeof import('./src/composables/useNetProxy')['startNetProxySync']>
+    readonly startPrivacyLock: UnwrapRef<typeof import('./src/composables/usePrivacyLock')['startPrivacyLock']>
     readonly startUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['startUiScale']>
     readonly startUpdates: UnwrapRef<typeof import('./src/composables/useUpdates')['startUpdates']>
     readonly stepUiScale: UnwrapRef<typeof import('./src/composables/useUiScale')['stepUiScale']>
@@ -917,6 +920,7 @@ declare module 'vue' {
     readonly usePresenceContext: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['usePresenceContext']>
     readonly usePresenceSettings: UnwrapRef<typeof import('./src/composables/useDiscordPresence')['usePresenceSettings']>
     readonly usePrevious: UnwrapRef<typeof import('@vueuse/core')['usePrevious']>
+    readonly usePrivacyLock: UnwrapRef<typeof import('./src/composables/usePrivacyLock')['usePrivacyLock']>
     readonly useRafFn: UnwrapRef<typeof import('@vueuse/core')['useRafFn']>
     readonly useRailLayout: UnwrapRef<typeof import('./src/composables/useCompactLayout')['useRailLayout']>
     readonly useRefHistory: UnwrapRef<typeof import('@vueuse/core')['useRefHistory']>

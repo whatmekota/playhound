@@ -295,8 +295,10 @@ function start() {
       if (coolTimer !== null)
         clearTimeout(coolTimer)
       coolTimer = null
-      if (config.value.enabled && config.value.rules.some(r => r.enabled))
-        addLog({ ruleId: '', name: 'Panic', reason: 'Rules are paused', did: 'Nothing fires until you resume', tone: 'warn' })
+      if (config.value.enabled && config.value.rules.some(r => r.enabled)) {
+        const lock = safety.cause === 'lock'
+        addLog({ ruleId: '', name: lock ? 'Locked' : 'Panic', reason: 'Rules are paused', did: lock ? 'Nothing fires until it is unlocked' : 'Nothing fires until you resume', tone: 'warn' })
+      }
     })
 
     function pct(v: number) {

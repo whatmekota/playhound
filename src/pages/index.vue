@@ -17,6 +17,7 @@ import CommandPalette from '~/components/shell/CommandPalette.vue'
 import CrashBanner from '~/components/shell/CrashBanner.vue'
 import InspectorDrawer from '~/components/shell/InspectorDrawer.vue'
 import InspectorRail from '~/components/shell/InspectorRail.vue'
+import LockScreen from '~/components/shell/LockScreen.vue'
 import MobileNav from '~/components/shell/MobileNav.vue'
 import PanicCover from '~/components/shell/PanicCover.vue'
 import PartySplash from '~/components/shell/PartySplash.vue'
@@ -38,6 +39,7 @@ import { useHeartRate } from '~/composables/useHeartRate'
 import { useMotionEngine } from '~/composables/useMotionEngine'
 import { startNetProxySync } from '~/composables/useNetProxy'
 import { usePopout } from '~/composables/usePopout'
+import { startPrivacyLock } from '~/composables/usePrivacyLock'
 import { useRemoteHost } from '~/composables/useRemoteHost'
 import { useRules } from '~/composables/useRules'
 import { useSafety } from '~/composables/useSafety'
@@ -66,6 +68,7 @@ import { useMotionStore } from '~/stores/motionStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { usePluginStore } from '~/stores/pluginStore'
+import { usePrivacyStore } from '~/stores/privacyStore'
 import { useRecordingStore } from '~/stores/recordingStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useScriptEditStore } from '~/stores/scriptEditStore'
@@ -86,6 +89,7 @@ const library = useLibraryStore()
 const stats = useStatsStore()
 const bookmarks = useBookmarkStore()
 const safety = useSafetyStore()
+const privacy = usePrivacyStore()
 const hypno = useHypnoStore()
 const sessionControl = useSessionControlStore()
 const subtitles = useSubtitleStore()
@@ -131,11 +135,13 @@ useDiscordPresence()
 startAchievements()
 
 // Panic needs to reach video, audio and the device at once.
-const { toggle: togglePanic, resume: resumePanic, panic: engagePanic } = useSafety({
+const { toggle: togglePanic, resume: resumePanic, panic: engagePanic, release: releasePanic } = useSafety({
   pauseVideo: () => playback.pause(),
   playVideo: () => playback.resume(),
   isVideoPlaying: () => player.isPlaying,
 })
+// The app lock: locked at startup and after time away, through panic.
+startPrivacyLock({ panic: () => engagePanic('lock'), release: releasePanic })
 
 const transport = {
   next: () => void playback.next(),
@@ -454,6 +460,9 @@ function tapBeat() {
 }
 
 function onGlobalKeyDown(e: KeyboardEvent) {
+  // The lock screen takes the keyboard (it catches keys before this does).
+  if (privacy.locked)
+    return
   // Ctrl/Cmd+K opens the palette from anywhere, even inside a field.
   if ((e.ctrlKey || e.metaKey) && e.code === 'KeyK') {
     e.preventDefault()
@@ -626,6 +635,8 @@ const stageView = computed(() => (ui.view === 'player' ? null : VIEW_COMPONENTS[
     </Transition>
 
     <PanicCover v-if="safety.panicked" @resume="resumePanic" />
+    <!-- Over everything, the panic cover included (it is teleported to <body>). -->
+    <LockScreen v-if="privacy.locked" />
 
     <!-- Android: the Bluetooth / USB device picker and the session service -->
     <component :is="AndroidDevices" v-if="AndroidDevices" />

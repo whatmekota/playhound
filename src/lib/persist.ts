@@ -97,6 +97,11 @@ export const KEYS = {
   directorPrefer: def('ph:director.prefer', 'setting', 'Director leans towards videos you finish to'),
   panicOnBlur: def('ph:safety.panicOnBlur', 'setting', 'Panic when the window loses focus'),
   idleStopMinutes: def('ph:safety.idleStopMinutes', 'setting', 'Idle device stop'),
+  privacyPin: def('ph:privacy.pin', 'setting', 'The app lock\'s PIN, as a salted hash (never in a backup)'),
+  privacyAttempts: def('ph:privacy.attempts', 'setting', 'Wrong PINs in a row, and how long the lock screen waits (never in a backup)'),
+  privacyRelock: def('ph:privacy.relockAfter', 'setting', 'How long away before the app locks again'),
+  privacyBiometric: def('ph:privacy.biometric', 'setting', 'Android app: unlock with a fingerprint or face'),
+  privacyBlankRecents: def('ph:privacy.blankRecents', 'setting', 'Android app: blank in recent apps (no screenshots either)'),
   splash: def('ph:ui.splash', 'setting', 'Splash screen'),
   resumeOnStart: def('ph:ui.resumeOnStart', 'setting', 'Resume the last video at startup'),
   uiScale: def('ph:ui.scale', 'setting', 'Interface size'),
@@ -193,6 +198,14 @@ export const KEYS = {
 } as const satisfies Record<string, KeyDef>
 
 export const ALL_KEYS: KeyDef[] = Object.values(KEYS)
+
+/**
+ * Left out of backups and never written back from one. A backup is how you
+ * get going again after erasing playhound for a forgotten PIN, so it must not
+ * bring that PIN back with it; nor should importing one lock you out of the
+ * copy it goes into.
+ */
+export const NOT_BACKED_UP: ReadonlySet<string> = new Set([KEYS.privacyPin.key, KEYS.privacyAttempts.key])
 
 const KNOWN = new Set(ALL_KEYS.map(k => k.key))
 

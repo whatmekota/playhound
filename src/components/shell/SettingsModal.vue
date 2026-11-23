@@ -38,6 +38,7 @@ import { version } from '../../../package.json'
 import AndroidStatus from './AndroidStatus.vue'
 import BrandMark from './BrandMark.vue'
 import EdgeSettings from './EdgeSettings.vue'
+import PrivacySettings from './PrivacySettings.vue'
 
 /**
  * App-wide settings. Feature settings (device, audio, hypno…) live in their
@@ -162,7 +163,7 @@ const updateLine = computed(() => {
 })
 const SCALE_OPTIONS = UI_SCALES.map(s => ({ value: s as number, label: `${Math.round(s * 100)}%` }))
 
-type SectionId = 'android' | 'appearance' | 'playback' | 'edges' | 'startup' | 'safety' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
+type SectionId = 'android' | 'appearance' | 'playback' | 'edges' | 'startup' | 'safety' | 'privacy' | 'library' | 'network' | 'keyboard' | 'discord' | 'plugins' | 'updates' | 'about'
 const ALL_SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'android', label: 'Android app', icon: 'i-carbon-mobile' },
   { id: 'appearance', label: 'Appearance', icon: 'i-carbon-color-palette' },
@@ -170,6 +171,7 @@ const ALL_SECTIONS: { id: SectionId, label: string, icon: string }[] = [
   { id: 'edges', label: 'Edges', icon: 'i-carbon-hourglass' },
   { id: 'startup', label: 'Startup', icon: 'i-carbon-rocket' },
   { id: 'safety', label: 'Safety', icon: 'i-carbon-security' },
+  { id: 'privacy', label: 'Privacy', icon: 'i-carbon-locked' },
   { id: 'library', label: 'Library', icon: 'i-carbon-folder' },
   { id: 'network', label: 'Network', icon: 'i-carbon-network-3' },
   { id: 'keyboard', label: 'Keyboard', icon: 'i-carbon-keyboard' },
@@ -661,6 +663,11 @@ function openBackup() {
                   <UiSelect v-model="safety.idleStopMinutes" :options="idleOptions" />
                 </UiField>
               </div>
+            </template>
+
+            <!-- Privacy: the app lock -->
+            <template v-else-if="section === 'privacy'">
+              <PrivacySettings />
             </template>
 
             <!-- Library -->

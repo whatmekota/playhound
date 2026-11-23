@@ -3,7 +3,8 @@ import { registerPlugin } from '@capacitor/core'
 
 /**
  * The app itself, through PhApp (android/…/app/AppPlugin.kt): its version
- * and build, Android's share sheet, and installing an update.
+ * and build, Android's share sheet, installing an update, and what the app
+ * lock needs (going out of sight, the fingerprint prompt, FLAG_SECURE).
  */
 
 export interface AppInfo {
@@ -12,6 +13,14 @@ export interface AppInfo {
   /** A debug build: signed with the toolchain's key, so a release build cannot update it. */
   debug: boolean
   sdk: number
+}
+
+/** What the phone offers for unlocking the app (Android's BiometricManager, fingerprint or face). */
+export interface BiometricStatus {
+  /** One is set up and usable now. */
+  available: boolean
+  /** The phone has a sensor for one, set up or not. */
+  hardware: boolean
 }
 
 interface PhAppPlugin {
@@ -25,9 +34,21 @@ interface PhAppPlugin {
   setFullscreen: (o: { on: boolean, landscape?: boolean }) => Promise<void>
   /** While on, the system Back button sends 'back' here instead of leaving the app (lib/android/back.ts). */
   setBackHandler: (o: { on: boolean }) => Promise<void>
+  /** FLAG_SECURE: blank in recent apps, and no screenshots or screen recordings of the app. */
+  setSecure: (o: { on: boolean }) => Promise<void>
+  biometricStatus: () => Promise<BiometricStatus>
+  /** Android's fingerprint / face prompt. `ok` false: "Use PIN", cancelled, or too many tries. */
+  authenticate: (o: { title: string, cancel: string }) => Promise<{ ok: boolean, code?: number }>
   addListener: ((event: 'updateProgress', cb: (e: { received: number, total: number }) => void) => Promise<PluginListenerHandle>)
     & ((event: 'fullscreenBack', cb: () => void) => Promise<PluginListenerHandle>)
     & ((event: 'back', cb: () => void) => Promise<PluginListenerHandle>)
+    /**
+     * The app went out of sight (another app, Home, the screen off) or came
+     * back. Unlike the page's visibilitychange, it is told while a session
+     * keeps the page running too (session/PhWebView.kt). `own`: leaving for
+     * something the app opened itself (a picker, the share sheet).
+     */
+    & ((event: 'away', cb: (e: { away: boolean, own: boolean }) => void) => Promise<PluginListenerHandle>)
 }
 
 export const PhApp = registerPlugin<PhAppPlugin>('PhApp')

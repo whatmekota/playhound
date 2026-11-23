@@ -167,7 +167,7 @@ function setup() {
   watch(() => popout.active.value, on => on && markMoment('popout'))
   watch(() => playing.value && motion.axisLinks.some(l => l.on), on => on && markMoment('linked'))
   watch(() => playing.value && motion.source === 'music', on => on && markMoment('music-source'))
-  watch(() => safety.panicked, on => on && countMoment('panic'))
+  watch(() => safety.panicked, on => on && safety.cause === 'hand' && countMoment('panic'))
   watch(() => theme.current, () => markMoment('theme'))
   watch(() => hypno.enabled, on => on && markMoment('hypno'))
   watch(() => audio.isPlaying.value, on => on && markMoment('binaural'))

@@ -736,7 +736,13 @@ function adoptPopout(child) {
 }
 
 function windowState() {
-  return { maximized: !!win?.isMaximized(), fullScreen: !!win?.isFullScreen() }
+  return {
+    maximized: !!win?.isMaximized(),
+    fullScreen: !!win?.isFullScreen(),
+    // For the app lock: with background throttling off, the page itself
+    // never learns that it went out of sight.
+    minimized: !!win && (win.isMinimized() || !win.isVisible()),
+  }
 }
 
 function createWindow(url) {
@@ -798,11 +804,12 @@ function createWindow(url) {
 
   // The title bar swaps maximise/restore and hides itself in fullscreen.
   // 'restore' covers un-minimising straight back into a maximised window.
+  // Minimising and hiding (⌘H on a Mac) are for the app lock's time away.
   const pushState = () => {
     if (win && !win.isDestroyed())
       win.webContents.send('ph:win:state', windowState())
   }
-  for (const ev of ['maximize', 'unmaximize', 'restore', 'enter-full-screen', 'leave-full-screen', 'enter-html-full-screen', 'leave-html-full-screen'])
+  for (const ev of ['maximize', 'unmaximize', 'minimize', 'restore', 'hide', 'show', 'enter-full-screen', 'leave-full-screen', 'enter-html-full-screen', 'leave-html-full-screen'])
     win.on(ev, pushState)
 
   const wc = win.webContents

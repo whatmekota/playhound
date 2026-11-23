@@ -1,11 +1,13 @@
 package io.github.whatmekota.playhound;
 
 import android.content.ComponentCallbacks2;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
+import androidx.annotation.Nullable;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
 import io.github.whatmekota.playhound.crash.CrashLog;
@@ -71,6 +73,24 @@ public class MainActivity extends BridgeActivity {
         if (retry) recreate();
         else finish();
         return true;
+    }
+
+    /**
+     * Every screen the app opens itself starts here (startActivity included):
+     * a folder or file picker, the share sheet, the forum's sign-in, the
+     * installer. Going out of sight for one of those is not time away for the
+     * app lock (AppPlugin's "away" event).
+     */
+    @Override
+    @SuppressWarnings("deprecation")
+    public void startActivityForResult(Intent intent, int requestCode, @Nullable Bundle options) {
+        AppPlugin.markOwnLaunch(true);
+        try {
+            super.startActivityForResult(intent, requestCode, options);
+        } catch (RuntimeException e) {
+            AppPlugin.markOwnLaunch(false);
+            throw e;
+        }
     }
 
     /**

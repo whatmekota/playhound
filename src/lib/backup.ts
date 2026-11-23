@@ -1,6 +1,6 @@
 import type { BackupStore, VideoMeta } from './idb'
-import { BACKUP_STORES, exportStore, importStore } from './idb'
-import { isOwnKey, runMigrations, SCHEMA_VERSION, storedSchema } from './persist'
+import { BACKUP_STORES, deleteDatabase, exportStore, importStore } from './idb'
+import { isOwnKey, NOT_BACKED_UP, runMigrations, SCHEMA_VERSION, storedSchema } from './persist'
 
 /**
  * Backup and restore of everything the app keeps in the browser.
@@ -34,12 +34,12 @@ export function isOurKey(key: string): boolean {
   return isOwnKey(key)
 }
 
-/** Everything in localStorage that belongs to this app. */
+/** Everything in localStorage that belongs to this app, but the app lock's PIN. */
 export function collectLocal(): Record<string, string> {
   const out: Record<string, string> = {}
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i)
-    if (!key || !isOurKey(key))
+    if (!key || !isOurKey(key) || NOT_BACKED_UP.has(key))
       continue
     const value = localStorage.getItem(key)
     if (value !== null)
@@ -104,6 +104,9 @@ export async function restoreBackup(
       skipped.push(key)
       continue
     }
+    // Nor a PIN: a file made by hand must not lock anyone out either.
+    if (NOT_BACKED_UP.has(key))
+      continue
     localStorage.setItem(key, value)
     localKeys++
   }
@@ -201,4 +204,23 @@ export function downloadBackup(backup: Backup): void {
   a.download = `playhound-backup-${new Date().toISOString().slice(0, 10)}.json`
   a.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/**
+ * Everything playhound keeps on this device, gone: its settings, the
+ * library and the folders it remembers, playlists, stats, plugins. The way
+ * past the app lock without its PIN, so it leaves nothing behind for whoever
+ * goes that way. Video and script files are not touched. Reload afterwards.
+ */
+export async function eraseAppData(): Promise<void> {
+  const ours: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)
+    if (key && isOurKey(key))
+      ours.push(key)
+  }
+  await deleteDatabase()
+  // The PIN last: if anything above fails, the lock is still on.
+  for (const key of ours.sort((a, b) => Number(NOT_BACKED_UP.has(a)) - Number(NOT_BACKED_UP.has(b))))
+    localStorage.removeItem(key)
 }

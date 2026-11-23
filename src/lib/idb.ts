@@ -66,6 +66,23 @@ function openDB(): Promise<IDBDatabase> {
   })
 }
 
+/**
+ * Close this page's connection and delete the whole database (erasing
+ * playhound, see eraseAppData). Another tab or window that still has it open
+ * is asked to let go (its onversionchange closes it); the delete goes through
+ * then, even if this page has reloaded meanwhile.
+ */
+export function deleteDatabase(): Promise<void> {
+  db?.close()
+  db = null
+  return new Promise((resolve) => {
+    const req = indexedDB.deleteDatabase(DB_NAME)
+    req.onsuccess = () => resolve()
+    req.onerror = () => resolve()
+    req.onblocked = () => resolve()
+  })
+}
+
 function tx(store: string, mode: IDBTransactionMode) {
   return db!.transaction(store, mode).objectStore(store)
 }
