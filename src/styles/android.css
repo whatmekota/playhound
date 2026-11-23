@@ -21,15 +21,16 @@
  * Title and blurb, then the view's own buttons and tabs (Stats, EroScripts,
  * Playlists, the Organizer): on a phone the buttons go under the title, not
  * beside it, where they squeezed the blurb to a word a line. The library
- * has its own phone header (a grid, not this).
+ * has its own phone header (a grid, not this). A view that drops its blurb
+ * on a phone keeps a few icon buttons on the title row (.ph-head-row).
  */
-.ph-compact header.flex:has(> div > .h-view) {
+.ph-compact header.flex:not(.ph-head-row):has(> div > .h-view) {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
   padding: 12px 16px 10px;
 }
-.ph-compact header.flex:has(> div > .h-view) > div:first-child {
+.ph-compact header.flex:not(.ph-head-row):has(> div > .h-view) > div:first-child {
   flex-basis: 100%;
 }
 

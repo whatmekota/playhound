@@ -123,6 +123,36 @@ class AppPlugin : Plugin() {
         }
     }
 
+    // ── Back ─────────────────────────────────────────────────────────────────
+
+    private var pageBack: OnBackPressedCallback? = null
+
+    /**
+     * { on }: while on, the system Back button belongs to the page (a "back"
+     * event: a post open over the list closes) instead of leaving the app.
+     */
+    @PluginMethod
+    fun setBackHandler(call: PluginCall) {
+        val on = call.getBoolean("on", false) ?: false
+        val act = activity ?: return call.reject("No activity")
+        act.runOnUiThread {
+            if (on && pageBack == null) {
+                val cb = object : OnBackPressedCallback(true) {
+                    override fun handleOnBackPressed() {
+                        notifyListeners("back", JSObject())
+                    }
+                }
+                act.onBackPressedDispatcher.addCallback(act, cb)
+                pageBack = cb
+            }
+            else if (!on) {
+                pageBack?.remove()
+                pageBack = null
+            }
+            call.resolve()
+        }
+    }
+
     // ── Share ────────────────────────────────────────────────────────────────
 
     /** Share { name, mime, data (base64) } through the share sheet; resolves once the sheet is up. */
