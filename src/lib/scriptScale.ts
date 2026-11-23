@@ -39,6 +39,12 @@ export interface ScaledScript {
 }
 
 export const MIN_INTENSITY = 0.1
+/**
+ * Past full, the knob stretches the strokes instead: each turning point
+ * pushed away from its stroke's centre, as far as the ends of the range,
+ * for a script written with short strokes. Same beats, no speed cap.
+ */
+export const MAX_INTENSITY = 2
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -55,7 +61,9 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  *   0.1     33%          87
  */
 export function intensityParams(intensity: number): IntensityParams {
-  const i = clamp(Number.isFinite(intensity) ? intensity : 1, MIN_INTENSITY, 1)
+  const i = clamp(Number.isFinite(intensity) ? intensity : 1, MIN_INTENSITY, MAX_INTENSITY)
+  if (i > 1.001)
+    return { amplitude: i, speedCap: Number.POSITIVE_INFINITY }
   if (i >= 0.999)
     return { amplitude: 1, speedCap: Number.POSITIVE_INFINITY }
   return {
@@ -98,7 +106,7 @@ export function scaleScript(
 ): ScaledScript {
   const range = opts.range ?? 1
   const n = actions.length
-  const amplitude = clamp(params.amplitude, 0, 1)
+  const amplitude = clamp(params.amplitude, 0, MAX_INTENSITY)
   const cap = params.speedCap
 
   const keys = turningPoints(actions)
@@ -114,7 +122,7 @@ export function scaleScript(
     return (Math.max(a, v, b) + Math.min(a, v, b)) / 2
   })
 
-  if (amplitude >= 1 && !Number.isFinite(cap)) {
+  if (amplitude === 1 && !Number.isFinite(cap)) {
     return {
       actions: actions.map(a => ({ at: a.at, pos: a.pos })),
       centres: centresAlong(actions, keys, c),
@@ -122,15 +130,16 @@ export function scaleScript(
     }
   }
 
-  // 1. Range: every turning point toward its centre.
-  const v = e.map((x, k) => c[k] + (x - c[k]) * amplitude)
+  // 1. Range: every turning point toward its centre (or, stretched, away
+  // from it, as far as the ends of the range).
+  const v = e.map((x, k) => clamp(c[k] + (x - c[k]) * amplitude, 0, range))
 
-  // 2. Travel and speed. Each stroke may travel at most `allowed[s]`: never
+  // 2. Travel and speed (only ever shortening: a stretch has no cap). Each stroke may travel at most `allowed[s]`: never
   // further than it did, and no further than puts its fastest segment,
   // scaled with the stroke, exactly on the cap. Centres differ a little from
   // one turning point to the next, so the first step alone could lengthen a
   // short stroke beside a long one; this catches that too.
-  if (m > 1) {
+  if (m > 1 && amplitude < 1 + 1e-9) {
     const capPerMs = Number.isFinite(cap) ? (Math.max(0, cap) * range) / 100 / 1000 : Number.POSITIVE_INFINITY
     const allowed: number[] = []
     for (let s = 0; s < m - 1; s++) {

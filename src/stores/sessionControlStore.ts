@@ -13,8 +13,10 @@ import { useLocalStorage } from '@vueuse/core'
  * - `holdBack` (0–1): how much to back off right now because of an edge. 1 is
  *   "almost nothing", 0 is normal. It rises fast when an edge is called, holds
  *   through the cooldown, then eases back over the rebuild.
- * - `intensityScale` (0.1–1): the user's knob. Scripts are compressed and
- *   slowed by it, generated motion and vibration are scaled by it.
+ * - `intensityScale` (0.1–2): the user's knob. Scripts are compressed and
+ *   slowed by it, generated motion and vibration are scaled by it. Past 1
+ *   it stretches a script's strokes (lib/scriptScale); everything else
+ *   stays at full there.
  *
  * `effectiveIntensity` combines the two for consumers that only want one
  * number. The dynamics (rise, hold, rebuild) live in src/lib/edging.ts so they
@@ -24,6 +26,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { createEdgeEnvelope, EDGE_PRESETS } from '~/lib/edging'
 import { KEYS } from '~/lib/persist'
+import { MAX_INTENSITY, MIN_INTENSITY } from '~/lib/scriptScale'
 
 export type EdgeSource = 'key' | 'gamepad' | 'remote' | 'heart' | 'programme' | 'ui' | 'plugin' | 'rule'
 
@@ -125,7 +128,7 @@ export const useSessionControlStore = defineStore('sessionControl', () => {
   }
 
   function setIntensityScale(v: number) {
-    intensityScale.value = Math.max(0.1, Math.min(1, Math.round(v * 100) / 100))
+    intensityScale.value = Math.max(MIN_INTENSITY, Math.min(MAX_INTENSITY, Math.round(v * 100) / 100))
   }
 
   function nudgeIntensity(delta: number) {

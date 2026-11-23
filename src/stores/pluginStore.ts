@@ -45,7 +45,7 @@ import { clearPictureFx, setPictureFx } from '~/plugins/pictureFx'
 import { cleanProvidedList, entryOf } from '~/plugins/provider'
 import { remoteScriptMatches } from '~/plugins/remoteScripts'
 import { axisKeyFor, cleanActions, snapshotOf } from '~/plugins/scripts'
-import { clampLimit, DEFAULT_PLUGIN_INTENSITY_MAX, pluginTarget, rampStep } from '~/plugins/session'
+import { clampLimit, DEFAULT_PLUGIN_INTENSITY_MAX, KNOB_MAX, pluginTarget, rampStep } from '~/plugins/session'
 import { chordId, chordOf, parseKbd, reservedBy } from '~/plugins/shortcuts'
 import { openSocket, socketsAvailable } from '~/plugins/socket'
 import { addNewDefaults, DEFAULT_SOURCES, fetchRelease, newer, parseRepo, SourceError } from '~/plugins/sources'
@@ -2148,7 +2148,8 @@ export const usePluginStore = defineStore('plugins', () => {
           return later(stop)
         }),
         intensity: {
-          get: gateRead('session.intensity.get', () => control.intensityScale),
+          // 0.1–1, as the API says: past full, the knob only stretches scripts.
+          get: gateRead('session.intensity.get', () => Math.min(KNOB_MAX, control.intensityScale)),
           set: gate('session', 'session.intensity.set', (level: number) => rampIntensity(id, manifestName, level)),
           restore: gate('session', 'session.intensity.restore', (): number | null => {
             const mark = knobBefore.get(id)
@@ -2165,7 +2166,7 @@ export const usePluginStore = defineStore('plugins', () => {
           }),
           max: gateRead('session.intensity.max', () => clampLimit(intensityMax.value)),
           onChange: gateRead('session.intensity.onChange', (fn: (level: number) => void) => {
-            const stop = watch(() => control.intensityScale, (v) => {
+            const stop = watch(() => Math.min(KNOB_MAX, control.intensityScale), (v) => {
               try {
                 fn(v)
               }

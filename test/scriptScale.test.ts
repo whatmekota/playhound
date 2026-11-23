@@ -2,7 +2,7 @@ import type { Chapter } from '../src/lib/chapters'
 import type { ScaleAction } from '../src/lib/scriptScale'
 import { describe, expect, it } from 'vitest'
 import { finishChapter, nextPeak } from '../src/lib/peakJump'
-import { backOff, intensityParams, sampleScaled, scaleScript, turningPoints } from '../src/lib/scriptScale'
+import { backOff, intensityParams, MAX_INTENSITY, sampleScaled, scaleScript, turningPoints } from '../src/lib/scriptScale'
 
 /** Deterministic pseudo-random, so failures reproduce. */
 function rng(seed: number) {
@@ -70,7 +70,7 @@ describe('intensityParams', () => {
 
   it('clamps out-of-range knobs', () => {
     expect(intensityParams(0)).toEqual(intensityParams(0.1))
-    expect(intensityParams(5)).toEqual(intensityParams(1))
+    expect(intensityParams(5)).toEqual(intensityParams(MAX_INTENSITY))
   })
 })
 
@@ -109,6 +109,21 @@ describe('scaleScript', () => {
         expect(after).toBeLessThanOrEqual(before + 1e-9)
       }
     }
+  })
+
+  it('past full, stretches the strokes around the same middle, as far as the ends', () => {
+    // Short strokes, 40 to 60, on the same beats.
+    const a = Array.from({ length: 9 }, (_, k) => ({ at: k * 400, pos: k % 2 ? 0.6 : 0.4 }))
+    const s = scaleScript(a, intensityParams(1.5))
+    expect(s.identity).toBe(false)
+    expect(s.actions.map(x => x.at)).toEqual(a.map(x => x.at))
+    expect(s.actions.map(x => x.pos)).toEqual(a.map(x => expect.closeTo(x.pos === 0.6 ? 0.65 : 0.35, 9)))
+    // A full-range script has nowhere further to go.
+    const full = Array.from({ length: 9 }, (_, k) => ({ at: k * 400, pos: k % 2 ? 1 : 0 }))
+    expect(scaleScript(full, intensityParams(MAX_INTENSITY)).actions.map(x => x.pos)).toEqual(full.map(x => x.pos))
+    // Raw 0-100 scripts stay within their own range.
+    const raw = scaleScript([{ at: 0, pos: 10 }, { at: 300, pos: 90 }, { at: 600, pos: 10 }], intensityParams(2), { range: 100 })
+    expect(raw.actions.map(x => x.pos)).toEqual([0, 100, 0])
   })
 
   it('stays inside the original range', () => {

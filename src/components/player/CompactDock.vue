@@ -12,6 +12,7 @@ import { useSmoothPlayhead } from '~/composables/useSmoothPlayhead'
 import { isAndroidApp } from '~/lib/android/detect'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
 import { KEYS } from '~/lib/persist'
+import { MAX_INTENSITY, MIN_INTENSITY } from '~/lib/scriptScale'
 import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { looksVrFrame, oneEyeRect } from '~/lib/vrFormat'
@@ -375,7 +376,7 @@ function toggleStar() {
               <span class="text-[11.5px] leading-tight">I'm OK</span>
             </button>
           </div>
-          <UiSlider v-model="knob" label="Intensity" :min="0.1" :max="1" :step="0.05" :reset="1" :format="v => `${Math.round(v * 100)}%`" />
+          <UiSlider v-model="knob" label="Intensity" :min="MIN_INTENSITY" :max="MAX_INTENSITY" :step="0.05" :reset="1" :format="v => `${Math.round(v * 100)}%`" />
         </section>
       </div>
 

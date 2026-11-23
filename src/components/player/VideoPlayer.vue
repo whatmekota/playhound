@@ -28,6 +28,7 @@ import { isAudioName } from '~/lib/mediaFiles'
 import { KEYS } from '~/lib/persist'
 import { containRect } from '~/lib/pictureRect'
 import { requestStrip } from '~/lib/previews'
+import { MAX_INTENSITY, MIN_INTENSITY } from '~/lib/scriptScale'
 import { cueHtml, isSubtitleName } from '~/lib/subtitles'
 import { ensureThumb, prefetchThumbs } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
@@ -1587,7 +1588,7 @@ defineExpose({ play, pause, togglePlay, seek, seekRelative, setSpeed, setVolume,
                   @click="sessionActions.edge('ui')"
                 />
                 <span class="i-carbon-meter-alt text-[15px] text-white/70" aria-hidden="true" />
-                <UiSlider v-model="knobModel" class="w-20" :min="0.1" :max="1" :step="0.05" :reset="1" hide-value />
+                <UiSlider v-model="knobModel" class="w-20" :min="MIN_INTENSITY" :max="MAX_INTENSITY" :step="0.05" :reset="1" hide-value />
                 <span class="text-[12px] text-white/75 num w-9">{{ Math.round(control.intensityScale * 100) }}%</span>
               </div>
 

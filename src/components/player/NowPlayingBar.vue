@@ -21,6 +21,7 @@ import { toast } from '~/composables/useToast'
 import { chapterAt, chaptersForScript, nextChapter, prevChapter } from '~/lib/chapters'
 import { KEYS } from '~/lib/persist'
 import { getStrip } from '~/lib/previews'
+import { MAX_INTENSITY, MIN_INTENSITY } from '~/lib/scriptScale'
 import { ensureThumb } from '~/lib/thumbs'
 import { formatTime } from '~/lib/time'
 import { vrFormat } from '~/lib/vrFormat'
@@ -611,7 +612,7 @@ const needsOverflow = computed(() => level.value > 0)
           @wheel="onKnobWheel"
         >
           <span class="i-carbon-meter-alt text-[14px]" :class="knobPct < 100 ? 'text-accent-300' : 'text-fg-muted'" />
-          <UiSlider v-model="knobModel" class="w-16" :min="0.1" :max="1" :step="0.05" :reset="1" hide-value />
+          <UiSlider v-model="knobModel" class="w-16" :min="MIN_INTENSITY" :max="MAX_INTENSITY" :step="0.05" :reset="1" hide-value />
           <span class="text-[11.5px] num text-right w-8" :class="knobPct < 100 ? 'text-accent-300' : 'text-fg-muted'">{{ knobPct }}%</span>
         </div>
         <div class="mx-1.5 divider-x" />
