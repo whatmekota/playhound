@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue'
 import UiBadge from '~/components/ui/UiBadge.vue'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import UiSpinner from '~/components/ui/UiSpinner.vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { toast } from '~/composables/useToast'
 import { thumbDb } from '~/lib/idb'
 import { MOD_KEY } from '~/lib/platform'
@@ -27,6 +28,7 @@ const library = useLibraryStore()
 const playback = usePlaybackStore()
 const stats = useStatsStore()
 const ui = useUiStore()
+const compact = useCompactLayout()
 
 const busy = ref<'pick' | 'reconnect' | null>(null)
 
@@ -266,7 +268,7 @@ const WAVE_B = wavePath(14, 1.3)
             <span class="text-[14px] font-semibold truncate">{{ a.title }}</span>
             <span class="text-[12px] truncate" :class="a.primary ? 'opacity-80' : 'text-fg-muted'">{{ a.sub }}</span>
           </span>
-          <UiKbd v-if="a.kbd" class="right-3 top-3 absolute" :class="a.primary ? '!bg-accent-contrast/15 !border-accent-contrast/25 !text-current' : ''">
+          <UiKbd v-if="a.kbd && !compact" class="right-3 top-3 absolute" :class="a.primary ? '!bg-accent-contrast/15 !border-accent-contrast/25 !text-current' : ''">
             {{ a.kbd }}
           </UiKbd>
           <span
@@ -337,8 +339,8 @@ const WAVE_B = wavePath(14, 1.3)
         </div>
       </section>
 
-      <!-- Drop + keys -->
-      <footer class="flex flex-col gap-4 animate-fade-in items-center" style="animation-delay: 300ms">
+      <!-- Drop + keys: a phone has neither. -->
+      <footer v-if="!compact" class="flex flex-col gap-4 animate-fade-in items-center" style="animation-delay: 300ms">
         <div class="text-[12.5px] text-fg-muted px-4 py-2.5 border border-edge-strong rounded-full border-dashed flex gap-2 items-center">
           <span class="i-carbon-drop-photo text-[15px] text-fg-faint" />
           Drop a video to play it, or a folder to add it to the library
