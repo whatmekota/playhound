@@ -19,7 +19,9 @@ import UiEmpty from '~/components/ui/UiEmpty.vue'
 import UiIconButton from '~/components/ui/UiIconButton.vue'
 import UiMenu from '~/components/ui/UiMenu.vue'
 import UiPopover from '~/components/ui/UiPopover.vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { toast } from '~/composables/useToast'
+import { useAndroidBack } from '~/lib/android/back'
 import { effectiveMeta, formatTotal, plural, scriptBadge } from '~/lib/entryInfo'
 import { KEYS } from '~/lib/persist'
 import { normalizeTag } from '~/lib/tags'
@@ -88,6 +90,19 @@ function select(kind: Sel['kind'], id: string) {
   sel.value = { kind, id }
 }
 
+// ─── Phone ────────────────────────────────────────────────────────────────────
+// No room for the list and a playlist side by side: the list fills the
+// screen, and a playlist opens over it as its own page with a Back button
+// (and the phone's Back). Elsewhere both are always there.
+const compact = useCompactLayout()
+const detailOpen = ref(false)
+
+/** Select a playlist and show it (on a phone, its page). */
+function show(kind: Sel['kind'], id: string) {
+  select(kind, id)
+  detailOpen.value = true
+}
+
 // ─── Rows ─────────────────────────────────────────────────────────────────────
 const scripts = useScriptSummaries()
 
@@ -108,6 +123,8 @@ watch(playable, (list) => {
 const shown = ref(true)
 onActivated(() => (shown.value = true))
 onDeactivated(() => (shown.value = false))
+// Only while the view is on screen: kept alive behind another view, Back is not its.
+useAndroidBack(() => compact.value && detailOpen.value && shown.value, () => (detailOpen.value = false))
 watch([shownRows, shown], ([list, on]) => scripts.want('playlists', on ? list.flatMap(r => (r.entry ? [r.entry] : [])) : []), { immediate: true })
 
 /** Up to four pictures for the cover. */
@@ -150,17 +167,19 @@ function uniqueName(base: string, taken: string[]) {
 
 function newPlaylist() {
   const pl = plStore.createPlaylist(uniqueName('New playlist', plStore.playlists.map(p => p.name)))
-  select('list', pl.id)
+  show('list', pl.id)
   startRename()
 }
 
 function newSmart(rules: SmartRule[] = [{ type: 'has_script' }], name = 'New smart playlist') {
   const pl = plStore.createSmartPlaylist(uniqueName(name, plStore.smartPlaylists.map(p => p.name)), rules)
-  select('smart', pl.id)
+  show('smart', pl.id)
   startRename()
 }
 
 function deleteActive() {
+  // On a phone the deleted playlist's page closes, back to the list.
+  detailOpen.value = false
   if (activeList.value && activeList.value.id !== 'favorites') {
     const copy: Playlist = JSON.parse(JSON.stringify(activeList.value))
     plStore.deletePlaylist(copy.id)
@@ -195,7 +214,7 @@ function snapshotSmart() {
   const pl = plStore.createPlaylist(name)
   for (const e of playable.value)
     plStore.addToPlaylist(pl.id, e.name)
-  select('list', pl.id)
+  show('list', pl.id)
   toast.success(`Saved ${name}`, { detail: plural(playable.value.length, 'video'), icon: 'i-carbon-playlist' })
 }
 
@@ -388,10 +407,11 @@ function smartIcon(pl: SmartPlaylist) {
 </script>
 
 <template>
-  <div class="bg-surface-950 flex h-full min-h-0">
+  <div class="bg-surface-950 flex h-full min-h-0 relative">
     <!-- ══ Sidebar ════════════════════════════════════════════════════════════ -->
-    <aside class="border-r border-edge bg-surface-900/40 flex shrink-0 flex-col w-[264px]">
-      <div class="px-5 pb-3 pt-5 flex items-center justify-between">
+    <!-- On a phone, the whole screen: the playlist opens over it. -->
+    <aside class="flex flex-col" :class="compact ? 'flex-1 min-w-0' : 'border-r border-edge bg-surface-900/40 shrink-0 w-[264px]'">
+      <div class="flex items-center justify-between" :class="compact ? 'pl-4 pr-3 pb-2 pt-3' : 'px-5 pb-3 pt-5'">
         <h1 class="h-view">
           Playlists
         </h1>
@@ -424,8 +444,8 @@ function smartIcon(pl: SmartPlaylist) {
             :key="pl.id"
             type="button"
             class="side-item group focusable"
-            :class="{ 'is-active': sel.kind === 'list' && sel.id === pl.id }"
-            @click="select('list', pl.id)"
+            :class="{ 'is-active': sel.kind === 'list' && sel.id === pl.id && !compact }"
+            @click="show('list', pl.id)"
             @dblclick="select('list', pl.id); startRename()"
             @contextmenu.prevent="openListMenu($event, 'list', pl.id)"
           >
@@ -454,8 +474,8 @@ function smartIcon(pl: SmartPlaylist) {
             :key="pl.id"
             type="button"
             class="side-item group focusable"
-            :class="{ 'is-active': sel.kind === 'smart' && sel.id === pl.id }"
-            @click="select('smart', pl.id)"
+            :class="{ 'is-active': sel.kind === 'smart' && sel.id === pl.id && !compact }"
+            @click="show('smart', pl.id)"
             @dblclick="select('smart', pl.id); startRename()"
             @contextmenu.prevent="openListMenu($event, 'smart', pl.id)"
           >
@@ -473,12 +493,21 @@ function smartIcon(pl: SmartPlaylist) {
     </aside>
 
     <!-- ══ Detail ═════════════════════════════════════════════════════════════ -->
-    <section class="flex flex-1 flex-col min-w-0">
+    <section
+      v-if="!compact || detailOpen"
+      class="flex flex-1 flex-col min-w-0"
+      :class="compact ? 'bg-surface-950 inset-0 absolute z-30' : ''"
+    >
+      <div v-if="compact" class="pl-1 pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center">
+        <UiButton size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="detailOpen = false">
+          Back
+        </UiButton>
+      </div>
       <!-- Keyed, so switching playlists fades the new one in. -->
       <div :key="`${sel.kind}:${sel.id}`" class="flex flex-1 flex-col min-h-0 animate-fade-in">
         <!-- Header -->
-        <header class="px-6 pb-4 pt-6 flex shrink-0 gap-5 items-end">
-          <div class="cover rounded-[var(--radius-lg)] shrink-0 h-[132px] w-[132px] shadow-[var(--shadow-lg)] relative overflow-hidden">
+        <header class="flex shrink-0" :class="compact ? 'px-4 pb-3 pt-4 gap-4 items-center' : 'px-6 pb-4 pt-6 gap-5 items-end'">
+          <div class="cover rounded-[var(--radius-lg)] shrink-0 shadow-[var(--shadow-lg)] relative overflow-hidden" :class="compact ? 'h-[88px] w-[88px]' : 'h-[132px] w-[132px]'">
             <div v-if="cover.length >= 4" class="grid grid-cols-2 grid-rows-2 h-full w-full">
               <img v-for="(src, i) in cover" :key="i" :src="src" alt="" class="h-full w-full animate-fade-in object-cover">
             </div>
@@ -499,7 +528,8 @@ function smartIcon(pl: SmartPlaylist) {
               v-if="renaming"
               ref="renameEl"
               v-model="renameVal"
-              class="text-[28px] text-fg leading-tight tracking-[-0.02em] font-semibold px-1.5 outline-none border border-accent/60 rounded-[var(--radius-sm)] bg-surface-900 w-full ring-3 ring-accent-soft -mx-1.5"
+              class="text-fg leading-tight tracking-[-0.02em] font-semibold px-1.5 outline-none border border-accent/60 rounded-[var(--radius-sm)] bg-surface-900 w-full ring-3 ring-accent-soft -mx-1.5"
+              :class="compact ? 'text-[20px]' : 'text-[28px]'"
               aria-label="Playlist name"
               @keydown.enter="commitRename"
               @keydown.esc.stop="renaming = false"
@@ -507,8 +537,8 @@ function smartIcon(pl: SmartPlaylist) {
             >
             <h2
               v-else
-              class="text-[28px] text-fg leading-tight tracking-[-0.02em] font-semibold truncate"
-              :class="canEdit ? 'cursor-text' : ''"
+              class="text-fg leading-tight tracking-[-0.02em] font-semibold truncate"
+              :class="[compact ? 'text-[20px]' : 'text-[28px]', canEdit ? 'cursor-text' : '']"
               @dblclick="startRename"
             >
               {{ activeList?.id === 'favorites' ? 'Favorites' : cleanName(activeName) }}
@@ -524,7 +554,7 @@ function smartIcon(pl: SmartPlaylist) {
                 <span v-tip="'Not found in the library folder that is open'" class="text-warn num">{{ missingCount }} missing</span>
               </template>
             </p>
-            <div class="mt-3.5 flex gap-2 items-center">
+            <div class="flex gap-2 items-center" :class="compact ? 'mt-2.5' : 'mt-3.5'">
               <UiButton variant="primary" size="md" icon="i-carbon-play-filled-alt" :disabled="!playable.length" @click="playAll">
                 Play
               </UiButton>
@@ -546,7 +576,7 @@ function smartIcon(pl: SmartPlaylist) {
         </header>
 
         <!-- Smart rules -->
-        <div v-if="activeSmart" class="px-6 pb-4 shrink-0">
+        <div v-if="activeSmart" class="pb-4 shrink-0" :class="compact ? 'px-4' : 'px-6'">
           <div class="px-3 py-2.5 well flex flex-wrap gap-2 items-center">
             <span class="eyebrow mr-1">{{ activeSmart.rules.length > 1 ? 'Matches all of' : 'Matches' }}</span>
             <TransitionGroup name="t-pop">
@@ -615,7 +645,7 @@ function smartIcon(pl: SmartPlaylist) {
         </div>
 
         <!-- Folder needs a click before anything can play -->
-        <div v-if="library.needsReconnect && !library.hasVideos && rows.length" class="px-6 pb-3 shrink-0">
+        <div v-if="library.needsReconnect && !library.hasVideos && rows.length" class="pb-3 shrink-0" :class="compact ? 'px-4' : 'px-6'">
           <div class="text-[12.5px] px-3 py-2 border border-warn/25 rounded-[var(--radius-md)] bg-warn/10 flex gap-3 items-center">
             <span class="i-carbon-folder-off text-warn" />
             <span class="text-fg-muted flex-1">Reconnect <b class="text-fg font-medium">{{ library.savedFolderName }}</b> to play these videos.</span>
@@ -626,7 +656,7 @@ function smartIcon(pl: SmartPlaylist) {
         </div>
 
         <!-- Entries -->
-        <div class="px-6 pb-28 scroll-y border-t border-edge flex-1">
+        <div class="scroll-y border-t border-edge flex-1" :class="compact ? 'px-2 pb-8' : 'px-6 pb-28'">
           <template v-if="rows.length">
             <TransitionGroup name="t-list" tag="div" class="pt-2 relative">
               <div
@@ -680,9 +710,11 @@ function smartIcon(pl: SmartPlaylist) {
                 </span>
                 <span v-if="row.entry?.starred" class="i-carbon-star-filled text-[13px] text-warn shrink-0" />
                 <span class="text-[12px] text-fg-muted num text-right shrink-0 w-14">{{ row.entry?.duration ? formatTime(row.entry.duration) : '' }}</span>
-                <span class="opacity-0 flex shrink-0 gap-0.5 transition-opacity items-center group-focus-within:opacity-100 group-hover:opacity-100">
+                <!-- A phone has no hover: there its menu button stays, and the
+                     rest (remove, moving) is in that menu. -->
+                <span class="flex shrink-0 gap-0.5 transition-opacity items-center" :class="compact ? '' : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100'">
                   <UiIconButton
-                    v-if="activeList"
+                    v-if="activeList && !compact"
                     icon="i-carbon-close"
                     label="Remove from playlist"
                     size="xs"
@@ -690,7 +722,7 @@ function smartIcon(pl: SmartPlaylist) {
                   />
                   <UiIconButton icon="i-carbon-overflow-menu-vertical" label="More" size="xs" @click.stop="openRowMenu($event, row)" />
                 </span>
-                <span v-if="activeList" class="i-carbon-draggable text-[14px] text-fg-faint opacity-0 shrink-0 cursor-grab transition-opacity group-hover:opacity-100" />
+                <span v-if="activeList && !compact" class="i-carbon-draggable text-[14px] text-fg-faint opacity-0 shrink-0 cursor-grab transition-opacity group-hover:opacity-100" />
               </div>
             </TransitionGroup>
             <div v-if="shownRows.length < rows.length" ref="sentinel" class="text-[12px] text-fg-faint py-4 text-center">
@@ -719,7 +751,7 @@ function smartIcon(pl: SmartPlaylist) {
             v-else-if="activeList?.id === 'favorites'"
             icon="i-carbon-favorite"
             title="No favorites yet"
-            description="Right-click any video in the library and choose Add to playlist › Favorites."
+            :description="`${compact ? 'Long-press' : 'Right-click'} any video in the library and choose Add to playlist › Favorites.`"
           >
             <UiButton icon="i-carbon-video-chat" @click="ui.openView('library')">
               Browse library
@@ -729,7 +761,7 @@ function smartIcon(pl: SmartPlaylist) {
             v-else
             icon="i-carbon-playlist"
             title="This playlist is empty"
-            description="Add videos from the library: right-click one, or select several and use the Playlist button."
+            :description="`Add videos from the library: ${compact ? 'long-press' : 'right-click'} one, or select several and use the Playlist button.`"
           >
             <UiButton icon="i-carbon-video-chat" @click="ui.openView('library')">
               Browse library

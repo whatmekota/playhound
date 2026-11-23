@@ -1,11 +1,15 @@
 <script setup lang="ts">
+import { useAndroidBack } from '~/lib/android/back'
+
 /**
  * A sheet in the phone layout: up from the bottom bar, or in from the right
- * when the phone is held sideways (styles/android.css). Tapping outside it
- * closes it. Used by the bottom bar's Tools and More, and the player's "…".
+ * when the phone is held sideways (styles/android.css). Tapping outside it,
+ * or the phone's Back, closes it. Used by the bottom bar's Tools and More,
+ * and the player's "…".
  */
 defineProps<{ label: string }>()
 const open = defineModel<boolean>('open', { required: true })
+useAndroidBack(() => open.value, () => (open.value = false))
 </script>
 
 <template>

@@ -14,6 +14,7 @@ import UiSlider from '~/components/ui/UiSlider.vue'
 import UiSwitch from '~/components/ui/UiSwitch.vue'
 import AddYoutubeModal from '~/components/views/AddYoutubeModal.vue'
 import MediaWallItem from '~/components/views/MediaWallItem.vue'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { useIdleChrome } from '~/composables/useIdleChrome'
 import { mediaKind, pickMediaFiles, useMediaDrop } from '~/composables/useMediaDrop'
 import { toast } from '~/composables/useToast'
@@ -28,6 +29,7 @@ const { items, addItem, removeItem, updateItem, clearAll } = useMediaWallStore()
 const ui = useUiStore()
 const player = usePlayerStore()
 
+const compact = useCompactLayout()
 const wallEl = ref<HTMLElement | null>(null)
 const { width: wallW, height: wallH } = useElementSize(wallEl)
 
@@ -68,6 +70,12 @@ function clampToWall(x: number, y: number, w: number, h: number) {
   }
 }
 
+/** A tile's size made to fit inside the wall, keeping its shape (a phone's wall is narrower than a tile). */
+function fitToWall(w: number, h: number) {
+  const k = Math.min(1, ((wallW.value || Infinity) - 16) / w, ((wallH.value || Infinity) - 16) / h)
+  return { w: Math.round(w * k), h: Math.round(h * k) }
+}
+
 /** Where the next tile goes when there is no drop point: a gentle cascade. */
 function cascade(w: number, h: number, i = 0) {
   const c = viewCentre()
@@ -81,8 +89,7 @@ function addFiles(files: File[], at?: { x: number, y: number }) {
     const kind = mediaKind(file)
     if (!kind)
       return
-    const w = 320
-    const h = kind === 'image' ? 240 : 180
+    const { w, h } = fitToWall(320, kind === 'image' ? 240 : 180)
     const pos = at
       ? clampToWall(at.x - w / 2 + i * 24, at.y - h / 2 + i * 24, w, h)
       : cascade(w, h, i)
@@ -109,8 +116,7 @@ function addFromDisk() {
 }
 
 function addYoutube({ youtubeId, label }: { youtubeId: string, label: string }) {
-  const w = 426
-  const h = 240
+  const { w, h } = fitToWall(426, 240)
   const item = addItem({ type: 'youtube', src: youtubeId, label, ...cascade(w, h), width: w, height: h, opacity: 1, playbackRate: 1, muted: true })
   bringToFront(item.id)
   selectedId.value = item.id
@@ -145,9 +151,10 @@ function matchShape(item: WallItem) {
     h = MIN_H
     w = h * aspect
   }
+  const fit = fitToWall(w, h)
   const cx = item.x + item.width / 2
   const cy = item.y + item.height / 2
-  updateItem(item.id, { width: Math.round(w), height: Math.round(h), ...clampToWall(cx - w / 2, cy - h / 2, w, h) })
+  updateItem(item.id, { width: fit.w, height: fit.h, ...clampToWall(cx - fit.w / 2, cy - fit.h / 2, fit.w, fit.h) })
 }
 
 // ─── Stacking ───────────────────────────────────────────────────────────────
@@ -376,8 +383,10 @@ function typeIcon(t: WallItem['type']) {
           <p class="hint mt-2 flex flex-wrap gap-x-3 gap-y-1 items-center justify-center">
             <span>Drag to move</span>
             <span>Corners resize</span>
-            <span class="flex gap-1 items-center"><UiKbd>Shift</UiKbd> keeps shape</span>
-            <span class="flex gap-1 items-center"><UiKbd>Alt</UiKbd> skips snapping</span>
+            <template v-if="!compact">
+              <span class="flex gap-1 items-center"><UiKbd>Shift</UiKbd> keeps shape</span>
+              <span class="flex gap-1 items-center"><UiKbd>Alt</UiKbd> skips snapping</span>
+            </template>
           </p>
         </div>
       </div>

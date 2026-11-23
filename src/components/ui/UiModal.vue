@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, watch } from 'vue'
+import { useAndroidBack } from '~/lib/android/back'
 import { useOccluder } from '~/lib/occluders'
 
 /**
@@ -43,6 +44,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
 
 // Its backdrop covers the window, plugins' web pages included.
 useOccluder(() => open.value)
+
+// The phone's Back closes it, like Escape. A persistent one stays, but Back
+// still belongs to it: it would otherwise leave the app mid-way.
+useAndroidBack(() => open.value, close)
 </script>
 
 <template>
@@ -76,7 +81,7 @@ useOccluder(() => open.value)
             <button
               v-if="!persistent"
               type="button"
-              class="text-fg-faint rounded-[var(--radius-sm)] center shrink-0 h-7 w-7 hover:text-fg hover:bg-fg/8"
+              class="ui-modal-close text-fg-faint rounded-[var(--radius-sm)] center shrink-0 h-7 w-7 hover:text-fg hover:bg-fg/8"
               aria-label="Close"
               @click="open = false"
             >

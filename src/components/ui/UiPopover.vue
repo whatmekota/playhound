@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useAndroidBack } from '~/lib/android/back'
 import { useOccluder } from '~/lib/occluders'
 
 /**
@@ -126,6 +127,8 @@ onBeforeUnmount(() => {
 
 // A plugin's web page under it steps aside while it is open.
 useOccluder(() => open.value, () => panelEl.value)
+// The phone's Back closes it, like Escape.
+useAndroidBack(() => open.value, close)
 
 defineExpose({ close, place })
 </script>

@@ -2,6 +2,7 @@
 import type { InspectorId } from '~/lib/views'
 import { computed, ref } from 'vue'
 import { useCompactLayout } from '~/composables/useCompactLayout'
+import { useAndroidBack } from '~/lib/android/back'
 import { INSPECTOR_COMPONENTS } from '~/lib/viewComponents'
 import { findView } from '~/lib/views'
 import { usePluginStore } from '~/stores/pluginStore'
@@ -30,6 +31,13 @@ const slots = computed(() => {
   if (ui.inspector && ui.inspector !== ui.pinned)
     out.push({ id: ui.inspector, pinned: false })
   return out
+})
+
+// On a phone the panel covers the page: the phone's Back closes it, like its X.
+useAndroidBack(() => compact.value && slots.value.length > 0, () => {
+  const shown = slots.value[0]
+  if (shown)
+    ui.closeInspector(shown.id)
 })
 
 // ─── Width ──────────────────────────────────────────────────────────────────

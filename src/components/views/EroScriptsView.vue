@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 </script>
 
 <script setup lang="ts">
@@ -12,7 +12,7 @@ import { downloadPost, downloads } from '~/composables/usePostDownload'
 import { isSaved, refreshSaved, savedPosts, toggleSaved } from '~/composables/useSavedPosts'
 import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/composables/useStreams'
 import { toast } from '~/composables/useToast'
-import { onAndroidBack } from '~/lib/android/back'
+import { useAndroidBack } from '~/lib/android/back'
 import { desktop } from '~/lib/browserApi'
 import { isAndroidApp } from '~/lib/platform'
 import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
@@ -91,13 +91,12 @@ const searchResults = ref<ESTopic[]>([])
 const searchedFor = ref('')
 const openTopic = ref<ESTopic | null>(null)
 
-// On a phone a post covers the list: the phone's Back button closes it.
-let giveBackUp: (() => void) | null = null
-watch(() => compact.value && !!openTopic.value, (on) => {
-  giveBackUp?.()
-  giveBackUp = on ? onAndroidBack(() => (openTopic.value = null)) : null
-})
-onBeforeUnmount(() => giveBackUp?.())
+// On a phone a post covers the list: the phone's Back button closes it, while
+// this view is on screen (kept alive behind another view, Back is not its).
+const onScreen = ref(true)
+onActivated(() => (onScreen.value = true))
+onDeactivated(() => (onScreen.value = false))
+useAndroidBack(() => compact.value && !!openTopic.value && onScreen.value, () => (openTopic.value = null))
 
 const BASE = 'https://discuss.eroscripts.com'
 const PROXY = 'http://localhost:7071'

@@ -168,6 +168,60 @@
   position: absolute;
   inset: -6px;
 }
+/* The same for switches (UiSwitch) and the segments of a segmented control
+   (UiSegmented, only upward and downward: the segments touch each other). */
+.ph-compact button[role='switch']::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.ph-compact [data-seg]::after {
+  content: '';
+  position: absolute;
+  inset: -6px 0;
+}
+/* A dialog's close button, as big as a panel's on a phone. */
+.ph-compact .ui-modal-close {
+  width: 40px;
+  height: 40px;
+}
+/* Menu rows and drop-downs: taller, for a finger. */
+.ph-compact [role='menu'] > [role='menuitem'] {
+  height: 40px;
+}
+.ph-compact select.ui-select {
+  height: 36px;
+}
+
+/* ── Toolbars wider than a phone ───────────────────────────────────────── */
+
+/*
+ * A row of tools that cannot fit a phone's width (the script editor's, the
+ * slideshow's) scrolls sideways there instead of running off the edge.
+ */
+.ph-compact .ph-strip {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.ph-compact .ph-strip > * {
+  flex-shrink: 0;
+}
+
+/* ── Settings rows ─────────────────────────────────────────────────────── */
+
+/*
+ * A settings row (UiField) keeps its control beside the label while both
+ * fit; a wider one (a segmented control) drops under the label instead of
+ * squeezing the text to a word a line.
+ */
+.ph-compact .ui-field {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.ph-compact .ui-field > :first-child {
+  flex: 1 1 160px;
+}
 
 /* ── Dialogs: full screen ──────────────────────────────────────────────── */
 

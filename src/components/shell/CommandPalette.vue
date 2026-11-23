@@ -7,9 +7,11 @@ import { showInFolder } from '~/components/library/useEntryActions'
 import { filterLibraryByTag, useLibraryTags } from '~/components/library/useLibraryTags'
 import UiKbd from '~/components/ui/UiKbd.vue'
 import { AUDIO_VISUALS, useAudioVisual } from '~/composables/useAudioVisual'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { openFaceWindow } from '~/composables/useFaceScreen'
 import { useSessionActions } from '~/composables/useSessionActions'
 import { toast } from '~/composables/useToast'
+import { useAndroidBack } from '~/lib/android/back'
 import { offeredHere } from '~/lib/android/features'
 import { plural } from '~/lib/entryInfo'
 import { isAndroidApp } from '~/lib/platform'
@@ -583,6 +585,10 @@ function close() {
   ui.paletteOpen = false
 }
 
+// On a phone there are no keys to show, and the phone's Back closes it.
+const compact = useCompactLayout()
+useAndroidBack(() => ui.paletteOpen, close)
+
 /** Clicks inside the card must not take focus from the input, or the keys stop working. */
 function keepFocus(e: MouseEvent) {
   if (e.target !== inputEl.value)
@@ -690,7 +696,7 @@ function setScope(prefix: string) {
             <span v-if="scope !== 'all'" class="text-[11px] text-accent-300 font-medium px-2 rounded-full bg-accent-soft inline-flex shrink-0 h-5 animate-scale-in items-center">
               {{ SCOPES.find(s => s.prefix === query.trimStart()[0])?.label }}
             </span>
-            <UiKbd class="shrink-0">
+            <UiKbd v-if="!compact" class="shrink-0">
               Esc
             </UiKbd>
           </div>
@@ -755,7 +761,7 @@ function setScope(prefix: string) {
                 <span v-if="row.item.meta" class="text-[11px] shrink-0" :class="row.item.on ? 'text-accent-300' : 'text-fg-faint'">
                   {{ row.item.meta }}
                 </span>
-                <span v-if="row.item.kbd" class="flex shrink-0 gap-1">
+                <span v-if="row.item.kbd && !compact" class="flex shrink-0 gap-1">
                   <UiKbd v-for="k in row.item.kbd" :key="k">{{ k }}</UiKbd>
                 </span>
               </div>
@@ -775,17 +781,19 @@ function setScope(prefix: string) {
 
           <!-- Footer -->
           <div class="text-[11.5px] text-fg-faint px-3 border-t border-edge bg-surface-900/50 flex shrink-0 gap-4 h-10 items-center">
-            <span class="flex gap-1.5 items-center"><UiKbd>↑</UiKbd><UiKbd>↓</UiKbd> Move</span>
-            <span class="flex gap-1.5 items-center"><UiKbd>↵</UiKbd> {{ activeItem ? (activeItem.kind === 'video' ? 'Play' : activeItem.kind === 'command' ? 'Run' : 'Open') : 'Select' }}</span>
-            <span v-if="activeItem?.kind === 'video'" class="flex gap-1.5 animate-fade-in items-center"><UiKbd>Shift</UiKbd><UiKbd>↵</UiKbd> Play next</span>
+            <template v-if="!compact">
+              <span class="flex gap-1.5 items-center"><UiKbd>↑</UiKbd><UiKbd>↓</UiKbd> Move</span>
+              <span class="flex gap-1.5 items-center"><UiKbd>↵</UiKbd> {{ activeItem ? (activeItem.kind === 'video' ? 'Play' : activeItem.kind === 'command' ? 'Run' : 'Open') : 'Select' }}</span>
+              <span v-if="activeItem?.kind === 'video'" class="flex gap-1.5 animate-fade-in items-center"><UiKbd>Shift</UiKbd><UiKbd>↵</UiKbd> Play next</span>
+            </template>
             <span class="ml-auto flex gap-1 items-center">
               <button
                 v-for="s in SCOPES"
                 :key="s.prefix"
                 v-tip="`Type ${s.prefix} to search ${s.label.toLowerCase()} only`"
                 type="button"
-                class="px-1.5 focusable rounded-[var(--radius-xs)] h-6 transition-colors hover:text-fg hover:bg-fg/6"
-                :class="scope !== 'all' && query.trimStart()[0] === s.prefix ? 'text-accent-300' : ''"
+                class="px-1.5 focusable rounded-[var(--radius-xs)] transition-colors hover:text-fg hover:bg-fg/6"
+                :class="[compact ? 'h-8' : 'h-6', scope !== 'all' && query.trimStart()[0] === s.prefix ? 'text-accent-300' : '']"
                 @click="setScope(s.prefix)"
               >
                 <span class="font-mono mr-1">{{ s.prefix }}</span>{{ s.label }}
