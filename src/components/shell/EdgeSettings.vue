@@ -48,6 +48,7 @@ const enabled = computed({
 })
 
 const secs = (v: number) => (v < 10 ? `${Math.round(v * 10) / 10} s` : `${Math.round(v)} s`)
+const fallLabel = (v: number) => (v < 0.05 ? 'At once' : secs(v))
 const howFar = (v: number) => (v >= 0.995 ? 'Stops' : `Leaves ${Math.round((1 - v) * 100)}%`)
 
 /** The shape over the whole edge: intensity against time, the hold shaded. */
@@ -102,8 +103,8 @@ const shape = computed(() => {
       v-model="fall"
       label="Backs off in"
       :min="MIN_FALL_SEC" :max="3" :step="0.1" :reset="DEFAULT_EDGE.fallSec"
-      :format="secs"
-      hint="How fast it comes down once called. Quicker is a sharper stop for the device."
+      :format="fallLabel"
+      hint="How fast it comes down once called. Quicker is a sharper stop for the device; at 0 it drops the moment you call it."
     />
     <UiSlider
       v-model="depth"

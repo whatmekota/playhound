@@ -24,6 +24,15 @@ describe('edge envelope', () => {
     expect(e.sample(at(EDGE_FALL_SEC + 21), T).phase).toBe('idle')
   })
 
+  it('with no fall time, holds at depth the moment it is called', () => {
+    const e = createEdgeEnvelope()
+    const now = { ...T, fallSec: 0 }
+    e.trigger(at(0), now)
+    expect(e.sample(at(0), now)).toMatchObject({ holdBack: 0.8, phase: 'holding' })
+    e.release(at(2), now)
+    expect(e.sample(at(7), now).phase).toBe('rebuilding')
+  })
+
   it('never jumps: consecutive samples stay close', () => {
     const e = createEdgeEnvelope()
     e.trigger(0, T)

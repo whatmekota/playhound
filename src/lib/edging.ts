@@ -30,8 +30,11 @@ export interface EdgeSample {
 
 /** Seconds to fall to the hold level, by default. */
 export const EDGE_FALL_SEC = 1.2
-/** The quickest fall: a device asked to stop faster than this lurches. */
-export const MIN_FALL_SEC = 0.2
+/**
+ * The quickest fall: none, the hold level the moment it is called. A device
+ * told to stop that fast lurches, but some want exactly that.
+ */
+export const MIN_FALL_SEC = 0
 
 /** An edge's fall time, within bounds. */
 export const fallOf = (t: Pick<EdgeTiming, 'fallSec'>) => Math.max(MIN_FALL_SEC, Math.min(5, t.fallSec ?? EDGE_FALL_SEC))
