@@ -169,7 +169,7 @@ async function carryVideo(move: () => void) {
       return
     if (v.readyState === 0 && !(await once(v, 'loadedmetadata', 10000)))
       return
-    v.playbackRate = rate
+    applySpeed(v, rate)
     v.currentTime = Math.min(at + (playing ? (performance.now() - since) / 1000 * rate : 0), v.duration || at)
     if (playing)
       void v.play().catch(() => {})
@@ -372,8 +372,19 @@ watch(() => playback.external, (s, old) => {
 })
 onBeforeUnmount(() => offExternal?.())
 
-// Re-attach the sync every time the <video> element is created; it is v-if'd
-// on the URL, so each load is a new node.
+/**
+ * The speed on the element. The next video in the queue plays in the same
+ * <video> (a new src), and every load puts playbackRate back to
+ * defaultPlaybackRate: with only playbackRate set, the next video played at
+ * 1× while the speed control still said otherwise.
+ */
+function applySpeed(el: HTMLVideoElement, s: number) {
+  el.defaultPlaybackRate = s
+  el.playbackRate = s
+}
+
+// Re-attach the sync whenever there is a new <video> element (one appears
+// with the first video and again after nothing was loaded).
 watch(videoEl, (el) => {
   if (!el)
     return
@@ -382,12 +393,12 @@ watch(videoEl, (el) => {
   attach(el)
   el.volume = player.volume
   el.muted = player.isMuted
-  el.playbackRate = player.playbackSpeed
+  applySpeed(el, player.playbackSpeed)
 })
 
 watch(() => player.playbackSpeed, (s) => {
   if (videoEl.value)
-    videoEl.value.playbackRate = s
+    applySpeed(videoEl.value, s)
 })
 watch(() => player.volume, (v) => {
   if (videoEl.value)
