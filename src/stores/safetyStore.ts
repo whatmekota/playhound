@@ -11,8 +11,15 @@ import { ref, shallowRef } from 'vue'
  * on the way in so resuming restores exactly what was running, rather than
  * blanket-enabling things the user had switched off.
  */
+export type PanicCause = 'hand' | 'lock'
+
 export const useSafetyStore = defineStore('safety', () => {
   const panicked = ref(false)
+  /**
+   * Who covered the screen: someone pressing panic, or the app lock (which
+   * isn't a panic to count or log as one).
+   */
+  const cause = ref<PanicCause>('hand')
 
   /** Also panic when the window loses focus. Off by default; some people want it. */
   const panicOnBlur = useLocalStorage('ph:safety.panicOnBlur', false)
@@ -45,5 +52,5 @@ export const useSafetyStore = defineStore('safety', () => {
     toggleHandler.value?.()
   }
 
-  return { panicked, panicOnBlur, idleStopMinutes, suspended, remember, clear, toggleHandler, toggle }
+  return { panicked, cause, panicOnBlur, idleStopMinutes, suspended, remember, clear, toggleHandler, toggle }
 })

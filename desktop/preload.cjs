@@ -16,7 +16,7 @@ const listeners = new Set()
 
 if (winState) {
   ipcRenderer.on('ph:win:state', (_event, s) => {
-    winState = { maximized: !!s?.maximized, fullScreen: !!s?.fullScreen }
+    winState = { maximized: !!s?.maximized, fullScreen: !!s?.fullScreen, minimized: !!s?.minimized }
     for (const cb of listeners) {
       try {
         cb({ ...winState })
@@ -35,9 +35,9 @@ const windowApi = winState
       setZoom: factor => ipcRenderer.send('ph:zoom', Number(factor)),
       toggleMaximize: () => ipcRenderer.send('ph:win', 'toggle-maximize'),
       close: () => ipcRenderer.send('ph:win', 'close'),
-      /** { maximized, fullScreen } right now. */
+      /** { maximized, fullScreen, minimized } right now. */
       state: () => ({ ...winState }),
-      /** Calls `cb({ maximized, fullScreen })` on every change; returns an unsubscribe. */
+      /** Calls `cb({ maximized, fullScreen, minimized })` on every change; returns an unsubscribe. */
       onStateChange: (cb) => {
         if (typeof cb !== 'function')
           return () => {}

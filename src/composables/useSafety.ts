@@ -1,8 +1,10 @@
+import type { PanicCause } from '~/stores/safetyStore'
 import { onUnmounted, watch } from 'vue'
 import { webviewFocused } from '~/plugins/webview'
 import { useAudioStore } from '~/stores/audio'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { usePrivacyStore } from '~/stores/privacyStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useBinauralBeats } from './useBinauralBeats'
 import { estimPanic, estimStop } from './useEstim'
@@ -26,15 +28,17 @@ export function useSafety(controls: {
   const audio = useAudioStore()
   const motion = useMotionStore()
   const player = usePlayerStore()
+  const privacy = usePrivacyStore()
   const binaural = useBinauralBeats()
   const { homeAllAxes } = useTCode()
 
   let idleTimer: ReturnType<typeof setTimeout> | null = null
 
-  function panic() {
+  function panic(cause: PanicCause = 'hand') {
     if (safety.panicked)
       return
 
+    safety.cause = cause
     safety.remember({
       videoPlaying: controls.isVideoPlaying(),
       audioPlaying: audio.isPlaying.value,
@@ -59,7 +63,9 @@ export function useSafety(controls: {
   }
 
   function resume() {
-    if (!safety.panicked)
+    // Locked, nothing resumes: not Esc, the phone remote, a gamepad or the
+    // notification. Unlocking is the way back.
+    if (!safety.panicked || privacy.locked)
       return
     const s = safety.suspended
 
@@ -79,6 +85,17 @@ export function useSafety(controls: {
     if (s?.videoPlaying)
       controls.playVideo()
 
+    safety.clear()
+  }
+
+  /**
+   * Lift the cover and leave everything stopped: after the app lock, whose
+   * pause nobody asked to undo. Pressing play carries on.
+   */
+  function release() {
+    if (!safety.panicked)
+      return
+    safety.panicked = false
     safety.clear()
   }
 
@@ -149,5 +166,5 @@ export function useSafety(controls: {
       clearTimeout(idleTimer)
   })
 
-  return { panic, resume, toggle }
+  return { panic, resume, release, toggle }
 }

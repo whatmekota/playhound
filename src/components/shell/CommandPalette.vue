@@ -21,6 +21,7 @@ import { useLibraryStore } from '~/stores/libraryStore'
 import { usePlaybackStore } from '~/stores/playbackStore'
 import { usePlayerStore } from '~/stores/playerStore'
 import { usePluginStore } from '~/stores/pluginStore'
+import { usePrivacyStore } from '~/stores/privacyStore'
 import { useQueueStore } from '~/stores/queueStore'
 import { useRecordingStore } from '~/stores/recordingStore'
 import { useSafetyStore } from '~/stores/safetyStore'
@@ -53,6 +54,7 @@ const bookmarks = useBookmarkStore()
 const stats = useStatsStore()
 const theme = useThemeStore()
 const recorder = useRecordingStore()
+const privacy = usePrivacyStore()
 const scriptEdit = useScriptEditStore()
 const scripts = useScriptStore()
 
@@ -207,6 +209,7 @@ const commands = computed<Item[]>(() => {
       run: () => recorder.toggle(),
     },
     { id: 'cmd:panic', kind: 'command', label: 'Panic', hint: 'Stop everything and cover the screen', icon: 'i-carbon-warning-hex', keywords: 'stop emergency hide boss', kbd: ['Esc'], run: panic },
+    privacy.enabled && { id: 'cmd:lock', kind: 'command', label: 'Lock now', hint: 'Pauses everything; your PIN opens it again', icon: 'i-carbon-locked', keywords: 'lock pin privacy hide away', run: () => privacy.lockNow() },
     { id: 'cmd:settings', kind: 'command', label: 'Open settings', icon: 'i-carbon-settings', keywords: 'preferences options config', run: () => (ui.settingsOpen = true) },
     { id: 'cmd:shortcuts', kind: 'command', label: 'Keyboard shortcuts', icon: 'i-carbon-keyboard', keywords: 'hotkeys keys help cheat sheet', kbd: ['?'], run: () => (ui.shortcutsOpen = true) },
     { id: 'cmd:sidebar', kind: 'command', label: ui.navExpanded ? 'Collapse sidebar' : 'Expand sidebar', icon: 'i-carbon-side-panel-open', keywords: 'nav labels navigation', run: () => (ui.navExpanded = !ui.navExpanded) },

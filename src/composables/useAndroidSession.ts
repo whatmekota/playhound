@@ -11,6 +11,7 @@ import { useAudioStore } from '~/stores/audio'
 import { useDeviceStore } from '~/stores/deviceStore'
 import { useMotionStore } from '~/stores/motionStore'
 import { usePlayerStore } from '~/stores/playerStore'
+import { usePrivacyStore } from '~/stores/privacyStore'
 import { useSafetyStore } from '~/stores/safetyStore'
 import { useButtplug } from './useButtplug'
 import { useEstim } from './useEstim'
@@ -39,6 +40,7 @@ export function useAndroidSession() {
   const audio = useAudioStore()
   const motion = useMotionStore()
   const safety = useSafetyStore()
+  const privacy = usePrivacyStore()
   const handy = useHandy()
   const bp = useButtplug()
   const estim = useEstim()
@@ -59,7 +61,8 @@ export function useAndroidSession() {
       connected.push('E-stim')
     return sessionSummary({
       mediaPlaying: player.isPlaying,
-      mediaName: mediaTitle(player.videoPath),
+      // Locked, the notification doesn't name the video either.
+      mediaName: privacy.locked ? null : mediaTitle(player.videoPath),
       otherPlaying: audio.isPlaying.value || estim.running.value || motion.running,
       connected,
       network: device.netUp || bp.connected.value || (handy.connected.value && handy.link.value !== 'ble'),
