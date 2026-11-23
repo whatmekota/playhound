@@ -54,6 +54,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/xr': RouteRecordInfo<
+      '/xr',
+      '/xr',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
   }
 
   /**
@@ -88,6 +95,12 @@ declare module 'vue-router/auto-routes' {
     'src/pages/remote.vue': {
       routes:
         | '/remote'
+      views:
+        | never
+    }
+    'src/pages/xr.vue': {
+      routes:
+        | '/xr'
       views:
         | never
     }
