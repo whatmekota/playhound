@@ -3,9 +3,11 @@ import type { FsEntry } from '~/lib/fsWalk'
 import type { FunscriptAction, ParsedAxis } from '~/lib/funscriptParser'
 import type { OrgPair, PairStatus } from '~/stores/organizerStore'
 import { useLocalStorage } from '@vueuse/core'
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { countMoment } from '~/composables/achievementEvents'
+import { useCompactLayout } from '~/composables/useCompactLayout'
 import { toast } from '~/composables/useToast'
+import { useAndroidBack } from '~/lib/android/back'
 import { formatDate, formatSize } from '~/lib/entryInfo'
 import { extOf, sanitizeFilename } from '~/lib/fsRename'
 import { parseFunscriptContent } from '~/lib/funscriptParser'
@@ -479,6 +481,16 @@ function onKey(e: KeyboardEvent) {
 onMounted(() => document.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey, true))
 
+// ─── Phone ───────────────────────────────────────────────────────────────────
+// The sheet is wider than a phone: there it covers the list as a page of its
+// own with a Back button, and the phone's Back closes it too (only while this
+// view is on screen: kept alive behind another, Back is not its).
+const compact = useCompactLayout()
+const onScreen = ref(true)
+onActivated(() => (onScreen.value = true))
+onDeactivated(() => (onScreen.value = false))
+useAndroidBack(() => compact.value && !!openPair.value && onScreen.value, () => (openKey.value = null))
+
 const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1].dir !== shown.value[i].dir)
 </script>
 
@@ -663,7 +675,7 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
             :description="organizer.pairs.length ? 'Try another filter or clear the search.' : 'This folder has no video or .funscript files in it.'"
           />
 
-          <div v-else class="pb-[240px]">
+          <div v-else :class="compact ? 'pb-8' : 'pb-[240px]'">
             <template v-for="(p, i) in shown" :key="p.key">
               <div v-if="isNewGroup(i)" class="eyebrow px-6 pb-1.5 pt-4 flex gap-1.5 items-center">
                 <span class="i-carbon-folder" />
@@ -765,12 +777,15 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
 
         <!-- Detail sheet -->
         <Transition name="t-slide-right">
-          <aside v-if="openPair" :key="openPair.key" class="border-l border-edge bg-surface-900 flex shrink-0 flex-col w-[380px]">
-            <div class="pl-4 pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center">
+          <aside v-if="openPair" :key="openPair.key" class="bg-surface-900 flex shrink-0 flex-col" :class="compact ? 'absolute inset-0 z-30' : 'border-l border-edge w-[380px]'">
+            <div class="pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center" :class="compact ? 'pl-1' : 'pl-4'">
+              <UiButton v-if="compact" size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="openKey = null">
+                Back
+              </UiButton>
               <span class="text-[13px] text-fg font-medium flex-1 truncate">{{ openPair.basename }}</span>
-              <UiIconButton icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="openKey = null" />
+              <UiIconButton v-if="!compact" icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="openKey = null" />
             </div>
-            <div class="p-4 pb-[240px] scroll-y flex flex-1 flex-col gap-4">
+            <div class="p-4 scroll-y flex flex-1 flex-col gap-4" :class="compact ? 'pb-8' : 'pb-[240px]'">
               <video
                 v-if="previewUrl"
                 :src="previewUrl"
@@ -883,7 +898,8 @@ const isNewGroup = (i: number) => grouped.value && (i === 0 || shown.value[i - 1
               </div>
 
               <div class="flex gap-2">
-                <UiButton v-tip="'Or double-click the name, or press F2'" icon="i-carbon-edit" block @click="startEdit(openPair)">
+                <!-- flex-1, not block: a full width would push Delete out of the sheet. -->
+                <UiButton v-tip="'Or double-click the name, or press F2'" icon="i-carbon-edit" class="flex-1" @click="startEdit(openPair)">
                   Rename pair
                 </UiButton>
                 <UiButton v-if="plan.get(openPair.key) || openPair.scripts.some(s => scriptDrafts.has(s.relPath))" variant="ghost" icon="i-carbon-undo" @click="unstage(openPair)">
