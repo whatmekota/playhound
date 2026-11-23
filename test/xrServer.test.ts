@@ -7,7 +7,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
-import { createXrServer, makeCertificate, XR_PORT } from '../desktop/xr.mjs'
+import { createXrServer, makeCertificate } from '../desktop/xr.mjs'
 import { codeMatches, mediaType, parseRange, readCookie } from '../desktop/xrRules.mjs'
 
 describe('headset server rules', () => {
@@ -41,6 +41,8 @@ describe('headset server rules', () => {
 })
 
 describe('headset server', () => {
+  // Not the app's own port: a running playhound may have its server on.
+  const XR_PORT = 6953
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-xr-'))
   const dist = path.join(dir, 'dist')
   fs.mkdirSync(dist)
@@ -52,7 +54,7 @@ describe('headset server', () => {
   const ipcMain = { handle: (n: string, f: any) => handlers.set(n, f), on: (n: string, f: any) => handlers.set(n, f) }
   const sent: [string, any][] = []
   const win = { isDestroyed: () => false, webContents: { send: (ch: string, m: any) => sent.push([ch, m]) } }
-  const server = createXrServer({ ipcMain, allowed: () => true, window: () => win, dataDir: dir, distDir: dist, devUrl: null, lanAddresses: () => [{ address: '127.0.0.1' }] } as any)
+  const server = createXrServer({ ipcMain, allowed: () => true, window: () => win, dataDir: dir, distDir: dist, devUrl: null, lanAddresses: () => [{ address: '127.0.0.1' }], port: XR_PORT } as any)
   const call = (name: string, ...args: any[]) => handlers.get(name)!({}, ...args)
 
   function request(p: string, opts: https.RequestOptions = {}, body?: string): Promise<{ status: number, headers: any, body: Buffer }> {

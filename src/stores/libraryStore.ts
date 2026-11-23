@@ -1097,6 +1097,22 @@ export const useLibraryStore = defineStore('library', () => {
     return !!rootPaths.value[folders.value.indexOf(entry.folder)]
   }
 
+  /**
+   * Where a library video is on disk, or '' when that can't be known (a
+   * stream, the browser). A file from a picked folder carries no path of its
+   * own (the File System Access API hides it), so it's the folder's place on
+   * disk plus the video's path in the library.
+   */
+  function diskPathFor(entry: VideoEntry): string {
+    if (entry.remote)
+      return ''
+    const own = desktop?.files?.pathOf(entry.file) ?? ''
+    if (own)
+      return own
+    const root = entry.folder ? rootPaths.value[folders.value.indexOf(entry.folder)] : null
+    return root ? diskPathOf(root, entry.path) : ''
+  }
+
   /** Show the video's file in Explorer / Finder. Resolves whether it could. */
   async function reveal(entry: VideoEntry): Promise<boolean> {
     const root = rootPaths.value[folders.value.indexOf(entry.folder)]
@@ -1125,6 +1141,8 @@ export const useLibraryStore = defineStore('library', () => {
     needsReconnect,
     savedFolderName,
     folders,
+    /** Each folder's place on disk (desktop app), as far as it's known yet. */
+    rootPaths,
     folderLoaded,
     isWatching,
     watchOn,
@@ -1153,5 +1171,6 @@ export const useLibraryStore = defineStore('library', () => {
     setWatching,
     canReveal,
     reveal,
+    diskPathFor,
   }
 })

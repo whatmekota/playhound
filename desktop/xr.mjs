@@ -94,8 +94,9 @@ function readSmallBody(req) {
  * @param {string} o.distDir  The built app, served in a build.
  * @param {string | null} o.devUrl  The dev server, proxied in development.
  * @param {() => { address: string }[]} o.lanAddresses
+ * @param {number} [o.port]  XR_PORT unless given (the tests use their own, so a running app doesn't get in the way).
  */
-export function createXrServer({ ipcMain, allowed, window, dataDir, distDir, devUrl, lanAddresses }) {
+export function createXrServer({ ipcMain, allowed, window, dataDir, distDir, devUrl, lanAddresses, port = XR_PORT }) {
   const dir = path.join(dataDir, 'xr')
   /** @type {import('node:https').Server | null} */
   let server = null
@@ -150,8 +151,8 @@ export function createXrServer({ ipcMain, allowed, window, dataDir, distDir, dev
   function state() {
     return {
       on: !!server,
-      port: XR_PORT,
-      urls: lanAddresses().map(a => `https://${a.address}:${XR_PORT}`),
+      port,
+      urls: lanAddresses().map(a => `https://${a.address}:${port}`),
       code,
       paired: paired.size,
       headsets: sockets.size,
@@ -286,7 +287,7 @@ export function createXrServer({ ipcMain, allowed, window, dataDir, distDir, dev
     })
     return new Promise((resolve, reject) => {
       s.once('error', reject)
-      s.listen(XR_PORT, '0.0.0.0', () => {
+      s.listen(port, '0.0.0.0', () => {
         s.off('error', reject)
         resolve(s)
       })
@@ -319,7 +320,7 @@ export function createXrServer({ ipcMain, allowed, window, dataDir, distDir, dev
     if (server)
       return
     const tls = certificate()
-    const s = devUrl ? await listenDev(tls) : await serveStatic(distDir, { port: XR_PORT, host: '0.0.0.0', extra: handle, tls })
+    const s = devUrl ? await listenDev(tls) : await serveStatic(distDir, { port, host: '0.0.0.0', extra: handle, tls })
     wss = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 })
     s.on('upgrade', (req, socket, head) => {
       let p = ''
@@ -360,7 +361,7 @@ export function createXrServer({ ipcMain, allowed, window, dataDir, distDir, dev
       await (on ? start() : stop())
     }
     catch (err) {
-      error = err?.code === 'EADDRINUSE' ? `Port ${XR_PORT} is taken by another program` : String(err?.message ?? err)
+      error = err?.code === 'EADDRINUSE' ? `Port ${port} is taken by another program` : String(err?.message ?? err)
       server = null
     }
     tell()

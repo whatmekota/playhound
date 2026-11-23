@@ -107,7 +107,7 @@ export function useXrHost(actions: { edge: () => void, panic: () => void, nudgeI
     const next = new Map<string, { video: XrVideo, entry: VideoEntry }>()
     const media: { id: string, path: string, name: string }[] = []
     for (const entry of library.videos) {
-      const path = desktop?.files?.pathOf(entry.file) ?? ''
+      const path = library.diskPathFor(entry)
       const video = videoFor(entry, path, player.vrViewOf)
       if (!video || next.has(video.id))
         continue
@@ -119,7 +119,8 @@ export function useXrHost(actions: { edge: () => void, panic: () => void, nudgeI
     if (headsets.value)
       send({ type: 'library', videos: [...next.values()].map(v => v.video) })
   }
-  watchDebounced(() => [server.value?.on, library.videos.length, library.videos], () => {
+  // The folders' places on disk arrive a moment after the library: offer again then.
+  watchDebounced(() => [server.value?.on, library.videos.length, library.videos, library.rootPaths], () => {
     if (server.value?.on)
       offer()
   }, { debounce: 400, deep: false })
