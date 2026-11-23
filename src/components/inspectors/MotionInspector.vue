@@ -317,8 +317,28 @@ const linksStranded = computed(() => {
 // Presets: the built-in starting points and the user's own.
 const linkPresetList = computed<LinkPreset[]>(() => [...BUILTIN_LINK_PRESETS, ...motion.linkPresets])
 const activeLinkPreset = computed(() => linksOn.value.length ? linkPresetList.value.find(p => sameLinks(p.links, motion.axisLinks))?.id ?? null : null)
+/**
+ * Switching a link on switches its axis on in the Device panel too, the way
+ * loading a script does for the script's axes: every axis but the stroke
+ * starts off there, and an axis that's off is never sent anything, so on a
+ * real device the link did nothing (while the emulator, which shows every
+ * axis, moved).
+ */
+function enableLinkedAxes(channels: string[]) {
+  for (const ch of channels) {
+    const cfg = device.axisConfigs[ch]
+    if (cfg && !cfg.enabled)
+      cfg.enabled = true
+  }
+}
+function setLinkOn(link: { channel: string, on: boolean }, on: boolean) {
+  link.on = on
+  if (on)
+    enableLinkedAxes([link.channel])
+}
 function applyLinkPreset(p: LinkPreset) {
   motion.axisLinks = structuredClone(p.links.map(l => ({ ...l })))
+  enableLinkedAxes(p.links.filter(l => l.on).map(l => l.channel))
 }
 const savingLinks = ref(false)
 const linkPresetName = ref('')
@@ -848,7 +868,7 @@ const PAD_MAP = [
       </div>
       <div v-for="link in motion.axisLinks" :key="link.channel" class="flex flex-col gap-2">
         <div class="flex gap-2 items-center">
-          <UiSwitch v-model="link.on" size="sm" :aria-label="`Link ${linkLabel[link.channel]} to the stroke`" />
+          <UiSwitch :model-value="link.on" size="sm" :aria-label="`Link ${linkLabel[link.channel]} to the stroke`" @update:model-value="v => setLinkOn(link, v)" />
           <span class="text-[12.5px] text-fg font-medium">{{ linkLabel[link.channel] }}</span>
           <span class="text-[10px] text-fg-faint font-mono">{{ link.channel }}</span>
           <button

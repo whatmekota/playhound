@@ -121,6 +121,9 @@ const linkedCache = new WeakMap<readonly FunscriptAction[], Map<string, Funscrip
  * The stroke script as the linked axis plays it: shifted by the delay, its
  * positions mapped. Kept per script and link, so the per-frame sampling and
  * scaling that cache by the actions array keep working.
+ *
+ * Positions as the parser keeps them, 0–1. (Read as 0–100 they came out of
+ * any amount under 100 % as 20 to 80 "out of 1", so the axis sat at the top.)
  */
 export function linkedActions(actions: readonly FunscriptAction[], link: Pick<AxisLink, 'delayMs' | 'invert' | 'amount'>): FunscriptAction[] {
   const key = `${link.delayMs}|${link.invert}|${link.amount}`
@@ -131,7 +134,7 @@ export function linkedActions(actions: readonly FunscriptAction[], link: Pick<Ax
   }
   let out = byKey.get(key)
   if (!out) {
-    out = actions.map(a => ({ at: a.at + link.delayMs, pos: Math.round(linkedPosition(a.pos / 100, link) * 1000) / 10 }))
+    out = actions.map(a => ({ at: a.at + link.delayMs, pos: linkedPosition(a.pos, link) }))
     // Old settings for this script aren't needed again.
     if (byKey.size > 8)
       byKey.clear()

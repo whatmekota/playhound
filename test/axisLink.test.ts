@@ -10,11 +10,18 @@ describe('axis links', () => {
   })
 
   it('shifts the script by the delay and keeps the same array per setting', () => {
-    const actions = [{ at: 0, pos: 0 }, { at: 500, pos: 100 }]
+    // Positions as the parser keeps them: 0-1.
+    const actions = [{ at: 0, pos: 0 }, { at: 500, pos: 1 }]
     const link = { delayMs: 80, invert: true, amount: 1 }
     const out = linkedActions(actions, link)
-    expect(out).toEqual([{ at: 80, pos: 100 }, { at: 580, pos: 0 }])
+    expect(out).toEqual([{ at: 80, pos: 1 }, { at: 580, pos: 0 }])
     expect(linkedActions(actions, { ...link })).toBe(out)
+  })
+
+  it('turns a parsed script down around the middle, not into the top (amount under 100 %)', () => {
+    const actions = [{ at: 0, pos: 0 }, { at: 500, pos: 1 }, { at: 1000, pos: 0.5 }]
+    const out = linkedActions(actions, { delayMs: 0, invert: false, amount: 0.6 })
+    expect(out.map(a => a.pos)).toEqual([0.2, 0.8, 0.5].map(v => expect.closeTo(v, 5)))
   })
 
   it('never drives a scripted axis, and loads saved links safely', () => {
@@ -48,10 +55,10 @@ describe('axis links', () => {
       { channel: 'L2', on: true, source: 'R2' },
     ])
     expect(links.find(l => l.channel === 'L1')!.source).toBe('L0')
-    const twist = { actions: [{ at: 0, pos: 20 }, { at: 1000, pos: 80 }], ms: 500 }
+    const twist = { actions: [{ at: 0, pos: 0.25 }, { at: 1000, pos: 0.75 }], ms: 500 }
     const played = new Map([['R0', twist]])
-    expect(resolveLinked('R1', played, links)?.actions).toEqual([{ at: 50, pos: 20 }, { at: 1050, pos: 80 }])
-    expect(resolveLinked('R2', played, links)?.actions).toEqual([{ at: 50, pos: 80 }, { at: 1050, pos: 20 }])
+    expect(resolveLinked('R1', played, links)?.actions).toEqual([{ at: 50, pos: 0.25 }, { at: 1050, pos: 0.75 }])
+    expect(resolveLinked('R2', played, links)?.actions).toEqual([{ at: 50, pos: 0.75 }, { at: 1050, pos: 0.25 }])
     expect(resolveLinked('R2', played, links)?.ms).toBe(500)
     const loop = sanitizeLinks([{ channel: 'R1', on: true, source: 'R2' }, { channel: 'R2', on: true, source: 'R1' }])
     expect(resolveLinked('R1', new Map(), loop)).toBeNull()
