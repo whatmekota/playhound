@@ -350,6 +350,35 @@ export interface DesktopInfo {
   files?: DesktopFiles
   /** TCode over UDP (desktop/tcodenet.mjs). Main window only; absent before 2.2. */
   tcode?: DesktopTcode
+  /** The headset player's HTTPS server (desktop/xr.mjs). Main window only; absent before 2.3. */
+  xr?: DesktopXr
+}
+
+/** The headset player's server, as the main window sees it. */
+export interface XrServerState {
+  on: boolean
+  port: number
+  /** Where a headset opens it, one per LAN address (the first is the likeliest). */
+  urls: string[]
+  /** The pairing code shown in the app. */
+  code: string
+  /** Headsets paired so far. */
+  paired: number
+  /** Headset pages connected right now. */
+  headsets: number
+  /** Why it could not start, or ''. */
+  error: string
+}
+
+export interface DesktopXr {
+  start: (on: boolean) => Promise<XrServerState>
+  state: () => Promise<XrServerState>
+  newCode: () => Promise<XrServerState>
+  forget: () => Promise<XrServerState>
+  setMedia: (list: { id: string, path: string, name: string }[]) => Promise<boolean>
+  send: (msg: unknown) => void
+  onState: (cb: (s: XrServerState) => void) => () => void
+  onMessage: (cb: (msg: any) => void) => () => void
 }
 
 export interface DesktopTcode {

@@ -395,6 +395,36 @@ const tcodeApi = winState
     })
   : null
 
+// ── The headset player (main window only) ──────────────────────────────────
+// The main process serves the app over HTTPS on the LAN (desktop/xr.mjs) and
+// passes the headset page's messages here; the page here answers them.
+const xrStateListeners = new Set()
+const xrMessageListeners = new Set()
+if (winState) {
+  ipcRenderer.on('ph:xr:state', (_event, s) => fanOut(xrStateListeners, 'xr state', s))
+  ipcRenderer.on('ph:xr:message', (_event, msg) => fanOut(xrMessageListeners, 'xr message', msg))
+}
+const xrApi = winState
+  ? Object.freeze({
+      /** Switch the server on or off; resolves its state. */
+      start: on => ipcRenderer.invoke('ph:xr:start', !!on),
+      /** { on, port, urls, code, paired, headsets, error }. */
+      state: () => ipcRenderer.invoke('ph:xr:state'),
+      /** A new pairing code. */
+      newCode: () => ipcRenderer.invoke('ph:xr:code'),
+      /** Forget every paired headset. */
+      forget: () => ipcRenderer.invoke('ph:xr:forget'),
+      /** The videos a headset may play: [{ id, path, name }]. */
+      setMedia: list => ipcRenderer.invoke('ph:xr:media', Array.isArray(list) ? list : []),
+      /** To every connected headset page. */
+      send: msg => ipcRenderer.send('ph:xr:send', msg),
+      /** Calls `cb(state)` on every change; returns an unsubscribe. */
+      onState: cb => listen(xrStateListeners)(cb),
+      /** Calls `cb(message)` for each message from a headset page; returns an unsubscribe. */
+      onMessage: cb => listen(xrMessageListeners)(cb),
+    })
+  : null
+
 // ── Plugin dev mode ─────────────────────────────────────────────────────────
 // Plugins loaded from a folder the user picked; the main process reads and
 // watches it (desktop/devplugins.mjs) and says when something in it changed.
@@ -520,6 +550,7 @@ contextBridge.exposeInMainWorld('playhoundDesktop', Object.freeze({
   plugins: pluginsApi ?? undefined,
   web: webApi ?? undefined,
   tcode: tcodeApi ?? undefined,
+  xr: xrApi ?? undefined,
   files: winState
     ? Object.freeze({
         /** Where a File is on disk, or '' when it has no path there. */

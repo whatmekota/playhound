@@ -61,6 +61,7 @@
     "jsdom": "catalog:build",
     "lint-staged": "catalog:dev",
     "megajs": "catalog:",
+    "node-forge": "catalog:desktop",
     "simple-git-hooks": "catalog:dev",
     "taze": "catalog:dev",
     "typescript": "catalog:dev",

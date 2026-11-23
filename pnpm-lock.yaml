@@ -50,6 +50,9 @@ catalogs:
     electron-updater:
       specifier: ^6.8.11
       version: 6.8.11
+    node-forge:
+      specifier: ^1.4.4
+      version: 1.4.4
   dev:
     '@antfu/eslint-config':
       specifier: ^7.6.1
@@ -237,6 +240,9 @@ importers:
       megajs:
         specifier: 'catalog:'
         version: 1.3.10
+      node-forge:
+        specifier: catalog:desktop
+        version: 1.4.4
       simple-git-hooks:
         specifier: catalog:dev
         version: 2.13.1
@@ -3427,6 +3433,10 @@ packages:
 
   node-fetch-native@1.6.7:
     resolution: {integrity: sha512-g9yhqoedzIUm0nTnTqAQvueMPVOuIY16bqgAJJC8XOOubYFNwz6IER9qs0Gq2Xd0+CecCKFjtdDTMA4u4xG06Q==}
+
+  node-forge@1.4.4:
+    resolution: {integrity: sha512-T6VRRpF3+czIGcXW/LOeoD7Ej28d8CF1UMEAbJyJRUtYMvyXAgxUPW2kbUibumvV9LiUQAznJOFyeYclzSJMMg==}
+    engines: {node: '>= 6.13.0'}
 
   node-gyp@12.4.0:
     resolution: {integrity: sha512-OMcPNvqTCFUnNaBlmdgq+lfNqY7gTiSmNRDjY3uAXRyudeKZEZxu3CLtjMQrx4zZxCX2b/mpNqTtwuCJgXhHkw==}
@@ -7974,6 +7984,8 @@ snapshots:
       semver: 7.7.4
 
   node-fetch-native@1.6.7: {}
+
+  node-forge@1.4.4: {}
 
   node-gyp@12.4.0:
     dependencies:

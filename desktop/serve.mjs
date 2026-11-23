@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import https from 'node:https'
 import path from 'node:path'
 
 /**
@@ -51,8 +52,11 @@ const MIME = {
  *
  * `extra(req, res)` gets every request first and resolves true when it
  * answered it (plugins' paths, desktop/pluginhttp.mjs).
+ *
+ * `tls` ({ key, cert }): over HTTPS instead (the headset player,
+ * desktop/xr.mjs).
  */
-export function serveStatic(root, { port, host, extra }) {
+export function serveStatic(root, { port, host, extra, tls }) {
   const base = path.resolve(root)
   const index = path.join(base, 'index.html')
 
@@ -134,13 +138,14 @@ export function serveStatic(root, { port, host, extra }) {
       .pipe(res)
   }
 
-  const server = http.createServer((req, res) => {
+  const listener = (req, res) => {
     handle(req, res).catch(() => {
       if (!res.headersSent)
         res.writeHead(500)
       res.end()
     })
-  })
+  }
+  const server = tls ? https.createServer(tls, listener) : http.createServer(listener)
 
   return new Promise((resolve, reject) => {
     server.once('error', reject)

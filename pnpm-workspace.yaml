@@ -28,6 +28,7 @@ catalogs:
     electron: ^44.9.3
     electron-builder: ^26.17.0
     electron-updater: ^6.8.11
+    node-forge: ^1.4.4
   dev:
     '@antfu/eslint-config': ^7.6.1
     '@types/node': ^25.3.3

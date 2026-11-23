@@ -16,6 +16,7 @@ import { probe, serveStatic } from './serve.mjs'
 import { setupTcodeUdp } from './tcodenet.mjs'
 import { createUpdater, UPDATER_SESSION } from './updater.mjs'
 import { BROWSING_PARTITION, setupWebviews } from './webview.mjs'
+import { createXrServer } from './xr.mjs'
 
 /**
  * playhound desktop shell.
@@ -136,6 +137,8 @@ let sockets = null
 let pluginHttp = null
 /** The library's folders on disk, watched (desktop/libfiles.mjs); made at boot. */
 let libFiles = null
+/** The headset player's HTTPS server (desktop/xr.mjs); made at boot, listening once switched on. */
+let xr = null
 
 /** The pop-out player's window (see popout below), while it is open. */
 let popout = null
@@ -446,6 +449,16 @@ async function boot() {
   sockets = setupNetSockets(ipcMain, fromMainWindow)
   // Plugins' answers on the LAN server (a headset browsing the library).
   pluginHttp = createPluginHttp({ ipcMain, allowed: fromMainWindow, window: () => win })
+  // The headset player: the app's pages over HTTPS on the LAN, for WebXR.
+  xr = createXrServer({
+    ipcMain,
+    allowed: fromMainWindow,
+    window: () => win,
+    dataDir: app.getPath('userData'),
+    distDir: path.join(ROOT, 'dist'),
+    devUrl: DEV ? DEV_URL : null,
+    lanAddresses,
+  })
   // Plugins loaded from a folder (Settings → Plugins → Load from folder), reloaded on save.
   setupDevPlugins({ ipcMain, allowed: fromMainWindow, window: () => win, dialog, state, save: saveState })
   // Real web pages inside the window, for plugins (ctx.webview).
@@ -918,4 +931,5 @@ app.on('will-quit', () => {
   server?.close()
   pluginHttp?.close()
   sockets?.closeAll()
+  void xr?.close()
 })
