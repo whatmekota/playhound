@@ -3,6 +3,7 @@ import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, react
 </script>
 
 <script setup lang="ts">
+import type { SearchOrder, TopPeriod } from '~/lib/eroscripts'
 import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { countMoment } from '~/composables/achievementEvents'
@@ -14,6 +15,7 @@ import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/c
 import { toast } from '~/composables/useToast'
 import { useAndroidBack } from '~/lib/android/back'
 import { desktop } from '~/lib/browserApi'
+import { foundTags, listHasMore, mergeById, rankTags, searchHasMore, searchPath, searchQuery, tagSearchPath, topicListPath } from '~/lib/eroscripts'
 import { isAndroidApp } from '~/lib/platform'
 import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
@@ -84,12 +86,28 @@ const topics = ref<ESTopic[]>([])
 const page = ref(0)
 const hasMore = ref(true)
 const sort = ref<'latest' | 'top' | 'hot' | 'saved'>('latest')
+/** Top over which stretch of time. The forum's own default is all time. */
+const topPeriod = ref<TopPeriod>('all')
 const availableTags = ref<ESTag[]>([])
-const activeTag = ref<ESTag | null>(null)
+/** The tags to filter by: a post must have all of them. */
+const selectedTags = ref<ESTag[]>([])
 const query = ref('')
-const searchResults = ref<ESTopic[]>([])
-const searchedFor = ref('')
+const searchOrder = ref<SearchOrder>('relevance')
 const openTopic = ref<ESTopic | null>(null)
+
+const PERIODS: { value: TopPeriod, label: string }[] = [
+  { value: 'daily', label: 'Today' },
+  { value: 'weekly', label: 'This week' },
+  { value: 'monthly', label: 'This month' },
+  { value: 'yearly', label: 'This year' },
+  { value: 'all', label: 'All time' },
+]
+const SEARCH_ORDERS: { value: SearchOrder, label: string }[] = [
+  { value: 'relevance', label: 'Best match' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'likes', label: 'Most liked' },
+  { value: 'views', label: 'Most viewed' },
+]
 
 // On a phone a post covers the list: the phone's Back button closes it, while
 // this view is on screen (kept alive behind another view, Back is not its).
@@ -101,7 +119,6 @@ useAndroidBack(() => compact.value && !!openTopic.value && onScreen.value, () =>
 const BASE = 'https://discuss.eroscripts.com'
 const PROXY = 'http://localhost:7071'
 const SCRIPTS_PATH = '/c/scripts/free-scripts/14/l'
-const SCRIPTS_TAG_BASE = '/tags/c/scripts/free-scripts/14'
 
 const { loadScriptFiles } = useFunscript()
 const player = usePlayerStore()
@@ -238,7 +255,12 @@ async function viaProxy(url: string, headers: Record<string, string>): Promise<R
   return fetch(url, { headers })
 }
 
-async function apiFetch(path: string) {
+/**
+ * A forum path, as JSON. `quiet` is for the extras (tag suggestions,
+ * bookmarks): their failing says nothing about the list on screen, so it
+ * leaves the proxy and session warnings as they are.
+ */
+async function apiFetch(path: string, { quiet = false } = {}) {
   await esReady
   const get = () => viaProxy(`${PROXY}${path}`, {
     Accept: 'application/json',
@@ -251,13 +273,16 @@ async function apiFetch(path: string) {
     await new Promise(resolve => setTimeout(resolve, ms))
     res = await get()
   }
-  proxyDown.value = false
-  needsSession.value = false
+  if (!quiet) {
+    proxyDown.value = false
+    needsSession.value = false
+  }
   if (!res.ok) {
     // Free Scripts is hidden from logged-out visitors, and Discourse says so
     // with a 404 rather than a 403: an expired cookie looks like a dead link.
     const loggedOut = res.status === 403 || (res.status === 404 && /\/c\/|\/latest\.json|\/top\.json|\/tags\//.test(path))
-    needsSession.value = loggedOut
+    if (!quiet)
+      needsSession.value = loggedOut
     // The local proxy says why it could not get through ({ error }); a gateway
     // error page from the forum itself has no such body.
     const unreachable = res.status === 502 || res.status === 504
@@ -305,11 +330,14 @@ watch(viewMode, v => lsSet('ph:ui.eroscripts.view', v))
 
 // ─── Browse ───────────────────────────────────────────────────────────────────
 const loading = ref(false)
+/** Counts list requests, so the answer to one superseded (another tab, other tags) is dropped. */
+let listSeq = 0
 
 async function loadTopics(reset = false) {
   // Saved posts are listed from storage; nothing to fetch.
-  if (loading.value || sort.value === 'saved')
+  if (sort.value === 'saved' || (!reset && (loading.value || !hasMore.value)))
     return
+  const seq = ++listSeq
   if (reset) {
     page.value = 0
     hasMore.value = true
@@ -317,29 +345,24 @@ async function loadTopics(reset = false) {
   loading.value = true
   error.value = null
   try {
-    const slug = sort.value
-    const pageParam = page.value > 0 ? `?page=${page.value}` : ''
-    const endpoint = activeTag.value
-      ? `${SCRIPTS_TAG_BASE}/${activeTag.value.slug}/${activeTag.value.id}/l/${slug}.json${pageParam}`
-      : `${SCRIPTS_PATH}/${slug}.json${pageParam}`
-    const data = await apiFetch(endpoint)
+    const tags = selectedTags.value.map(t => t.name)
+    const data = await apiFetch(topicListPath(SCRIPTS_PATH, { sort: sort.value, tags, period: topPeriod.value, page: page.value }))
+    if (seq !== listSeq)
+      return
     const list: ESTopic[] = data?.topic_list?.topics ?? []
-    if (reset && !activeTag.value && data?.topic_list?.top_tags?.length)
+    if (reset && !tags.length && data?.topic_list?.top_tags?.length)
       availableTags.value = data.topic_list.top_tags
-    if (reset)
-      topics.value = list
-    else
-      topics.value = [...topics.value, ...list]
-    if (list.length === 0)
-      hasMore.value = false
-    else
-      page.value++
+    topics.value = reset ? list : mergeById(topics.value, list)
+    hasMore.value = listHasMore(data)
+    page.value++
   }
   catch (e) {
-    fail(e, 'Could not load scripts')
+    if (seq === listSeq)
+      fail(e, 'Could not load scripts')
   }
   finally {
-    loading.value = false
+    if (seq === listSeq)
+      loading.value = false
   }
 }
 
@@ -347,36 +370,90 @@ function reload() {
   return searching.value ? doSearch() : loadTopics(true)
 }
 
-function selectTag(tag: ESTag | null) {
-  activeTag.value = activeTag.value?.id === tag?.id ? null : tag
-  void loadTopics(true)
+/** Add a tag to the filter, or take it off. */
+function toggleTag(tag: ESTag) {
+  const picked = selectedTags.value.some(t => t.name === tag.name)
+  selectedTags.value = picked ? selectedTags.value.filter(t => t.name !== tag.name) : [...selectedTags.value, tag]
+  if (!picked)
+    tagFilter.value = ''
 }
+function clearTags() {
+  if (selectedTags.value.length)
+    selectedTags.value = []
+}
+watch(selectedTags, () => {
+  void loadTopics(true)
+  if (searching.value)
+    void doSearch()
+})
 watch(sort, () => void loadTopics(true))
+watch(topPeriod, () => {
+  if (sort.value === 'top')
+    void loadTopics(true)
+})
 
 onMounted(() => {
   if (!topics.value.length)
     void loadTopics(true)
 })
 
+// The tag box finds any tag on the forum, not only the top ones a list
+// comes with: those that match show at once, the forum's answer joins them.
 const tagFilter = ref('')
+const tagHits = ref<ESTag[]>([])
+const tagSearching = ref(false)
+let tagTimer: ReturnType<typeof setTimeout> | undefined
+let tagSeq = 0
+
+watch(tagFilter, (q) => {
+  clearTimeout(tagTimer)
+  const term = q.trim()
+  tagSeq++
+  tagHits.value = []
+  tagSearching.value = !!term
+  if (term)
+    tagTimer = setTimeout(() => void findTags(term), 300)
+})
+
+async function findTags(term: string) {
+  const seq = ++tagSeq
+  try {
+    const data = await apiFetch(tagSearchPath(term), { quiet: true })
+    if (seq === tagSeq)
+      tagHits.value = foundTags(data)
+  }
+  catch {
+    // The top tags that match are still there.
+  }
+  finally {
+    if (seq === tagSeq)
+      tagSearching.value = false
+  }
+}
+
 const shownTags = computed(() => {
   const q = tagFilter.value.toLowerCase().trim()
-  return q ? availableTags.value.filter(t => t.name.toLowerCase().includes(q)) : availableTags.value
+  const picked = selectedTags.value.map(t => t.name)
+  if (!q)
+    return availableTags.value.filter(t => !picked.includes(t.name))
+  return rankTags([...availableTags.value.filter(t => t.name.toLowerCase().includes(q)), ...tagHits.value], q, picked)
 })
 
 // ─── Search ───────────────────────────────────────────────────────────────────
-const searchLoading = ref(false)
 const searching = computed(() => !!query.value.trim())
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(query, (q) => {
   clearTimeout(searchTimer)
   if (!q.trim()) {
-    searchResults.value = []
-    searchedFor.value = ''
+    search.clear()
     return
   }
   searchTimer = setTimeout(doSearch, 450)
+})
+watch(searchOrder, () => {
+  if (searching.value)
+    void doSearch()
 })
 
 /** A topic as search returns it: no cover URL, only the cover's thumbnails. */
@@ -397,24 +474,61 @@ function withCover(t: SearchTopic): ESTopic {
   return { ...t, image_url: pick?.url ?? null }
 }
 
-async function doSearch() {
+/**
+ * A search that loads a page at a time as the list scrolls. A new search
+ * drops the answer to the one before it, should that come in late.
+ * `build` gives the forum query and the words to show it as; nothing when
+ * there is nothing to search for.
+ */
+function pagedSearch(build: () => { q: string, label: string } | null, failed: string) {
+  const state = reactive({ results: [] as ESTopic[], page: 0, more: false, loading: false, q: '', label: '' })
+  let seq = 0
+  async function load(reset: boolean) {
+    const next = reset ? build() : { q: state.q, label: state.label }
+    if (!next?.q || (!reset && (state.loading || !state.more)))
+      return
+    const n = ++seq
+    const page = reset ? 1 : state.page + 1
+    state.loading = true
+    error.value = null
+    try {
+      const data = await apiFetch(searchPath(next.q, page))
+      if (n !== seq)
+        return
+      const found = ((data?.topics ?? []) as SearchTopic[]).map(withCover)
+      state.results = reset ? found : mergeById(state.results, found)
+      state.page = page
+      state.more = searchHasMore(data) && found.length > 0
+      state.q = next.q
+      state.label = next.label
+    }
+    catch (e) {
+      if (n === seq)
+        fail(e, failed)
+    }
+    finally {
+      if (n === seq)
+        state.loading = false
+    }
+  }
+  function clear() {
+    seq++
+    Object.assign(state, { results: [], page: 0, more: false, loading: false, q: '', label: '' })
+  }
+  return { state, load, clear }
+}
+
+const search = pagedSearch(() => {
+  const text = query.value.trim()
+  return text ? { q: searchQuery({ text, tags: selectedTags.value.map(t => t.name), order: searchOrder.value }), label: text } : null
+}, 'Search failed')
+const searchResults = computed(() => search.state.results)
+const searchLoading = computed(() => search.state.loading)
+const searchedFor = computed(() => search.state.label)
+
+function doSearch() {
   clearTimeout(searchTimer)
-  const q = query.value.trim()
-  if (!q)
-    return
-  searchLoading.value = true
-  error.value = null
-  try {
-    const data = await apiFetch(`/search.json?q=${encodeURIComponent(q)}&category=scripts`)
-    searchResults.value = ((data?.topics ?? []) as SearchTopic[]).map(withCover)
-    searchedFor.value = q
-  }
-  catch (e) {
-    fail(e, 'Search failed')
-  }
-  finally {
-    searchLoading.value = false
-  }
+  return search.load(true)
 }
 
 /** Saved posts, newest saved first, in the shape the lists draw. */
@@ -445,10 +559,20 @@ function toggleSave(t: ESTopic) {
 const busy = computed(() => (searching.value ? searchLoading.value : loading.value))
 
 // Infinite scroll: fetch the next page as the bottom comes into view.
+/** Whatever is listed has another page to fetch. */
+const canLoadMore = computed(() => (searching.value ? search.state.more : sort.value !== 'saved' && hasMore.value))
+function loadMore() {
+  if (proxyDown.value || !items.value.length)
+    return
+  if (searching.value)
+    void search.load(false)
+  else if (sort.value !== 'saved')
+    void loadTopics(false)
+}
 const sentinel = ref<HTMLElement | null>(null)
 useIntersectionObserver(sentinel, ([e]) => {
-  if (e?.isIntersecting && !searching.value && sort.value !== 'saved' && hasMore.value && !loading.value && topics.value.length && !proxyDown.value)
-    void loadTopics(false)
+  if (e?.isIntersecting)
+    loadMore()
 }, { rootMargin: '400px' })
 
 // ─── Axis detection ───────────────────────────────────────────────────────────
@@ -1044,20 +1168,27 @@ onBeforeUnmount(() => {
               <UiSpinner v-if="searchLoading" :size="13" class="text-fg-faint mr-2" />
             </template>
           </UiInput>
-          <UiSegmented
-            v-if="!searching"
-            v-model="sort"
-            :size="compact ? 'sm' : 'md'"
-            :options="[
-              { value: 'latest', label: 'Latest', icon: compact ? undefined : 'i-carbon-time' },
-              { value: 'top', label: 'Top', icon: compact ? undefined : 'i-carbon-trophy' },
-              { value: 'hot', label: 'Hot', icon: compact ? undefined : 'i-carbon-fire' },
-              { value: 'saved', label: savedPosts.length ? `Saved · ${savedPosts.length}` : 'Saved', icon: compact ? undefined : 'i-carbon-star' },
-            ]"
-          />
-          <span v-else-if="searchedFor" class="text-[12.5px] text-fg-muted">
-            {{ searchResults.length }} result{{ searchResults.length === 1 ? '' : 's' }} for “{{ searchedFor }}”
-          </span>
+          <template v-if="!searching">
+            <UiSegmented
+              v-model="sort"
+              :size="compact ? 'sm' : 'md'"
+              :options="[
+                { value: 'latest', label: 'Latest', icon: compact ? undefined : 'i-carbon-time' },
+                { value: 'top', label: 'Top', icon: compact ? undefined : 'i-carbon-trophy' },
+                { value: 'hot', label: 'Hot', icon: compact ? undefined : 'i-carbon-fire' },
+                { value: 'saved', label: savedPosts.length ? `Saved · ${savedPosts.length}` : 'Saved', icon: compact ? undefined : 'i-carbon-star' },
+              ]"
+            />
+            <UiSelect v-if="sort === 'top'" v-model="topPeriod" v-tip="'Top over this time'" :size="compact ? 'sm' : 'md'" :options="PERIODS" />
+          </template>
+          <template v-else>
+            <span v-if="searchedFor" class="text-[12.5px] text-fg-muted min-w-0 truncate">
+              {{ searchResults.length }}{{ search.state.more ? '+' : '' }} result{{ searchResults.length === 1 && !search.state.more ? '' : 's' }} for “{{ searchedFor }}”<template v-if="selectedTags.length">
+                , tagged {{ selectedTags.map(t => t.name).join(' + ') }}
+              </template>
+            </span>
+            <UiSelect v-model="searchOrder" v-tip="'Order of the results'" :size="compact ? 'sm' : 'md'" :options="SEARCH_ORDERS" />
+          </template>
           <div class="flex-1" />
           <UiSegmented
             v-model="viewMode"
@@ -1070,28 +1201,44 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Tags -->
-        <div v-if="!searching && sort !== 'saved' && availableTags.length" class="flex gap-2 min-w-0 items-center">
-          <UiInput v-model="tagFilter" icon="i-carbon-tag" placeholder="Tags" clearable class="shrink-0 w-36" />
+        <div v-if="searching || sort !== 'saved'" class="flex gap-2 min-w-0 items-center">
+          <UiInput v-model="tagFilter" icon="i-carbon-tag" placeholder="Find a tag" clearable class="shrink-0 w-36" @enter="shownTags[0] && toggleTag(shownTags[0])">
+            <template #suffix>
+              <UiSpinner v-if="tagSearching" :size="12" class="text-fg-faint mr-2" />
+            </template>
+          </UiInput>
           <div class="tag-strip py-0.5 flex flex-1 gap-1.5 min-w-0 overflow-x-auto">
             <button
               type="button"
               class="text-[12px] font-medium px-3 focusable border rounded-full shrink-0 h-7 whitespace-nowrap pressable"
-              :class="!activeTag ? 'border-accent/60 bg-accent-soft text-accent-300' : 'border-edge-strong text-fg-muted hover:text-fg hover:border-fg/30'"
-              @click="selectTag(null)"
+              :class="!selectedTags.length ? 'border-accent/60 bg-accent-soft text-accent-300' : 'border-edge-strong text-fg-muted hover:text-fg hover:border-fg/30'"
+              @click="clearTags"
             >
               All
             </button>
             <button
-              v-for="t in shownTags"
-              :key="t.id"
+              v-for="t in selectedTags"
+              :key="`on-${t.name}`"
+              v-tip="selectedTags.length > 1 ? 'Posts with all of these tags · click to take this one off' : 'Click to take this tag off'"
               type="button"
-              class="text-[12px] font-medium px-3 focusable border rounded-full shrink-0 h-7 whitespace-nowrap pressable"
-              :class="activeTag?.id === t.id ? 'border-accent/60 bg-accent-soft text-accent-300' : 'border-edge-strong text-fg-muted hover:text-fg hover:border-fg/30'"
-              @click="selectTag(t)"
+              aria-pressed="true"
+              class="text-[12px] text-accent-300 font-medium pl-3 pr-2 focusable border border-accent/60 rounded-full bg-accent-soft flex shrink-0 gap-1 h-7 whitespace-nowrap pressable items-center"
+              @click="toggleTag(t)"
+            >
+              {{ t.name }}
+              <span class="i-carbon-close text-[12px]" />
+            </button>
+            <button
+              v-for="t in shownTags"
+              :key="t.name"
+              type="button"
+              aria-pressed="false"
+              class="text-[12px] text-fg-muted font-medium px-3 focusable border border-edge-strong rounded-full shrink-0 h-7 whitespace-nowrap pressable hover:text-fg hover:border-fg/30"
+              @click="toggleTag(t)"
             >
               {{ t.name }}
             </button>
-            <span v-if="tagFilter && !shownTags.length" class="hint self-center">No tag matches</span>
+            <span v-if="tagFilter.trim() && !tagSearching && !shownTags.length" class="hint whitespace-nowrap self-center">No tag by that name</span>
           </div>
         </div>
       </div>
@@ -1174,10 +1321,12 @@ onBeforeUnmount(() => {
               v-else-if="!busy && !items.length && !error && !searching"
               icon="i-carbon-document-blank"
               title="No scripts here"
-              :description="activeTag ? `Nothing tagged ${activeTag.name} under ${sort}.` : 'The forum returned an empty list.'"
+              :description="selectedTags.length > 1
+                ? `No post under ${sort} has all of these tags: ${selectedTags.map(t => t.name).join(', ')}.`
+                : selectedTags.length ? `Nothing tagged ${selectedTags[0].name} under ${sort}.` : 'The forum returned an empty list.'"
             >
-              <UiButton v-if="activeTag" @click="selectTag(null)">
-                Clear tag
+              <UiButton v-if="selectedTags.length" @click="clearTags">
+                {{ selectedTags.length > 1 ? 'Clear the tags' : 'Clear the tag' }}
               </UiButton>
             </UiEmpty>
 
@@ -1289,9 +1438,9 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- Paging -->
-            <div v-if="!searching && sort !== 'saved' && items.length" ref="sentinel" class="py-6 flex justify-center">
-              <UiSpinner v-if="loading" :size="18" class="text-accent-300" />
-              <UiButton v-else-if="hasMore" variant="ghost" @click="loadTopics(false)">
+            <div v-if="(searching || sort !== 'saved') && items.length" ref="sentinel" class="py-6 flex justify-center">
+              <UiSpinner v-if="busy" :size="18" class="text-accent-300" />
+              <UiButton v-else-if="canLoadMore" variant="ghost" @click="loadMore">
                 Load more
               </UiButton>
               <span v-else class="hint">That is everything</span>
