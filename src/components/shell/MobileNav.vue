@@ -76,6 +76,14 @@ const tools = computed(() => INSPECTOR_GROUPS
   .flatMap(g => g.items)
   .filter(i => i.id !== 'plugins' && i.id !== 'library-panel' && i.id !== 'playlists-panel' && offeredHere(i.id)))
 
+/**
+ * Plugins' panels, less those whose plugin has a page: on a phone the page
+ * (under More) is the same thing, bigger, and one place for it is enough.
+ */
+const toolPanels = computed(() => {
+  const withPage = new Set(pluginStore.pages.map(p => p.manifest.id))
+  return pluginStore.panels.filter(p => !withPage.has(p.manifest.id))
+})
 const moreViews = computed(() => VIEW_GROUPS
   .flatMap(g => g.items)
   .filter(i => !TABS.some(t => t.id === i.id) && offeredHere(i.id)))
@@ -117,7 +125,7 @@ const sheetOpen = computed({
           <span class="text-[11.5px] leading-tight">{{ t.label }}</span>
         </button>
         <button
-          v-for="p in pluginStore.panels"
+          v-for="p in toolPanels"
           :key="p.manifest.id"
           type="button"
           class="mobile-tile"

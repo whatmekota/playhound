@@ -26,10 +26,10 @@ import { APP_VERSION, meetsMin, readStoreFields, shortVersion } from './storeMet
  * files; 5 a song's sections and bar confidence, music.plan's strokes and
  * library videos' stroke profiles; 6 a status line of its own, heart rate
  * (read and supplied), button fields in its settings and every axis's
- * position; 7 achievements of its own. Plugins written for older ones run
- * as before.
+ * position; 7 achievements of its own; 8 setting a video's creator. Plugins
+ * written for older ones run as before.
  */
-export const PLUGIN_API = 7
+export const PLUGIN_API = 8
 
 export interface PermissionInfo {
   id: PluginPermission
@@ -46,7 +46,7 @@ export const PERMISSIONS: PermissionInfo[] = [
   { id: 'player', label: 'See what is playing, where, the picture, and your edges and intensity', api: 'player.state, player.onChange, player.script, player.frame, player.video, player.clock, playback.onEnded, session.edgeState, session.onEdge, session.intensity.get / max / onChange' },
   { id: 'playback', label: 'Play, pause, seek and change the speed of videos', api: 'playback.play, pause, resume, playFingerprint, player.seek, player.setRate' },
   { id: 'library', label: 'Read your library: videos, their scripts, stats and playlists', api: 'library.list, analyse, onChange, fingerprint, info, media, thumbnail, scripts, open; music.analyse of a library video' },
-  { id: 'library-edit', label: 'Change your videos\' tags and source links', api: 'library.tag, library.setSource' },
+  { id: 'library-edit', label: 'Change your videos\' tags, source links and creators', api: 'library.tag, library.setSource, library.setCreator' },
   { id: 'network', label: 'Connect to servers through playhound', api: 'net.fetch' },
   { id: 'stage', label: 'Show its own page, draw over the video and change how the picture looks', api: 'ui.page, ui.openPage, ui.showStage, ui.overlay, player.effects' },
   // Any site, including one made to look like something else: the pages

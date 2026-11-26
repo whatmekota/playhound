@@ -279,7 +279,7 @@ export interface LibraryVideo {
 export interface LibraryVideoInfo {
   tags: string[]
   sourceUrl: string | null
-  /** From the script's metadata, when it has some. */
+  /** As set in its info (by hand, a download or library.setCreator), else from the script's metadata. */
   creator: string | null
   /** The script files paired with it, by name. */
   scriptFiles: string[]
@@ -892,6 +892,13 @@ export interface PluginContext {
     tag: (videoId: string, change: { add?: string[], remove?: string[] }) => Promise<string[] | null>
     /** Set (or clear, with null) the link a video came from, an http(s) URL (permission `library-edit`). False if it isn't in the library. */
     setSource: (videoId: string, url: string | null) => Promise<boolean>
+    /**
+     * Set (or clear, with null) who made a video's script, as its info shows
+     * it and library search finds it (permission `library-edit`; API 8). It
+     * stands in for what the script's own metadata says. False if the video
+     * isn't in the library.
+     */
+    setCreator: (videoId: string, name: string | null) => Promise<boolean>
     /**
      * Add videos from another app (permission `library-source`). They show
      * in the library with the source's name, play like any video (streamed),

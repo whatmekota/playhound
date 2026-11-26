@@ -255,7 +255,7 @@ export async function videoInfo(library: LibraryStore, videoId: string): Promise
   return {
     tags: normalizeTags(saved?.tags ?? v.userMeta?.tags ?? scriptTags),
     sourceUrl: httpUrl(saved?.url) ?? httpUrl(v.userMeta?.url) ?? scriptUrl,
-    creator,
+    creator: saved?.creator || v.userMeta?.creator || creator,
     scriptFiles: v.scriptFiles.map(f => f.name),
   }
 }
@@ -283,6 +283,25 @@ export async function setVideoSource(library: LibraryStore, videoId: string, url
     meta.url = clean
   else
     delete meta.url
+  await videoMetaDb.set(v.name, meta)
+  v.userMeta = meta
+  return true
+}
+
+/** Who made a video's script, over what its script's metadata says; null clears it. */
+export async function setVideoCreator(library: LibraryStore, videoId: string, name: string | null): Promise<boolean> {
+  const v = library.videos.find(x => x.name === videoId)
+  if (!v)
+    return false
+  if (name !== null && typeof name !== 'string')
+    throw new TypeError('library.setCreator takes a name, or null')
+  const clean = name?.replace(/\s+/g, ' ').trim().slice(0, 120) || null
+  const stored = await videoMetaDb.get(v.name).catch(() => undefined)
+  const meta = { ...(v.scriptMeta ?? {}), ...(stored ?? v.userMeta ?? {}) }
+  if (clean)
+    meta.creator = clean
+  else
+    delete meta.creator
   await videoMetaDb.set(v.name, meta)
   v.userMeta = meta
   return true
@@ -1920,6 +1939,7 @@ export const usePluginStore = defineStore('plugins', () => {
         }),
         tag: gate('library-edit', 'library.tag', (id: string, change: { add?: string[], remove?: string[] }) => tagVideo(library, id, change)),
         setSource: gate('library-edit', 'library.setSource', (id: string, url: string | null) => setVideoSource(library, id, url)),
+        setCreator: gate('library-edit', 'library.setCreator', (id: string, name: string | null) => setVideoCreator(library, id, name)),
         provide: gate('library-source', 'library.provide', provide),
         mediaUrl: gate('serve', 'library.mediaUrl', gate('library', 'library.mediaUrl', mediaUrl)),
         scriptUrl: gate('serve', 'library.scriptUrl', gate('library', 'library.scriptUrl', scriptUrl)),

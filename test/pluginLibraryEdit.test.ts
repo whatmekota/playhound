@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { videoMetaDb } from '~/lib/idb'
 import { useLibraryStore } from '~/stores/libraryStore'
-import { setVideoSource, tagVideo, videoInfo } from '~/stores/pluginStore'
+import { setVideoCreator, setVideoSource, tagVideo, videoInfo } from '~/stores/pluginStore'
 
 // Saved info in memory: jsdom has no IndexedDB. The rest of idb is not used here.
 vi.mock('~/lib/idb', async (orig) => {
@@ -62,5 +62,17 @@ describe('plugin library edits', () => {
     await expect(setVideoSource(lib, 'clip.mp4', 'javascript:alert(1)')).rejects.toThrow(/http/)
     expect(await setVideoSource(lib, 'clip.mp4', null)).toBe(true)
     expect((await videoMetaDb.get('clip.mp4'))?.url).toBeUndefined()
+  })
+
+  it('sets a video\'s creator over the script\'s, and null gives the script\'s back', async () => {
+    const lib = useLibraryStore()
+    await lib.setFiles([fileAt('Lib/clip.mp4'), fileAt('Lib/clip.funscript', SCRIPT), fileAt('Lib/bare.mp4')])
+    expect(await setVideoCreator(lib, 'bare.mp4', '  Some   Scripter ')).toBe(true)
+    expect((await videoInfo(lib, 'bare.mp4'))!.creator).toBe('Some Scripter')
+    expect(await setVideoCreator(lib, 'clip.mp4', 'Poster')).toBe(true)
+    expect((await videoInfo(lib, 'clip.mp4'))!.creator).toBe('Poster')
+    expect(await setVideoCreator(lib, 'clip.mp4', null)).toBe(true)
+    expect((await videoInfo(lib, 'clip.mp4'))!.creator).toBe('Croove')
+    expect(await setVideoCreator(lib, 'nope.mp4', 'x')).toBe(false)
   })
 })
