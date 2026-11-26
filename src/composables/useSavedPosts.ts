@@ -20,6 +20,8 @@ export interface SavedPost {
   like_count: number | null
   views: number | null
   category_id: number
+  /** Who posted it; posts saved before this was kept learn it when opened. */
+  creator?: string | null
   savedAt: number
 }
 
@@ -34,6 +36,7 @@ interface TopicLike {
   like_count?: number | null
   views?: number | null
   category_id: number
+  creator?: string | null
 }
 
 export const savedPosts = useLocalStorage<SavedPost[]>(KEYS.esSaved.key, [])
@@ -60,13 +63,14 @@ export function toggleSaved(t: TopicLike): boolean {
     like_count: t.like_count ?? null,
     views: t.views ?? null,
     category_id: t.category_id,
+    creator: t.creator ?? null,
     savedAt: Date.now(),
   }, ...savedPosts.value]
   return true
 }
 
-/** Fill in what a saved post was missing (a cover, counts) once it has been opened. */
-export function refreshSaved(id: number, fresh: Partial<Pick<SavedPost, 'image_url' | 'like_count' | 'views' | 'title'>>) {
+/** Fill in what a saved post was missing (a cover, counts, who posted it) once it has been opened. */
+export function refreshSaved(id: number, fresh: Partial<Pick<SavedPost, 'image_url' | 'like_count' | 'views' | 'title' | 'creator' | 'created_at'>>) {
   const i = savedPosts.value.findIndex(p => p.id === id)
   if (i < 0)
     return
@@ -77,6 +81,8 @@ export function refreshSaved(id: number, fresh: Partial<Pick<SavedPost, 'image_u
     like_count: fresh.like_count ?? p.like_count,
     views: fresh.views ?? p.views,
     title: fresh.title ?? p.title,
+    creator: fresh.creator ?? p.creator ?? null,
+    created_at: p.created_at || fresh.created_at || '',
   }
   if (JSON.stringify(next) !== JSON.stringify(p))
     savedPosts.value = savedPosts.value.map((x, k) => (k === i ? next : x))

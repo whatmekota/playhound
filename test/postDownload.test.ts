@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { baseNameFor, downloadNames, videoExtFor, withCopyNumber } from '~/lib/postDownload'
+import { baseNameFor, creatorToSave, downloadNames, videoExtFor, withCopyNumber } from '~/lib/postDownload'
 import { classifyPostScripts } from '~/lib/postScripts'
 
 describe('baseNameFor', () => {
@@ -41,5 +41,22 @@ describe('downloadNames', () => {
       video: 'Song (2).mp4',
       scripts: [{ filename: 'a.funscript', saveAs: 'Song (2).funscript' }, { filename: 'a.roll.funscript', saveAs: 'Song (2).roll.funscript' }],
     })
+  })
+})
+
+describe('creatorToSave', () => {
+  it('gives the video its poster when nothing names a creator', () => {
+    expect(creatorToSave('Wutboi', undefined, [])).toBe('Wutboi')
+    expect(creatorToSave(' Wutboi ', '', [null, ''])).toBe('Wutboi')
+  })
+
+  it('leaves a creator already saved, or one a script names, alone', () => {
+    expect(creatorToSave('Wutboi', 'Someone', [])).toBeNull()
+    expect(creatorToSave('Wutboi', undefined, [null, 'ScriptAuthor'])).toBeNull()
+  })
+
+  it('has nothing to give without a poster', () => {
+    expect(creatorToSave(undefined, undefined, [])).toBeNull()
+    expect(creatorToSave('  ', undefined, [])).toBeNull()
   })
 })

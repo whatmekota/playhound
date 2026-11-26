@@ -1,8 +1,9 @@
 <script lang="ts">
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 </script>
 
 <script setup lang="ts">
+import type { SearchOrder, TopPeriod } from '~/lib/eroscripts'
 import type { StreamHost, StreamItem, StreamSource } from '~/lib/streamHosts'
 import { useIntersectionObserver } from '@vueuse/core'
 import { countMoment } from '~/composables/achievementEvents'
@@ -14,11 +15,15 @@ import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/c
 import { toast } from '~/composables/useToast'
 import { useAndroidBack } from '~/lib/android/back'
 import { desktop } from '~/lib/browserApi'
+import { bookmarkTopics, foundTags, isNewSince, listHasMore, mergeById, originalPoster, rankTags, searchHasMore, searchPath, searchQuery, searchStarters, similarTopics, tagSearchPath, topicListPath } from '~/lib/eroscripts'
+import { KEYS } from '~/lib/persist'
 import { isAndroidApp } from '~/lib/platform'
 import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useUiStore } from '~/stores/uiStore'
+
+defineOptions({ name: 'EroScriptsView' })
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ESTag { id: number, name: string, slug: string }
@@ -33,6 +38,10 @@ interface ESTopic {
   category_id: number
   tags: (string | ESTag)[]
   image_url: string | null
+  /** Who posted it, when the forum said. */
+  creator?: string | null
+  /** Posts the forum offers alongside this one, once it is open. */
+  similar?: ESTopic[]
   funscriptUrls?: FunscriptEntry[]
   videoLinks?: VideoLink[]
   loading?: boolean
@@ -75,7 +84,6 @@ interface VideoLink {
   picked?: boolean
 }
 
-defineOptions({ name: 'EroScriptsView' })
 // Browse state lives at module scope so leaving the view and coming back finds
 // the same results, scroll aside, instead of refetching from page one.
 /** The phone layout: the search gets a row of its own. */
@@ -84,24 +92,52 @@ const topics = ref<ESTopic[]>([])
 const page = ref(0)
 const hasMore = ref(true)
 const sort = ref<'latest' | 'top' | 'hot' | 'saved'>('latest')
+/** Top over which stretch of time. The forum's own default is all time. */
+const topPeriod = ref<TopPeriod>('all')
 const availableTags = ref<ESTag[]>([])
-const activeTag = ref<ESTag | null>(null)
+/** The tags to filter by: a post must have all of them. */
+const selectedTags = ref<ESTag[]>([])
 const query = ref('')
-const searchResults = ref<ESTopic[]>([])
-const searchedFor = ref('')
+const searchOrder = ref<SearchOrder>('relevance')
 const openTopic = ref<ESTopic | null>(null)
+/** Listing one person's script posts instead: whose. */
+const creator = ref<string | null>(null)
+const creatorOrder = ref<SearchOrder>('newest')
+
+const PERIODS: { value: TopPeriod, label: string }[] = [
+  { value: 'daily', label: 'Today' },
+  { value: 'weekly', label: 'This week' },
+  { value: 'monthly', label: 'This month' },
+  { value: 'yearly', label: 'This year' },
+  { value: 'all', label: 'All time' },
+]
+const SEARCH_ORDERS: { value: SearchOrder, label: string }[] = [
+  { value: 'relevance', label: 'Best match' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'likes', label: 'Most liked' },
+  { value: 'views', label: 'Most viewed' },
+]
+const CREATOR_ORDERS = SEARCH_ORDERS.filter(o => o.value !== 'relevance')
+
+/** The lists' scroll boxes: the outer one on a phone, the inner one elsewhere. */
+const outerScroll = ref<HTMLElement | null>(null)
+const listScroll = ref<HTMLElement | null>(null)
+/** A list started over starts at its top, not where the last one was scrolled to (which would fetch its second page at once). */
+function toListTop() {
+  for (const el of [outerScroll.value, listScroll.value])
+    el?.scrollTo({ top: 0 })
+}
 
 // On a phone a post covers the list: the phone's Back button closes it, while
 // this view is on screen (kept alive behind another view, Back is not its).
 const onScreen = ref(true)
 onActivated(() => (onScreen.value = true))
 onDeactivated(() => (onScreen.value = false))
-useAndroidBack(() => compact.value && !!openTopic.value && onScreen.value, () => (openTopic.value = null))
+useAndroidBack(() => compact.value && !!openTopic.value && onScreen.value, () => closeTopic())
 
 const BASE = 'https://discuss.eroscripts.com'
 const PROXY = 'http://localhost:7071'
 const SCRIPTS_PATH = '/c/scripts/free-scripts/14/l'
-const SCRIPTS_TAG_BASE = '/tags/c/scripts/free-scripts/14'
 
 const { loadScriptFiles } = useFunscript()
 const player = usePlayerStore()
@@ -238,7 +274,12 @@ async function viaProxy(url: string, headers: Record<string, string>): Promise<R
   return fetch(url, { headers })
 }
 
-async function apiFetch(path: string) {
+/**
+ * A forum path, as JSON. `quiet` is for the extras (tag suggestions,
+ * bookmarks): their failing says nothing about the list on screen, so it
+ * leaves the proxy and session warnings as they are.
+ */
+async function apiFetch(path: string, { quiet = false } = {}) {
   await esReady
   const get = () => viaProxy(`${PROXY}${path}`, {
     Accept: 'application/json',
@@ -251,13 +292,16 @@ async function apiFetch(path: string) {
     await new Promise(resolve => setTimeout(resolve, ms))
     res = await get()
   }
-  proxyDown.value = false
-  needsSession.value = false
+  if (!quiet) {
+    proxyDown.value = false
+    needsSession.value = false
+  }
   if (!res.ok) {
     // Free Scripts is hidden from logged-out visitors, and Discourse says so
     // with a 404 rather than a 403: an expired cookie looks like a dead link.
     const loggedOut = res.status === 403 || (res.status === 404 && /\/c\/|\/latest\.json|\/top\.json|\/tags\//.test(path))
-    needsSession.value = loggedOut
+    if (!quiet)
+      needsSession.value = loggedOut
     // The local proxy says why it could not get through ({ error }); a gateway
     // error page from the forum itself has no such body.
     const unreachable = res.status === 502 || res.status === 504
@@ -299,17 +343,28 @@ async function copyCommand() {
   catch {}
 }
 
+// ─── New since the last visit ─────────────────────────────────────────────────
+// When the view was opened before this time: posts since then are new. Read
+// once, as the view is set up; the shell keeps it alive, so going elsewhere
+// and coming back keeps the badges until the app is started again.
+const lastVisit = Number(lsGet(KEYS.eroscriptsLastVisit.key)) || null
+lsSet(KEYS.eroscriptsLastVisit.key, String(Date.now()))
+const isNew = (t: ESTopic) => isNewSince(t.created_at, lastVisit)
+
 // ─── View mode ────────────────────────────────────────────────────────────────
 const viewMode = ref<'grid' | 'list'>(lsGet('ph:ui.eroscripts.view') === 'list' ? 'list' : 'grid')
 watch(viewMode, v => lsSet('ph:ui.eroscripts.view', v))
 
 // ─── Browse ───────────────────────────────────────────────────────────────────
 const loading = ref(false)
+/** Counts list requests, so the answer to one superseded (another tab, other tags) is dropped. */
+let listSeq = 0
 
 async function loadTopics(reset = false) {
   // Saved posts are listed from storage; nothing to fetch.
-  if (loading.value || sort.value === 'saved')
+  if (sort.value === 'saved' || (!reset && (loading.value || !hasMore.value)))
     return
+  const seq = ++listSeq
   if (reset) {
     page.value = 0
     hasMore.value = true
@@ -317,66 +372,127 @@ async function loadTopics(reset = false) {
   loading.value = true
   error.value = null
   try {
-    const slug = sort.value
-    const pageParam = page.value > 0 ? `?page=${page.value}` : ''
-    const endpoint = activeTag.value
-      ? `${SCRIPTS_TAG_BASE}/${activeTag.value.slug}/${activeTag.value.id}/l/${slug}.json${pageParam}`
-      : `${SCRIPTS_PATH}/${slug}.json${pageParam}`
-    const data = await apiFetch(endpoint)
-    const list: ESTopic[] = data?.topic_list?.topics ?? []
-    if (reset && !activeTag.value && data?.topic_list?.top_tags?.length)
+    const tags = selectedTags.value.map(t => t.name)
+    const data = await apiFetch(topicListPath(SCRIPTS_PATH, { sort: sort.value, tags, period: topPeriod.value, page: page.value }))
+    if (seq !== listSeq)
+      return
+    const users = data?.users ?? []
+    const list: ESTopic[] = (data?.topic_list?.topics ?? []).map((t: any) => ({ ...t, creator: originalPoster(t, users) }))
+    if (reset && !tags.length && data?.topic_list?.top_tags?.length)
       availableTags.value = data.topic_list.top_tags
-    if (reset)
-      topics.value = list
-    else
-      topics.value = [...topics.value, ...list]
-    if (list.length === 0)
-      hasMore.value = false
-    else
-      page.value++
+    topics.value = reset ? list : mergeById(topics.value, list)
+    hasMore.value = listHasMore(data)
+    page.value++
   }
   catch (e) {
-    fail(e, 'Could not load scripts')
+    if (seq === listSeq)
+      fail(e, 'Could not load scripts')
   }
   finally {
-    loading.value = false
+    if (seq === listSeq)
+      loading.value = false
   }
 }
 
 function reload() {
-  return searching.value ? doSearch() : loadTopics(true)
+  return creator.value ? byCreator.load(true) : searching.value ? doSearch() : sort.value === 'saved' ? loadBookmarks() : loadTopics(true)
 }
 
-function selectTag(tag: ESTag | null) {
-  activeTag.value = activeTag.value?.id === tag?.id ? null : tag
-  void loadTopics(true)
+/** Add a tag to the filter, or take it off. */
+function toggleTag(tag: ESTag) {
+  const picked = selectedTags.value.some(t => t.name === tag.name)
+  selectedTags.value = picked ? selectedTags.value.filter(t => t.name !== tag.name) : [...selectedTags.value, tag]
+  if (!picked)
+    tagFilter.value = ''
 }
-watch(sort, () => void loadTopics(true))
+function clearTags() {
+  if (selectedTags.value.length)
+    selectedTags.value = []
+}
+watch(selectedTags, () => {
+  toListTop()
+  void loadTopics(true)
+  if (searching.value)
+    void doSearch()
+})
+watch(sort, () => {
+  toListTop()
+  void loadTopics(true)
+})
+watch(topPeriod, () => {
+  if (sort.value !== 'top')
+    return
+  toListTop()
+  void loadTopics(true)
+})
 
 onMounted(() => {
   if (!topics.value.length)
     void loadTopics(true)
 })
 
+// The tag box finds any tag on the forum, not only the top ones a list
+// comes with: those that match show at once, the forum's answer joins them.
 const tagFilter = ref('')
+const tagHits = ref<ESTag[]>([])
+const tagSearching = ref(false)
+let tagTimer: ReturnType<typeof setTimeout> | undefined
+let tagSeq = 0
+
+watch(tagFilter, (q) => {
+  clearTimeout(tagTimer)
+  const term = q.trim()
+  tagSeq++
+  tagHits.value = []
+  tagSearching.value = !!term
+  if (term)
+    tagTimer = setTimeout(() => void findTags(term), 300)
+})
+
+async function findTags(term: string) {
+  const seq = ++tagSeq
+  try {
+    const data = await apiFetch(tagSearchPath(term), { quiet: true })
+    if (seq === tagSeq)
+      tagHits.value = foundTags(data)
+  }
+  catch {
+    // The top tags that match are still there.
+  }
+  finally {
+    if (seq === tagSeq)
+      tagSearching.value = false
+  }
+}
+
 const shownTags = computed(() => {
   const q = tagFilter.value.toLowerCase().trim()
-  return q ? availableTags.value.filter(t => t.name.toLowerCase().includes(q)) : availableTags.value
+  const picked = selectedTags.value.map(t => t.name)
+  if (!q)
+    return availableTags.value.filter(t => !picked.includes(t.name))
+  return rankTags([...availableTags.value.filter(t => t.name.toLowerCase().includes(q)), ...tagHits.value], q, picked)
 })
 
 // ─── Search ───────────────────────────────────────────────────────────────────
-const searchLoading = ref(false)
 const searching = computed(() => !!query.value.trim())
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(query, (q) => {
   clearTimeout(searchTimer)
+  // Typing a search leaves someone's list of posts for the results.
+  if (q.trim() && creator.value)
+    leaveCreator()
   if (!q.trim()) {
-    searchResults.value = []
-    searchedFor.value = ''
+    search.clear()
     return
   }
   searchTimer = setTimeout(doSearch, 450)
+})
+watch(searchOrder, () => {
+  if (!searching.value)
+    return
+  toListTop()
+  void doSearch()
 })
 
 /** A topic as search returns it: no cover URL, only the cover's thumbnails. */
@@ -397,25 +513,95 @@ function withCover(t: SearchTopic): ESTopic {
   return { ...t, image_url: pick?.url ?? null }
 }
 
-async function doSearch() {
-  clearTimeout(searchTimer)
-  const q = query.value.trim()
-  if (!q)
-    return
-  searchLoading.value = true
-  error.value = null
-  try {
-    const data = await apiFetch(`/search.json?q=${encodeURIComponent(q)}&category=scripts`)
-    searchResults.value = ((data?.topics ?? []) as SearchTopic[]).map(withCover)
-    searchedFor.value = q
+/**
+ * A search that loads a page at a time as the list scrolls. A new search
+ * drops the answer to the one before it, should that come in late.
+ * `build` gives the forum query and the words to show it as; nothing when
+ * there is nothing to search for.
+ */
+function pagedSearch(build: () => { q: string, label: string } | null, failed: string) {
+  const state = reactive({ results: [] as ESTopic[], page: 0, more: false, loading: false, q: '', label: '' })
+  let seq = 0
+  async function load(reset: boolean) {
+    const next = reset ? build() : { q: state.q, label: state.label }
+    if (!next?.q || (!reset && (state.loading || !state.more)))
+      return
+    const n = ++seq
+    const page = reset ? 1 : state.page + 1
+    state.loading = true
+    error.value = null
+    try {
+      const data = await apiFetch(searchPath(next.q, page))
+      if (n !== seq)
+        return
+      const starters = searchStarters(data?.posts)
+      const found = ((data?.topics ?? []) as SearchTopic[]).map(t => withCover({ ...t, creator: starters.get(t.id) ?? null }))
+      state.results = reset ? found : mergeById(state.results, found)
+      state.page = page
+      state.more = searchHasMore(data) && found.length > 0
+      state.q = next.q
+      state.label = next.label
+    }
+    catch (e) {
+      if (n === seq)
+        fail(e, failed)
+    }
+    finally {
+      if (n === seq)
+        state.loading = false
+    }
   }
-  catch (e) {
-    fail(e, 'Search failed')
+  function clear() {
+    seq++
+    Object.assign(state, { results: [], page: 0, more: false, loading: false, q: '', label: '' })
   }
-  finally {
-    searchLoading.value = false
-  }
+  return { state, load, clear }
 }
+
+const search = pagedSearch(() => {
+  const text = query.value.trim()
+  return text ? { q: searchQuery({ text, tags: selectedTags.value.map(t => t.name), order: searchOrder.value }), label: text } : null
+}, 'Search failed')
+const searchResults = computed(() => search.state.results)
+const searchLoading = computed(() => search.state.loading)
+const searchedFor = computed(() => search.state.label)
+
+function doSearch() {
+  clearTimeout(searchTimer)
+  return search.load(true)
+}
+
+// ─── A creator's posts ────────────────────────────────────────────────────────
+// The topics they started in the scripts categories, by the forum's search
+// (their profile's list of topics is closed to visitors). Back returns to
+// the list as it was, scrolled to where it was.
+const byCreator = pagedSearch(() => (creator.value ? { q: searchQuery({ creator: creator.value, order: creatorOrder.value }), label: creator.value } : null), 'Could not load their posts')
+let scrollBeforeCreator = 0
+
+function showCreator(name: string | null | undefined) {
+  if (!name)
+    return
+  // On a phone the post covers the list the posts are about to fill.
+  if (compact.value)
+    closeAllTopics()
+  if (!creator.value)
+    scrollBeforeCreator = (compact.value ? outerScroll.value : listScroll.value)?.scrollTop ?? 0
+  creator.value = name
+  void byCreator.load(true)
+  toListTop()
+}
+function leaveCreator() {
+  creator.value = null
+  byCreator.clear()
+  void nextTick(() => (compact.value ? outerScroll.value : listScroll.value)?.scrollTo({ top: scrollBeforeCreator }))
+}
+watch(creatorOrder, () => {
+  if (!creator.value)
+    return
+  toListTop()
+  void byCreator.load(true)
+})
+useAndroidBack(() => compact.value && !!creator.value && onScreen.value, leaveCreator)
 
 /** Saved posts, newest saved first, in the shape the lists draw. */
 // One reactive topic per saved post, kept across changes to the list, so an
@@ -428,11 +614,77 @@ const savedTopics = computed<ESTopic[]>(() => savedPosts.value.map((p) => {
     savedTopicCache.set(p.id, t)
   }
   else {
-    Object.assign(t, { title: p.title, image_url: p.image_url, like_count: p.like_count, views: p.views })
+    Object.assign(t, { title: p.title, image_url: p.image_url, like_count: p.like_count, views: p.views, creator: p.creator ?? t.creator })
   }
   return t
 }))
-const items = computed(() => (searching.value ? searchResults.value : sort.value === 'saved' ? savedTopics.value : topics.value))
+// ─── Forum bookmarks ──────────────────────────────────────────────────────────
+// Signed in, Saved also lists the bookmarks on the forum account. Read only:
+// they are changed on the forum, and starring one here saves it here.
+const forumBookmarks = ref<ESTopic[]>([])
+const bookmarks = reactive({ loading: false, loaded: false, failed: '' })
+const forumBookmarkIds = computed(() => new Set(forumBookmarks.value.map(t => t.id)))
+/** Pages of bookmarks read at most. */
+const MAX_BOOKMARK_PAGES = 10
+let bookmarkSeq = 0
+
+function resetBookmarks() {
+  bookmarkSeq++
+  forumBookmarks.value = []
+  Object.assign(bookmarks, { loading: false, loaded: false, failed: '' })
+}
+
+async function loadBookmarks() {
+  if (!signedIn.value)
+    return resetBookmarks()
+  const seq = ++bookmarkSeq
+  bookmarks.loading = true
+  bookmarks.failed = ''
+  try {
+    // Who the session is: the bookmarks are listed under the user's name.
+    const me = await apiFetch('/session/current.json', { quiet: true }).catch(() => null)
+    const user = me?.current_user?.username
+    if (seq !== bookmarkSeq)
+      return
+    if (typeof user !== 'string' || !user) {
+      bookmarks.failed = 'The forum treats this session as signed out, so your bookmarks there cannot be listed. Sign in again to see them.'
+      return
+    }
+    let all: ESTopic[] = []
+    for (const page of Array.from({ length: MAX_BOOKMARK_PAGES }, (_, i) => i)) {
+      const data = await apiFetch(`/u/${encodeURIComponent(user)}/bookmarks.json${page ? `?page=${page}` : ''}`, { quiet: true })
+      if (seq !== bookmarkSeq)
+        return
+      const got = bookmarkTopics(data).map(t => reactive({ ...t }) as ESTopic)
+      all = mergeById(all, got)
+      forumBookmarks.value = all
+      if (!got.length || !data?.user_bookmark_list?.more_bookmarks_url)
+        break
+    }
+    bookmarks.loaded = true
+  }
+  catch (e: any) {
+    if (seq === bookmarkSeq)
+      bookmarks.failed = `Your forum bookmarks could not be loaded: ${e?.message ?? 'the forum did not answer'}.`
+  }
+  finally {
+    if (seq === bookmarkSeq)
+      bookmarks.loading = false
+  }
+}
+
+watch(signedIn, resetBookmarks)
+watch(() => sort.value === 'saved' && signedIn.value, (on) => {
+  if (on && !bookmarks.loaded && !bookmarks.loading)
+    void loadBookmarks()
+}, { immediate: true })
+
+/** Under Saved: the posts saved here, then the forum's bookmarks not among them. */
+const savedItems = computed(() => [...savedTopics.value, ...forumBookmarks.value.filter(t => !isSaved(t.id))])
+/** Saved is showing, where forum bookmarks are marked as such. */
+const onSaved = computed(() => sort.value === 'saved' && !searching.value && !creator.value)
+
+const items = computed(() => (creator.value ? byCreator.state.results : searching.value ? searchResults.value : sort.value === 'saved' ? savedItems.value : topics.value))
 
 function toggleSave(t: ESTopic) {
   const saved = toggleSaved(t)
@@ -442,13 +694,25 @@ function toggleSave(t: ESTopic) {
     key: 'es-save',
   })
 }
-const busy = computed(() => (searching.value ? searchLoading.value : loading.value))
+const busy = computed(() => (creator.value ? byCreator.state.loading : searching.value ? searchLoading.value : sort.value === 'saved' ? bookmarks.loading : loading.value))
 
 // Infinite scroll: fetch the next page as the bottom comes into view.
+/** Whatever is listed has another page to fetch. */
+const canLoadMore = computed(() => (creator.value ? byCreator.state.more : searching.value ? search.state.more : sort.value !== 'saved' && hasMore.value))
+function loadMore() {
+  if (proxyDown.value || !items.value.length)
+    return
+  if (creator.value)
+    void byCreator.load(false)
+  else if (searching.value)
+    void search.load(false)
+  else if (sort.value !== 'saved')
+    void loadTopics(false)
+}
 const sentinel = ref<HTMLElement | null>(null)
 useIntersectionObserver(sentinel, ([e]) => {
-  if (e?.isIntersecting && !searching.value && sort.value !== 'saved' && hasMore.value && !loading.value && topics.value.length && !proxyDown.value)
-    void loadTopics(false)
+  if (e?.isIntersecting)
+    loadMore()
 }, { rootMargin: '400px' })
 
 // ─── Axis detection ───────────────────────────────────────────────────────────
@@ -650,8 +914,14 @@ async function loadDetail(topic: ESTopic) {
     topic.image_url ??= data?.image_url ?? null
     topic.like_count ??= data?.like_count ?? null
     topic.views ??= data?.views ?? null
+    topic.creator ||= data?.details?.created_by?.username ?? data?.post_stream?.posts?.[0]?.username ?? null
+    // A forum bookmark comes without its date and tags.
+    topic.created_at ||= data?.created_at ?? ''
+    if (!topic.tags?.length && Array.isArray(data?.tags))
+      topic.tags = data.tags
+    topic.similar = similarTopics(data, topic.id).map(t => withCover({ ...t, creator: originalPoster(t) }))
     if (isSaved(topic.id))
-      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views })
+      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views, creator: topic.creator, created_at: topic.created_at })
     const first: ESPost | undefined = data?.post_stream?.posts?.[0]
     if (!first) {
       topic.funscriptUrls = []
@@ -764,11 +1034,27 @@ async function addReplyLinks(topic: ESTopic, data: any) {
   }
 }
 
-function openDetail(topic: ESTopic) {
+/** Posts left for one of their More like this, newest last: Back goes through them. */
+const trail = ref<ESTopic[]>([])
+
+function openDetail(topic: ESTopic, { fromPost = false } = {}) {
+  if (fromPost && openTopic.value)
+    trail.value.push(openTopic.value)
+  else
+    trail.value = []
   // Through the reactive proxy, so what loadDetail fills in shows up.
   const t = reactive(topic) as ESTopic
   openTopic.value = t
   void loadDetail(t)
+}
+
+/** Back to the post this one was opened from, or closed. */
+function closeTopic() {
+  openTopic.value = trail.value.pop() ?? null
+}
+function closeAllTopics() {
+  trail.value = []
+  openTopic.value = null
 }
 
 /** The link "Play" uses: one that is ready, else one that may still work. */
@@ -953,6 +1239,7 @@ async function download(topic: ESTopic, link: VideoLink) {
     },
     tags: topic.tags,
     url: postUrl(topic),
+    creator: topic.creator ?? undefined,
   })
   if (job.phase === 'done') {
     countMoment('download')
@@ -973,7 +1260,7 @@ async function download(topic: ESTopic, link: VideoLink) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const tagName = (t: string | ESTag) => (typeof t === 'string' ? t : t.name)
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+const fmtDate = (iso: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '')
 const fmtNum = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 const fmtSize = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : `${(b / (1 << 20)).toFixed(1)} MB`)
 const postUrl = (t: ESTopic) => `${BASE}/t/${t.slug}/${t.id}`
@@ -989,7 +1276,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape' || !openTopic.value || cookieOpen.value || (e.target as HTMLElement).closest?.('input, textarea, select'))
     return
   e.stopPropagation()
-  openTopic.value = null
+  closeTopic()
 }
 onMounted(() => document.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => {
@@ -1003,7 +1290,7 @@ onBeforeUnmount(() => {
     <!-- On a phone the header and toolbar scroll away with the list, which
          they would otherwise leave a third of the screen; a post opens over
          all of it. Elsewhere this box is not there (display: contents). -->
-    <div :class="compact ? 'scroll-y flex-1' : 'contents'">
+    <div ref="outerScroll" :class="compact ? 'scroll-y flex-1' : 'contents'">
       <!-- Header -->
       <header class="flex shrink-0 gap-4" :class="compact ? 'ph-head-row px-4 pb-2 pt-3 items-center' : 'px-6 pb-4 pt-5 items-end'">
         <div class="flex-1 min-w-0">
@@ -1044,20 +1331,38 @@ onBeforeUnmount(() => {
               <UiSpinner v-if="searchLoading" :size="13" class="text-fg-faint mr-2" />
             </template>
           </UiInput>
-          <UiSegmented
-            v-if="!searching"
-            v-model="sort"
-            :size="compact ? 'sm' : 'md'"
-            :options="[
-              { value: 'latest', label: 'Latest', icon: compact ? undefined : 'i-carbon-time' },
-              { value: 'top', label: 'Top', icon: compact ? undefined : 'i-carbon-trophy' },
-              { value: 'hot', label: 'Hot', icon: compact ? undefined : 'i-carbon-fire' },
-              { value: 'saved', label: savedPosts.length ? `Saved · ${savedPosts.length}` : 'Saved', icon: compact ? undefined : 'i-carbon-star' },
-            ]"
-          />
-          <span v-else-if="searchedFor" class="text-[12.5px] text-fg-muted">
-            {{ searchResults.length }} result{{ searchResults.length === 1 ? '' : 's' }} for “{{ searchedFor }}”
-          </span>
+          <template v-if="creator">
+            <UiButton size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="leaveCreator">
+              Back
+            </UiButton>
+            <span class="text-[12.5px] text-fg-muted min-w-0 truncate">
+              Script posts by <span class="text-fg font-medium">{{ creator }}</span><template v-if="byCreator.state.q">
+                · {{ byCreator.state.results.length }}{{ byCreator.state.more ? '+' : '' }}
+              </template>
+            </span>
+            <UiSelect v-model="creatorOrder" v-tip="'Order of their posts'" :size="compact ? 'sm' : 'md'" :options="CREATOR_ORDERS" />
+          </template>
+          <template v-else-if="!searching">
+            <UiSegmented
+              v-model="sort"
+              :size="compact ? 'sm' : 'md'"
+              :options="[
+                { value: 'latest', label: 'Latest', icon: compact ? undefined : 'i-carbon-time' },
+                { value: 'top', label: 'Top', icon: compact ? undefined : 'i-carbon-trophy' },
+                { value: 'hot', label: 'Hot', icon: compact ? undefined : 'i-carbon-fire' },
+                { value: 'saved', label: savedPosts.length ? `Saved · ${savedPosts.length}` : 'Saved', icon: compact ? undefined : 'i-carbon-star' },
+              ]"
+            />
+            <UiSelect v-if="sort === 'top'" v-model="topPeriod" v-tip="'Top over this time'" :size="compact ? 'sm' : 'md'" :options="PERIODS" />
+          </template>
+          <template v-else>
+            <span v-if="searchedFor" class="text-[12.5px] text-fg-muted min-w-0 truncate">
+              {{ searchResults.length }}{{ search.state.more ? '+' : '' }} result{{ searchResults.length === 1 && !search.state.more ? '' : 's' }} for “{{ searchedFor }}”<template v-if="selectedTags.length">
+                , tagged {{ selectedTags.map(t => t.name).join(' + ') }}
+              </template>
+            </span>
+            <UiSelect v-model="searchOrder" v-tip="'Order of the results'" :size="compact ? 'sm' : 'md'" :options="SEARCH_ORDERS" />
+          </template>
           <div class="flex-1" />
           <UiSegmented
             v-model="viewMode"
@@ -1070,35 +1375,51 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Tags -->
-        <div v-if="!searching && sort !== 'saved' && availableTags.length" class="flex gap-2 min-w-0 items-center">
-          <UiInput v-model="tagFilter" icon="i-carbon-tag" placeholder="Tags" clearable class="shrink-0 w-36" />
+        <div v-if="!creator && (searching || sort !== 'saved')" class="flex gap-2 min-w-0 items-center">
+          <UiInput v-model="tagFilter" icon="i-carbon-tag" placeholder="Find a tag" clearable class="shrink-0 w-36" @enter="shownTags[0] && toggleTag(shownTags[0])">
+            <template #suffix>
+              <UiSpinner v-if="tagSearching" :size="12" class="text-fg-faint mr-2" />
+            </template>
+          </UiInput>
           <div class="tag-strip py-0.5 flex flex-1 gap-1.5 min-w-0 overflow-x-auto">
             <button
               type="button"
               class="text-[12px] font-medium px-3 focusable border rounded-full shrink-0 h-7 whitespace-nowrap pressable"
-              :class="!activeTag ? 'border-accent/60 bg-accent-soft text-accent-300' : 'border-edge-strong text-fg-muted hover:text-fg hover:border-fg/30'"
-              @click="selectTag(null)"
+              :class="!selectedTags.length ? 'border-accent/60 bg-accent-soft text-accent-300' : 'border-edge-strong text-fg-muted hover:text-fg hover:border-fg/30'"
+              @click="clearTags"
             >
               All
             </button>
             <button
-              v-for="t in shownTags"
-              :key="t.id"
+              v-for="t in selectedTags"
+              :key="`on-${t.name}`"
+              v-tip="selectedTags.length > 1 ? 'Posts with all of these tags · click to take this one off' : 'Click to take this tag off'"
               type="button"
-              class="text-[12px] font-medium px-3 focusable border rounded-full shrink-0 h-7 whitespace-nowrap pressable"
-              :class="activeTag?.id === t.id ? 'border-accent/60 bg-accent-soft text-accent-300' : 'border-edge-strong text-fg-muted hover:text-fg hover:border-fg/30'"
-              @click="selectTag(t)"
+              aria-pressed="true"
+              class="text-[12px] text-accent-300 font-medium pl-3 pr-2 focusable border border-accent/60 rounded-full bg-accent-soft flex shrink-0 gap-1 h-7 whitespace-nowrap pressable items-center"
+              @click="toggleTag(t)"
+            >
+              {{ t.name }}
+              <span class="i-carbon-close text-[12px]" />
+            </button>
+            <button
+              v-for="t in shownTags"
+              :key="t.name"
+              type="button"
+              aria-pressed="false"
+              class="text-[12px] text-fg-muted font-medium px-3 focusable border border-edge-strong rounded-full shrink-0 h-7 whitespace-nowrap pressable hover:text-fg hover:border-fg/30"
+              @click="toggleTag(t)"
             >
               {{ t.name }}
             </button>
-            <span v-if="tagFilter && !shownTags.length" class="hint self-center">No tag matches</span>
+            <span v-if="tagFilter.trim() && !tagSearching && !shownTags.length" class="hint whitespace-nowrap self-center">No tag by that name</span>
           </div>
         </div>
       </div>
 
       <!-- Body: results and the detail sheet -->
       <div class="border-t border-edge" :class="compact ? '' : 'flex flex-1 min-h-0'">
-        <div :class="compact ? '' : 'scroll-y flex-1 min-w-0'">
+        <div ref="listScroll" :class="compact ? '' : 'scroll-y flex-1 min-w-0'">
           <!-- Proxy not running -->
           <div v-if="proxyDown" class="center h-full">
             <UiEmpty size="lg" icon="i-carbon-plug" title="The proxy is not running">
@@ -1159,25 +1480,39 @@ onBeforeUnmount(() => {
             </div>
 
             <UiEmpty
-              v-else-if="searching && searchedFor && !searchResults.length && !searchLoading"
+              v-else-if="creator && byCreator.state.q && !items.length"
+              icon="i-carbon-user"
+              :title="`No script posts by ${creator}`"
+              description="The forum's search found no topics they started in the scripts categories."
+            >
+              <UiButton icon="i-carbon-arrow-left" @click="leaveCreator">
+                Back
+              </UiButton>
+            </UiEmpty>
+            <UiEmpty
+              v-else-if="!creator && searching && searchedFor && !searchResults.length && !searchLoading"
               icon="i-carbon-search"
               :title="`Nothing for “${searchedFor}”`"
               description="Try fewer words, or the performer or studio name on its own."
             />
             <UiEmpty
-              v-else-if="sort === 'saved' && !items.length && !searching"
+              v-else-if="!creator && sort === 'saved' && !items.length && !searching"
               icon="i-carbon-star"
               title="Nothing saved yet"
-              description="Star a post to keep it here: open it later to stream the video again, or download it with its scripts."
+              :description="signedIn
+                ? 'Star a post to keep it here: open it later to stream the video again, or download it with its scripts. Posts you bookmark on the forum show here too.'
+                : 'Star a post to keep it here: open it later to stream the video again, or download it with its scripts.'"
             />
             <UiEmpty
-              v-else-if="!busy && !items.length && !error && !searching"
+              v-else-if="!creator && !busy && !items.length && !error && !searching"
               icon="i-carbon-document-blank"
               title="No scripts here"
-              :description="activeTag ? `Nothing tagged ${activeTag.name} under ${sort}.` : 'The forum returned an empty list.'"
+              :description="selectedTags.length > 1
+                ? `No post under ${sort} has all of these tags: ${selectedTags.map(t => t.name).join(', ')}.`
+                : selectedTags.length ? `Nothing tagged ${selectedTags[0].name} under ${sort}.` : 'The forum returned an empty list.'"
             >
-              <UiButton v-if="activeTag" @click="selectTag(null)">
-                Clear tag
+              <UiButton v-if="selectedTags.length" @click="clearTags">
+                {{ selectedTags.length > 1 ? 'Clear the tags' : 'Clear the tag' }}
               </UiButton>
             </UiEmpty>
 
@@ -1205,6 +1540,14 @@ onBeforeUnmount(() => {
                   <div v-else class="text-fg-faint center h-full w-full">
                     <span class="i-carbon-chart-line text-[28px]" />
                   </div>
+                  <div v-if="isNew(t) || (onSaved && forumBookmarkIds.has(t.id))" class="flex gap-1 left-1.5 top-1.5 absolute">
+                    <UiBadge v-if="isNew(t)" v-tip="'Posted since you last opened EroScripts'" tone="accent" size="xs" solid>
+                      New
+                    </UiBadge>
+                    <UiBadge v-if="onSaved && forumBookmarkIds.has(t.id)" v-tip="'Bookmarked on the forum'" size="xs" solid icon="i-carbon-bookmark-filled">
+                      Forum
+                    </UiBadge>
+                  </div>
                   <span
                     v-tip="isSaved(t.id) ? 'Saved · click to unsave' : 'Save for later'"
                     role="button"
@@ -1227,8 +1570,19 @@ onBeforeUnmount(() => {
                   <p class="text-[13px] text-fg leading-snug font-medium line-clamp-2">
                     {{ t.title }}
                   </p>
-                  <p class="text-[11.5px] text-fg-faint flex gap-2 items-center">
-                    <span>{{ fmtDate(t.created_at) }}</span>
+                  <p class="text-[11.5px] text-fg-faint flex gap-1.5 min-w-0 items-center">
+                    <template v-if="t.creator && t.creator !== creator">
+                      <span
+                        v-tip="`Script posts by ${t.creator}`"
+                        role="button"
+                        tabindex="0"
+                        class="shrink-0 max-w-[50%] truncate hover:text-fg hover:underline"
+                        @click.stop="showCreator(t.creator)"
+                        @keydown.enter.stop.prevent="showCreator(t.creator)"
+                      >{{ t.creator }}</span>
+                      <span aria-hidden="true">·</span>
+                    </template>
+                    <span class="shrink-0">{{ fmtDate(t.created_at) }}</span>
                     <span v-if="t.tags?.length" class="truncate">· {{ t.tags.slice(0, 3).map(tagName).join(', ') }}</span>
                   </p>
                 </div>
@@ -1259,11 +1613,26 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div class="flex flex-1 flex-col gap-1 min-w-0">
-                  <p class="text-[13px] text-fg font-medium truncate">
-                    {{ t.title }}
+                  <p class="text-[13px] text-fg font-medium flex gap-1.5 min-w-0 items-center">
+                    <UiBadge v-if="isNew(t)" v-tip="'Posted since you last opened EroScripts'" tone="accent" size="xs">
+                      New
+                    </UiBadge>
+                    <UiBadge v-if="onSaved && forumBookmarkIds.has(t.id)" v-tip="'Bookmarked on the forum'" size="xs" icon="i-carbon-bookmark-filled">
+                      Forum
+                    </UiBadge>
+                    <span class="truncate">{{ t.title }}</span>
                   </p>
-                  <div class="text-[11.5px] text-fg-faint flex gap-3 items-center">
-                    <span>{{ fmtDate(t.created_at) }}</span>
+                  <div class="text-[11.5px] text-fg-faint flex gap-3 items-center overflow-hidden">
+                    <span
+                      v-if="t.creator && t.creator !== creator"
+                      v-tip="`Script posts by ${t.creator}`"
+                      role="button"
+                      tabindex="0"
+                      class="shrink-0 max-w-[40%] truncate hover:text-fg hover:underline"
+                      @click.stop="showCreator(t.creator)"
+                      @keydown.enter.stop.prevent="showCreator(t.creator)"
+                    >{{ t.creator }}</span>
+                    <span class="shrink-0">{{ fmtDate(t.created_at) }}</span>
                     <span v-if="t.like_count != null" class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
                     <span v-if="t.views != null" class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
                     <span class="flex gap-1 min-w-0">
@@ -1288,10 +1657,27 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
+            <!-- The forum's bookmarks, under Saved -->
+            <div v-if="onSaved && signedIn && (bookmarks.loading || bookmarks.failed || forumBookmarks.length)" class="py-5 flex gap-2 items-center justify-center">
+              <template v-if="bookmarks.loading">
+                <UiSpinner :size="14" class="text-accent-300" />
+                <span class="hint">Loading your bookmarks from the forum</span>
+              </template>
+              <template v-else-if="bookmarks.failed">
+                <span class="hint">{{ bookmarks.failed }}</span>
+                <UiButton size="xs" variant="ghost" @click="loadBookmarks">
+                  Retry
+                </UiButton>
+              </template>
+              <span v-else class="hint text-center">
+                Posts marked Forum are your bookmarks on EroScripts. They are only read from there: add or remove them on the forum.
+              </span>
+            </div>
+
             <!-- Paging -->
-            <div v-if="!searching && sort !== 'saved' && items.length" ref="sentinel" class="py-6 flex justify-center">
-              <UiSpinner v-if="loading" :size="18" class="text-accent-300" />
-              <UiButton v-else-if="hasMore" variant="ghost" @click="loadTopics(false)">
+            <div v-if="(creator || searching || sort !== 'saved') && items.length" ref="sentinel" class="py-6 flex justify-center">
+              <UiSpinner v-if="busy" :size="18" class="text-accent-300" />
+              <UiButton v-else-if="canLoadMore" variant="ghost" @click="loadMore">
                 Load more
               </UiButton>
               <span v-else class="hint">That is everything</span>
@@ -1303,10 +1689,13 @@ onBeforeUnmount(() => {
         <Transition name="t-slide-right">
           <aside v-if="openTopic" class="bg-surface-900 flex shrink-0 flex-col" :class="compact ? 'absolute inset-0 z-30' : 'border-l border-edge w-[420px]'">
             <div class="pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center" :class="compact ? 'pl-1' : 'pl-4'">
-              <UiButton v-if="compact" size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="openTopic = null">
+              <UiButton v-if="compact" size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="closeTopic">
                 Back
               </UiButton>
-              <span v-else class="eyebrow flex-1">Script</span>
+              <template v-else>
+                <UiIconButton v-if="trail.length" icon="i-carbon-arrow-left" label="Back to the post before" size="sm" class="-ml-2" @click="closeTopic" />
+                <span class="eyebrow flex-1">Script</span>
+              </template>
               <span v-if="compact" class="flex-1" />
               <UiIconButton
                 :icon="isSaved(openTopic.id) ? 'i-carbon-star-filled' : 'i-carbon-star'"
@@ -1316,7 +1705,7 @@ onBeforeUnmount(() => {
                 @click="toggleSave(openTopic)"
               />
               <UiIconButton icon="i-carbon-launch" label="Open the post" size="sm" @click="openExternal(postUrl(openTopic))" />
-              <UiIconButton v-if="!compact" icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="openTopic = null" />
+              <UiIconButton v-if="!compact" icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="closeAllTopics" />
             </div>
 
             <div :key="openTopic.id" class="p-4 scroll-y flex flex-1 flex-col gap-5 animate-fade-in" :class="compact ? 'pb-8' : 'pb-[240px]'">
@@ -1329,6 +1718,15 @@ onBeforeUnmount(() => {
                   {{ openTopic.title }}
                 </h2>
                 <div class="text-[12px] text-fg-muted flex flex-wrap gap-x-4 gap-y-1 items-center">
+                  <button
+                    v-if="openTopic.creator"
+                    v-tip="`Script posts by ${openTopic.creator}`"
+                    type="button"
+                    class="flex gap-1.5 min-w-0 items-center hover:text-fg"
+                    @click="showCreator(openTopic.creator)"
+                  >
+                    <span class="i-carbon-user shrink-0" /><span class="truncate hover:underline">{{ openTopic.creator }}</span>
+                  </button>
                   <span class="flex gap-1.5 items-center"><span class="i-carbon-calendar" />{{ fmtDate(openTopic.created_at) }}</span>
                   <span v-if="openTopic.like_count != null" class="flex gap-1.5 items-center"><span class="i-carbon-favorite" />{{ fmtNum(openTopic.like_count) }}</span>
                   <span v-if="openTopic.views != null" class="flex gap-1.5 items-center"><span class="i-carbon-view" />{{ fmtNum(openTopic.views) }}</span>
@@ -1554,6 +1952,45 @@ onBeforeUnmount(() => {
                       </template>
                     </div>
                   </TransitionGroup>
+                </section>
+
+                <!-- More like this -->
+                <section v-if="openTopic.similar?.length" class="flex flex-col gap-2">
+                  <h3 class="eyebrow">
+                    More like this
+                  </h3>
+                  <div class="gap-x-2.5 gap-y-3 grid grid-cols-2">
+                    <button
+                      v-for="s in openTopic.similar"
+                      :key="s.id"
+                      type="button"
+                      class="group text-left focusable rounded-[var(--radius-md)] flex flex-col gap-1.5 min-w-0"
+                      @click="openDetail(s, { fromPost: true })"
+                    >
+                      <div class="rounded-[var(--radius-md)] bg-surface-800 w-full aspect-video ring-1 ring-edge relative overflow-hidden">
+                        <img
+                          v-if="s.image_url && !brokenCovers.has(s.id)"
+                          :src="s.image_url"
+                          alt=""
+                          loading="lazy"
+                          class="h-full w-full transition-transform duration-500 object-cover group-hover:scale-[1.03]"
+                          @error="brokenCovers.add(s.id)"
+                        >
+                        <div v-else class="text-fg-faint center h-full w-full">
+                          <span class="i-carbon-chart-line text-[18px]" />
+                        </div>
+                        <UiBadge v-if="isNew(s)" tone="accent" size="xs" solid class="left-1 top-1 absolute">
+                          New
+                        </UiBadge>
+                      </div>
+                      <p class="text-[12px] text-fg leading-snug font-medium line-clamp-2 group-hover:text-accent-300">
+                        {{ s.title }}
+                      </p>
+                      <p v-if="s.creator" class="text-[11px] text-fg-faint truncate">
+                        {{ s.creator }}
+                      </p>
+                    </button>
+                  </div>
                 </section>
               </template>
             </div>
