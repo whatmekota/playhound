@@ -176,6 +176,7 @@ export const KEYS = {
   scriptEditor: def('ph:ui.scriptEditor', 'ui', 'Script editor snapping, speed warning and height'),
   shareCard: def('ph:ui.shareCard', 'ui', 'Share card look, size, colours, frame and pictures'),
   eroscriptsView: def('ph:ui.eroscripts.view', 'ui', 'EroScripts grid or list'),
+  eroscriptsLastVisit: def('ph:ui.eroscripts.lastVisit', 'ui', 'When EroScripts was last opened, for its New badges'),
   organizerSort: def('ph:ui.organizer.sort', 'ui', 'Organizer sort'),
   queueHistoryOpen: def('ph:ui.queue.historyOpen', 'ui', 'Queue history section'),
   binOpenTone: def('ph:ui.binaural.toneOpen', 'ui', 'Binaural sections'),

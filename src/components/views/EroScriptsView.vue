@@ -15,12 +15,21 @@ import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/c
 import { toast } from '~/composables/useToast'
 import { useAndroidBack } from '~/lib/android/back'
 import { desktop } from '~/lib/browserApi'
-import { foundTags, listHasMore, mergeById, originalPoster, rankTags, searchHasMore, searchPath, searchQuery, searchStarters, tagSearchPath, topicListPath } from '~/lib/eroscripts'
+import { bookmarkTopics, foundTags, isNewSince, listHasMore, mergeById, originalPoster, rankTags, searchHasMore, searchPath, searchQuery, searchStarters, similarTopics, tagSearchPath, topicListPath } from '~/lib/eroscripts'
+import { KEYS } from '~/lib/persist'
 import { isAndroidApp } from '~/lib/platform'
 import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
 import { usePlayerStore } from '~/stores/playerStore'
 import { useUiStore } from '~/stores/uiStore'
+
+defineOptions({ name: 'EroScriptsView' })
+
+/**
+ * When the view was opened before this run of the app; posts since then
+ * are new. Read once a run, so coming back to the view keeps the badges.
+ */
+let lastVisit: number | null | undefined
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ESTag { id: number, name: string, slug: string }
@@ -37,6 +46,8 @@ interface ESTopic {
   image_url: string | null
   /** Who posted it, when the forum said. */
   creator?: string | null
+  /** Posts the forum offers alongside this one, once it is open. */
+  similar?: ESTopic[]
   funscriptUrls?: FunscriptEntry[]
   videoLinks?: VideoLink[]
   loading?: boolean
@@ -79,7 +90,6 @@ interface VideoLink {
   picked?: boolean
 }
 
-defineOptions({ name: 'EroScriptsView' })
 // Browse state lives at module scope so leaving the view and coming back finds
 // the same results, scroll aside, instead of refetching from page one.
 /** The phone layout: the search gets a row of its own. */
@@ -114,6 +124,15 @@ const SEARCH_ORDERS: { value: SearchOrder, label: string }[] = [
   { value: 'views', label: 'Most viewed' },
 ]
 const CREATOR_ORDERS = SEARCH_ORDERS.filter(o => o.value !== 'relevance')
+
+/** The lists' scroll boxes: the outer one on a phone, the inner one elsewhere. */
+const outerScroll = ref<HTMLElement | null>(null)
+const listScroll = ref<HTMLElement | null>(null)
+/** A list started over starts at its top, not where the last one was scrolled to (which would fetch its second page at once). */
+function toListTop() {
+  for (const el of [outerScroll.value, listScroll.value])
+    el?.scrollTo({ top: 0 })
+}
 
 // On a phone a post covers the list: the phone's Back button closes it, while
 // this view is on screen (kept alive behind another view, Back is not its).
@@ -330,6 +349,13 @@ async function copyCommand() {
   catch {}
 }
 
+// ─── New since the last visit ─────────────────────────────────────────────────
+if (lastVisit === undefined) {
+  lastVisit = Number(lsGet(KEYS.eroscriptsLastVisit.key)) || null
+  lsSet(KEYS.eroscriptsLastVisit.key, String(Date.now()))
+}
+const isNew = (t: ESTopic) => isNewSince(t.created_at, lastVisit ?? null)
+
 // ─── View mode ────────────────────────────────────────────────────────────────
 const viewMode = ref<'grid' | 'list'>(lsGet('ph:ui.eroscripts.view') === 'list' ? 'list' : 'grid')
 watch(viewMode, v => lsSet('ph:ui.eroscripts.view', v))
@@ -374,7 +400,7 @@ async function loadTopics(reset = false) {
 }
 
 function reload() {
-  return creator.value ? byCreator.load(true) : searching.value ? doSearch() : loadTopics(true)
+  return creator.value ? byCreator.load(true) : searching.value ? doSearch() : sort.value === 'saved' ? loadBookmarks() : loadTopics(true)
 }
 
 /** Add a tag to the filter, or take it off. */
@@ -389,14 +415,20 @@ function clearTags() {
     selectedTags.value = []
 }
 watch(selectedTags, () => {
+  toListTop()
   void loadTopics(true)
   if (searching.value)
     void doSearch()
 })
-watch(sort, () => void loadTopics(true))
+watch(sort, () => {
+  toListTop()
+  void loadTopics(true)
+})
 watch(topPeriod, () => {
-  if (sort.value === 'top')
-    void loadTopics(true)
+  if (sort.value !== 'top')
+    return
+  toListTop()
+  void loadTopics(true)
 })
 
 onMounted(() => {
@@ -462,8 +494,10 @@ watch(query, (q) => {
   searchTimer = setTimeout(doSearch, 450)
 })
 watch(searchOrder, () => {
-  if (searching.value)
-    void doSearch()
+  if (!searching.value)
+    return
+  toListTop()
+  void doSearch()
 })
 
 /** A topic as search returns it: no cover URL, only the cover's thumbnails. */
@@ -547,9 +581,6 @@ function doSearch() {
 // (their profile's list of topics is closed to visitors). Back returns to
 // the list as it was, scrolled to where it was.
 const byCreator = pagedSearch(() => (creator.value ? { q: searchQuery({ creator: creator.value, order: creatorOrder.value }), label: creator.value } : null), 'Could not load their posts')
-/** The lists' scroll boxes: the outer one on a phone, the inner one elsewhere. */
-const outerScroll = ref<HTMLElement | null>(null)
-const listScroll = ref<HTMLElement | null>(null)
 let scrollBeforeCreator = 0
 
 function showCreator(name: string | null | undefined) {
@@ -562,8 +593,7 @@ function showCreator(name: string | null | undefined) {
     scrollBeforeCreator = (compact.value ? outerScroll.value : listScroll.value)?.scrollTop ?? 0
   creator.value = name
   void byCreator.load(true)
-  for (const el of [outerScroll.value, listScroll.value])
-    el?.scrollTo({ top: 0 })
+  toListTop()
 }
 function leaveCreator() {
   creator.value = null
@@ -571,8 +601,10 @@ function leaveCreator() {
   void nextTick(() => (compact.value ? outerScroll.value : listScroll.value)?.scrollTo({ top: scrollBeforeCreator }))
 }
 watch(creatorOrder, () => {
-  if (creator.value)
-    void byCreator.load(true)
+  if (!creator.value)
+    return
+  toListTop()
+  void byCreator.load(true)
 })
 useAndroidBack(() => compact.value && !!creator.value && onScreen.value, leaveCreator)
 
@@ -591,7 +623,73 @@ const savedTopics = computed<ESTopic[]>(() => savedPosts.value.map((p) => {
   }
   return t
 }))
-const items = computed(() => (creator.value ? byCreator.state.results : searching.value ? searchResults.value : sort.value === 'saved' ? savedTopics.value : topics.value))
+// ─── Forum bookmarks ──────────────────────────────────────────────────────────
+// Signed in, Saved also lists the bookmarks on the forum account. Read only:
+// they are changed on the forum, and starring one here saves it here.
+const forumBookmarks = ref<ESTopic[]>([])
+const bookmarks = reactive({ loading: false, loaded: false, failed: '' })
+const forumBookmarkIds = computed(() => new Set(forumBookmarks.value.map(t => t.id)))
+/** Pages of bookmarks read at most. */
+const MAX_BOOKMARK_PAGES = 10
+let bookmarkSeq = 0
+
+function resetBookmarks() {
+  bookmarkSeq++
+  forumBookmarks.value = []
+  Object.assign(bookmarks, { loading: false, loaded: false, failed: '' })
+}
+
+async function loadBookmarks() {
+  if (!signedIn.value)
+    return resetBookmarks()
+  const seq = ++bookmarkSeq
+  bookmarks.loading = true
+  bookmarks.failed = ''
+  try {
+    // Who the session is: the bookmarks are listed under the user's name.
+    const me = await apiFetch('/session/current.json', { quiet: true }).catch(() => null)
+    const user = me?.current_user?.username
+    if (seq !== bookmarkSeq)
+      return
+    if (typeof user !== 'string' || !user) {
+      bookmarks.failed = 'The forum treats this session as signed out, so your bookmarks there cannot be listed. Sign in again to see them.'
+      return
+    }
+    let all: ESTopic[] = []
+    for (const page of Array.from({ length: MAX_BOOKMARK_PAGES }, (_, i) => i)) {
+      const data = await apiFetch(`/u/${encodeURIComponent(user)}/bookmarks.json${page ? `?page=${page}` : ''}`, { quiet: true })
+      if (seq !== bookmarkSeq)
+        return
+      const got = bookmarkTopics(data).map(t => reactive({ ...t }) as ESTopic)
+      all = mergeById(all, got)
+      forumBookmarks.value = all
+      if (!got.length || !data?.user_bookmark_list?.more_bookmarks_url)
+        break
+    }
+    bookmarks.loaded = true
+  }
+  catch (e: any) {
+    if (seq === bookmarkSeq)
+      bookmarks.failed = `Your forum bookmarks could not be loaded: ${e?.message ?? 'the forum did not answer'}.`
+  }
+  finally {
+    if (seq === bookmarkSeq)
+      bookmarks.loading = false
+  }
+}
+
+watch(signedIn, resetBookmarks)
+watch(() => sort.value === 'saved' && signedIn.value, (on) => {
+  if (on && !bookmarks.loaded && !bookmarks.loading)
+    void loadBookmarks()
+}, { immediate: true })
+
+/** Under Saved: the posts saved here, then the forum's bookmarks not among them. */
+const savedItems = computed(() => [...savedTopics.value, ...forumBookmarks.value.filter(t => !isSaved(t.id))])
+/** Saved is showing, where forum bookmarks are marked as such. */
+const onSaved = computed(() => sort.value === 'saved' && !searching.value && !creator.value)
+
+const items = computed(() => (creator.value ? byCreator.state.results : searching.value ? searchResults.value : sort.value === 'saved' ? savedItems.value : topics.value))
 
 function toggleSave(t: ESTopic) {
   const saved = toggleSaved(t)
@@ -601,7 +699,7 @@ function toggleSave(t: ESTopic) {
     key: 'es-save',
   })
 }
-const busy = computed(() => (creator.value ? byCreator.state.loading : searching.value ? searchLoading.value : loading.value))
+const busy = computed(() => (creator.value ? byCreator.state.loading : searching.value ? searchLoading.value : sort.value === 'saved' ? bookmarks.loading : loading.value))
 
 // Infinite scroll: fetch the next page as the bottom comes into view.
 /** Whatever is listed has another page to fetch. */
@@ -822,8 +920,13 @@ async function loadDetail(topic: ESTopic) {
     topic.like_count ??= data?.like_count ?? null
     topic.views ??= data?.views ?? null
     topic.creator ||= data?.details?.created_by?.username ?? data?.post_stream?.posts?.[0]?.username ?? null
+    // A forum bookmark comes without its date and tags.
+    topic.created_at ||= data?.created_at ?? ''
+    if (!topic.tags?.length && Array.isArray(data?.tags))
+      topic.tags = data.tags
+    topic.similar = similarTopics(data, topic.id).map(t => withCover({ ...t, creator: originalPoster(t) }))
     if (isSaved(topic.id))
-      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views, creator: topic.creator })
+      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views, creator: topic.creator, created_at: topic.created_at })
     const first: ESPost | undefined = data?.post_stream?.posts?.[0]
     if (!first) {
       topic.funscriptUrls = []
@@ -936,17 +1039,26 @@ async function addReplyLinks(topic: ESTopic, data: any) {
   }
 }
 
-function openDetail(topic: ESTopic) {
+/** Posts left for one of their More like this, newest last: Back goes through them. */
+const trail = ref<ESTopic[]>([])
+
+function openDetail(topic: ESTopic, { fromPost = false } = {}) {
+  if (fromPost && openTopic.value)
+    trail.value.push(openTopic.value)
+  else
+    trail.value = []
   // Through the reactive proxy, so what loadDetail fills in shows up.
   const t = reactive(topic) as ESTopic
   openTopic.value = t
   void loadDetail(t)
 }
 
+/** Back to the post this one was opened from, or closed. */
 function closeTopic() {
-  openTopic.value = null
+  openTopic.value = trail.value.pop() ?? null
 }
 function closeAllTopics() {
+  trail.value = []
   openTopic.value = null
 }
 
@@ -1153,7 +1265,7 @@ async function download(topic: ESTopic, link: VideoLink) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const tagName = (t: string | ESTag) => (typeof t === 'string' ? t : t.name)
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+const fmtDate = (iso: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '')
 const fmtNum = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 const fmtSize = (b: number) => (b >= 1 << 30 ? `${(b / (1 << 30)).toFixed(1)} GB` : `${(b / (1 << 20)).toFixed(1)} MB`)
 const postUrl = (t: ESTopic) => `${BASE}/t/${t.slug}/${t.id}`
@@ -1392,7 +1504,9 @@ onBeforeUnmount(() => {
               v-else-if="!creator && sort === 'saved' && !items.length && !searching"
               icon="i-carbon-star"
               title="Nothing saved yet"
-              description="Star a post to keep it here: open it later to stream the video again, or download it with its scripts."
+              :description="signedIn
+                ? 'Star a post to keep it here: open it later to stream the video again, or download it with its scripts. Posts you bookmark on the forum show here too.'
+                : 'Star a post to keep it here: open it later to stream the video again, or download it with its scripts.'"
             />
             <UiEmpty
               v-else-if="!creator && !busy && !items.length && !error && !searching"
@@ -1431,6 +1545,14 @@ onBeforeUnmount(() => {
                   <div v-else class="text-fg-faint center h-full w-full">
                     <span class="i-carbon-chart-line text-[28px]" />
                   </div>
+                  <div v-if="isNew(t) || (onSaved && forumBookmarkIds.has(t.id))" class="flex gap-1 left-1.5 top-1.5 absolute">
+                    <UiBadge v-if="isNew(t)" v-tip="'Posted since you last opened EroScripts'" tone="accent" size="xs" solid>
+                      New
+                    </UiBadge>
+                    <UiBadge v-if="onSaved && forumBookmarkIds.has(t.id)" v-tip="'Bookmarked on the forum'" size="xs" solid icon="i-carbon-bookmark-filled">
+                      Forum
+                    </UiBadge>
+                  </div>
                   <span
                     v-tip="isSaved(t.id) ? 'Saved · click to unsave' : 'Save for later'"
                     role="button"
@@ -1459,7 +1581,7 @@ onBeforeUnmount(() => {
                         v-tip="`Script posts by ${t.creator}`"
                         role="button"
                         tabindex="0"
-                        class="max-w-[50%] truncate hover:text-fg hover:underline"
+                        class="shrink-0 max-w-[50%] truncate hover:text-fg hover:underline"
                         @click.stop="showCreator(t.creator)"
                         @keydown.enter.stop.prevent="showCreator(t.creator)"
                       >{{ t.creator }}</span>
@@ -1496,8 +1618,14 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
                 <div class="flex flex-1 flex-col gap-1 min-w-0">
-                  <p class="text-[13px] text-fg font-medium truncate">
-                    {{ t.title }}
+                  <p class="text-[13px] text-fg font-medium flex gap-1.5 min-w-0 items-center">
+                    <UiBadge v-if="isNew(t)" v-tip="'Posted since you last opened EroScripts'" tone="accent" size="xs">
+                      New
+                    </UiBadge>
+                    <UiBadge v-if="onSaved && forumBookmarkIds.has(t.id)" v-tip="'Bookmarked on the forum'" size="xs" icon="i-carbon-bookmark-filled">
+                      Forum
+                    </UiBadge>
+                    <span class="truncate">{{ t.title }}</span>
                   </p>
                   <div class="text-[11.5px] text-fg-faint flex gap-3 items-center overflow-hidden">
                     <span
@@ -1505,7 +1633,7 @@ onBeforeUnmount(() => {
                       v-tip="`Script posts by ${t.creator}`"
                       role="button"
                       tabindex="0"
-                      class="max-w-[40%] truncate hover:text-fg hover:underline"
+                      class="shrink-0 max-w-[40%] truncate hover:text-fg hover:underline"
                       @click.stop="showCreator(t.creator)"
                       @keydown.enter.stop.prevent="showCreator(t.creator)"
                     >{{ t.creator }}</span>
@@ -1534,6 +1662,23 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
+            <!-- The forum's bookmarks, under Saved -->
+            <div v-if="onSaved && signedIn && (bookmarks.loading || bookmarks.failed || forumBookmarks.length)" class="py-5 flex gap-2 items-center justify-center">
+              <template v-if="bookmarks.loading">
+                <UiSpinner :size="14" class="text-accent-300" />
+                <span class="hint">Loading your bookmarks from the forum</span>
+              </template>
+              <template v-else-if="bookmarks.failed">
+                <span class="hint">{{ bookmarks.failed }}</span>
+                <UiButton size="xs" variant="ghost" @click="loadBookmarks">
+                  Retry
+                </UiButton>
+              </template>
+              <span v-else class="hint text-center">
+                Posts marked Forum are your bookmarks on EroScripts. They are only read from there: add or remove them on the forum.
+              </span>
+            </div>
+
             <!-- Paging -->
             <div v-if="(creator || searching || sort !== 'saved') && items.length" ref="sentinel" class="py-6 flex justify-center">
               <UiSpinner v-if="busy" :size="18" class="text-accent-300" />
@@ -1552,7 +1697,10 @@ onBeforeUnmount(() => {
               <UiButton v-if="compact" size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="closeTopic">
                 Back
               </UiButton>
-              <span v-else class="eyebrow flex-1">Script</span>
+              <template v-else>
+                <UiIconButton v-if="trail.length" icon="i-carbon-arrow-left" label="Back to the post before" size="sm" class="-ml-2" @click="closeTopic" />
+                <span class="eyebrow flex-1">Script</span>
+              </template>
               <span v-if="compact" class="flex-1" />
               <UiIconButton
                 :icon="isSaved(openTopic.id) ? 'i-carbon-star-filled' : 'i-carbon-star'"
@@ -1809,6 +1957,45 @@ onBeforeUnmount(() => {
                       </template>
                     </div>
                   </TransitionGroup>
+                </section>
+
+                <!-- More like this -->
+                <section v-if="openTopic.similar?.length" class="flex flex-col gap-2">
+                  <h3 class="eyebrow">
+                    More like this
+                  </h3>
+                  <div class="gap-x-2.5 gap-y-3 grid grid-cols-2">
+                    <button
+                      v-for="s in openTopic.similar"
+                      :key="s.id"
+                      type="button"
+                      class="group text-left focusable rounded-[var(--radius-md)] flex flex-col gap-1.5 min-w-0"
+                      @click="openDetail(s, { fromPost: true })"
+                    >
+                      <div class="rounded-[var(--radius-md)] bg-surface-800 w-full aspect-video ring-1 ring-edge relative overflow-hidden">
+                        <img
+                          v-if="s.image_url && !brokenCovers.has(s.id)"
+                          :src="s.image_url"
+                          alt=""
+                          loading="lazy"
+                          class="h-full w-full transition-transform duration-500 object-cover group-hover:scale-[1.03]"
+                          @error="brokenCovers.add(s.id)"
+                        >
+                        <div v-else class="text-fg-faint center h-full w-full">
+                          <span class="i-carbon-chart-line text-[18px]" />
+                        </div>
+                        <UiBadge v-if="isNew(s)" tone="accent" size="xs" solid class="left-1 top-1 absolute">
+                          New
+                        </UiBadge>
+                      </div>
+                      <p class="text-[12px] text-fg leading-snug font-medium line-clamp-2 group-hover:text-accent-300">
+                        {{ s.title }}
+                      </p>
+                      <p v-if="s.creator" class="text-[11px] text-fg-faint truncate">
+                        {{ s.creator }}
+                      </p>
+                    </button>
+                  </div>
                 </section>
               </template>
             </div>
