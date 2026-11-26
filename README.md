@@ -265,9 +265,10 @@ be loaded by hand from the **Scripts** panel; on Android the picker shows every
 file (it does not know the `.funscript` type), and anything that is not a
 `.funscript` is turned away.
 
-On Windows, `start.bat` starts everything at once: the app, the
-EroScripts proxy (`:7071`) and the remote relay (`:7072`). If you've built the
-desktop app, it launches that instead.
+On Windows, `start.bat` starts the desktop app from your checkout, as the code
+is now, with live reload: the app, the EroScripts proxy (`:7071`) and the
+remote relay (`:7072`). `start.bat built` launches the built or installed app
+instead, and `start.bat browser` runs it in your browser.
 
 ### Desktop app (Windows)
 
