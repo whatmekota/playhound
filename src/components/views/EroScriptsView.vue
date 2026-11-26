@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 </script>
 
 <script setup lang="ts">
@@ -15,7 +15,7 @@ import { installYtdlp, playSource, resolveStream, StreamError, ytdlp } from '~/c
 import { toast } from '~/composables/useToast'
 import { useAndroidBack } from '~/lib/android/back'
 import { desktop } from '~/lib/browserApi'
-import { foundTags, listHasMore, mergeById, rankTags, searchHasMore, searchPath, searchQuery, tagSearchPath, topicListPath } from '~/lib/eroscripts'
+import { foundTags, listHasMore, mergeById, originalPoster, rankTags, searchHasMore, searchPath, searchQuery, searchStarters, tagSearchPath, topicListPath } from '~/lib/eroscripts'
 import { isAndroidApp } from '~/lib/platform'
 import { classifyPostScripts, pickVideo, scriptsForVideo } from '~/lib/postScripts'
 import { detectStreamHost } from '~/lib/streamHosts'
@@ -35,6 +35,8 @@ interface ESTopic {
   category_id: number
   tags: (string | ESTag)[]
   image_url: string | null
+  /** Who posted it, when the forum said. */
+  creator?: string | null
   funscriptUrls?: FunscriptEntry[]
   videoLinks?: VideoLink[]
   loading?: boolean
@@ -94,6 +96,9 @@ const selectedTags = ref<ESTag[]>([])
 const query = ref('')
 const searchOrder = ref<SearchOrder>('relevance')
 const openTopic = ref<ESTopic | null>(null)
+/** Listing one person's script posts instead: whose. */
+const creator = ref<string | null>(null)
+const creatorOrder = ref<SearchOrder>('newest')
 
 const PERIODS: { value: TopPeriod, label: string }[] = [
   { value: 'daily', label: 'Today' },
@@ -108,13 +113,14 @@ const SEARCH_ORDERS: { value: SearchOrder, label: string }[] = [
   { value: 'likes', label: 'Most liked' },
   { value: 'views', label: 'Most viewed' },
 ]
+const CREATOR_ORDERS = SEARCH_ORDERS.filter(o => o.value !== 'relevance')
 
 // On a phone a post covers the list: the phone's Back button closes it, while
 // this view is on screen (kept alive behind another view, Back is not its).
 const onScreen = ref(true)
 onActivated(() => (onScreen.value = true))
 onDeactivated(() => (onScreen.value = false))
-useAndroidBack(() => compact.value && !!openTopic.value && onScreen.value, () => (openTopic.value = null))
+useAndroidBack(() => compact.value && !!openTopic.value && onScreen.value, () => closeTopic())
 
 const BASE = 'https://discuss.eroscripts.com'
 const PROXY = 'http://localhost:7071'
@@ -349,7 +355,8 @@ async function loadTopics(reset = false) {
     const data = await apiFetch(topicListPath(SCRIPTS_PATH, { sort: sort.value, tags, period: topPeriod.value, page: page.value }))
     if (seq !== listSeq)
       return
-    const list: ESTopic[] = data?.topic_list?.topics ?? []
+    const users = data?.users ?? []
+    const list: ESTopic[] = (data?.topic_list?.topics ?? []).map((t: any) => ({ ...t, creator: originalPoster(t, users) }))
     if (reset && !tags.length && data?.topic_list?.top_tags?.length)
       availableTags.value = data.topic_list.top_tags
     topics.value = reset ? list : mergeById(topics.value, list)
@@ -367,7 +374,7 @@ async function loadTopics(reset = false) {
 }
 
 function reload() {
-  return searching.value ? doSearch() : loadTopics(true)
+  return creator.value ? byCreator.load(true) : searching.value ? doSearch() : loadTopics(true)
 }
 
 /** Add a tag to the filter, or take it off. */
@@ -445,6 +452,9 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(query, (q) => {
   clearTimeout(searchTimer)
+  // Typing a search leaves someone's list of posts for the results.
+  if (q.trim() && creator.value)
+    leaveCreator()
   if (!q.trim()) {
     search.clear()
     return
@@ -495,7 +505,8 @@ function pagedSearch(build: () => { q: string, label: string } | null, failed: s
       const data = await apiFetch(searchPath(next.q, page))
       if (n !== seq)
         return
-      const found = ((data?.topics ?? []) as SearchTopic[]).map(withCover)
+      const starters = searchStarters(data?.posts)
+      const found = ((data?.topics ?? []) as SearchTopic[]).map(t => withCover({ ...t, creator: starters.get(t.id) ?? null }))
       state.results = reset ? found : mergeById(state.results, found)
       state.page = page
       state.more = searchHasMore(data) && found.length > 0
@@ -531,6 +542,40 @@ function doSearch() {
   return search.load(true)
 }
 
+// ─── A creator's posts ────────────────────────────────────────────────────────
+// The topics they started in the scripts categories, by the forum's search
+// (their profile's list of topics is closed to visitors). Back returns to
+// the list as it was, scrolled to where it was.
+const byCreator = pagedSearch(() => (creator.value ? { q: searchQuery({ creator: creator.value, order: creatorOrder.value }), label: creator.value } : null), 'Could not load their posts')
+/** The lists' scroll boxes: the outer one on a phone, the inner one elsewhere. */
+const outerScroll = ref<HTMLElement | null>(null)
+const listScroll = ref<HTMLElement | null>(null)
+let scrollBeforeCreator = 0
+
+function showCreator(name: string | null | undefined) {
+  if (!name)
+    return
+  // On a phone the post covers the list the posts are about to fill.
+  if (compact.value)
+    closeAllTopics()
+  if (!creator.value)
+    scrollBeforeCreator = (compact.value ? outerScroll.value : listScroll.value)?.scrollTop ?? 0
+  creator.value = name
+  void byCreator.load(true)
+  for (const el of [outerScroll.value, listScroll.value])
+    el?.scrollTo({ top: 0 })
+}
+function leaveCreator() {
+  creator.value = null
+  byCreator.clear()
+  void nextTick(() => (compact.value ? outerScroll.value : listScroll.value)?.scrollTo({ top: scrollBeforeCreator }))
+}
+watch(creatorOrder, () => {
+  if (creator.value)
+    void byCreator.load(true)
+})
+useAndroidBack(() => compact.value && !!creator.value && onScreen.value, leaveCreator)
+
 /** Saved posts, newest saved first, in the shape the lists draw. */
 // One reactive topic per saved post, kept across changes to the list, so an
 // opened post loads in place (loadDetail writes to it) and stays loaded.
@@ -542,11 +587,11 @@ const savedTopics = computed<ESTopic[]>(() => savedPosts.value.map((p) => {
     savedTopicCache.set(p.id, t)
   }
   else {
-    Object.assign(t, { title: p.title, image_url: p.image_url, like_count: p.like_count, views: p.views })
+    Object.assign(t, { title: p.title, image_url: p.image_url, like_count: p.like_count, views: p.views, creator: p.creator ?? t.creator })
   }
   return t
 }))
-const items = computed(() => (searching.value ? searchResults.value : sort.value === 'saved' ? savedTopics.value : topics.value))
+const items = computed(() => (creator.value ? byCreator.state.results : searching.value ? searchResults.value : sort.value === 'saved' ? savedTopics.value : topics.value))
 
 function toggleSave(t: ESTopic) {
   const saved = toggleSaved(t)
@@ -556,15 +601,17 @@ function toggleSave(t: ESTopic) {
     key: 'es-save',
   })
 }
-const busy = computed(() => (searching.value ? searchLoading.value : loading.value))
+const busy = computed(() => (creator.value ? byCreator.state.loading : searching.value ? searchLoading.value : loading.value))
 
 // Infinite scroll: fetch the next page as the bottom comes into view.
 /** Whatever is listed has another page to fetch. */
-const canLoadMore = computed(() => (searching.value ? search.state.more : sort.value !== 'saved' && hasMore.value))
+const canLoadMore = computed(() => (creator.value ? byCreator.state.more : searching.value ? search.state.more : sort.value !== 'saved' && hasMore.value))
 function loadMore() {
   if (proxyDown.value || !items.value.length)
     return
-  if (searching.value)
+  if (creator.value)
+    void byCreator.load(false)
+  else if (searching.value)
     void search.load(false)
   else if (sort.value !== 'saved')
     void loadTopics(false)
@@ -774,8 +821,9 @@ async function loadDetail(topic: ESTopic) {
     topic.image_url ??= data?.image_url ?? null
     topic.like_count ??= data?.like_count ?? null
     topic.views ??= data?.views ?? null
+    topic.creator ||= data?.details?.created_by?.username ?? data?.post_stream?.posts?.[0]?.username ?? null
     if (isSaved(topic.id))
-      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views })
+      refreshSaved(topic.id, { image_url: topic.image_url, like_count: topic.like_count, views: topic.views, creator: topic.creator })
     const first: ESPost | undefined = data?.post_stream?.posts?.[0]
     if (!first) {
       topic.funscriptUrls = []
@@ -893,6 +941,13 @@ function openDetail(topic: ESTopic) {
   const t = reactive(topic) as ESTopic
   openTopic.value = t
   void loadDetail(t)
+}
+
+function closeTopic() {
+  openTopic.value = null
+}
+function closeAllTopics() {
+  openTopic.value = null
 }
 
 /** The link "Play" uses: one that is ready, else one that may still work. */
@@ -1077,6 +1132,7 @@ async function download(topic: ESTopic, link: VideoLink) {
     },
     tags: topic.tags,
     url: postUrl(topic),
+    creator: topic.creator ?? undefined,
   })
   if (job.phase === 'done') {
     countMoment('download')
@@ -1113,7 +1169,7 @@ function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape' || !openTopic.value || cookieOpen.value || (e.target as HTMLElement).closest?.('input, textarea, select'))
     return
   e.stopPropagation()
-  openTopic.value = null
+  closeTopic()
 }
 onMounted(() => document.addEventListener('keydown', onKey, true))
 onBeforeUnmount(() => {
@@ -1127,7 +1183,7 @@ onBeforeUnmount(() => {
     <!-- On a phone the header and toolbar scroll away with the list, which
          they would otherwise leave a third of the screen; a post opens over
          all of it. Elsewhere this box is not there (display: contents). -->
-    <div :class="compact ? 'scroll-y flex-1' : 'contents'">
+    <div ref="outerScroll" :class="compact ? 'scroll-y flex-1' : 'contents'">
       <!-- Header -->
       <header class="flex shrink-0 gap-4" :class="compact ? 'ph-head-row px-4 pb-2 pt-3 items-center' : 'px-6 pb-4 pt-5 items-end'">
         <div class="flex-1 min-w-0">
@@ -1168,7 +1224,18 @@ onBeforeUnmount(() => {
               <UiSpinner v-if="searchLoading" :size="13" class="text-fg-faint mr-2" />
             </template>
           </UiInput>
-          <template v-if="!searching">
+          <template v-if="creator">
+            <UiButton size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="leaveCreator">
+              Back
+            </UiButton>
+            <span class="text-[12.5px] text-fg-muted min-w-0 truncate">
+              Script posts by <span class="text-fg font-medium">{{ creator }}</span><template v-if="byCreator.state.q">
+                · {{ byCreator.state.results.length }}{{ byCreator.state.more ? '+' : '' }}
+              </template>
+            </span>
+            <UiSelect v-model="creatorOrder" v-tip="'Order of their posts'" :size="compact ? 'sm' : 'md'" :options="CREATOR_ORDERS" />
+          </template>
+          <template v-else-if="!searching">
             <UiSegmented
               v-model="sort"
               :size="compact ? 'sm' : 'md'"
@@ -1201,7 +1268,7 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Tags -->
-        <div v-if="searching || sort !== 'saved'" class="flex gap-2 min-w-0 items-center">
+        <div v-if="!creator && (searching || sort !== 'saved')" class="flex gap-2 min-w-0 items-center">
           <UiInput v-model="tagFilter" icon="i-carbon-tag" placeholder="Find a tag" clearable class="shrink-0 w-36" @enter="shownTags[0] && toggleTag(shownTags[0])">
             <template #suffix>
               <UiSpinner v-if="tagSearching" :size="12" class="text-fg-faint mr-2" />
@@ -1245,7 +1312,7 @@ onBeforeUnmount(() => {
 
       <!-- Body: results and the detail sheet -->
       <div class="border-t border-edge" :class="compact ? '' : 'flex flex-1 min-h-0'">
-        <div :class="compact ? '' : 'scroll-y flex-1 min-w-0'">
+        <div ref="listScroll" :class="compact ? '' : 'scroll-y flex-1 min-w-0'">
           <!-- Proxy not running -->
           <div v-if="proxyDown" class="center h-full">
             <UiEmpty size="lg" icon="i-carbon-plug" title="The proxy is not running">
@@ -1306,19 +1373,29 @@ onBeforeUnmount(() => {
             </div>
 
             <UiEmpty
-              v-else-if="searching && searchedFor && !searchResults.length && !searchLoading"
+              v-else-if="creator && byCreator.state.q && !items.length"
+              icon="i-carbon-user"
+              :title="`No script posts by ${creator}`"
+              description="The forum's search found no topics they started in the scripts categories."
+            >
+              <UiButton icon="i-carbon-arrow-left" @click="leaveCreator">
+                Back
+              </UiButton>
+            </UiEmpty>
+            <UiEmpty
+              v-else-if="!creator && searching && searchedFor && !searchResults.length && !searchLoading"
               icon="i-carbon-search"
               :title="`Nothing for “${searchedFor}”`"
               description="Try fewer words, or the performer or studio name on its own."
             />
             <UiEmpty
-              v-else-if="sort === 'saved' && !items.length && !searching"
+              v-else-if="!creator && sort === 'saved' && !items.length && !searching"
               icon="i-carbon-star"
               title="Nothing saved yet"
               description="Star a post to keep it here: open it later to stream the video again, or download it with its scripts."
             />
             <UiEmpty
-              v-else-if="!busy && !items.length && !error && !searching"
+              v-else-if="!creator && !busy && !items.length && !error && !searching"
               icon="i-carbon-document-blank"
               title="No scripts here"
               :description="selectedTags.length > 1
@@ -1376,8 +1453,19 @@ onBeforeUnmount(() => {
                   <p class="text-[13px] text-fg leading-snug font-medium line-clamp-2">
                     {{ t.title }}
                   </p>
-                  <p class="text-[11.5px] text-fg-faint flex gap-2 items-center">
-                    <span>{{ fmtDate(t.created_at) }}</span>
+                  <p class="text-[11.5px] text-fg-faint flex gap-1.5 min-w-0 items-center">
+                    <template v-if="t.creator && t.creator !== creator">
+                      <span
+                        v-tip="`Script posts by ${t.creator}`"
+                        role="button"
+                        tabindex="0"
+                        class="max-w-[50%] truncate hover:text-fg hover:underline"
+                        @click.stop="showCreator(t.creator)"
+                        @keydown.enter.stop.prevent="showCreator(t.creator)"
+                      >{{ t.creator }}</span>
+                      <span aria-hidden="true">·</span>
+                    </template>
+                    <span class="shrink-0">{{ fmtDate(t.created_at) }}</span>
                     <span v-if="t.tags?.length" class="truncate">· {{ t.tags.slice(0, 3).map(tagName).join(', ') }}</span>
                   </p>
                 </div>
@@ -1411,8 +1499,17 @@ onBeforeUnmount(() => {
                   <p class="text-[13px] text-fg font-medium truncate">
                     {{ t.title }}
                   </p>
-                  <div class="text-[11.5px] text-fg-faint flex gap-3 items-center">
-                    <span>{{ fmtDate(t.created_at) }}</span>
+                  <div class="text-[11.5px] text-fg-faint flex gap-3 items-center overflow-hidden">
+                    <span
+                      v-if="t.creator && t.creator !== creator"
+                      v-tip="`Script posts by ${t.creator}`"
+                      role="button"
+                      tabindex="0"
+                      class="max-w-[40%] truncate hover:text-fg hover:underline"
+                      @click.stop="showCreator(t.creator)"
+                      @keydown.enter.stop.prevent="showCreator(t.creator)"
+                    >{{ t.creator }}</span>
+                    <span class="shrink-0">{{ fmtDate(t.created_at) }}</span>
                     <span v-if="t.like_count != null" class="flex gap-1 items-center"><span class="i-carbon-favorite" />{{ fmtNum(t.like_count) }}</span>
                     <span v-if="t.views != null" class="flex gap-1 items-center"><span class="i-carbon-view" />{{ fmtNum(t.views) }}</span>
                     <span class="flex gap-1 min-w-0">
@@ -1438,7 +1535,7 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- Paging -->
-            <div v-if="(searching || sort !== 'saved') && items.length" ref="sentinel" class="py-6 flex justify-center">
+            <div v-if="(creator || searching || sort !== 'saved') && items.length" ref="sentinel" class="py-6 flex justify-center">
               <UiSpinner v-if="busy" :size="18" class="text-accent-300" />
               <UiButton v-else-if="canLoadMore" variant="ghost" @click="loadMore">
                 Load more
@@ -1452,7 +1549,7 @@ onBeforeUnmount(() => {
         <Transition name="t-slide-right">
           <aside v-if="openTopic" class="bg-surface-900 flex shrink-0 flex-col" :class="compact ? 'absolute inset-0 z-30' : 'border-l border-edge w-[420px]'">
             <div class="pr-2 border-b border-edge flex shrink-0 gap-2 h-11 items-center" :class="compact ? 'pl-1' : 'pl-4'">
-              <UiButton v-if="compact" size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="openTopic = null">
+              <UiButton v-if="compact" size="sm" variant="ghost" icon="i-carbon-arrow-left" @click="closeTopic">
                 Back
               </UiButton>
               <span v-else class="eyebrow flex-1">Script</span>
@@ -1465,7 +1562,7 @@ onBeforeUnmount(() => {
                 @click="toggleSave(openTopic)"
               />
               <UiIconButton icon="i-carbon-launch" label="Open the post" size="sm" @click="openExternal(postUrl(openTopic))" />
-              <UiIconButton v-if="!compact" icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="openTopic = null" />
+              <UiIconButton v-if="!compact" icon="i-carbon-close" label="Close" kbd="Esc" size="sm" @click="closeAllTopics" />
             </div>
 
             <div :key="openTopic.id" class="p-4 scroll-y flex flex-1 flex-col gap-5 animate-fade-in" :class="compact ? 'pb-8' : 'pb-[240px]'">
@@ -1478,6 +1575,15 @@ onBeforeUnmount(() => {
                   {{ openTopic.title }}
                 </h2>
                 <div class="text-[12px] text-fg-muted flex flex-wrap gap-x-4 gap-y-1 items-center">
+                  <button
+                    v-if="openTopic.creator"
+                    v-tip="`Script posts by ${openTopic.creator}`"
+                    type="button"
+                    class="flex gap-1.5 min-w-0 items-center hover:text-fg"
+                    @click="showCreator(openTopic.creator)"
+                  >
+                    <span class="i-carbon-user shrink-0" /><span class="truncate hover:underline">{{ openTopic.creator }}</span>
+                  </button>
                   <span class="flex gap-1.5 items-center"><span class="i-carbon-calendar" />{{ fmtDate(openTopic.created_at) }}</span>
                   <span v-if="openTopic.like_count != null" class="flex gap-1.5 items-center"><span class="i-carbon-favorite" />{{ fmtNum(openTopic.like_count) }}</span>
                   <span v-if="openTopic.views != null" class="flex gap-1.5 items-center"><span class="i-carbon-view" />{{ fmtNum(openTopic.views) }}</span>

@@ -5,7 +5,7 @@ import { pickDirectory } from '~/lib/browserApi'
 import { metaCredits } from '~/lib/chapterIndex'
 import { handleDb, videoMetaDb } from '~/lib/idb'
 import { isAndroidApp } from '~/lib/platform'
-import { baseNameFor, downloadNames, videoExtFor, withCopyNumber } from '~/lib/postDownload'
+import { baseNameFor, creatorToSave, downloadNames, videoExtFor, withCopyNumber } from '~/lib/postDownload'
 import { editTagList, postTags } from '~/lib/tags'
 import { useLibraryStore } from '~/stores/libraryStore'
 
@@ -105,14 +105,19 @@ export interface DownloadRequest {
   tags?: readonly unknown[]
   /** The post's address, kept as the video's source link. */
   url?: string
+  /** Who posted it: the video's creator, unless its saved info or its scripts name one. */
+  creator?: string
 }
 
-/** The tags a funscript's own metadata names, in either spelling. */
-async function scriptTags(files: File[]): Promise<string[]> {
-  const out: string[] = []
+/** What the scripts' own metadata names: their tags and their creators, in either spelling. */
+async function scriptCredits(files: File[]): Promise<{ tags: string[], creators: string[] }> {
+  const out = { tags: [] as string[], creators: [] as string[] }
   for (const f of files) {
     try {
-      out.push(...metaCredits(JSON.parse(await f.text())?.metadata).tags)
+      const credits = metaCredits(JSON.parse(await f.text())?.metadata)
+      out.tags.push(...credits.tags)
+      if (credits.creator)
+        out.creators.push(credits.creator)
     }
     catch {}
   }
@@ -120,20 +125,24 @@ async function scriptTags(files: File[]): Promise<string[]> {
 }
 
 /**
- * Give the saved video the post's tags and link, in the saved info the
- * library reads on every scan (keyed by file name, like the tags added by
- * hand). The scripts' own metadata tags go in too: once a video has saved
+ * Give the saved video the post's tags, link and poster, in the saved info
+ * the library reads on every scan (keyed by file name, like the tags added
+ * by hand). The scripts' own metadata tags go in too: once a video has saved
  * tags, they are the list shown, and the scripts' would otherwise vanish.
+ * The poster becomes its creator only when nothing names one yet.
  */
 async function tagSaved(videoName: string, req: DownloadRequest, files: File[]) {
-  const add = postTags([...(req.tags ?? []), ...await scriptTags(files)])
-  if (!add.length && !req.url)
+  const credits = await scriptCredits(files)
+  const add = postTags([...(req.tags ?? []), ...credits.tags])
+  if (!add.length && !req.url && !req.creator)
     return
   const stored = await videoMetaDb.get(videoName).catch(() => undefined)
+  const creator = creatorToSave(req.creator, stored?.creator, credits.creators)
   await videoMetaDb.set(videoName, {
     ...stored,
     tags: editTagList(stored?.tags, add),
     ...(req.url && !stored?.url ? { url: req.url } : {}),
+    ...(creator ? { creator } : {}),
   })
 }
 

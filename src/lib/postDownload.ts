@@ -71,3 +71,17 @@ export function withCopyNumber(names: DownloadNames, base: string, n: number): D
   const swap = (name: string) => `${base} (${n})${name.slice(base.length)}`
   return { video: swap(names.video), scripts: names.scripts.map(s => ({ ...s, saveAs: swap(s.saveAs) })) }
 }
+
+/**
+ * The creator to give a saved video: the person who posted it, but only when
+ * nothing names one already. Not over a creator its saved info has (set by
+ * hand, or by an earlier download), and not when one of its scripts names
+ * its own creator in its metadata: the library shows that one, and the
+ * saved info would hide it.
+ */
+export function creatorToSave(poster: string | null | undefined, stored: string | null | undefined, scriptCreators: readonly (string | null | undefined)[]): string | null {
+  const name = poster?.trim()
+  if (!name || stored?.trim() || scriptCreators.some(c => c?.trim()))
+    return null
+  return name
+}
