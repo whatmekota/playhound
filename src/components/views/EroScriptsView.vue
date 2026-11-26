@@ -1310,6 +1310,14 @@ onBeforeUnmount(() => {
               {{ appSignedIn ? 'signed in' : sessionCookie ? 'cookie' : 'needed' }}
             </UiBadge>
           </UiButton>
+          <!-- On a phone the toolbar has no room to spare: grid or list is a button up here. -->
+          <UiIconButton
+            v-if="compact"
+            :icon="viewMode === 'grid' ? 'i-carbon-list' : 'i-carbon-grid'"
+            :label="viewMode === 'grid' ? 'Show as a list' : 'Show as a grid'"
+            size="md"
+            @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'"
+          />
           <UiIconButton icon="i-carbon-renew" label="Refresh" size="md" :disabled="busy" @click="reload" />
           <UiIconButton icon="i-carbon-launch" label="Open EroScripts in the browser" size="md" @click="openExternal(BASE)" />
         </div>
@@ -1363,10 +1371,11 @@ onBeforeUnmount(() => {
             </span>
             <UiSelect v-model="searchOrder" v-tip="'Order of the results'" :size="compact ? 'sm' : 'md'" :options="SEARCH_ORDERS" />
           </template>
-          <div class="flex-1" />
+          <div v-if="!compact" class="flex-1" />
           <UiSegmented
+            v-if="!compact"
             v-model="viewMode"
-            :size="compact ? 'sm' : 'md'"
+            size="md"
             :options="[
               { value: 'grid', icon: 'i-carbon-grid', title: 'Grid' },
               { value: 'list', icon: 'i-carbon-list', title: 'List' },
