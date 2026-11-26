@@ -25,12 +25,6 @@ import { useUiStore } from '~/stores/uiStore'
 
 defineOptions({ name: 'EroScriptsView' })
 
-/**
- * When the view was opened before this run of the app; posts since then
- * are new. Read once a run, so coming back to the view keeps the badges.
- */
-let lastVisit: number | null | undefined
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ESTag { id: number, name: string, slug: string }
 
@@ -350,11 +344,12 @@ async function copyCommand() {
 }
 
 // ─── New since the last visit ─────────────────────────────────────────────────
-if (lastVisit === undefined) {
-  lastVisit = Number(lsGet(KEYS.eroscriptsLastVisit.key)) || null
-  lsSet(KEYS.eroscriptsLastVisit.key, String(Date.now()))
-}
-const isNew = (t: ESTopic) => isNewSince(t.created_at, lastVisit ?? null)
+// When the view was opened before this time: posts since then are new. Read
+// once, as the view is set up; the shell keeps it alive, so going elsewhere
+// and coming back keeps the badges until the app is started again.
+const lastVisit = Number(lsGet(KEYS.eroscriptsLastVisit.key)) || null
+lsSet(KEYS.eroscriptsLastVisit.key, String(Date.now()))
+const isNew = (t: ESTopic) => isNewSince(t.created_at, lastVisit)
 
 // ─── View mode ────────────────────────────────────────────────────────────────
 const viewMode = ref<'grid' | 'list'>(lsGet('ph:ui.eroscripts.view') === 'list' ? 'list' : 'grid')
